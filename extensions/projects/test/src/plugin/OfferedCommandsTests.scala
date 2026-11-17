@@ -8,7 +8,7 @@ import grit.core.need.PluginReads
 import grit.core.plugin.{CommandTools, Commanded, InMemoryPlugins}
 import grit.core.store.{Askers, StoreError, Tx}
 import grit.core.tool.{ToolSet, Toolbox}
-import grit.projects.method.MethodFixtures
+import grit.projects.method.{Declared, MethodFixtures}
 
 import utest.*
 
@@ -52,7 +52,7 @@ object OfferedCommandsTests extends TestSuite {
     ) {
       val proposing = Projects
         .of(
-          Vector(CommandFixtures.method() -> Vector.empty),
+          Vector(Declared(CommandFixtures.method(), Vector.empty)),
           CommandFixtures.methodName,
           TurnCommands.Proposing(MethodFixtures.change.name)
         )

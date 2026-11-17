@@ -3,7 +3,26 @@ package grit.projects.render
 import scala.util.Random
 
 import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
-import grit.projects.name.{ArtifactKey, KindName, MethodName, Pin, ProjectKey, StateName}
+import grit.projects.method.{
+  ArtifactKind,
+  Declared,
+  Example,
+  Method,
+  RoleView,
+  Transition,
+  TransitionAction,
+  TransitionChecks
+}
+import grit.projects.name.{
+  ArtifactKey,
+  KindName,
+  LocalKey,
+  MethodName,
+  Pin,
+  ProjectKey,
+  RoleName,
+  StateName
+}
 import grit.prose.form.{Block, Doc, Level, Mark, Span, Text}
 import grit.prose.json.ProseJson
 
@@ -12,7 +31,8 @@ import grit.prose.json.ProseJson
   * marked spans starting or ending in a space, and a span marked strong then one marked emphasis
   * ending inside a word; and line breaks, some after a space, which a body reads back only when
   * written as breaks; code holding a line break before two backticks, which reads back with a
-  * space for it; beside them, references to other artifacts of the project.
+  * space for it; beside them, references to other artifacts of the project. And methods from a
+  * seed, with examples over such projects.
   */
 object ProjectGen {
 
@@ -49,6 +69,77 @@ object ProjectGen {
       )
     )
     right(Project.of(key, pin, artifacts))
+  }
+
+  /** The method of `seed`, each of whose checks is one of `TransitionChecks.all`, and up to two
+    * examples over [[project]]s, their moves not run: one to three kinds, each of one to four
+    * states reached in a chain, some ending in their last; transitions besides the chain, some
+    * naming checks and some merging deltas; up to two role views, some carrying local keys.
+    */
+  def method(seed: Int): Declared = {
+    val r = new Random(seed)
+    val checks = TransitionChecks.all.map(_.name)
+    val kinds = Vector("change", "note", "spec").take(1 + r.nextInt(3)).map { k =>
+      val first = right(StateName.of(s"$k-s0"))
+      val rest = Vector.tabulate(r.nextInt(4))(i => right(StateName.of(s"$k-s${i + 1}")))
+      ArtifactKind(
+        right(KindName.of(k)),
+        first,
+        rest,
+        rest.lastOption.filter(_ => r.nextBoolean()).toSet,
+        Vector.fill(r.nextInt(3))(pick(r, words))
+      )
+    }
+    def some[A](as: Vector[A]): Vector[A] = as.filter(_ => r.nextInt(3) == 0)
+    val transitions = kinds.flatMap { k =>
+      val all = k.all
+      val chain = all.zip(all.drop(1))
+      val extra = all.filterNot(k.ends).flatMap(from => some(all).map(from -> _))
+      (chain ++ extra).map { (from, to) =>
+        Transition(
+          k.name,
+          from,
+          to,
+          some(checks),
+          if (r.nextInt(4) == 0) TransitionAction.MergeDeltas(kinds(r.nextInt(kinds.size)).name)
+          else TransitionAction.Nothing
+        )
+      }
+    }
+    val views = Vector.tabulate(r.nextInt(3)) { i =>
+      right(
+        RoleView.of(
+          right(RoleName.of(s"r$i")),
+          kinds.filter(_ => r.nextBoolean()).map(_.name).toSet + kinds(i % kinds.size).name,
+          r.nextInt(RoleView.Deepest + 1),
+          Set.fill(r.nextInt(3))(right(LocalKey.of(s"a${r.nextInt(6)}")))
+        )
+      )
+    }
+    val examples = Vector.tabulate(r.nextInt(3)) { i =>
+      val start = project(r.nextInt())
+      Example(
+        s"example $i: ${line(r)}",
+        start,
+        Vector.fill(r.nextInt(4)) {
+          Example.Move(
+            start.artifacts(r.nextInt(start.artifacts.size)).head.key,
+            right(StateName.of(pick(r, Vector("open", "building", "done")))),
+            if (r.nextBoolean()) Example.Expect.Allowed
+            else Example.Expect.RefusedBy(checks(r.nextInt(checks.size)))
+          )
+        }
+      )
+    }
+    val method = Method.of(
+      right(MethodName.of("m")),
+      1 + r.nextInt(5),
+      kinds,
+      transitions,
+      views,
+      TransitionChecks.all
+    )
+    Declared(right(method.left.map(_.mkString("; "))), examples)
   }
 
   private def pick(r: Random^, from: Vector[String]): String = from(r.nextInt(from.size))

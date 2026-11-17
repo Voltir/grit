@@ -5,9 +5,11 @@ import grit.projects.method.Example.{Expect, Move}
 import grit.projects.method.MethodFixtures.*
 import grit.projects.method.{
   ArtifactKind,
+  Declared,
   Example,
   Method,
   MethodBench,
+  MethodJson,
   MoveRefusal,
   RoleView,
   Transition,
@@ -130,6 +132,11 @@ object OpenSpecTests extends TestSuite {
     test("OpenSpec passes Method.of and its examples pass the bench") {
       assert(MethodBench.failures(openSpec, examples) == Vector.empty)
     }
+    test("OpenSpec and its examples read back from their JSON") {
+      val text = ujson.write(MethodJson.written(openSpec, examples))
+      val back = MethodJson.read(ujson.read(text), TransitionChecks.all)
+      assert(back == Right(Declared(openSpec, examples)))
+    }
 
     test("archiving merges each delta into the spec cited, replacing its section or adding one") {
       val expected = right(
@@ -190,7 +197,7 @@ object OpenSpecTests extends TestSuite {
     test("project_move to archived keeps the spec merged, recording its mover") {
       import CommandFixtures.{ask, askAs, done as answered, other, otherBy, shown, Store}
       val projects =
-        right(Projects.of(Vector(openSpec -> examples), openSpec.name).left.map(_.toString))
+        right(Projects.of(Vector(Declared(openSpec, examples)), openSpec.name).left.map(_.toString))
       val store = Store()
       answered(ask(projects, store, "project_new", "project" -> "p"))
       def keep(local: String, kind: String, body: String, cites: String*) = answered(

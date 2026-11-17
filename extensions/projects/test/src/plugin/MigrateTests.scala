@@ -5,7 +5,7 @@ import java.time.Instant
 import grit.core.id.{DocKey, DocumentVersionId}
 import grit.core.plugin.{CommandBy, CommandOutcome}
 import grit.core.visibility.{Clearance, Label, TestLabels}
-import grit.projects.method.{ArtifactKind, Method, MethodFixtures, TransitionChecks}
+import grit.projects.method.{ArtifactKind, Declared, Method, MethodFixtures, TransitionChecks}
 import grit.projects.name.KindName
 import grit.projects.render.ProjectMarkdown
 
@@ -31,7 +31,7 @@ object MigrateTests extends TestSuite {
 
   /** The plugin declaring both versions: a project it starts holds to version 2. */
   private val both: Projects = Projects
-    .of(Vector(method() -> Vector.empty, version2 -> Vector.empty), methodName)
+    .of(Vector(Declared(method(), Vector.empty), Declared(version2, Vector.empty)), methodName)
     .fold(e => throw new java.lang.AssertionError(e.toString), identity)
 
   /** When [[other]] migrates, a day after the artifacts were kept. */

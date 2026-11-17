@@ -70,6 +70,10 @@ object ArtifactJsonTests extends TestSuite {
 
   private def inTx[A](body: (Tx^) ?=> A): A = body(using TestTx.fake)
 
+  /** `project` written as data, through its text, and read back. */
+  private def throughData(project: Project): Either[String, Project] =
+    ArtifactJson.projectFrom(ujson.read(ujson.write(ArtifactJson.projectData(project))))
+
   private def stored(blocks: Vector[Block[ArtifactKey]]): ujson.Value =
     ProseJson.write(Doc(blocks), k => ujson.Str(k.value))
 
@@ -174,6 +178,18 @@ object ArtifactJsonTests extends TestSuite {
           """[{"type":"para","text":[{"t":"See "},{"t":"b","n":[0]},{"t":"."}]}]}}"""
       )
       assert(shown == "A title\n\nSee b.")
+    }
+    test("a project written as data reads back equal: its key, pin, heads and bodies") {
+      (0 until 50).foreach { seed =>
+        val project = ProjectGen.project(seed)
+        assert(throughData(project) == Right(project))
+      }
+    }
+    test("data whose artifacts are another project's is not that project, saying why") {
+      val data = ArtifactJson.projectData(ProjectGen.project(1))
+      data("key") = "elsewhere"
+      val why = (0 to 4).map(i => s"p85/a$i is not of project elsewhere").mkString("; ")
+      assert(ArtifactJson.projectFrom(data) == Left(why))
     }
   }
 }

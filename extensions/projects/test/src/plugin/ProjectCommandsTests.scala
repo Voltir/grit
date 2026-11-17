@@ -8,7 +8,7 @@ import grit.core.identity.Principal
 import grit.core.plugin.{CommandBy, CommandOutcome}
 import grit.core.tool.{ArgsError, ToolName}
 import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
-import grit.projects.method.{Example, MethodFixtures}
+import grit.projects.method.{Declared, Example, MethodFixtures}
 import grit.projects.name.{ArtifactKey, MethodName, Pin, ProjectKey}
 import grit.projects.render.{Brief, ProjectMarkdown}
 
@@ -23,7 +23,7 @@ object ProjectCommandsTests extends TestSuite {
   private def proposing(): Projects =
     Projects
       .of(
-        Vector(method() -> Vector.empty),
+        Vector(Declared(method(), Vector.empty)),
         methodName,
         TurnCommands.Proposing(MethodFixtures.change.name)
       )
@@ -101,7 +101,7 @@ object ProjectCommandsTests extends TestSuite {
     test("a turn's move to a guarded state is refused and a person's is not") {
       val guarded = Set((MethodFixtures.change.name, state("done")))
       val projects = Projects
-        .of(Vector(method() -> Vector.empty), methodName, TurnCommands.Shipped(guarded))
+        .of(Vector(Declared(method(), Vector.empty)), methodName, TurnCommands.Shipped(guarded))
         .fold(e => throw new java.lang.AssertionError(e.toString), identity)
       val store = Store()
       started(projects, store)
@@ -136,7 +136,7 @@ object ProjectCommandsTests extends TestSuite {
     ) {
       val guarded = Set((MethodFixtures.change.name, state("done")))
       val projects = Projects
-        .of(Vector(method() -> Vector.empty), methodName, TurnCommands.Shipped(guarded))
+        .of(Vector(Declared(method(), Vector.empty)), methodName, TurnCommands.Shipped(guarded))
         .fold(e => throw new java.lang.AssertionError(e.toString), identity)
       val store = Store()
       started(projects, store)
@@ -212,7 +212,7 @@ object ProjectCommandsTests extends TestSuite {
 
     test("Projects.of refuses proposing a kind no method has") {
       Projects.of(
-        Vector(method() -> Vector.empty),
+        Vector(Declared(method(), Vector.empty)),
         methodName,
         TurnCommands.Proposing(MethodFixtures.kind("idea"))
       ) ==> Left(ProjectsRefusal.NoKind(MethodFixtures.kind("idea")))
@@ -1063,11 +1063,14 @@ object ProjectCommandsTests extends TestSuite {
       val m = method()
       val other = right(MethodName.of("other"))
       assert(
-        Projects.of(Vector(m -> Vector.empty), other) == Left(ProjectsRefusal.NoDefault(other))
+        Projects.of(Vector(Declared(m, Vector.empty)), other) == Left(
+          ProjectsRefusal.NoDefault(other)
+        )
       )
       assert(
         Projects.of(
-          Vector(m, method(transitions.take(1) ++ transitions.drop(1))).map(_ -> Vector.empty),
+          Vector(m, method(transitions.take(1) ++ transitions.drop(1)))
+            .map(Declared(_, Vector.empty)),
           methodName
         ) ==
           Left(ProjectsRefusal.Twice(methodName, 1))
@@ -1077,7 +1080,7 @@ object ProjectCommandsTests extends TestSuite {
       def guarding(kind: String, to: String) =
         Projects
           .of(
-            Vector(method() -> Vector.empty),
+            Vector(Declared(method(), Vector.empty)),
             methodName,
             TurnCommands.Shipped(Set((MethodFixtures.kind(kind), state(to))))
           )
@@ -1102,7 +1105,7 @@ object ProjectCommandsTests extends TestSuite {
           done
         )
       )
-      assert(Projects.of(Vector(m -> Vector(example)), methodName) match {
+      assert(Projects.of(Vector(Declared(m, Vector(example))), methodName) match {
         case Left(ProjectsRefusal.Unbenched(name, 1, Vector(failed))) =>
           name == methodName && failed.example == "a bare change is done" && failed.at == 2 &&
           failed.move == done

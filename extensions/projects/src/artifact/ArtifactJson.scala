@@ -23,7 +23,7 @@ object ArtifactJson {
   def write(artifact: Artifact): Either[String, (DocText, ujson.Value, Set[DocRef])] = {
     val h = artifact.head
     val body = Body.stored(artifact.body)
-    val data = ujson.Obj(HeadField -> head(h), BodyField -> body)
+    val data = dataOf(artifact)
     val headBytes = bytes(data) - bytes(body)
     val named = Vector(
       HoldingKind -> ProjectKey.value(h.key.project),
@@ -69,19 +69,63 @@ object ArtifactJson {
     } yield (
       key,
       text,
-      ujson.Obj(
-        "method" -> method,
-        "version" -> pin.version,
-        "digest" -> pin.digest.hex,
-        "by" -> by
-      ),
+      ujson.Obj.from(pinData(pin).value.toSeq :+ ("by" -> ujson.Str(by))),
       Set(ref)
     )
   }
 
   /** The pin of the index `document` holds, as [[index]] wrote it, or why not. */
-  def pinOf(document: Document): Either[String, Pin] =
-    document.data.objOpt
+  def pinOf(document: Document): Either[String, Pin] = pinFrom(document.data)
+
+  /** `project` as a file holds it, apart from any document: its key, its pin as [[index]] writes
+    * it, and each artifact's key beside its head and body's stored form as [[write]] writes them.
+    */
+  def projectData(project: Project): ujson.Obj =
+    ujson.Obj(
+      "key" -> ProjectKey.value(project.key),
+      "pin" -> pinData(project.pin),
+      "artifacts" -> ujson.Arr.from(
+        project.artifacts.map(a =>
+          ujson.Obj.from(("key" -> ujson.Str(a.head.key.value)) +: dataOf(a).value.toSeq)
+        )
+      )
+    )
+
+  /** The project [[projectData]] wrote as `json`, or why not: a field missing or malformed, a
+    * stored body [[Body.fromStored]] refuses, or what [[Project.of]] refuses.
+    */
+  def projectFrom(json: ujson.Value): Either[String, Project] =
+    for {
+      fields <- json.objOpt.toRight("it is no object")
+      key <- text(fields, "key").flatMap(ProjectKey.of)
+      pin <- fields.get("pin").toRight("it holds no pin").flatMap(pinFrom)
+      each <- fields.get("artifacts").flatMap(_.arrOpt).toRight("it holds no artifacts")
+      artifacts <- all(each.toVector.map { a =>
+        a.objOpt
+          .flatMap(_.get("key"))
+          .flatMap(_.strOpt)
+          .toRight("an artifact holds no key")
+          .flatMap(fromData(_, a))
+      })
+      project <- Project.of(key, pin, artifacts)
+    } yield project
+
+  /** `document` as [[write]] wrote it, as an artifact, or why not. */
+  private[artifact] def read(document: Document): Either[String, Artifact] =
+    fromData(DocKey.value(document.key), document.data)
+
+  private def dataOf(artifact: Artifact): ujson.Obj =
+    ujson.Obj(HeadField -> head(artifact.head), BodyField -> Body.stored(artifact.body))
+
+  private def pinData(pin: Pin): ujson.Obj =
+    ujson.Obj(
+      "method" -> MethodName.value(pin.method),
+      "version" -> pin.version,
+      "digest" -> pin.digest.hex
+    )
+
+  private def pinFrom(data: ujson.Value): Either[String, Pin] =
+    data.objOpt
       .flatMap { d =>
         for {
           method <- d.get("method").flatMap(_.strOpt)
@@ -89,17 +133,17 @@ object ArtifactJson {
           digest <- d.get("digest").flatMap(_.strOpt)
         } yield (method, version.toInt, digest)
       }
-      .toRight("its index holds no method, version and digest")
+      .toRight("its pin holds no method, version and digest")
       .flatMap((m, v, d) => MethodName.of(m).flatMap(Pin.read(_, v, d)))
 
-  /** `document` as [[write]] wrote it, as an artifact, or why not. */
-  private[artifact] def read(document: Document): Either[String, Artifact] =
+  /** The artifact of key `written` whose head and stored body `data` holds, or why not. */
+  private def fromData(written: String, data: ujson.Value): Either[String, Artifact] =
     for {
       key <- ArtifactKey
-        .read(DocKey.value(document.key))
+        .read(written)
         .left
         .map(why => s"its key is no artifact's: $why")
-      fields <- document.data.objOpt
+      fields <- data.objOpt
         .flatMap(_.get(HeadField))
         .flatMap(_.objOpt)
         .toRight("its data holds no head")
@@ -117,7 +161,7 @@ object ArtifactJson {
         .flatMap(cs => all(cs.toVector.map(c => c.strOpt.toRight("a cite is not text"))))
         .flatMap(cs => all(cs.map(ArtifactKey.read)))
       by <- nullable(fields, "by")
-      stored <- document.data.objOpt.flatMap(_.get(BodyField)).toRight("its data holds no body")
+      stored <- data.objOpt.flatMap(_.get(BodyField)).toRight("its data holds no body")
       body <- Body.fromStored(stored)
     } yield Artifact(ArtifactHead(key, kind, state, title, parent, cites, by), body)
 

@@ -7,7 +7,7 @@ import grit.core.edge.{WatchFor, Watched}
 import grit.core.id.{DocKey, PluginName}
 import grit.core.plugin.{DocumentPosting, Documents, Plugin, PluginCommand}
 import grit.projects.artifact.ArtifactJson
-import grit.projects.method.{Example, Method, MethodBench}
+import grit.projects.method.{Declared, Method, MethodBench}
 import grit.projects.name.{ArtifactKey, KindName, MethodName, StateName}
 
 /** The projects plugin (ADR 0049): projects of `methods`, new ones under the latest version of
@@ -78,21 +78,20 @@ object Projects {
     * has.
     */
   def of(
-      methods: Vector[(Method, Vector[Example])],
+      methods: Vector[Declared],
       default: MethodName,
       turns: TurnCommands = TurnCommands.Unguarded
   ): Either[ProjectsRefusal, Projects] = {
-    val declared = methods.map(_._1)
+    val declared = methods.map(_.method)
     declared.groupBy(m => (m.name, m.version)).collectFirst {
       case ((name, version), same) if same.size > 1 => ProjectsRefusal.Twice(name, version)
     } match {
       case Some(twice) => Left(twice)
       case None if !declared.exists(_.name == default) => Left(ProjectsRefusal.NoDefault(default))
       case None =>
-        val unbenched: Vector[ProjectsRefusal] = methods.flatMap {
-          (m: Method, examples: Vector[Example]) =>
-            val failed = MethodBench.failures(m, examples)
-            if (failed.isEmpty) None else Some(ProjectsRefusal.Unbenched(m.name, m.version, failed))
+        val unbenched: Vector[ProjectsRefusal] = methods.flatMap { case Declared(m, examples) =>
+          val failed = MethodBench.failures(m, examples)
+          if (failed.isEmpty) None else Some(ProjectsRefusal.Unbenched(m.name, m.version, failed))
         }
         val unguardable = turns match {
           case TurnCommands.Shipped(guarded) =>

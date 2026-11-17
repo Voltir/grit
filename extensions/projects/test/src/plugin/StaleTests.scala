@@ -1,6 +1,6 @@
 package grit.projects.plugin
 
-import grit.projects.method.Method
+import grit.projects.method.{Declared, Method}
 import grit.projects.paper.{ElephantGoldfishTests, OpenSpecTests}
 
 import utest.*
@@ -85,7 +85,7 @@ object StaleTests extends TestSuite {
       )
       val answers = under.map { (m, kind, _, end) =>
         val projects = Projects
-          .of(Vector(m -> Vector.empty), m.name)
+          .of(Vector(Declared(m, Vector.empty)), m.name)
           .fold(e => throw new java.lang.AssertionError(e.toString), identity)
         val store = Store()
         started(projects, store)

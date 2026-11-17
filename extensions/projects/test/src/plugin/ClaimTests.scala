@@ -6,7 +6,7 @@ import grit.core.id.{ClaimHolder, DocKey}
 import grit.core.plugin.CommandOutcome
 import grit.core.tool.ToolName
 import grit.core.visibility.Label
-import grit.projects.method.MethodFixtures
+import grit.projects.method.{Declared, MethodFixtures}
 import grit.projects.paper.{ElephantGoldfishTests, OpenSpecTests}
 
 import utest.*
@@ -296,7 +296,7 @@ object ClaimTests extends TestSuite {
       )
       under.map { (m, kind, first, role) =>
         val projects = Projects
-          .of(Vector(m -> Vector.empty), m.name)
+          .of(Vector(Declared(m, Vector.empty)), m.name)
           .fold(e => throw new java.lang.AssertionError(e.toString), identity)
         val store = Store()
         started(projects, store)

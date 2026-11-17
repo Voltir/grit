@@ -4,9 +4,11 @@ import grit.projects.method.Example.{Expect, Move}
 import grit.projects.method.MethodFixtures.*
 import grit.projects.method.{
   ArtifactKind,
+  Declared,
   Example,
   Method,
   MethodBench,
+  MethodJson,
   RoleView,
   Transition,
   TransitionAction,
@@ -112,6 +114,11 @@ object ElephantGoldfishTests extends TestSuite {
   val tests = Tests {
     test("the elephant-goldfish model passes Method.of and its examples pass the bench") {
       assert(MethodBench.failures(model, examples) == Vector.empty)
+    }
+    test("the elephant-goldfish model and its examples read back from their JSON") {
+      val text = ujson.write(MethodJson.written(model, examples))
+      val back = MethodJson.read(ujson.read(text), TransitionChecks.all)
+      assert(back == Right(Declared(model, examples)))
     }
 
     test("a goldfish is shown the draft and what it cites, one link deep; an elephant more") {

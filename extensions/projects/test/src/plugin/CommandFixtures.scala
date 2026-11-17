@@ -12,7 +12,7 @@ import grit.core.store.Tx
 import grit.core.tool.ToolName
 import grit.core.visibility.{Clearance, Label}
 import grit.dbos.sql.TestTx
-import grit.projects.method.{Method, MethodFixtures, RoleView, TransitionChecks}
+import grit.projects.method.{Declared, Method, MethodFixtures, RoleView, TransitionChecks}
 import grit.projects.name.{LocalKey, MethodName}
 
 /** A projects plugin over an in-memory store, and its commands asked as an edge asks them, for
@@ -82,7 +82,7 @@ object CommandFixtures {
 
   def plugin(m: Method = method()): Projects =
     Projects
-      .of(Vector(m -> Vector.empty), methodName)
+      .of(Vector(Declared(m, Vector.empty)), methodName)
       .fold(e => throw new java.lang.AssertionError(e.toString), identity)
 
   /** A fresh store, its projects keeper under `terms`, and its projects claims. */
