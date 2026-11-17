@@ -6,6 +6,7 @@ import grit.core.document.{DocLabel, DocWeight, DocumentTerms}
 import grit.core.edge.{WatchFor, Watched}
 import grit.core.id.{DocKey, PluginName}
 import grit.core.plugin.{DocumentPosting, Documents, Plugin, PluginCommand}
+import grit.core.visibility.Label
 import grit.projects.artifact.ArtifactJson
 import grit.projects.method.{MethodRefusal, TransitionCheck}
 import grit.projects.name.{ArtifactKey, MethodName, StateName}
@@ -40,13 +41,14 @@ import grit.projects.name.{ArtifactKey, MethodName, StateName}
 final class Projects private (
     checks: Vector[TransitionCheck],
     default: MethodName,
-    turns: TurnCommands
+    turns: TurnCommands,
+    methodsAt: Label
 ) extends Plugin {
   val name: PluginName = Projects.Name
   val version: Int = 1
   override val documents: Option[Documents] = Some(Projects.Kept)
   override val commands: Vector[PluginCommand[?]] =
-    new ProjectCommands(checks, default, turns).all
+    new ProjectCommands(checks, default, turns, methodsAt).all
 }
 
 object Projects {
@@ -81,19 +83,23 @@ object Projects {
       "so nothing was kept"
 
   /** The plugin over these compiled checks; its methods are those declared through
-    * `project_declare`, new projects under the latest version of `default`.
+    * `project_declare`, new projects under the latest version of `default`. Each method version
+    * is kept and read at `methodsAt` alone, so it has one digest whoever reads it: give a label
+    * every caller of its commands reads. A declaration from a room that writes at another label
+    * is refused; a caller who cannot read `methodsAt` finds no method declared.
     */
   def of(
       checks: Vector[TransitionCheck],
       default: MethodName,
-      turns: TurnCommands = TurnCommands.Shipped
+      turns: TurnCommands = TurnCommands.Shipped,
+      methodsAt: Label = Label.Public
   ): Either[MethodRefusal.CheckTwice, Projects] = {
     val names = checks.map(_.name)
     names
       .diff(names.distinct)
       .headOption
       .map(name => new MethodRefusal.CheckTwice(name))
-      .toLeft(new Projects(checks, default, turns))
+      .toLeft(new Projects(checks, default, turns, methodsAt))
   }
 
   /** A watch for the artifact `key` to be in one of `states`, or why not: no states, or a key

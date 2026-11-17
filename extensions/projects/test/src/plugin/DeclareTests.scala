@@ -1,9 +1,10 @@
 package grit.projects.plugin
 
+import grit.core.document.DocText
 import grit.core.id.{ConversationId, Sha256, TurnRef, TurnSeq}
 import grit.core.place.Place
 import grit.core.plugin.{CommandBy, CommandOutcome}
-import grit.core.visibility.{Integrity, Label}
+import grit.core.visibility.{Clearance, Integrity, Label, TestLabels}
 import grit.projects.artifact.ArtifactJson
 import grit.projects.method.{Example, MethodFixtures, MethodJson, TransitionChecks}
 import grit.projects.name.{Pin, ProjectKey}
@@ -190,6 +191,53 @@ object DeclareTests extends TestSuite {
         ),
         true
       )
+    }
+    test(
+      "a declaration from a room writing above the methods' label is refused, keeping nothing"
+    ) {
+      val store = Store(declared = Vector.empty)
+      def above(name: String, args: (String, ujson.Value)*) =
+        askBy(direct(), at, Clearance.of(TestLabels.Trial))(plugin(), store, name, args*)
+      (
+        above("project_declare", declaring(method())),
+        above("project_new", "project" -> "p")
+      ) ==> (
+        CommandOutcome.Refused(
+          s"The method grit version 1 is refused: methods are kept at " +
+            s"${Label.shown(Label.Public)}, which every caller of the project commands reads, " +
+            s"and this room keeps what it writes at ${Label.shown(TestLabels.Trial)}; declare " +
+            s"it from a room labelled ${Label.shown(Label.Public)}."
+        ),
+        CommandOutcome.Refused("No method grit is declared here: declare it with project_declare.")
+      )
+    }
+    test(
+      "a copy of a version at another label is never read: a room above it reads the declared one"
+    ) {
+      val store = Store()
+      val (key, refs) =
+        (right(MethodCommands.key(methodName, 1)), right(MethodCommands.refs(methodName)))
+      inTx(
+        store.keeper.write(
+          key,
+          TestLabels.Trial,
+          Integrity.Authority,
+          Place.Everywhere,
+          right(DocText.of("Method grit version 1.")),
+          MethodJson.written(changed, Vector.empty),
+          None,
+          at,
+          refs
+        )
+      ).fold(e => throw new java.lang.AssertionError(e.toString), _ => ())
+      val above = askBy(direct(), at, Clearance.of(TestLabels.Trial))(
+        plugin(),
+        store,
+        "project_methods",
+        "name" -> "grit",
+        "version" -> 1
+      )
+      above ==> ask(plugin(), store, "project_methods", "name" -> "grit", "version" -> 1)
     }
     test("project_new refuses when no version of its method is declared") {
       ask(plugin(), Store(declared = Vector.empty), "project_new", "project" -> "p") ==>

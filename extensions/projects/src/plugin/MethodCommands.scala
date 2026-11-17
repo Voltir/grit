@@ -28,10 +28,12 @@ import ProjectCommands.{Stop, answered, moverOf, parsed, refusal, refuse, stored
 import MethodCommands.{Asking, Declaring}
 
 /** `project_declare` and `project_methods`, and the method versions every other command reads:
-  * each version one document of the plugin's own, under `<name>@<version>`, holding its method
+  * each version one document of the plugin's own, under `<name>@<version>` at `methodsAt` alone (one
+  * digest to a version, whoever reads it), holding its method
   * and worked examples as [[MethodJson]] writes them, its checks found among `checks`.
   */
-private[plugin] final class MethodCommands(checks: Vector[TransitionCheck]) extends caps.Pure {
+private[plugin] final class MethodCommands(checks: Vector[TransitionCheck], methodsAt: Label)
+    extends caps.Pure {
 
   /** `project_declare`. */
   object Declare extends KeepingCommand[Declaring] {
@@ -78,6 +80,7 @@ private[plugin] final class MethodCommands(checks: Vector[TransitionCheck]) exte
               )
             )
         }
+        _ <- floored(named)
         held <- current(own, method.name, method.version)
         answer <- held match {
           case Some(document) =>
@@ -225,7 +228,7 @@ private[plugin] final class MethodCommands(checks: Vector[TransitionCheck]) exte
       _ <- written(
         own.write(
           key,
-          Label.Public,
+          methodsAt,
           Integrity.Authority,
           Place.Everywhere,
           text,
@@ -238,18 +241,31 @@ private[plugin] final class MethodCommands(checks: Vector[TransitionCheck]) exte
     } yield s"Declared the $named, digest ${method.digest.hex}."
   }
 
-  /** The document of `name` at `version`, at the newest label this transaction reads it at. */
+  /** Nothing when this transaction writes at `methodsAt`; else why the `named` is refused. */
+  private def floored(named: String)(using tx: Tx^): Either[Stop, Unit] = {
+    val floor = Tx.floor(tx)
+    Either.cond(
+      floor == methodsAt,
+      (),
+      Stop.Refused(
+        s"The $named is refused: methods are kept at ${Label.shown(methodsAt)}, which every " +
+          "caller of the project commands reads, and this room keeps what it writes at " +
+          s"${Label.shown(floor)}; declare it from a room labelled ${Label.shown(methodsAt)}."
+      )
+    )
+  }
+
+  /** The document of `name` at `version`, kept at `methodsAt`. */
   private def current(own: DocumentShelf, name: MethodName, version: Int)(using
       Tx^
   ): Either[Stop, Option[Document]] =
     for {
       key <- refuse(MethodCommands.key(name, version))
-      labels <- stored(own.labels(key))
-      held <- labels.headOption.fold(Right(None))(l => stored(own.current(key, l)))
+      held <- stored(own.current(key, methodsAt))
     } yield held
 
-  /** Each version declared of `name`, or of every method when `None`, once, oldest version
-    * first within a method, the methods by name.
+  /** Each version declared of `name`, or of every method when `None`, kept at `methodsAt`,
+    * once, oldest version first within a method, the methods by name.
     */
   private def listed(own: DocumentShelf, name: Option[MethodName])(using
       Tx^
@@ -258,6 +274,7 @@ private[plugin] final class MethodCommands(checks: Vector[TransitionCheck]) exte
       ref <- refuse(name.fold(MethodCommands.All)(MethodCommands.naming))
       found <- stored(own.referring(ref, Projects.Terms.bound))
     } yield found
+      .filter(_.label == methodsAt)
       .distinctBy(_.key)
       .flatMap(d => versionOf(d.key).map(v => (DocKey.value(d.key).takeWhile(_ != '@'), v, d)))
       .sortBy((n, v, _) => (n, v))

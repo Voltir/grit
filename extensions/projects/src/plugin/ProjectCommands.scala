@@ -50,10 +50,11 @@ import grit.std.either.Traversal
 private[plugin] final class ProjectCommands(
     checks: Vector[TransitionCheck],
     default: MethodName,
-    turns: TurnCommands
+    turns: TurnCommands,
+    methodsAt: Label
 ) extends caps.Pure {
 
-  private val declaring = new MethodCommands(checks)
+  private val declaring = new MethodCommands(checks, methodsAt)
 
   import ProjectCommands.*
 

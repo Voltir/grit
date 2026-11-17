@@ -33,6 +33,16 @@ object ProjectsLiveTests extends TestSuite {
 
   private val at = Instant.parse("2026-10-27T10:00:00Z")
 
+  /** The plugin, its methods kept at internal: what [[desk]], where they are declared, writes. */
+  private def atInternal: Projects =
+    Projects
+      .of(
+        TransitionChecks.all,
+        CommandFixtures.methodName,
+        methodsAt = grit.core.visibility.Label.at(grit.core.visibility.Level.Internal)
+      )
+      .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+
   private def ran(
       commands: grit.core.edge.PluginCommands^,
       by: Account,
@@ -125,35 +135,34 @@ object ProjectsLiveTests extends TestSuite {
   val tests: Tests = Tests {
 
     test("project_claims, run read-only as an edge runs it, lists a claim made through the edge") {
-      CommandRooms.commanding("projects_claims", _ => Vector(CommandFixtures.plugin())) {
-        (_, _, commands) =>
-          declared(commands)
-          val claims = for {
-            _ <- ran(commands, ann, desk, ToolName("project_new"), "project" -> "p")
-            _ <- keep(commands, desk, "a", "Claimed.")
-            _ <- ran(
-              commands,
-              ann,
-              desk,
-              ToolName("project_claim"),
-              "key" -> "p/a",
-              "role" -> "builder",
-              "holder" -> "coder/abc"
-            )
-            listed <- ran(commands, ann, desk, ToolName("project_claims"))
-          } yield listed
-          assertMatch(claims) {
-            case Right(CommandOutcome.Done(said))
-                if ujson.read(said)("claims").arr.map(c => (c("key").str, c("holder").str)) ==
-                  Vector(("p/a", "coder/abc")) =>
-          }
+      CommandRooms.commanding("projects_claims", _ => Vector(atInternal)) { (_, _, commands) =>
+        declared(commands)
+        val claims = for {
+          _ <- ran(commands, ann, desk, ToolName("project_new"), "project" -> "p")
+          _ <- keep(commands, desk, "a", "Claimed.")
+          _ <- ran(
+            commands,
+            ann,
+            desk,
+            ToolName("project_claim"),
+            "key" -> "p/a",
+            "role" -> "builder",
+            "holder" -> "coder/abc"
+          )
+          listed <- ran(commands, ann, desk, ToolName("project_claims"))
+        } yield listed
+        assertMatch(claims) {
+          case Right(CommandOutcome.Done(said))
+              if ujson.read(said)("claims").arr.map(c => (c("key").str, c("holder").str)) ==
+                Vector(("p/a", "coder/abc")) =>
+        }
       }
     }
 
     test(
       "a method is declared through the edge only by a caller believed at Authority, and a move reads it"
     ) {
-      CommandRooms.commanding("projects_declare", _ => Vector(CommandFixtures.plugin())) {
+      CommandRooms.commanding("projects_declare", _ => Vector(atInternal)) {
         (config, engine, commands) =>
           def declare(room: Place, believed: Integrity) = commands.run(
             ann,
@@ -206,57 +215,56 @@ object ProjectsLiveTests extends TestSuite {
     test(
       "a move only people make is refused for a session believed below Authority, and made at it"
     ) {
-      CommandRooms.commanding("projects_people", _ => Vector(CommandFixtures.plugin())) {
-        (_, _, commands) =>
-          declared(
+      CommandRooms.commanding("projects_people", _ => Vector(atInternal)) { (_, _, commands) =>
+        declared(
+          commands,
+          CommandFixtures.method(MethodFixtures.transitions.map { t =>
+            if (t.to == MethodFixtures.state("done")) t.copy(movers = Movers.People) else t
+          })
+        )
+        def move(believed: Integrity, to: String) = commands.run(
+          ann,
+          desk,
+          believed,
+          ToolName("project_move"),
+          ujson.Obj("key" -> "p/a", "state" -> to),
+          at
+        )
+        (
+          ran(commands, ann, desk, ToolName("project_new"), "project" -> "p").map(_.getClass),
+          ran(
             commands,
-            CommandFixtures.method(MethodFixtures.transitions.map { t =>
-              if (t.to == MethodFixtures.state("done")) t.copy(movers = Movers.People) else t
-            })
-          )
-          def move(believed: Integrity, to: String) = commands.run(
             ann,
             desk,
-            believed,
-            ToolName("project_move"),
-            ujson.Obj("key" -> "p/a", "state" -> to),
-            at
-          )
-          (
-            ran(commands, ann, desk, ToolName("project_new"), "project" -> "p").map(_.getClass),
-            ran(
-              commands,
-              ann,
-              desk,
-              ToolName("project_keep"),
-              "key" -> "p/a",
-              "kind" -> "change",
-              "title" -> "A",
-              "body" -> "## Why\n\nBecause."
-            ).map(_.getClass)
-          ) ==> (Right(classOf[CommandOutcome.Done]), Right(classOf[CommandOutcome.Done]))
-          (
-            move(Integrity.Member, "building"),
-            move(Integrity.Member, "done"),
-            move(Integrity.Authority, "done")
-          ) ==> (
-            Right(CommandOutcome.Done("Moved p/a (change, building).")),
-            Right(
-              CommandOutcome.Refused(
-                "p/a cannot move to done here: that move is made only by someone believed at " +
-                  "Authority giving the command directly, never through a turn or a session " +
-                  "believed lower; ask the person to make it"
-              )
-            ),
-            Right(CommandOutcome.Done("Moved p/a (change, done)."))
-          )
+            ToolName("project_keep"),
+            "key" -> "p/a",
+            "kind" -> "change",
+            "title" -> "A",
+            "body" -> "## Why\n\nBecause."
+          ).map(_.getClass)
+        ) ==> (Right(classOf[CommandOutcome.Done]), Right(classOf[CommandOutcome.Done]))
+        (
+          move(Integrity.Member, "building"),
+          move(Integrity.Member, "done"),
+          move(Integrity.Authority, "done")
+        ) ==> (
+          Right(CommandOutcome.Done("Moved p/a (change, building).")),
+          Right(
+            CommandOutcome.Refused(
+              "p/a cannot move to done here: that move is made only by someone believed at " +
+                "Authority giving the command directly, never through a turn or a session " +
+                "believed lower; ask the person to make it"
+            )
+          ),
+          Right(CommandOutcome.Done("Moved p/a (change, done)."))
+        )
       }
     }
 
     test(
       "a projects command keeps at the room's label, believed at no more than the edge gave"
     ) {
-      CommandRooms.commanding("projects_keeps", _ => Vector(CommandFixtures.plugin())) {
+      CommandRooms.commanding("projects_keeps", _ => Vector(atInternal)) {
         (config, engine, commands) =>
           declared(commands)
           (
@@ -279,7 +287,7 @@ object ProjectsLiveTests extends TestSuite {
     test(
       "a cascade is refused, withdrawing nothing, naming a citer kept below what the asker's room writes"
     ) {
-      CommandRooms.commanding("projects_cascade_floor", _ => Vector(CommandFixtures.plugin())) {
+      CommandRooms.commanding("projects_cascade_floor", _ => Vector(atInternal)) {
         (config, engine, commands) =>
           declared(commands)
           ran(commands, ann, desk, ToolName("project_new"), "project" -> "p").map(_.getClass) ==>
@@ -307,7 +315,7 @@ object ProjectsLiveTests extends TestSuite {
     test(
       "a sweep is refused, dry or not, changing nothing, naming an artifact it would withdraw kept below what the asker's room writes"
     ) {
-      CommandRooms.commanding("projects_sweep_floor", _ => Vector(CommandFixtures.plugin())) {
+      CommandRooms.commanding("projects_sweep_floor", _ => Vector(atInternal)) {
         (config, engine, commands) =>
           declared(commands)
           ran(commands, ann, desk, ToolName("project_new"), "project" -> "p").map(_.getClass) ==>
@@ -333,7 +341,7 @@ object ProjectsLiveTests extends TestSuite {
     test(
       "keep and move from a room above an artifact's label are refused, keeping no second copy"
     ) {
-      CommandRooms.commanding("projects_keep_floor", _ => Vector(CommandFixtures.plugin())) {
+      CommandRooms.commanding("projects_keep_floor", _ => Vector(atInternal)) {
         (config, engine, commands) =>
           declared(commands)
           ran(commands, ann, desk, ToolName("project_new"), "project" -> "p").map(_.getClass) ==>
@@ -392,7 +400,7 @@ object ProjectsLiveTests extends TestSuite {
           TransitionChecks.all
         )
         .fold(why => sys.error(why.toString), identity)
-      CommandRooms.commanding("projects_migrate", _ => Vector(CommandFixtures.plugin())) {
+      CommandRooms.commanding("projects_migrate", _ => Vector(atInternal)) {
         (config, engine, commands) =>
           declared(commands, withMemo)
           ran(commands, ann, desk, ToolName("project_new"), "project" -> "p").map(_.getClass) ==>
@@ -443,7 +451,7 @@ object ProjectsLiveTests extends TestSuite {
     ) {
       CommandRooms.commanding(
         "projects_brief_budget",
-        _ => Vector(CommandFixtures.plugin())
+        _ => Vector(atInternal)
       ) { (config, _, commands) =>
         declared(commands, CommandFixtures.managing)
         ran(commands, ann, desk, ToolName("project_new"), "project" -> "p")
@@ -540,7 +548,7 @@ object ProjectsLiveTests extends TestSuite {
     ) {
       CommandRooms.commanding(
         "projects_briefs",
-        _ => Vector(CommandFixtures.plugin())
+        _ => Vector(atInternal)
       ) { (config, engine, commands) =>
         declared(commands, CommandFixtures.managing)
         ran(commands, ann, desk, ToolName("project_new"), "project" -> "p")
