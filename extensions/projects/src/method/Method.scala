@@ -230,7 +230,7 @@ object Method {
               .map(UndeclaredState(k.name, _))
         } ++
         twice(views.map(_.role)).map(RoleTwice(_)) ++
-        twice(compiled.map(_.name)).map(CheckTwice(_)) ++
+        checksTwice(compiled) ++
         transitions.flatMap { t =>
           declared.get(t.kind) match {
             case None => Vector(UndeclaredKind(t.kind))
@@ -264,6 +264,12 @@ object Method {
         )
       )
   }
+
+  /** Each name two of `compiled` share, once, in order of its second. */
+  private[projects] def checksTwice(
+      compiled: Vector[TransitionCheck]
+  ): Vector[MethodRefusal.CheckTwice] =
+    twice(compiled.map(_.name)).map(MethodRefusal.CheckTwice(_))
 
   /** Each name `names` holds more than once, once, in order of its second. */
   private def twice[N](names: Vector[N]): Vector[N] =

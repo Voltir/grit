@@ -8,7 +8,7 @@ import grit.core.id.{DocKey, PluginName}
 import grit.core.plugin.{DocumentPosting, Documents, Plugin, PluginCommand}
 import grit.core.visibility.Label
 import grit.projects.artifact.ArtifactJson
-import grit.projects.method.{MethodRefusal, TransitionCheck}
+import grit.projects.method.{Method, MethodRefusal, TransitionCheck}
 import grit.projects.name.{ArtifactKey, MethodName, StateName}
 
 /** The projects plugin (ADR 0049): projects of the methods declared through `project_declare`
@@ -93,14 +93,8 @@ object Projects {
       default: MethodName,
       turns: TurnCommands = TurnCommands.Shipped,
       methodsAt: Label = Label.Public
-  ): Either[MethodRefusal.CheckTwice, Projects] = {
-    val names = checks.map(_.name)
-    names
-      .diff(names.distinct)
-      .headOption
-      .map(name => new MethodRefusal.CheckTwice(name))
-      .toLeft(new Projects(checks, default, turns, methodsAt))
-  }
+  ): Either[MethodRefusal.CheckTwice, Projects] =
+    Method.checksTwice(checks).headOption.toLeft(new Projects(checks, default, turns, methodsAt))
 
   /** A watch for the artifact `key` to be in one of `states`, or why not: no states, or a key
     * no document's may be.
