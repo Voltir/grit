@@ -1319,7 +1319,7 @@ private[plugin] final class ProjectCommands(
         }.toSet
         claimed = claimedOf(live, project.documents).map((a, h) => a.head.key -> h).toMap
         // What is left is a Project, so its export reads back (ADR 0049).
-        swept = Project.swept(whole, due, h => ArtifactKind.ends(method.kinds, h), claimed)
+        swept = Project.swept(whole, due, endsUnder(method), claimed)
         docs = documented(project, swept.withdrawn)
         _ <- atTheirLabels(
           docs.gone.map((d, a) => d -> s"${a.head.key.value} would be withdrawn, but") ++
@@ -1648,7 +1648,7 @@ private[plugin] final class ProjectCommands(
   private def ending(own: DocumentShelf, pin: Pin)(using
       Tx^
   ): Either[Stop, ArtifactHead -> Boolean] =
-    declared(own, pin).map[ArtifactHead -> Boolean](m => h => ArtifactKind.ends(m.kinds, h))
+    declared(own, pin).map(endsUnder)
 
   /** Whether `project_list` and `project_find` leave an artifact of a project holding to `pin`
     * out as ended: as [[ending]] says, and never when `pin`'s method is not declared here; or why
@@ -1659,7 +1659,11 @@ private[plugin] final class ProjectCommands(
   ): Either[Stop, ArtifactHead -> Boolean] =
     declaring
       .ifDeclared(own, pin.method, pin.version)
-      .map(_.fold[ArtifactHead -> Boolean](_ => false)(m => h => ArtifactKind.ends(m.kinds, h)))
+      .map(_.fold[ArtifactHead -> Boolean](_ => false)(endsUnder))
+
+  /** Whether an artifact is in an end state of its kind under `method`. */
+  private def endsUnder(method: Method): ArtifactHead -> Boolean =
+    h => ArtifactKind.ends(method.kinds, h)
 }
 
 private[plugin] object ProjectCommands {

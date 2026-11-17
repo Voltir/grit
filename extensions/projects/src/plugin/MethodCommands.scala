@@ -182,7 +182,7 @@ private[plugin] final class MethodCommands(checks: Vector[TransitionCheck], meth
       case Some(method) => Right(method)
       case None =>
         listed(own, Some(name)).flatMap { found =>
-          val versions = found.flatMap(d => versionOf(d.key)).mkString(", ")
+          val versions = found.flatMap(d => keyed(d.key)).map(_.version).mkString(", ")
           Left(
             Stop.Refused(
               undeclared(name, version) +
@@ -283,7 +283,7 @@ private[plugin] final class MethodCommands(checks: Vector[TransitionCheck], meth
     } yield found
       .filter(_.label == methodsAt)
       .distinctBy(_.key)
-      .flatMap(d => versionOf(d.key).map(v => (DocKey.value(d.key).takeWhile(_ != '@'), v, d)))
+      .flatMap(d => keyed(d.key).map(k => (k.name, k.version, d)))
       .sortBy((n, v, _) => (n, v))
       .map(_._3)
 
@@ -298,10 +298,10 @@ private[plugin] final class MethodCommands(checks: Vector[TransitionCheck], meth
         )
       )
 
-  /** The version a method's key names. */
-  private def versionOf(key: DocKey): Option[Int] =
+  /** The method name and version a key [[MethodCommands.key]] wrote names; none for another key. */
+  private def keyed(key: DocKey): Option[(name: String, version: Int)] =
     DocKey.value(key).split('@') match {
-      case Array(_, v) => v.toIntOption
+      case Array(n, v) => v.toIntOption.map(version => (name = n, version = version))
       case _ => None
     }
 

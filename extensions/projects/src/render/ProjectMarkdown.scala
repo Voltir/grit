@@ -31,14 +31,14 @@ object ProjectMarkdown {
 
   /** `artifact`'s file as [[render]] writes it: its path, and its text. */
   def file(artifact: Artifact): (String, String) =
-    s"${artifact.head.key.value}.md" -> filed(artifact, None)
+    s"${artifact.head.key.value}.md" -> filed(artifact.head, None, Body.markdown(artifact.body))
 
   /** `artifact` kept as `version`, as `project_show` gives it: [[file]]'s text with a last front
     * matter line `version: <n>`, which [[readShown]] reads back and [[read]] never does: an export
     * holds no version.
     */
   def shown(artifact: Artifact, version: DocumentVersionId): String =
-    filed(artifact, Some(version))
+    filed(artifact.head, Some(version), Body.markdown(artifact.body))
 
   /** `text` as [[shown]] writes it, read back: the artifact, and the version it was kept as; or
     * why not: front matter that is not [[shown]]'s (an exported file's, with no `version`, among
@@ -53,8 +53,9 @@ object ProjectMarkdown {
       artifact <- headed(fields, body)
     } yield (artifact, version)
 
-  private def filed(artifact: Artifact, version: Option[DocumentVersionId]): String =
-    fronted(artifact.head, version) + "\n" + Body.markdown(artifact.body) + "\n"
+  /** `head`'s front matter, `version` its last line if given, then `text`. */
+  private def filed(head: ArtifactHead, version: Option[DocumentVersionId], text: String): String =
+    fronted(head, version) + "\n" + text + "\n"
 
   /** `artifact` kept as `version` without its whole body: [[shown]]'s front matter, then its body's first
     * paragraph whole ([[Body.lead]]), then `Sections: ` and its `##` headings' titles, `; `
@@ -83,7 +84,7 @@ object ProjectMarkdown {
       version: DocumentVersionId,
       title: String
   ): Either[String, String] =
-    Body.section(artifact.body, title).map(fronted(artifact.head, Some(version)) + "\n" + _ + "\n")
+    Body.section(artifact.body, title).map(filed(artifact.head, Some(version), _))
 
   /** `h` as front matter, `version` its last line when given. */
   private def fronted(h: ArtifactHead, version: Option[DocumentVersionId]): String =
