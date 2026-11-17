@@ -36,16 +36,23 @@ object MethodJson {
         )
       }),
       "transitions" -> ujson.Arr.from(method.transitions.map { t =>
-        ujson.Obj(
-          "kind" -> KindName.value(t.kind),
-          "from" -> StateName.value(t.from),
-          "to" -> StateName.value(t.to),
-          "checks" -> strings(t.checks.map(CheckName.value)),
-          "action" -> (t.action match {
-            case TransitionAction.Nothing => ujson.Obj("kind" -> NothingKind)
-            case TransitionAction.MergeDeltas(into) =>
-              ujson.Obj("kind" -> MergeKind, "into" -> KindName.value(into))
-          })
+        unlessDefault(
+          ujson.Obj(
+            "kind" -> KindName.value(t.kind),
+            "from" -> StateName.value(t.from),
+            "to" -> StateName.value(t.to),
+            "checks" -> strings(t.checks.map(CheckName.value)),
+            "action" -> (t.action match {
+              case TransitionAction.Nothing => ujson.Obj("kind" -> NothingKind)
+              case TransitionAction.MergeDeltas(into) =>
+                ujson.Obj("kind" -> MergeKind, "into" -> KindName.value(into))
+            })
+          ),
+          "movers",
+          t.movers match {
+            case Movers.Anyone => None
+            case Movers.People => Some(PeopleMove)
+          }
         )
       }),
       "views" -> ujson.Arr.from(method.views.map { v =>
@@ -64,14 +71,22 @@ object MethodJson {
           "name" -> e.name,
           "start" -> ArtifactJson.projectData(e.start),
           "moves" -> ujson.Arr.from(e.moves.map { m =>
-            ujson.Obj(
-              "key" -> m.key.value,
-              "to" -> StateName.value(m.to),
-              "expect" -> (m.expect match {
-                case Example.Expect.Allowed => ujson.Obj("kind" -> AllowedKind)
-                case Example.Expect.RefusedBy(check) =>
-                  ujson.Obj("kind" -> RefusedKind, "check" -> CheckName.value(check))
-              })
+            unlessDefault(
+              ujson.Obj(
+                "key" -> m.key.value,
+                "to" -> StateName.value(m.to),
+                "expect" -> (m.expect match {
+                  case Example.Expect.Allowed => ujson.Obj("kind" -> AllowedKind)
+                  case Example.Expect.RefusedBy(check) =>
+                    ujson.Obj("kind" -> RefusedKind, "check" -> CheckName.value(check))
+                  case Example.Expect.RefusedPersonOnly => ujson.Obj("kind" -> PersonOnlyKind)
+                })
+              ),
+              "by",
+              m.by match {
+                case Mover.Agent => None
+                case Mover.Person => Some(PersonMover)
+              }
             )
           })
         )
@@ -114,6 +129,17 @@ object MethodJson {
   private val MergeKind = "merge-deltas"
   private val AllowedKind = "allowed"
   private val RefusedKind = "refused-by"
+  private val PersonOnlyKind = "refused-person-only"
+  private val PeopleMove = "people"
+  private val AnyoneMoves = "anyone"
+  private val PersonMover = "person"
+  private val AgentMover = "agent"
+
+  /** `o` with `field` set to `value` when there is one: a field at its default is left out. */
+  private def unlessDefault(o: ujson.Obj, field: String, value: Option[String]): ujson.Obj = {
+    value.foreach(v => o(field) = v)
+    o
+  }
 
   private def strings(each: Vector[String]): ujson.Arr = ujson.Arr.from(each.map(ujson.Str(_)))
 
@@ -177,7 +203,14 @@ object MethodJson {
       action <- written.fold(Right(TransitionAction.Nothing))(a =>
         action(Fields(s"${f.what}'s action", a))
       )
-    } yield Transition(kind, from, to, checks, action)
+      named <- f.addedStr("movers")
+      movers <- named match {
+        case None | Some(AnyoneMoves) => Right(Movers.Anyone)
+        case Some(PeopleMove) => Right(Movers.People)
+        case Some(other) =>
+          Left(s"${f.what}'s movers $other is neither $AnyoneMoves nor $PeopleMove")
+      }
+    } yield Transition(kind, from, to, checks, action, movers)
 
   private def action(f: Fields): Either[String, TransitionAction] =
     f.str("kind").flatMap {
@@ -224,13 +257,21 @@ object MethodJson {
       key <- named(f, "key")(ArtifactKey.read)
       to <- named(f, "to")(StateName.of)
       expect <- f.field("expect").flatMap(e => expect(Fields(s"${f.what}'s expect", e)))
-    } yield Example.Move(key, to, expect)
+      named <- f.addedStr("by")
+      by <- named match {
+        case None | Some(AgentMover) => Right(Mover.Agent)
+        case Some(PersonMover) => Right(Mover.Person)
+        case Some(other) => Left(s"${f.what}'s by $other is neither $AgentMover nor $PersonMover")
+      }
+    } yield Example.Move(key, to, expect, by)
 
   private def expect(f: Fields): Either[String, Example.Expect] =
     f.str("kind").flatMap {
       case AllowedKind => Right(Example.Expect.Allowed)
       case RefusedKind => named(f, "check")(CheckName.of).map(Example.Expect.RefusedBy(_))
-      case other => Left(s"${f.what}'s kind $other is neither $AllowedKind nor $RefusedKind")
+      case PersonOnlyKind => Right(Example.Expect.RefusedPersonOnly)
+      case other =>
+        Left(s"${f.what}'s kind $other is none of $AllowedKind, $RefusedKind and $PersonOnlyKind")
     }
 
   /** `refusal` in words. */

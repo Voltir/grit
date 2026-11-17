@@ -35,14 +35,15 @@ final case class Method private (
   def from(kind: KindName, state: StateName): Vector[Transition] =
     transitions.filter(t => t.kind == kind && t.from == state)
 
-  /** `key` moved to `to` over `artifacts`, its project's, when a transition allows it and each
-    * of its checks holds, its action done; or why not. The moved artifacts keep their `by`: the
-    * mover records itself.
+  /** `key` moved to `to` by `by` over `artifacts`, its project's, when a transition allows it,
+    * its movers include `by` and each of its checks holds, its action done; or why not. The moved
+    * artifacts keep their heads' `by`: the mover records itself.
     */
   def move(
       artifacts: Vector[Artifact],
       key: ArtifactKey,
-      to: StateName
+      to: StateName,
+      by: Mover
   ): Either[MoveRefusal, Moved] =
     for {
       a <- artifacts.find(_.head.key == key).toRight(MoveRefusal.Missing(key))
@@ -50,6 +51,11 @@ final case class Method private (
       transition <- leaving
         .find(_.to == to)
         .toRight(MoveRefusal.NoTransition(a.head, to, leaving.map(_.to).distinct))
+      _ <- Either.cond(
+        transition.movers == Movers.Anyone || by == Mover.Person,
+        (),
+        MoveRefusal.PersonOnly(a.head, to)
+      )
       heads = artifacts.map(_.head)
       failed = transition.checks.flatMap { name =>
         checks.find(_.name == name) match {
@@ -149,7 +155,8 @@ final case class Method private (
 
   /** The digest of its data and of each check's name and version: equal for equal methods,
     * whatever order their kinds, transitions, role views, states and checks are declared in. A
-    * view carrying nothing digests as it did before views could carry, so earlier pins hold.
+    * view carrying nothing, or a transition anyone makes, digests as it did before views could
+    * carry or movers be named, so earlier pins hold.
     */
   def digest: Sha256 = {
     def field(s: String): String = s"${s.length}:$s"
@@ -170,7 +177,10 @@ final case class Method private (
           field(StateName.value(t.to)),
           names(t.checks.map(CheckName.value)),
           field(t.action.toString)
-        ).mkString
+        ).mkString + (t.movers match {
+          case Movers.Anyone => ""
+          case Movers.People => field("people")
+        })
       } ++ views.map { v =>
         "view " + field(RoleName.value(v.role)) + names(v.kinds.map(KindName.value)) + field(
           v.depth.toString
@@ -231,7 +241,7 @@ object Method {
                 Option.when(k.ends(t.from))(FromEnd(k.name, t.from))
           }
         } ++
-        (transitions.collect { case Transition(_, _, _, _, TransitionAction.MergeDeltas(into)) =>
+        (transitions.collect { case Transition(_, _, _, _, TransitionAction.MergeDeltas(into), _) =>
           into
         } ++ views.flatMap(_.kinds.toVector.sortBy(KindName.value))).distinct
           .filterNot(declared.contains)
@@ -313,6 +323,16 @@ enum MoveRefusal extends caps.Pure {
 
   /** Its deltas merged into `into` are no body: `why`, a stored form over [[Body.StoredMost]]. */
   case Unmerged(head: ArtifactHead, to: StateName, into: ArtifactHead, why: String)
+
+  /** Its transition is made only by [[Mover.Person]] ([[Movers.People]]), and its mover is not. */
+  case PersonOnly(head: ArtifactHead, to: StateName)
+}
+
+/** Who is making a move: a caller giving the command directly and believed at `Authority`, or
+  * any other: a turn, or a session believed lower.
+  */
+enum Mover extends caps.Pure {
+  case Person, Agent
 }
 
 /** Why some data is not a method. */

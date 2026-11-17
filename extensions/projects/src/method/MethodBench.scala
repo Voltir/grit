@@ -12,8 +12,9 @@ final case class Example(name: String, start: Project, moves: Vector[Example.Mov
 
 object Example {
 
-  /** `key` moved to `to`, expected to come out as `expect` says. */
-  final case class Move(key: ArtifactKey, to: StateName, expect: Expect) extends caps.Pure
+  /** `key` moved to `to` by `by`, expected to come out as `expect` says. */
+  final case class Move(key: ArtifactKey, to: StateName, expect: Expect, by: Mover = Mover.Agent)
+      extends caps.Pure
 
   /** What a move is expected to come out as. */
   enum Expect extends caps.Pure {
@@ -23,6 +24,9 @@ object Example {
 
     /** It is refused, `check` among the checks that did not hold. */
     case RefusedBy(check: CheckName)
+
+    /** It is refused as [[MoveRefusal.PersonOnly]]: its transition is not its mover's. */
+    case RefusedPersonOnly
   }
 }
 
@@ -50,12 +54,14 @@ object MethodBench {
     example.moves.zipWithIndex
       .foldLeft(start) { case (so, (move, i)) =>
         so.flatMap { artifacts =>
-          val came = method.move(artifacts, move.key, move.to)
+          val came = method.move(artifacts, move.key, move.to, move.by)
           val failed = Failed(example.name, i + 1, move, came.left.toOption)
           (move.expect, came) match {
             case (Example.Expect.Allowed, Right(moved)) => Right(after(artifacts, moved))
             case (Example.Expect.RefusedBy(check), Left(MoveRefusal.Unheld(_, _, unheld)))
                 if unheld.exists(_._1 == check) =>
+              Right(artifacts)
+            case (Example.Expect.RefusedPersonOnly, Left(MoveRefusal.PersonOnly(_, _))) =>
               Right(artifacts)
             case _ => Left(failed)
           }

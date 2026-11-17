@@ -11,6 +11,7 @@ import grit.projects.method.{
   MethodBench,
   MethodJson,
   MoveRefusal,
+  Mover,
   RoleView,
   Transition,
   TransitionAction,
@@ -126,7 +127,7 @@ object OpenSpecTests extends TestSuite {
   )
 
   private def merged(in: Vector[Artifact]): Either[MoveRefusal, Option[Artifact]] =
-    openSpec.move(in, key("p/2fa"), state("archived")).map(_.changed)
+    openSpec.move(in, key("p/2fa"), state("archived"), Mover.Agent).map(_.changed)
 
   val tests = Tests {
     test("OpenSpec passes Method.of and its examples pass the bench") {

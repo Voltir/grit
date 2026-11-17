@@ -293,6 +293,8 @@ private[plugin] final class MethodCommands(checks: Vector[TransitionCheck]) exte
     val expected = failed.move.expect match {
       case Example.Expect.Allowed => "allowed"
       case Example.Expect.RefusedBy(check) => s"refused by ${CheckName.value(check)}"
+      case Example.Expect.RefusedPersonOnly =>
+        "refused as a move made only by a caller believed at Authority"
     }
     s"example \"${failed.example}\", move ${failed.at} (${failed.move.key.value} to " +
       s"${StateName.value(failed.move.to)}) expected $expected, " +

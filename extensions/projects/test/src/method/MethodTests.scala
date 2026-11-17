@@ -123,5 +123,32 @@ object MethodTests extends TestSuite {
         "bd9d10b09c491a675b18f9fce800c02c80c5eb69e196a048a1e97182704e1d14"
       ))
     }
+
+    test("a transition only people make refuses an agent's move and allows a person's") {
+      val people =
+        transitions.map(t => if (t.to == state("done")) t.copy(movers = Movers.People) else t)
+      val m = right(
+        Method.of(method, 1, kinds, people, views, TransitionChecks.all).left.map(_.toString)
+      )
+      val h = head("p/why", change, "building")
+      val why = Vector(artifact(h, "## Why\n\nBecause."))
+      def moved(by: Mover) = m.move(why, h.key, state("done"), by).map(_.artifact.head.state)
+      (moved(Mover.Agent), moved(Mover.Person)) ==> (
+        Left(MoveRefusal.PersonOnly(h, state("done"))),
+        Right(state("done"))
+      )
+    }
+
+    test("a transition anyone makes digests as before; one only people make changes the digest") {
+      def digest(ts: Vector[Transition]) =
+        right(
+          Method.of(method, 1, kinds, ts, views, TransitionChecks.all).left.map(_.toString)
+        ).digest
+      val people = transitions.map(_.copy(movers = Movers.People))
+      (digest(transitions).hex, digest(people) == digest(transitions)) ==> (
+        "f49dd63d8bcf94b8f37cf4b2ed0768c1945cc7381a6f6fe43523eb29c597c1c8",
+        false
+      )
+    }
   }
 }

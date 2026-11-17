@@ -122,5 +122,38 @@ object MethodJsonTests extends TestSuite {
         )
       )
     }
+
+    test("movers and a move's mover are written only when not their default") {
+      val m = right(
+        MethodJson.read(declared(), TransitionChecks.all).left.map(_.mkString("; "))
+      ).method
+      val people = right(
+        Method
+          .of(
+            m.name,
+            m.version,
+            m.kinds,
+            m.transitions.map(_.copy(movers = Movers.People)),
+            m.views,
+            TransitionChecks.all
+          )
+          .left
+          .map(_.mkString("; "))
+      )
+      val open = head("p/a", note, "open")
+      def example(by: Mover) = Example(
+        "e",
+        project(artifact(open, "A note.")),
+        Vector(Example.Move(open.key, state("closed"), Example.Expect.RefusedPersonOnly, by))
+      )
+      def written(method: Method, by: Mover) = {
+        val json = MethodJson.written(method, Vector(example(by)))
+        (json("transitions")(0).obj.get("movers"), json("examples")(0)("moves")(0).obj.get("by"))
+      }
+      (written(m, Mover.Agent), written(people, Mover.Person)) ==> (
+        (None, None),
+        (Some(ujson.Str("people")), Some(ujson.Str("person")))
+      )
+    }
   }
 }

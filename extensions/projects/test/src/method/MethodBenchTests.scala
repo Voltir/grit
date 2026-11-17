@@ -76,5 +76,34 @@ object MethodBenchTests extends TestSuite {
         )
       )
     }
+
+    test(
+      "an example's move refused as only people's passes, and the same move by a person is allowed"
+    ) {
+      val people = right(
+        Method
+          .of(
+            method,
+            1,
+            Vector(change, note),
+            transitions.map(t => t.copy(movers = Movers.People)),
+            views,
+            TransitionChecks.all
+          )
+          .left
+          .map(_.mkString("; "))
+      )
+      val examples = Vector(
+        Example(
+          "only a person starts a change",
+          project(why),
+          Vector(
+            Move(key("p/why"), state("building"), Expect.RefusedPersonOnly),
+            Move(key("p/why"), state("building"), Expect.Allowed, Mover.Person)
+          )
+        )
+      )
+      assert(MethodBench.failures(people, examples) == Vector.empty)
+    }
   }
 }

@@ -20,7 +20,15 @@ import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Args, ArgsError, Field, ToolName, ToolSpec}
 import grit.core.visibility.{Integrity, Label}
 import grit.projects.artifact.{Artifact, ArtifactHead, ArtifactJson, Body, Project}
-import grit.projects.method.{ArtifactKind, Method, MoveRefusal, Remap, RoleView, TransitionCheck}
+import grit.projects.method.{
+  ArtifactKind,
+  Method,
+  MoveRefusal,
+  Mover,
+  Remap,
+  RoleView,
+  TransitionCheck
+}
 import grit.projects.name.{
   ArtifactKey,
   CheckName,
@@ -2146,7 +2154,7 @@ private[plugin] object ProjectCommands {
             .find(_.head.key == args.key)
             .toRight(lacking(args.key, now.artifacts))
           done <- method
-            .move(now.artifacts, args.key, args.to)
+            .move(now.artifacts, args.key, args.to, Mover.Person)
             .left
             .map(r => Stop.Refused(refusal(r)))
           moved = Artifact(done.artifact.head.copy(by = Some(writer)), done.artifact.body)
@@ -2489,6 +2497,10 @@ private[plugin] object ProjectCommands {
     case MoveRefusal.Unmerged(head, to, into, why) =>
       s"${head.key.value} cannot move to ${StateName.value(to)}: its deltas merged into " +
         s"${into.key.value} would be too long ($why)"
+    case MoveRefusal.PersonOnly(head, to) =>
+      s"${head.key.value} cannot move to ${StateName.value(to)} here: that move is made only by " +
+        "someone believed at Authority giving the command directly, never through a turn or a " +
+        "session believed lower; ask the person to make it"
   }
 
   private[plugin] def parsed[A](

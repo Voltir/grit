@@ -8,6 +8,8 @@ import grit.projects.method.{
   Declared,
   Example,
   Method,
+  Mover,
+  Movers,
   RoleView,
   Transition,
   TransitionAction,
@@ -74,7 +76,8 @@ object ProjectGen {
   /** The method of `seed`, each of whose checks is one of `TransitionChecks.all`, and up to two
     * examples over [[project]]s, their moves not run: one to three kinds, each of one to four
     * states reached in a chain, some ending in their last; transitions besides the chain, some
-    * naming checks and some merging deltas; up to two role views, some carrying local keys.
+    * naming checks, some merging deltas and some made only by people; up to two role views, some
+    * carrying local keys; moves by a person or an agent, some expected refused as only people's.
     */
   def method(seed: Int): Declared = {
     val r = new Random(seed)
@@ -102,7 +105,8 @@ object ProjectGen {
           to,
           some(checks),
           if (r.nextInt(4) == 0) TransitionAction.MergeDeltas(kinds(r.nextInt(kinds.size)).name)
-          else TransitionAction.Nothing
+          else TransitionAction.Nothing,
+          if (r.nextInt(3) == 0) Movers.People else Movers.Anyone
         )
       }
     }
@@ -125,8 +129,12 @@ object ProjectGen {
           Example.Move(
             start.artifacts(r.nextInt(start.artifacts.size)).head.key,
             right(StateName.of(pick(r, Vector("open", "building", "done")))),
-            if (r.nextBoolean()) Example.Expect.Allowed
-            else Example.Expect.RefusedBy(checks(r.nextInt(checks.size)))
+            r.nextInt(3) match {
+              case 0 => Example.Expect.Allowed
+              case 1 => Example.Expect.RefusedPersonOnly
+              case _ => Example.Expect.RefusedBy(checks(r.nextInt(checks.size)))
+            },
+            if (r.nextBoolean()) Mover.Person else Mover.Agent
           )
         }
       )

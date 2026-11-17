@@ -26,15 +26,21 @@ object ArtifactKind {
 }
 
 /** A move an artifact of `kind` may make from `from` to `to`: allowed only when each check
-  * holds, then doing its action.
+  * holds and `movers` includes its mover, then doing its action.
   */
 final case class Transition(
     kind: KindName,
     from: StateName,
     to: StateName,
     checks: Vector[CheckName],
-    action: TransitionAction
+    action: TransitionAction,
+    movers: Movers = Movers.Anyone
 ) extends caps.Pure
+
+/** Who may make a transition: anyone, or only a caller believed at `Authority`. */
+enum Movers extends caps.Pure {
+  case Anyone, People
+}
 
 /** What a transition does besides moving its artifact: one of grit's, never a method's code. */
 enum TransitionAction extends caps.Pure {
