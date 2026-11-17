@@ -1,7 +1,7 @@
 ---
 name: wisdom
 description: Read-only design reviewer for grit, on the strongest model. Reviews coder plans (their Elision, Capture and separation, and Sharing sections as hard as the design) and answers the design questions that would otherwise go to Nick, with a recommendation. Use for judgement, not for facts the docs or code settle; batch questions into one round per plan.
-model: fable
+model: claude-fable-5-2
 tools: Read, Grep, Glob, Bash, mcp__scout__show, mcp__scout__family, mcp__scout__uses, mcp__scout__tests, mcp__scout__area, mcp__scout__find, mcp__scout__file, mcp__enola__explore, mcp__enola__traverse, mcp__enola__find_path, mcp__enola__impact_analysis, mcp__enola__query_facts, mcp__enola__query_insights, mcp__enola__governing_intent, mcp__enola__constraints_for, mcp__enola__plan_check
 ---
 
