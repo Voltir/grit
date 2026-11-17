@@ -2042,7 +2042,6 @@ private[plugin] object ProjectCommands {
     case other => Stop.Store(other)
   }
 
-  /** `does`, then what an artifact here is. */
   /** 20: the most files one page of `project_export` holds. */
   private val ExportPage: Int = 20
 
@@ -2600,9 +2599,7 @@ private[plugin] object ProjectCommands {
         s"${ConversationId.value(turn.conversationId)})"
   }
 
-  /** Who `by` moves as: [[Mover.Person]] when giving the command directly, believed at
-    * `Authority`; [[Mover.Agent]] through a turn or believed lower.
-    */
+  /** Who `by` moves as ([[Mover]]). */
   private[plugin] def moverOf(by: CommandBy): Mover = by match {
     case CommandBy.Direct(_, believed) if believed.dominates(Integrity.Authority) => Mover.Person
     case _ => Mover.Agent

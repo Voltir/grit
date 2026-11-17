@@ -11,32 +11,13 @@ import grit.projects.artifact.ArtifactJson
 import grit.projects.method.{Method, MethodRefusal, TransitionCheck}
 import grit.projects.name.{ArtifactKey, MethodName, StateName}
 
-/** The projects plugin (ADR 0049): projects of the methods declared through `project_declare`
-  * (each version a document of its own, never withdrawn, and read by every command from the store
-  * in its own transaction, its checks found among `checks`), new ones under the latest version of
-  * `default` unless another is named, kept under [[Projects.Terms]], and changed only by its
-  * commands: `project_new`, `project_keep` (never a state, and refused when it would put the
-  * brief of a claimed artifact over [[grit.core.document.DocRef.BriefChars]]), `project_move` (only as the
-  * project's pinned method allows, refused when that version is not declared or its digest is not
-  * the pin's),
-  * `project_batch` (keeps and moves of one project, all or none, or a dry run of them),
-  * `project_claim` and `project_release` (a claim on an artifact, one of the plugin's claims and
-  * never a document, so the artifact keeps its version; a claim keeps the artifact's brief for its
-  * holder as a document of its own ([[grit.core.document.DocRef.brief]], at most
-  * [[grit.core.document.DocRef.BriefChars]],
-  * none when over), kept again by every command that changes what it shows, which a release
-  * withdraws, claimed still or not), `project_withdraw` (an artifact no
-  * other names, or with what is under it, ended citers rewritten; its history kept as of an
-  * instant), `project_sweep` (a project's old ended artifacts of the kinds named, withdrawn at
-  * once unless claimed or cited by live work, ended citers rewritten; or a dry run of it),
-  * `project_migrate` (a project moved to another version of its method, the artifacts it
-  * renames kept again, the rest left as they are), `project_declare` (a method version, given
-  * directly by a caller believed at `Authority`, accepted once its worked examples replay),
-  * and the reading `project_show`, `project_history`, `project_list`, `project_find`
-  * (ended artifacts only when asked), `project_stale` (what no live work names, untouched for
-  * weeks), `project_export`, `project_claims`, `project_brief` and `project_methods`. Each write records its writer
-  * as the artifact's `by`, and a claim its claimer. Which of them a turn is offered is `turns`'s;
-  * who may make each move, its method's.
+/** The projects plugin (ADR 0049): projects held to versions of methods declared through
+  * `project_declare`, kept under [[Projects.Terms]] and changed only by its commands, each of
+  * which says what it does in its tool's description. Each write records its writer as the
+  * artifact's `by`, and a claim its claimer; a claim keeps its artifact's brief for its holder as
+  * a document of its own ([[grit.core.document.DocRef.brief]]), kept again by every command that
+  * changes what the brief shows. Which commands a turn is offered is `turns`'s; who may make each
+  * move, its method's.
   */
 final class Projects private (
     checks: Vector[TransitionCheck],

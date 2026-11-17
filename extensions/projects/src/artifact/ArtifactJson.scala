@@ -77,7 +77,7 @@ object ArtifactJson {
   /** The pin of the index `document` holds, as [[index]] wrote it, or why not. */
   def pinOf(document: Document): Either[String, Pin] = pinFrom(document.data)
 
-  /** `project` as a file holds it, apart from any document: its key, its pin as [[index]] writes
+  /** `project` as JSON, apart from any document: its key, its pin as [[index]] writes
     * it, and each artifact's key beside its head and body's stored form as [[write]] writes them.
     */
   def projectData(project: Project): ujson.Obj =

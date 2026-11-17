@@ -37,7 +37,7 @@ final case class Transition(
     movers: Movers = Movers.Anyone
 ) extends caps.Pure
 
-/** Who may make a transition: anyone, or only a caller believed at `Authority`. */
+/** Who may make a transition: anyone, or only a [[Mover.Person]]. */
 enum Movers extends caps.Pure {
   case Anyone, People
 }

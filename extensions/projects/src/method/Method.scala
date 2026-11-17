@@ -155,8 +155,7 @@ final case class Method private (
 
   /** The digest of its data and of each check's name and version: equal for equal methods,
     * whatever order their kinds, transitions, role views, states and checks are declared in. A
-    * view carrying nothing, or a transition anyone makes, digests as it did before views could
-    * carry or movers be named, so earlier pins hold.
+    * view carrying nothing, or a transition anyone makes, adds nothing to the digest.
     */
   def digest: Sha256 = {
     def field(s: String): String = s"${s.length}:$s"
