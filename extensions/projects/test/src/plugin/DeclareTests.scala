@@ -5,9 +5,16 @@ import grit.core.id.{ConversationId, Sha256, TurnRef, TurnSeq}
 import grit.core.place.Place
 import grit.core.plugin.{CommandBy, CommandOutcome}
 import grit.core.visibility.{Clearance, Integrity, Label, TestLabels}
-import grit.projects.artifact.ArtifactJson
-import grit.projects.method.{Example, MethodFixtures, MethodJson, TransitionChecks}
-import grit.projects.name.{Pin, ProjectKey}
+import grit.projects.artifact.{Artifact, ArtifactHead, ArtifactJson}
+import grit.projects.method.{
+  ArtifactKind,
+  Example,
+  MethodFixtures,
+  MethodJson,
+  TransitionCheck,
+  TransitionChecks
+}
+import grit.projects.name.{CheckName, Pin, ProjectKey}
 
 import utest.*
 
@@ -56,6 +63,10 @@ object DeclareTests extends TestSuite {
   private val byAuthority =
     "A method is declared only by a caller believed at Authority, giving the command directly; " +
       "never through a turn, or by a session believed lower."
+
+  /** What a command answers over a project whose method no longer reads here. */
+  private val unreadable =
+    "grit@1 is declared but does not read: check sections-present is compiled at version 2, not 1"
 
   /** `p`'s index rewritten to pin [[methodName]] at `version` under `digest`. */
   private def repinned(store: Store, version: Int, digest: Sha256): Unit = {
@@ -238,6 +249,38 @@ object DeclareTests extends TestSuite {
         "version" -> 1
       )
       above ==> ask(plugin(), store, "project_methods", "name" -> "grit", "version" -> 1)
+    }
+    test(
+      "project_list refuses a project whose declared method no longer reads, and lists one whose method is undeclared"
+    ) {
+      val store = Store()
+      started(plugin(), store)
+      kept(plugin(), store, "a", "change", "## Why\n\nBecause.")
+      val sections = MethodFixtures.check("sections-present")
+      val bumped = Projects
+        .of(
+          TransitionChecks.all.map { c =>
+            if (c.name != sections) c
+            else
+              new TransitionCheck {
+                val name: CheckName = c.name
+                val version: Int = c.version + 1
+                def holds(
+                    judged: Artifact,
+                    heads: Vector[ArtifactHead],
+                    kinds: Vector[ArtifactKind]
+                ): Either[String, Unit] = c.holds(judged, heads, kinds)
+              }
+          },
+          methodName
+        )
+        .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+      val unread = ask(bumped, store, "project_list", "project" -> "p")
+      repinned(store, 2, method().digest)
+      (unread, ask(plugin(), store, "project_list", "project" -> "p").getClass) ==> (
+        CommandOutcome.Refused(unreadable),
+        classOf[CommandOutcome.Done]
+      )
     }
     test("project_new refuses when no version of its method is declared") {
       ask(plugin(), Store(declared = Vector.empty), "project_new", "project" -> "p") ==>

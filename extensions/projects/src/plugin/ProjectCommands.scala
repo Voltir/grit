@@ -1502,7 +1502,7 @@ private[plugin] final class ProjectCommands(
 
   /** Keeps again ([[briefed]]) the brief of each of `held` ([[holding]]), claims on artifacts of
     * project `key`, as the project now stands. Nothing when the project's method is not declared
-    * here. A brief already over its budget before the command is withdrawn ([[briefed]]); one
+    * here; refused when it is and does not read. A brief already over its budget before the command is withdrawn ([[briefed]]); one
     * the command would have put over it, [[settled]] has refused, `held` taken first.
     */
   private def rebriefed(own: DocumentKeeper, held: Vector[Claim], key: ProjectKey, at: Instant)(
@@ -1511,10 +1511,7 @@ private[plugin] final class ProjectCommands(
     for {
       project <- if (held.isEmpty) Right(None) else loaded(own, key).map(Some(_))
       method <- project.fold(Right(None))(p =>
-        declared(own, p.pin) match {
-          case Left(Stop.Refused(_)) => Right(None)
-          case other => other.map(Some(_))
-        }
+        declaring.ifDeclared(own, p.pin.method, p.pin.version)
       )
       briefs = (for {
         p <- project
@@ -1541,15 +1538,15 @@ private[plugin] final class ProjectCommands(
     declared(own, pin).map[ArtifactHead -> Boolean](m => h => ArtifactKind.ends(m.kinds, h))
 
   /** Whether `project_list` and `project_find` leave an artifact of a project holding to `pin`
-    * out as ended: as [[ending]] says, and never when `pin`'s method is not declared here.
+    * out as ended: as [[ending]] says, and never when `pin`'s method is not declared here; or why
+    * not: it is declared and does not read.
     */
   private def endedOf(own: DocumentShelf, pin: Pin)(using
       Tx^
   ): Either[Stop, ArtifactHead -> Boolean] =
-    ending(own, pin) match {
-      case Left(Stop.Refused(_)) => Right(_ => false)
-      case other => other
-    }
+    declaring
+      .ifDeclared(own, pin.method, pin.version)
+      .map(_.fold[ArtifactHead -> Boolean](_ => false)(m => h => ArtifactKind.ends(m.kinds, h)))
 }
 
 private[plugin] object ProjectCommands {

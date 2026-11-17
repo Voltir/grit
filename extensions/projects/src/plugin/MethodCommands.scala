@@ -178,23 +178,30 @@ private[plugin] final class MethodCommands(checks: Vector[TransitionCheck], meth
   def version(own: DocumentShelf, name: MethodName, version: Int)(using
       Tx^
   ): Either[Stop, Method] =
-    for {
-      held <- current(own, name, version)
-      document <- held match {
-        case Some(d) => Right(d)
-        case None =>
-          listed(own, Some(name)).flatMap { found =>
-            val versions = found.flatMap(d => versionOf(d.key)).mkString(", ")
-            Left(
-              Stop.Refused(
-                undeclared(name, version) +
-                  (if (versions.isEmpty) "" else s"; its versions here: $versions")
-              )
+    ifDeclared(own, name, version).flatMap {
+      case Some(method) => Right(method)
+      case None =>
+        listed(own, Some(name)).flatMap { found =>
+          val versions = found.flatMap(d => versionOf(d.key)).mkString(", ")
+          Left(
+            Stop.Refused(
+              undeclared(name, version) +
+                (if (versions.isEmpty) "" else s"; its versions here: $versions")
             )
-          }
-      }
-      was <- readBack(document)
-    } yield was.method
+          )
+        }
+    }
+
+  /** The method `name` at `version`, as declared; `None` when it is not declared; or why it does
+    * not read.
+    */
+  def ifDeclared(own: DocumentShelf, name: MethodName, version: Int)(using
+      Tx^
+  ): Either[Stop, Option[Method]] =
+    current(own, name, version).flatMap {
+      case Some(document) => readBack(document).map(d => Some(d.method))
+      case None => Right(None)
+    }
 
   /** Nothing when `by` moves as [[Mover.Person]] ([[ProjectCommands.moverOf]]); else a refusal. */
   private def direct(by: CommandBy): Either[Stop, Unit] = moverOf(by) match {
