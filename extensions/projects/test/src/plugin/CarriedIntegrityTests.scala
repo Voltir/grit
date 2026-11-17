@@ -58,6 +58,8 @@ object CarriedIntegrityTests extends TestSuite {
   }
 
   val tests = Tests {
+    // In the move and the edit, the version before decides only the first pair: the second's
+    // caller is the lower, and the capped keeper meets every write with its caller's.
     test("a move is believed at the meet of its caller's and the version it moves") {
       (moved(session, personally), moved(personally, session)) ==> (Some("member"), Some("member"))
     }

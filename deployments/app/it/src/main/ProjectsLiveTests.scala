@@ -96,20 +96,21 @@ object ProjectsLiveTests extends TestSuite {
       at.plusSeconds(2L * 86_400)
     )
 
-  /** The text of each current version of `p/m`'s brief, as the database holds it. */
-  private def currentBrief(config: grit.dbos.sql.DbConfig): Vector[String] =
+  /** The text of each current version of `key`'s brief, as the database holds it. */
+  private def currentBrief(config: grit.dbos.sql.DbConfig, key: String = "p/m"): Vector[String] =
     LiveDb.transaction(config) { (tx: Tx^) ?=>
       val conn: java.sql.Connection^{tx} = Tx.connection(tx)
       Using.resource(
         conn.prepareStatement(
-          "SELECT body FROM grit.documents WHERE plugin = 'projects' AND key = 'p/m#brief' " +
+          "SELECT body FROM grit.documents WHERE plugin = 'projects' AND key = ? " +
             "AND superseded_at IS NULL"
         )
-      )(ps =>
+      ) { ps =>
+        ps.setString(1, s"$key#brief")
         Using.resource(ps.executeQuery())(rs =>
           Iterator.continually(rs).takeWhile(_.next()).map(_.getString(1)).toVector
         )
-      )
+      }
     }
 
   private def keep(
@@ -344,13 +345,19 @@ object ProjectsLiveTests extends TestSuite {
               at
             )
           } yield moved
-          (moved, artifactsKept(config, engine)) ==> (
+          // The claim was made at the session's too, so the brief's own header shows it re-rendered.
+          (
+            moved,
+            artifactsKept(config, engine),
+            currentBrief(config, "p/a").map(_.contains("| closed |"))
+          ) ==> (
             Right(CommandOutcome.Done("Moved p/a (note, closed).")),
             Vector(
               ("p", "internal", "member"),
               ("p/a", "internal", "member"),
               ("p/a#brief", "internal", "member")
-            )
+            ),
+            Vector(true)
           )
       }
     }
