@@ -83,9 +83,7 @@ object Body {
       .fold("")(Cut.head(_, chars))
 
   /** The titles of its `##` headings, in order. */
-  def sections(b: Body): Vector[String] = b.blocks.collect {
-    case Block.Heading(level, text) if level.value == 2 => text.plain.trim
-  }
+  def sections(b: Body): Vector[String] = sectionsOf(b.blocks).flatMap(_.title)
 
   /** The blocks under its first `##` heading titled `title`, the heading left out, up to the next
     * heading of rank 2 or less; none when no `##` heading has that title.
