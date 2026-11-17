@@ -148,39 +148,14 @@ object DeclareTests extends TestSuite {
         Right(second.digest)
       )
     }
-    test("a declared method is in no list, find, stale or sweep answer, and in no brief") {
+    test("a declared method is in no find answer, though its text matches") {
+      // list, stale, sweep and a brief read a project by its ref, which a method never holds.
       val store = Store()
       started(plugin(), store)
       kept(plugin(), store, "a", "note", "Text.")
       done(
-        ask(
-          plugin(),
-          store,
-          "project_claim",
-          "key" -> "p/a",
-          "role" -> "builder",
-          "holder" -> "h"
-        )
-      )
-      val brief = briefOf(store, "h").fold("")(d => grit.core.document.DocText.value(d.text))
-      (
-        done(ask(plugin(), store, "project_list", "project" -> "p")).contains("grit@"),
-        done(askAt(at.plusSeconds(1))(plugin(), store, "project_find", "query" -> "version")),
-        done(ask(plugin(), store, "project_stale", "project" -> "p", "weeks" -> 1))
-          .contains("grit@"),
-        done(
-          ask(
-            plugin(),
-            store,
-            "project_sweep",
-            "project" -> "p",
-            "kinds" -> ujson.Arr("note"),
-            "before" -> "2026-10-27",
-            "dry" -> true
-          )
-        ).contains("grit@"),
-        brief.nonEmpty && !brief.contains("grit@") && !brief.contains("Method grit")
-      ) ==> (false, "Nothing matches.", false, false, true)
+        askAt(at.plusSeconds(1))(plugin(), store, "project_find", "query" -> "version")
+      ) ==> "Nothing matches."
     }
     test(
       "a move is refused when its pinned version is not declared, or its digest is not the pin's"
@@ -211,7 +186,7 @@ object DeclareTests extends TestSuite {
         askBy(direct(), at, Clearance.of(TestLabels.Trial))(plugin(), store, name, args*)
       (
         above("project_declare", declaring(method())),
-        above("project_new", "project" -> "p")
+        above("project_methods", "name" -> "grit", "version" -> 1)
       ) ==> (
         CommandOutcome.Refused(
           s"The method grit version 1 is refused: methods are kept at " +
@@ -219,7 +194,7 @@ object DeclareTests extends TestSuite {
             s"and this room keeps what it writes at ${Label.shown(TestLabels.Trial)}; declare " +
             s"it from a room labelled ${Label.shown(Label.Public)}."
         ),
-        CommandOutcome.Refused("No method grit is declared here: declare it with project_declare.")
+        CommandOutcome.Refused("the method grit version 1 is not declared here")
       )
     }
     test(
@@ -248,7 +223,11 @@ object DeclareTests extends TestSuite {
         "name" -> "grit",
         "version" -> 1
       )
-      above ==> ask(plugin(), store, "project_methods", "name" -> "grit", "version" -> 1)
+      val read = MethodJson.read(ujson.read(done(above)), TransitionChecks.all)
+      (above, read.map(_.method.digest)) ==> (
+        ask(plugin(), store, "project_methods", "name" -> "grit", "version" -> 1),
+        Right(method().digest)
+      )
     }
     test(
       "project_list refuses a project whose declared method no longer reads, and lists one whose method is undeclared"
@@ -277,9 +256,12 @@ object DeclareTests extends TestSuite {
         .fold(e => throw new java.lang.AssertionError(e.toString), identity)
       val unread = ask(bumped, store, "project_list", "project" -> "p")
       repinned(store, 2, method().digest)
-      (unread, ask(plugin(), store, "project_list", "project" -> "p").getClass) ==> (
+      (unread, ask(plugin(), store, "project_list", "project" -> "p")) ==> (
         CommandOutcome.Refused(unreadable),
-        classOf[CommandOutcome.Done]
+        CommandOutcome.Done(
+          "1 match: change 1 (proposed 1).\n" +
+            "p/a (change, proposed): Title a · 0.1 KB · changed 2026-10-27"
+        )
       )
     }
     test("project_new refuses when no version of its method is declared") {
