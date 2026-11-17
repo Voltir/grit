@@ -46,7 +46,7 @@ trait EntryStore {
     * written at.
     */
   final def believed(turn: TurnRef)(using Tx^): Either[StoreError, Integrity] =
-    ofTurn(turn).map(_.map(_.integrity).reduceOption(_.meet(_)).getOrElse(Integrity.Untrusted))
+    ofTurn(turn).map(es => Integrity.meetAll(es.map(_.integrity)).getOrElse(Integrity.Untrusted))
 
   /** Locks `conversation` against other writers until the transaction ends, and returns the
     * positions after every entry ever recorded in it, purged ones included. Every writer of a

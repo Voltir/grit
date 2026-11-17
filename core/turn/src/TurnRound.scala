@@ -130,7 +130,7 @@ private[turn] object TurnRound {
       * one's in turn; [[Integrity.Authority]] before any.
       */
     def level: Integrity =
-      gates.values.map(_.level).reduceOption(_.meet(_)).getOrElse(Integrity.Authority)
+      Integrity.meetAll(gates.values.map(_.level)).getOrElse(Integrity.Authority)
 
     /** The loop's budget after the replies so far ([[TurnLoop.Rounds.after]]). */
     def budget: TurnLoop.Rounds = looping.budget.after(replies)

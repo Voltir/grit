@@ -130,7 +130,7 @@ object Digest {
             .sortBy(l => (l.at, l.order))(using Ordering[(Instant, Long)].reverse)
             .take(n)
             .map(_.shown)
-          (lines, documents.map(_.integrity).reduceOption(_.meet(_)))
+          (lines, Integrity.meetAll(documents.map(_.integrity)))
         }
 
   /** What heads a room's document, above its lines. */

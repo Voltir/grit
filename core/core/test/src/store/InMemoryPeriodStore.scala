@@ -170,13 +170,15 @@ final class InMemoryPeriodStore(
           else {
             val id = p.ref.closingId
             // What its writer was shown, as the SQL store meets it: the period's entries.
-            val shown = everyEntryOf(p.ref.conversationId)
-              .filter(e =>
-                TurnSeq.value(e.turnSeq) >= TurnSeq.value(p.first) &&
-                  TurnSeq.value(e.turnSeq) <= TurnSeq.value(attempt.last)
+            val shown = Integrity
+              .meetAll(
+                everyEntryOf(p.ref.conversationId)
+                  .filter(e =>
+                    TurnSeq.value(e.turnSeq) >= TurnSeq.value(p.first) &&
+                      TurnSeq.value(e.turnSeq) <= TurnSeq.value(attempt.last)
+                  )
+                  .map(_.integrity)
               )
-              .map(_.integrity)
-              .reduceOption(_.meet(_))
               .getOrElse(Integrity.Untrusted)
             entries
               .insert(

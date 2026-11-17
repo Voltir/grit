@@ -37,8 +37,7 @@ enum BriefRefusal extends caps.Pure {
   * citations first; then each pointer, nearest first, is given whole again if it still fits.
   * `pointed` lists the keys shown as pointers, and a citation that does not fit even as a
   * pointer is left out. `shows` lists every artifact whose words the text holds, whole or as a
-  * pointer, in the order it shows them: `artifact`, each carried, then each cited; what is
-  * made from them is believed at no more than the least of them.
+  * pointer, in the order it shows them: `artifact`, each carried, then each cited.
   */
 final case class Brief private (
     artifact: ArtifactKey,

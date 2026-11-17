@@ -61,6 +61,12 @@ object Integrity {
     */
   def at(level: Level, compartments: Compartment*): Integrity = Levelled.at(level, compartments)
 
+  /** The meet of every one of `all`, what is made from them; `None` when there are none, each
+    * caller saying what an empty source is believed at.
+    */
+  def meetAll(all: IterableOnce[Integrity]): Option[Integrity] =
+    all.iterator.reduceOption(_.meet(_))
+
   extension (i: Integrity) {
     def dominates(other: Integrity): Boolean = i.dominates(other)
 

@@ -54,12 +54,11 @@ final case class Visibility private (
     case Accounted.Unread => outputOf(service)
     case Accounted.Unaccountable => Integrity.Untrusted
     case Accounted.Items(provenances) =>
-      provenances
-        .map { p =>
+      Integrity
+        .meetAll(provenances.map { p =>
           if (!p.place.within(service.place)) Integrity.Untrusted
           else p.vouched.meet(capOf(p.place).getOrElse(Cap.Undeclared))
-        }
-        .reduceOption(_.meet(_))
+        })
         .getOrElse(outputOf(service))
   }
 }

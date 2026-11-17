@@ -220,23 +220,25 @@ object DriveItems {
 
   /** The meet over `grants`' writers, as [[items]] says. */
   private def believed(reading: DriveReading, grants: Option[Vector[Grant]]): Integrity =
-    grants.toVector.flatten
-      .filter(_.role.writes)
-      .flatMap {
-        case Grant.Person(email, _) if Email.value(email) == Email.value(reading.self) => None
-        case Grant.Person(email, _) =>
-          Some(
-            reading.writers.getOrElse(
-              email,
-              if (Email.domain(email) == reading.domain) Integrity.Member else Integrity.Outside
-            )
-          )
-        case Grant.Group(_, _) => Some(Integrity.Outside)
-        case Grant.Everyone(domain, _) =>
-          Some(if (domain == reading.domain) Integrity.Member else Integrity.Outside)
-        case Grant.Anyone(_) => Some(Integrity.Untrusted)
-      }
-      .reduceOption(_.meet(_))
+    Integrity
+      .meetAll(
+        grants.toVector.flatten
+          .filter(_.role.writes)
+          .flatMap {
+            case Grant.Person(email, _) if Email.value(email) == Email.value(reading.self) => None
+            case Grant.Person(email, _) =>
+              Some(
+                reading.writers.getOrElse(
+                  email,
+                  if (Email.domain(email) == reading.domain) Integrity.Member else Integrity.Outside
+                )
+              )
+            case Grant.Group(_, _) => Some(Integrity.Outside)
+            case Grant.Everyone(domain, _) =>
+              Some(if (domain == reading.domain) Integrity.Member else Integrity.Outside)
+            case Grant.Anyone(_) => Some(Integrity.Untrusted)
+          }
+      )
       .getOrElse(Integrity.Untrusted)
 
   /** Each of `files` a names part, its line and facts as `part` writes them, as [[items]] says

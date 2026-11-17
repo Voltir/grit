@@ -2530,11 +2530,18 @@ private[plugin] object ProjectCommands {
       f"it is over ${DocRef.BriefChars}%,d characters; shorten the artifact or what its role carries"
     val (label, holder) = (r.claim.label, r.claim.holder)
     val data = ujson.Obj(BriefHolder -> ClaimHolder.value(holder))
+    // A shown artifact `project` holds no document of is believed at nothing, so a brief
+    // rendered from another project's value fails closed.
     val believed = r.brief.fold(
       _ => Integrity.Authority,
-      _.shows
-        .flatMap(k => project.documents.find(_._2.head.key == k).map(_._1.integrity))
-        .foldLeft(Integrity.Authority)(_.meet(_))
+      b =>
+        Integrity
+          .meetAll(
+            b.shows.map(k =>
+              project.documents.find(_._2.head.key == k).fold(Integrity.Untrusted)(_._1.integrity)
+            )
+          )
+          .getOrElse(Integrity.Authority)
     )
     briefKey(r.key).fold(
       _ => Right(Some(s"No brief was kept: $over.")),

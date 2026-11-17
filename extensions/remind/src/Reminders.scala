@@ -250,7 +250,7 @@ object Reminders {
                       s"${ScheduleId.value(r.id)}, due ${Utc.toSecond(r.at)}: ${r.params.text}"
                     )
                 // Believed as the least of the reminders read; with none, as its tool says.
-                val read = pending.schedules.map(_.integrity).reduceOption(_.meet(_))
+                val read = Integrity.meetAll(pending.schedules.map(_.integrity))
                 Outcome.Done((s"Now: ${Utc.toSecond(pending.now)}" +: listed).mkString("\n"), read)
             }
         }
