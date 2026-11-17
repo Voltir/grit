@@ -9,7 +9,8 @@ import grit.core.document.{
   Document,
   DocumentKeeper,
   DocumentShelf,
-  DocumentVersion
+  DocumentVersion,
+  Written
 }
 import grit.core.id.{ClaimHolder, ConversationId, DocKey, DocumentVersionId, PrincipalId, TurnSeq}
 import grit.core.identity.{Account, Principal}
@@ -197,7 +198,10 @@ private[plugin] final class ProjectCommands(
         claims: Claims,
         at: Instant
     )(using Tx^): Either[StoreError, CommandOutcome] =
-      answered(alone(own, claims, args.key.project, by, at, "keep")(_ => Right(Step.Keep(args))))
+      answered(
+        alone(own, claims, args.key.project, by, at, "keep")(_ => Right(Step.Keep(args)))
+          .map(_.said)
+      )
   }
 
   /** `project_edit`: part of an artifact's body changed, kept as `project_keep` keeps it. */
@@ -270,7 +274,7 @@ private[plugin] final class ProjectCommands(
     )(using Tx^): Either[StoreError, CommandOutcome] = answered {
       val key = args.key
       for {
-        said <- alone(own, claims, key.project, by, at, "edit") { project =>
+        done <- alone(own, claims, key.project, by, at, "edit") { project =>
           for {
             current <- artifact(project, key)
             _ <- unchanged(key, Some(args.version), Some(current), project.artifacts)
@@ -282,11 +286,9 @@ private[plugin] final class ProjectCommands(
             Keeping(key, None, current._2.head.title, body, None, None, Some(args.version))
           )
         }
-        docKey <- refuse(DocKey.of(key.value))
-        labels <- stored(own.labels(docKey))
-        label <- labels.headOption.toRight(Stop.Refused(s"${key.value} was kept, then not found"))
-        now <- stored(own.current(docKey, label))
-      } yield now.fold(said)(d => s"$said Now at version ${DocumentVersionId.value(d.version)}.")
+        // An edit that changes nothing writes nothing, and the version given is current.
+        now = done.versions.getOrElse(key, args.version)
+      } yield s"${done.said} Now at version ${DocumentVersionId.value(now)}."
     }
   }
 
@@ -321,7 +323,10 @@ private[plugin] final class ProjectCommands(
         claims: Claims,
         at: Instant
     )(using Tx^): Either[StoreError, CommandOutcome] =
-      answered(alone(own, claims, args.key.project, by, at, "move")(_ => Right(Step.Move(args))))
+      answered(
+        alone(own, claims, args.key.project, by, at, "move")(_ => Right(Step.Move(args)))
+          .map(_.said)
+      )
   }
 
   /** `project_propose`: a new artifact of `kind`, kept as `project_keep` keeps one. */
@@ -376,7 +381,7 @@ private[plugin] final class ProjectCommands(
       answered(
         alone(own, claims, args.key.project, by, at, "propose")(p =>
           fresh(args)(p).map(_ => Step.Keep(args))
-        )
+        ).map(_.said)
       )
 
     /** Nothing, or a refusal when the project holds `args.key` already. */
@@ -1459,6 +1464,7 @@ private[plugin] final class ProjectCommands(
           .foldLeft[Either[Stop, Unit]](Right(())) { (so, a) =>
             so.flatMap(_ =>
               kept(own, Artifact(a.head.copy(by = writer), a.body), labels.get(a.head.key), at)
+                .map(_ => ())
             )
           }
         rewritten <- refuse(ArtifactJson.index(args.project, done.project.pin, author(by)))
@@ -1569,8 +1575,8 @@ private[plugin] final class ProjectCommands(
   }
 
   /** The step `stepping` makes of project `key` as loaded, taken alone, as `project_keep` or
-    * `project_move` takes it, saying `verb` of an artifact kept below this room: its answer, or
-    * why it was refused.
+    * `project_move` takes it, saying `verb` of an artifact kept below this room: its answer and
+    * the version each artifact it wrote is now at, or why it was refused.
     */
   private def alone(
       own: DocumentKeeper,
@@ -1579,7 +1585,9 @@ private[plugin] final class ProjectCommands(
       by: CommandBy,
       at: Instant,
       verb: String
-  )(stepping: Loaded -> Either[Stop, Step])(using Tx^): Either[Stop, String] =
+  )(stepping: Loaded -> Either[Stop, Step])(using
+      Tx^
+  ): Either[Stop, (said: String, versions: Map[ArtifactKey, DocumentVersionId])] =
     for {
       held <- holding(claims, key, at)
       project <- loaded(own, key)
@@ -1589,9 +1597,9 @@ private[plugin] final class ProjectCommands(
       (said, steps) = plan
       answer <- said.headOption.toRight(Stop.Refused("nothing was asked")).flatten
       _ <- settled(claims, project, method, key, steps, at, verb)
-      _ <- wrote(own, project, steps, at)
+      versions <- wrote(own, project, steps, at)
       _ <- rebriefed(own, held, key, at)
-    } yield answer
+    } yield (said = answer, versions = versions)
 
   /** Each claim live at `at` on an artifact of project `key` and kept at this transaction's
     * floor, as held ([[Claims.held]]) until it ends, in the order [[Claims.live]] gives: taken
@@ -2321,12 +2329,13 @@ private[plugin] object ProjectCommands {
     */
   private def wrote(own: DocumentKeeper, project: Loaded, steps: Stepping, at: Instant)(using
       Tx^
-  ): Either[Stop, Unit] =
+  ): Either[Stop, Map[ArtifactKey, DocumentVersionId]] =
     Traversal
       .traverse(steps.changed.flatMap(k => steps.artifacts.find(_.head.key == k)))(a =>
         kept(own, a, project.documents.find(_._2.head.key == a.head.key).map(_._1.label), at)
+          .map(a.head.key -> _)
       )
-      .map(_ => ())
+      .map(_.toMap)
 
   /** Nothing, or a refusal when `read`, the version a keep of `key` was read at, is not that of
     * `current`, its document: the version it is at, and who kept it when; or when `key` is new,
@@ -2420,7 +2429,9 @@ private[plugin] object ProjectCommands {
     val writer = Some(author(by))
     for {
       _ <- docs.uncited.foldLeft[Either[Stop, Unit]](Right(())) { case (so, (d, a)) =>
-        so.flatMap(_ => kept(own, Artifact(a.head.copy(by = writer), a.body), Some(d.label), at))
+        so.flatMap(_ =>
+          kept(own, Artifact(a.head.copy(by = writer), a.body), Some(d.label), at).map(_ => ())
+        )
       }
       _ <- docs.gone.foldLeft[Either[Stop, Unit]](Right(())) { case (so, (d, a)) =>
         so.flatMap(_ =>
@@ -2548,10 +2559,10 @@ private[plugin] object ProjectCommands {
   /** `holder`: the key a brief's data names its holder under. */
   private val BriefHolder: String = "holder"
 
-  /** Keeps `artifact` through `own` at `label`, or at public when new. */
+  /** Keeps `artifact` through `own` at `label`, or at public when new: the version it is now at. */
   private def kept(own: DocumentKeeper, artifact: Artifact, label: Option[Label], at: Instant)(using
       Tx^
-  ): Either[Stop, Unit] =
+  ): Either[Stop, DocumentVersionId] =
     for {
       document <- refuse(
         ArtifactJson
@@ -2561,7 +2572,7 @@ private[plugin] object ProjectCommands {
       )
       (text, data, refs) = document
       key <- refuse(DocKey.of(artifact.head.key.value))
-      _ <- written(
+      write <- written(
         own.write(
           key,
           label.getOrElse(Label.Public),
@@ -2574,7 +2585,10 @@ private[plugin] object ProjectCommands {
           refs
         )
       )
-    } yield ()
+    } yield write match {
+      case Written.Unchanged(current, _) => current
+      case Written.Versioned(version, _, _) => version
+    }
 
   /** Who `by` is, as an artifact records its writer: the person's [[accounts]], and the turn
     * that wrote for them when one did.
