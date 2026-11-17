@@ -81,7 +81,7 @@ object KeepingCommand {
       at: Instant
   )(using tx: Tx^): Either[StoreError, CommandOutcome] = {
     // As an inbound entry is believed: no more than the room's cap.
-    val most = Tx.visibility(tx).capOf(room).fold(believed)(believed.meet)
+    val most = Tx.visibility(tx).believedIn(room, believed)
     command.run(args, by, DocumentKeeper.believedAtMost(keeper, most), claims, at)
   }
 }

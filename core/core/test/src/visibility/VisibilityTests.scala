@@ -400,6 +400,27 @@ object VisibilityTests extends TestSuite {
       )
     }
 
+    test(
+      "a caller in a capped room is believed at no more than its cap, and elsewhere as they are"
+    ) {
+      val guests = place("slack:acme/C-guests")
+      Visibility
+        .of(
+          compartments,
+          RoomLabels.Public,
+          groups,
+          grants,
+          caps = Vector(Cap(guests, Integrity.Outside))
+        )
+        .map(v =>
+          (
+            v.believedIn(guests, Integrity.Authority),
+            v.believedIn(guests, Integrity.Untrusted),
+            v.believedIn(place("slack:acme/C-team"), Integrity.Authority)
+          )
+        ) ==> Right((Integrity.Outside, Integrity.Untrusted, Integrity.Authority))
+    }
+
     test("a cap on a directory, a machine's, a direct message's room or everywhere is refused") {
       def declaring(at: Place) =
         Visibility.of(

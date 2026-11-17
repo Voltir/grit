@@ -34,6 +34,12 @@ final case class Visibility private (
     */
   def capOf(place: Place): Option[Integrity] = caps.covering(place)
 
+  /** What words said in `room` by a caller believed at `integrity` are believed at: `integrity`
+    * met with the cap at `room` ([[capOf]]), and `integrity` itself where no cap covers it.
+    */
+  def believedIn(room: Place, integrity: Integrity): Integrity =
+    capOf(room).fold(integrity)(integrity.meet)
+
   /** What `service`'s results are believed at: the cap at its place ([[capOf]]), else
     * [[Cap.Undeclared]].
     */
