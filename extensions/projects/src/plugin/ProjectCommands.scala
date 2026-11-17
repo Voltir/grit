@@ -284,7 +284,7 @@ private[plugin] final class ProjectCommands(
               .map(why => Stop.Refused(s"${key.value} cannot be edited: $why"))
           } yield Step.Keep(
             Keeping(key, None, current._2.head.title, body, None, None, Some(args.version)),
-            Whose.Carried
+            Whose.Prior
           )
         }
         // An edit that changes nothing writes nothing, and the version given is current.
@@ -1468,7 +1468,7 @@ private[plugin] final class ProjectCommands(
                 own,
                 Artifact(a.head.copy(by = writer), a.body),
                 before.get(a.head.key),
-                Whose.Carried,
+                Whose.Prior,
                 at
               ).map(_ => ())
             )
@@ -1797,7 +1797,7 @@ private[plugin] object ProjectCommands {
     * before's, carried forward with a part its caller changed, as `project_edit` makes it.
     */
   enum Whose extends caps.Pure {
-    case Caller, Carried
+    case Caller, Prior
   }
 
   /** What `project_keep`'s fields mean, said once for it and for a batch's keeps. */
@@ -2288,7 +2288,7 @@ private[plugin] object ProjectCommands {
             Vector(artifact),
             whose match {
               case Whose.Caller => Set(args.key)
-              case Whose.Carried => Set.empty
+              case Whose.Prior => Set.empty
             }
           )
           _ <- refuse(Project.of(args.key.project, project.pin, next.artifacts))
@@ -2359,7 +2359,7 @@ private[plugin] object ProjectCommands {
           own,
           a,
           project.documents.find(_._2.head.key == a.head.key).map(_._1),
-          if (steps.callers(a.head.key)) Whose.Caller else Whose.Carried,
+          if (steps.callers(a.head.key)) Whose.Caller else Whose.Prior,
           at
         ).map(a.head.key -> _)
       )
@@ -2458,7 +2458,7 @@ private[plugin] object ProjectCommands {
     for {
       _ <- docs.uncited.foldLeft[Either[Stop, Unit]](Right(())) { case (so, (d, a)) =>
         so.flatMap(_ =>
-          kept(own, Artifact(a.head.copy(by = writer), a.body), Some(d), Whose.Carried, at)
+          kept(own, Artifact(a.head.copy(by = writer), a.body), Some(d), Whose.Prior, at)
             .map(_ => ())
         )
       }
@@ -2627,7 +2627,7 @@ private[plugin] object ProjectCommands {
           // The keeper meets what it is given with its caller's: Authority leaves theirs alone.
           whose match {
             case Whose.Caller => Integrity.Authority
-            case Whose.Carried => before.fold(Integrity.Authority)(_.integrity)
+            case Whose.Prior => before.fold(Integrity.Authority)(_.integrity)
           },
           Place.Everywhere,
           text,
