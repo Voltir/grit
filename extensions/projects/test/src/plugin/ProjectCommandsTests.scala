@@ -8,8 +8,8 @@ import grit.core.identity.Principal
 import grit.core.plugin.{CommandBy, CommandOutcome}
 import grit.core.tool.{ArgsError, ToolName}
 import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
-import grit.projects.method.{Declared, Example, MethodFixtures}
-import grit.projects.name.{ArtifactKey, MethodName, Pin, ProjectKey}
+import grit.projects.method.MethodFixtures
+import grit.projects.name.{ArtifactKey, Pin, ProjectKey}
 import grit.projects.render.{Brief, ProjectMarkdown}
 
 import utest.*
@@ -21,13 +21,7 @@ object ProjectCommandsTests extends TestSuite {
 
   /** The fixtures' plugin, its turns proposing changes alone. */
   private def proposing(): Projects =
-    Projects
-      .of(
-        Vector(Declared(method(), Vector.empty)),
-        methodName,
-        TurnCommands.Proposing(MethodFixtures.change.name)
-      )
-      .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+    plugin(TurnCommands.Proposing(MethodFixtures.change.name))
 
   /** Keeps note `p/<local>`, titled `Title <local>`, under `parent`. */
   private def under(projects: Projects, store: Store, local: String, parent: String): Unit =
@@ -100,9 +94,7 @@ object ProjectCommandsTests extends TestSuite {
 
     test("a turn's move to a guarded state is refused and a person's is not") {
       val guarded = Set((MethodFixtures.change.name, state("done")))
-      val projects = Projects
-        .of(Vector(Declared(method(), Vector.empty)), methodName, TurnCommands.Shipped(guarded))
-        .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+      val projects = plugin(TurnCommands.Shipped(guarded))
       val store = Store()
       started(projects, store)
       kept(projects, store, "a", "change", "## Why\n\nBecause.")
@@ -135,9 +127,7 @@ object ProjectCommandsTests extends TestSuite {
       "a turn's batch moving to a guarded state is refused, naming the step, and keeps nothing"
     ) {
       val guarded = Set((MethodFixtures.change.name, state("done")))
-      val projects = Projects
-        .of(Vector(Declared(method(), Vector.empty)), methodName, TurnCommands.Shipped(guarded))
-        .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+      val projects = plugin(TurnCommands.Shipped(guarded))
       val store = Store()
       started(projects, store)
       kept(projects, store, "a", "change", "## Why\n\nBecause.")
@@ -210,14 +200,6 @@ object ProjectCommandsTests extends TestSuite {
       )
     }
 
-    test("Projects.of refuses proposing a kind no method has") {
-      Projects.of(
-        Vector(Declared(method(), Vector.empty)),
-        methodName,
-        TurnCommands.Proposing(MethodFixtures.kind("idea"))
-      ) ==> Left(ProjectsRefusal.NoKind(MethodFixtures.kind("idea")))
-    }
-
     test(
       "a turn is offered the reads, new, keep and move; not batch, withdraw, sweep, migrate or claims"
     ) {
@@ -246,23 +228,6 @@ object ProjectCommandsTests extends TestSuite {
         answer == CommandOutcome.Refused(
           "p/a (change, proposed) cannot move to done; it may move to building"
         )
-      )
-    }
-
-    test("a move under a changed method digest is refused") {
-      val store = Store()
-      started(plugin(), store)
-      kept(plugin(), store, "a", "change", "Text.")
-      val changed = plugin(
-        method(transitions :+ MethodFixtures.move(note, "open", "closed", "sections-present"))
-      )
-      val answer = ask(changed, store, "project_move", "key" -> "p/a", "state" -> "building")
-      assert(
-        answer == CommandOutcome.Refused(
-          "project p holds to method grit version 1, whose rules have changed since the project started; " +
-            "declare a new version of the method rather than changing this one"
-        ),
-        shown(changed, store, "p/a").contains("state: proposed")
       )
     }
 
@@ -384,7 +349,7 @@ object ProjectCommandsTests extends TestSuite {
       )
       val projects = plugin()
       val small = right(
-        DocumentTerms.of(terms.label, terms.weight, terms.retention, 2, terms.keepLast, terms.full)
+        DocumentTerms.of(terms.label, terms.weight, terms.retention, 3, terms.keepLast, terms.full)
       )
       val store = Store(small)
       started(projects, store)
@@ -400,9 +365,9 @@ object ProjectCommandsTests extends TestSuite {
       )
       assert(
         answer == CommandOutcome.Refused(
-          "this deployment keeps at most 2 project documents and holds that many already, so nothing was kept"
+          "this deployment keeps at most 3 project documents and holds that many already, so nothing was kept"
         ),
-        store.count == 2
+        store.count == 3
       )
     }
 
@@ -577,7 +542,7 @@ object ProjectCommandsTests extends TestSuite {
       headed ==>
         "---\nkey: p/a\nkind: note\nstate: open\ntitle: \"Title a\"\nparent: null\ncites: []\n" +
         s"by: ${shown(projects, store, "p/a").linesIterator.find(_.startsWith("by: ")).fold("")(_.drop(4))}\n" +
-        "version: 2\n---\n\n" +
+        "version: 3\n---\n\n" +
         "Opening words, all of them.\n\nSections: Goal; Reads (0.1 KB in all)\n"
     }
 
@@ -1024,7 +989,11 @@ object ProjectCommandsTests extends TestSuite {
         )
       )
       val unknown = ask(projects, store, "project_new", "project" -> "q", "method" -> "other")
-      assert(unknown == CommandOutcome.Refused("no method is named other; the methods here: grit"))
+      assert(
+        unknown == CommandOutcome.Refused(
+          "No method other is declared here: declare it with project_declare."
+        )
+      )
     }
 
     test(
@@ -1057,60 +1026,6 @@ object ProjectCommandsTests extends TestSuite {
           case CommandOutcome.Done(_) => false
         }
       )
-    }
-
-    test("Projects.of refuses a default it lacks, and two methods of one name and version") {
-      val m = method()
-      val other = right(MethodName.of("other"))
-      assert(
-        Projects.of(Vector(Declared(m, Vector.empty)), other) == Left(
-          ProjectsRefusal.NoDefault(other)
-        )
-      )
-      assert(
-        Projects.of(
-          Vector(m, method(transitions.take(1) ++ transitions.drop(1)))
-            .map(Declared(_, Vector.empty)),
-          methodName
-        ) ==
-          Left(ProjectsRefusal.Twice(methodName, 1))
-      )
-    }
-    test("Projects.of refuses a guarded state no kind of that name has, and keeps one it has") {
-      def guarding(kind: String, to: String) =
-        Projects
-          .of(
-            Vector(Declared(method(), Vector.empty)),
-            methodName,
-            TurnCommands.Shipped(Set((MethodFixtures.kind(kind), state(to))))
-          )
-          .map(_ => ())
-      (guarding("change", "closed"), guarding("note", "closed")) ==> (
-        Left(ProjectsRefusal.Unguardable(MethodFixtures.kind("change"), state("closed"))),
-        Right(())
-      )
-    }
-    test("a method whose example fails is refused, naming the example and its move") {
-      val m = method()
-      val bare = MethodFixtures.artifact(
-        MethodFixtures.head("p/a", MethodFixtures.change, "proposed"),
-        "No reason given."
-      )
-      val done = Example.Move(MethodFixtures.key("p/a"), state("done"), Example.Expect.Allowed)
-      val example = Example(
-        "a bare change is done",
-        MethodFixtures.project(bare),
-        Vector(
-          Example.Move(MethodFixtures.key("p/a"), state("building"), Example.Expect.Allowed),
-          done
-        )
-      )
-      assert(Projects.of(Vector(Declared(m, Vector(example))), methodName) match {
-        case Left(ProjectsRefusal.Unbenched(name, 1, Vector(failed))) =>
-          name == methodName && failed.example == "a bare change is done" && failed.at == 2 &&
-          failed.move == done
-        case _ => false
-      })
     }
   }
 }

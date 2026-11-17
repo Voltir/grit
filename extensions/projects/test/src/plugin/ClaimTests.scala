@@ -6,7 +6,7 @@ import grit.core.id.{ClaimHolder, DocKey}
 import grit.core.plugin.CommandOutcome
 import grit.core.tool.ToolName
 import grit.core.visibility.Label
-import grit.projects.method.{Declared, MethodFixtures}
+import grit.projects.method.{MethodFixtures, TransitionChecks}
 import grit.projects.paper.{ElephantGoldfishTests, OpenSpecTests}
 
 import utest.*
@@ -210,8 +210,8 @@ object ClaimTests extends TestSuite {
     test(
       "a keep of an artifact a claimed brief carries is refused when that brief would pass the budget"
     ) {
-      val projects = plugin(managing)
-      val store = Store()
+      val projects = plugin()
+      val store = Store(declared = Vector(managing))
       started(projects, store)
       kept(projects, store, "m", "note", "The manager's note.")
       kept(projects, store, "process", "note", "How work is run.")
@@ -296,9 +296,9 @@ object ClaimTests extends TestSuite {
       )
       under.map { (m, kind, first, role) =>
         val projects = Projects
-          .of(Vector(Declared(m, Vector.empty)), m.name)
+          .of(TransitionChecks.all, m.name)
           .fold(e => throw new java.lang.AssertionError(e.toString), identity)
-        val store = Store()
+        val store = Store(declared = Vector(m))
         started(projects, store)
         kept(projects, store, "a", kind, "Text.")
         (

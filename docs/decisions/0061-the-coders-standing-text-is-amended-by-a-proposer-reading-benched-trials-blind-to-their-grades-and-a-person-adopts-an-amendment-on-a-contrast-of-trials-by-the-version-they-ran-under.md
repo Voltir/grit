@@ -32,8 +32,9 @@ Decision:
 - **The proposer proposes and nothing more.** Its turns are run under `TurnCommands.Proposing`:
   offered one tool, `project_propose`, which keeps a new artifact of the forced kind in that
   kind's first state and refuses a key the project holds. Every shipped command stays a person's;
-  no turn moves an artifact out of its first state. A kind the method does not declare is
-  refused at the deployment (`ProjectsRefusal.NoKind`).
+  no turn moves an artifact out of its first state. A kind the project's method does not declare
+  is refused when proposed, as `project_keep` refuses it (methods are declared in the store, so
+  the deployment cannot check it when built).
 - **An amendment is a diff against a named version.** Its `## Diff` states the section version
   it is against, so a proposal made over a text since changed is seen as such, and an adopted
   one is applied to the version it read.

@@ -198,7 +198,7 @@ object WithdrawTests extends TestSuite {
         )
       )
       before._2 ==> Seen(
-        7,
+        8,
         Vector("One.", "Under a.", "See [c](artifact:p/c) and [a](artifact:p/a).")
       )
     }
@@ -245,7 +245,7 @@ object WithdrawTests extends TestSuite {
         )
       )
       // Seven artifacts' documents, and p/h's brief, kept at its claim.
-      before ==> Seen(8, Vector("One.", "Under a.", "See [c](artifact:p/c) and [a](artifact:p/a)."))
+      before ==> Seen(9, Vector("One.", "Under a.", "See [c](artifact:p/c) and [a](artifact:p/a)."))
     }
 
     test("a claimed artifact's withdrawal is refused, withdrawing nothing") {

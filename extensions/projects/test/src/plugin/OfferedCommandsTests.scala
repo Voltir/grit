@@ -8,7 +8,7 @@ import grit.core.need.PluginReads
 import grit.core.plugin.{CommandTools, Commanded, InMemoryPlugins}
 import grit.core.store.{Askers, StoreError, Tx}
 import grit.core.tool.{ToolSet, Toolbox}
-import grit.projects.method.{Declared, MethodFixtures}
+import grit.projects.method.MethodFixtures
 
 import utest.*
 
@@ -50,13 +50,7 @@ object OfferedCommandsTests extends TestSuite {
     test(
       "an edge's tool list marks each command that only reads as reading, project_claims too, and each that keeps not"
     ) {
-      val proposing = Projects
-        .of(
-          Vector(Declared(CommandFixtures.method(), Vector.empty)),
-          CommandFixtures.methodName,
-          TurnCommands.Proposing(MethodFixtures.change.name)
-        )
-        .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+      val proposing = CommandFixtures.plugin(TurnCommands.Proposing(MethodFixtures.change.name))
       val listed = Commanded
         .of(Vector(proposing))
         .map(PluginCommands.Listed.of)
@@ -70,7 +64,8 @@ object OfferedCommandsTests extends TestSuite {
         "project_export",
         "project_stale",
         "project_brief",
-        "project_claims"
+        "project_claims",
+        "project_methods"
       )
       val keeping = Set(
         "project_new",
@@ -82,7 +77,8 @@ object OfferedCommandsTests extends TestSuite {
         "project_release",
         "project_withdraw",
         "project_sweep",
-        "project_migrate"
+        "project_migrate",
+        "project_declare"
       )
       listed.toSet ==> (reading.map(_ -> true) ++ keeping.map(_ -> false))
     }

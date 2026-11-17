@@ -5,7 +5,7 @@ import java.time.Instant
 import grit.core.id.{DocKey, DocumentVersionId}
 import grit.core.plugin.{CommandBy, CommandOutcome}
 import grit.core.visibility.{Clearance, Label, TestLabels}
-import grit.projects.method.{ArtifactKind, Declared, Method, MethodFixtures, TransitionChecks}
+import grit.projects.method.{ArtifactKind, Method, MethodFixtures, TransitionChecks}
 import grit.projects.name.KindName
 import grit.projects.render.ProjectMarkdown
 
@@ -29,21 +29,22 @@ object MigrateTests extends TestSuite {
     .of(methodName, 2, Vector(change, note, memo), transitions, views, TransitionChecks.all)
     .fold(why => throw new java.lang.AssertionError(why.toString), identity)
 
-  /** The plugin declaring both versions: a project it starts holds to version 2. */
-  private val both: Projects = Projects
-    .of(Vector(Declared(method(), Vector.empty), Declared(version2, Vector.empty)), methodName)
-    .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+  /** The plugin, its store declaring both versions once [[holding]] has started `p`. */
+  private val both: Projects = plugin()
 
   /** When [[other]] migrates, a day after the artifacts were kept. */
   private val later: Instant = at.plusSeconds(86_400)
 
-  /** Project `p` under version 1: notes `p/a` and `p/b`, and the change `p/c`, kept by [[person]]. */
+  /** Project `p` under version 1: notes `p/a` and `p/b`, and the change `p/c`, kept by [[person]];
+    * then version 2 declared.
+    */
   private def holding(store: Store): Unit = {
     val v1 = plugin()
     started(v1, store)
     kept(v1, store, "a", "note", "A.")
     kept(v1, store, "b", "note", "B.")
     kept(v1, store, "c", "change", "## Why\n\nBecause.")
+    done(ask(v1, store, "project_declare", declaring(version2)))
   }
 
   /** `p` moved to version 2 by [[other]] at [[later]], from a room `cleared`, with `more`. */
@@ -71,7 +72,7 @@ object MigrateTests extends TestSuite {
   ): Map[String, (DocumentVersionId, Instant, ujson.Value)] =
     inTx(store.keeper.newest(1_000))
       .fold(e => throw new java.lang.AssertionError(e.toString), identity)
-      .filterNot(d => DocKey.value(d.key) == "p")
+      .filterNot(d => DocKey.value(d.key) == "p" || DocKey.value(d.key).contains('@'))
       .map(d => DocKey.value(d.key) -> (d.version, d.written, d.data))
       .toMap
 
@@ -146,6 +147,7 @@ object MigrateTests extends TestSuite {
     test("past 40 renamed keys the answer is cut, saying how many more") {
       val store = Store()
       notes(plugin(), store, 42)
+      done(ask(both, store, "project_declare", declaring(version2)))
       migrated(store, noteToMemo) ==> CommandOutcome.Done(
         "Moved project p to method grit version 2; 42 artifacts renamed and kept again: " +
           (1 to 40).map(i => f"p/n$i%02d").mkString(", ") + "; 2 more not shown."

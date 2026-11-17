@@ -20,7 +20,7 @@ import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Args, ArgsError, Field, ToolName, ToolSpec}
 import grit.core.visibility.{Integrity, Label}
 import grit.projects.artifact.{Artifact, ArtifactHead, ArtifactJson, Body, Project}
-import grit.projects.method.{ArtifactKind, Method, MoveRefusal, Remap, RoleView}
+import grit.projects.method.{ArtifactKind, Method, MoveRefusal, Remap, RoleView, TransitionCheck}
 import grit.projects.name.{
   ArtifactKey,
   CheckName,
@@ -35,14 +35,17 @@ import grit.projects.name.{
 import grit.projects.render.{AnswerText, Brief, BriefRefusal, ProjectMarkdown}
 import grit.std.either.Traversal
 
-/** The projects plugin's commands over `methods`, new projects under the latest version of
-  * `default`, offered to turns as `turns` says.
+/** The projects plugin's commands over the methods declared in its store, their checks found
+  * among `checks`, new projects under the latest version of `default`, offered to turns as
+  * `turns` says.
   */
 private[plugin] final class ProjectCommands(
-    methods: Vector[Method],
+    checks: Vector[TransitionCheck],
     default: MethodName,
     turns: TurnCommands
 ) extends caps.Pure {
+
+  private val declaring = new MethodCommands(checks)
 
   import ProjectCommands.*
 
@@ -75,7 +78,9 @@ private[plugin] final class ProjectCommands(
       Withdraw,
       Sweep,
       Migrate,
-      Stale
+      Stale,
+      declaring.Declare,
+      declaring.Methods
     ) ++ proposing
   }
 
@@ -112,12 +117,7 @@ private[plugin] final class ProjectCommands(
       val p = ProjectKey.value(args.project)
       val named = args.method.getOrElse(default)
       for {
-        method <- latest(named).toRight(
-          Stop.Refused(
-            s"no method is named ${MethodName.value(named)}; the methods here: " +
-              methods.map(m => MethodName.value(m.name)).distinct.sorted.mkString(", ")
-          )
-        )
+        method <- declaring.latest(own, named)
         indexing <- refuse(ArtifactJson.indexing(args.project))
         indexes <- stored(own.referring(indexing, 1))
         _ <- Either.cond(indexes.isEmpty, (), Stop.Refused(s"project $p exists already"))
@@ -406,7 +406,7 @@ private[plugin] final class ProjectCommands(
       for {
         held <- if (args.dry) Right(Vector.empty) else holding(claims, args.project, at)
         project <- loaded(own, args.project)
-        method <- refuse(declared(project.pin))
+        method <- declared(own, project.pin)
         plan = planned(project, method, args.steps, author(by), guarding(by), onward = args.dry)
         (said, steps) = plan
         answers <- Traversal.traverse(said.zipWithIndex) {
@@ -736,8 +736,8 @@ private[plugin] final class ProjectCommands(
             .flatMap(artifact(project, _))
             .map(found => Some(found._2.head.key))
         }
+        ended <- endedOf(own.documents, project.pin)
       } yield {
-        val ended = endedOf(project.pin)
         // What a line's `<n> under it` counts: the lines `parent: <it>` would list under the
         // same `ended`, of any kind; a `state` naming an end state does not bring ended ones in.
         val counted = (h: ArtifactHead) => args.ended || !ended(h)
@@ -827,7 +827,11 @@ private[plugin] final class ProjectCommands(
               .distinct
               .foldLeft[Either[Stop, Map[ProjectKey, ArtifactHead -> Boolean]]](Right(Map.empty)) {
                 (so, p) =>
-                  so.flatMap(m => pinned(own.documents, p).map(pin => m.updated(p, endedOf(pin))))
+                  so.flatMap(m =>
+                    pinned(own.documents, p)
+                      .flatMap(endedOf(own.documents, _))
+                      .map(ended => m.updated(p, ended))
+                  )
               }
       } yield AnswerText.heads(
         heads.filterNot(h => ends.get(h.key.project).exists(_(h))).take(Found),
@@ -915,7 +919,7 @@ private[plugin] final class ProjectCommands(
       val key = args.key.value
       for {
         project <- loaded(own, args.key.project)
-        method <- refuse(declared(project.pin))
+        method <- declared(own, project.pin)
         _ <- viewOf(method, args.role)
         found <- artifact(project, args.key)
         (document, a) = found
@@ -1027,7 +1031,7 @@ private[plugin] final class ProjectCommands(
     ): Either[StoreError, CommandOutcome] = answered {
       for {
         project <- loaded(own.documents, args.project)
-        ended <- ending(project.pin)
+        ended <- ending(own.documents, project.pin)
         open = project.documents.filterNot((_, a) => ended(a.head))
         named = Project.named(open.map(_._2))
         before = at.minus(java.time.Duration.ofDays(7L * args.weeks))
@@ -1079,7 +1083,7 @@ private[plugin] final class ProjectCommands(
         project <- loaded(own, args.key.project)
         whole <- refuse(Project.of(args.key.project, project.pin, project.artifacts))
         ended <-
-          if (args.cascade) ending(project.pin)
+          if (args.cascade) ending(own, project.pin)
           else Right[Stop, ArtifactHead -> Boolean](_ => false)
         // What is left is a Project, so its export reads back (ADR 0049).
         done <- refuse(Project.withdrawn(whole, args.key, args.cascade, ended))
@@ -1179,7 +1183,7 @@ private[plugin] final class ProjectCommands(
           else Right(())
         held <- if (args.dry) Right(Vector.empty) else holding(claims, args.project, at)
         project <- loaded(own, args.project)
-        method <- refuse(declared(project.pin))
+        method <- declared(own, project.pin)
         _ <- args.kinds.filterNot(k => method.kinds.exists(_.name == k)).toVector match {
           case Vector() => Right(())
           case unknown =>
@@ -1321,15 +1325,7 @@ private[plugin] final class ProjectCommands(
       for {
         project <- loaded(own, args.project)
         whole <- refuse(Project.of(args.project, project.pin, project.artifacts))
-        target <- methods
-          .find(m => m.name == project.pin.method && m.version == args.version)
-          .toRight(
-            Stop.Refused(
-              s"the method ${MethodName.value(project.pin.method)} version ${args.version} is " +
-                "not declared here; its versions here: " +
-                methods.filter(_.name == project.pin.method).map(_.version).sorted.mkString(", ")
-            )
-          )
+        target <- declaring.version(own, project.pin.method, args.version)
         done <- refuse(target.migrated(whole, args.remap))
         index <- indexed(own, args.project)
         _ <- unclaimed(claims, project.documents, at)
@@ -1441,7 +1437,7 @@ private[plugin] final class ProjectCommands(
     ): Either[StoreError, CommandOutcome] = answered {
       for {
         project <- loaded(own.documents, args.key.project)
-        method <- refuse(declared(project.pin))
+        method <- declared(own.documents, project.pin)
         view <- viewOf(method, args.role)
         whole <- refuse(Project.of(args.key.project, project.pin, project.artifacts))
         brief <- Brief.of(whole, args.key, view, args.chars).left.map {
@@ -1455,10 +1451,6 @@ private[plugin] final class ProjectCommands(
       } yield brief.text
     }
   }
-
-  /** The latest version of the method `name`, if one is declared. */
-  private def latest(name: MethodName): Option[Method] =
-    methods.filter(_.name == name).maxByOption(_.version)
 
   /** `step` alone over project `key`, as `project_keep` or `project_move` takes it, once
     * `admits` allows it of the project as loaded, saying `verb` of an artifact kept below this
@@ -1478,7 +1470,7 @@ private[plugin] final class ProjectCommands(
       held <- holding(claims, key, at)
       project <- loaded(own, key)
       _ <- admits(project)
-      method <- refuse(declared(project.pin))
+      method <- declared(own, project.pin)
       plan = planned(project, method, Vector(step), author(by), guarding(by), onward = false)
       (said, steps) = plan
       answer <- said.headOption.toRight(Stop.Refused("nothing was asked")).flatten
@@ -1517,38 +1509,46 @@ private[plugin] final class ProjectCommands(
   ): Either[Stop, Unit] =
     for {
       project <- if (held.isEmpty) Right(None) else loaded(own, key).map(Some(_))
-      briefs = project.toVector.flatMap(p =>
-        (for {
-          method <- declared(p.pin)
-          whole <- Project.of(key, p.pin, p.artifacts)
-        } yield rendered(method, whole, held).flatMap(r =>
-          p.documents.find(_._2.head.key == r.key).map(d => r -> d._1.place)
-        )).getOrElse(Vector.empty)
+      method <- project.fold(Right(None))(p =>
+        declared(own, p.pin) match {
+          case Left(Stop.Refused(_)) => Right(None)
+          case other => other.map(Some(_))
+        }
       )
+      briefs = (for {
+        p <- project
+        m <- method
+        whole <- Project.of(key, p.pin, p.artifacts).toOption
+      } yield rendered(m, whole, held).flatMap(r =>
+        p.documents.find(_._2.head.key == r.key).map(d => r -> d._1.place)
+      )).getOrElse(Vector.empty)
       _ <- Traversal
         .traverse(briefs)((r, place) => briefed(own, r, place, at))
         .map((_: Vector[Option[String]]) => ())
     } yield ()
 
-  /** The method version `pin` names, or why not. */
-  private def declared(pin: Pin): Either[String, Method] =
-    methods
-      .find(m => m.name == pin.method && m.version == pin.version)
-      .toRight(
-        s"the method ${MethodName.value(pin.method)} version ${pin.version} is not declared here"
-      )
+  /** The method version `pin` names, as `own` holds it, or why not. */
+  private def declared(own: DocumentShelf, pin: Pin)(using Tx^): Either[Stop, Method] =
+    declaring.version(own, pin.method, pin.version)
 
   /** Whether an artifact of a project holding to `pin` is in an end state of its kind, or why
     * not: `pin`'s method is not declared here.
     */
-  private def ending(pin: Pin): Either[Stop, ArtifactHead -> Boolean] =
-    refuse(declared(pin)).map[ArtifactHead -> Boolean](m => h => ArtifactKind.ends(m.kinds, h))
+  private def ending(own: DocumentShelf, pin: Pin)(using
+      Tx^
+  ): Either[Stop, ArtifactHead -> Boolean] =
+    declared(own, pin).map[ArtifactHead -> Boolean](m => h => ArtifactKind.ends(m.kinds, h))
 
   /** Whether `project_list` and `project_find` leave an artifact of a project holding to `pin`
     * out as ended: as [[ending]] says, and never when `pin`'s method is not declared here.
     */
-  private def endedOf(pin: Pin): ArtifactHead -> Boolean =
-    ending(pin).fold(_ => _ => false, identity)
+  private def endedOf(own: DocumentShelf, pin: Pin)(using
+      Tx^
+  ): Either[Stop, ArtifactHead -> Boolean] =
+    ending(own, pin) match {
+      case Left(Stop.Refused(_)) => Right(_ => false)
+      case other => other
+    }
 }
 
 private[plugin] object ProjectCommands {
@@ -1874,7 +1874,7 @@ private[plugin] object ProjectCommands {
   private val BriefMost: Int = 100_000
 
   /** Why a command stopped: its store failed, or it refused, in words its asker reads. */
-  private enum Stop extends caps.Pure {
+  private[plugin] enum Stop extends caps.Pure {
     case Store(error: StoreError)
     case Refused(why: String)
   }
@@ -1884,19 +1884,20 @@ private[plugin] object ProjectCommands {
     def artifacts: Vector[Artifact] = documents.map(_._2)
   }
 
-  private def answered(step: Either[Stop, String]): Either[StoreError, CommandOutcome] =
+  private[plugin] def answered(step: Either[Stop, String]): Either[StoreError, CommandOutcome] =
     step match {
       case Right(text) => Right(CommandOutcome.Done(text))
       case Left(Stop.Refused(why)) => Right(CommandOutcome.Refused(why))
       case Left(Stop.Store(e)) => Left(e)
     }
 
-  private def refuse[A](e: Either[String, A]): Either[Stop, A] = e.left.map(Stop.Refused(_))
+  private[plugin] def refuse[A](e: Either[String, A]): Either[Stop, A] = e.left.map(Stop.Refused(_))
 
-  private def stored[A](e: Either[StoreError, A]): Either[Stop, A] = e.left.map(Stop.Store(_))
+  private[plugin] def stored[A](e: Either[StoreError, A]): Either[Stop, A] =
+    e.left.map(Stop.Store(_))
 
   /** As [[stored]], a write refused past the bound refused in words. */
-  private def written[A](e: Either[StoreError, A]): Either[Stop, A] = e.left.map {
+  private[plugin] def written[A](e: Either[StoreError, A]): Either[Stop, A] = e.left.map {
     case StoreError.Full(bound) => Stop.Refused(Projects.full(bound))
     case other => Stop.Store(other)
   }
@@ -2464,11 +2465,11 @@ private[plugin] object ProjectCommands {
     if (held.isEmpty) PrincipalId.value(person.id) else held.mkString(", ")
   }
 
-  private def headed(h: ArtifactHead): String =
+  private[plugin] def headed(h: ArtifactHead): String =
     s"${h.key.value} (${KindName.value(h.kind)}, ${StateName.value(h.state)})"
 
   /** Why a move was refused, in words its mover can act on. */
-  private def refusal(r: MoveRefusal): String = r match {
+  private[plugin] def refusal(r: MoveRefusal): String = r match {
     case MoveRefusal.Missing(key) =>
       s"project ${ProjectKey.value(key.project)} has no artifact ${key.value}"
     case MoveRefusal.NoTransition(head, to, may) =>
@@ -2490,7 +2491,7 @@ private[plugin] object ProjectCommands {
         s"${into.key.value} would be too long ($why)"
   }
 
-  private def parsed[A](
+  private[plugin] def parsed[A](
       field: String,
       value: String,
       read: String => Either[String, A]

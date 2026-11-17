@@ -1,0 +1,329 @@
+package grit.projects.plugin
+
+import java.time.Instant
+
+import scala.util.Try
+
+import grit.core.claim.Claims
+import grit.core.document.{DocRef, DocText, Document, DocumentKeeper, DocumentShelf}
+import grit.core.id.DocKey
+import grit.core.need.PluginReads
+import grit.core.place.Place
+import grit.core.plugin.{CommandBy, CommandOutcome, KeepingCommand, ReadingCommand}
+import grit.core.store.{StoreError, Tx}
+import grit.core.tool.{Args, ArgsError, Field, ToolName, ToolSpec}
+import grit.core.visibility.{Integrity, Label}
+import grit.projects.method.{Declared, Example, Method, MethodBench, MethodJson, TransitionCheck}
+import grit.projects.name.{CheckName, MethodName, StateName}
+
+import ProjectCommands.{Stop, answered, parsed, refusal, refuse, stored, written}
+import MethodCommands.{Asking, Declaring}
+
+/** `project_declare` and `project_methods`, and the method versions every other command reads:
+  * each version one document of the plugin's own, under `<name>@<version>`, holding its method
+  * and worked examples as [[MethodJson]] writes them, its checks found among `checks`.
+  */
+private[plugin] final class MethodCommands(checks: Vector[TransitionCheck]) extends caps.Pure {
+
+  /** `project_declare`. */
+  object Declare extends KeepingCommand[Declaring] {
+
+    val spec: ToolSpec[Declaring] = ToolSpec(
+      ToolName("project_declare"),
+      "Declares a version of a method, from its JSON (as project_methods gives a version), once " +
+        "its worked examples come out as they say. A version never changes: declaring one " +
+        "declared already under the same digest changes nothing, and under another is refused. " +
+        "Refused, too, naming each cause: the JSON does not read as a method, names a check " +
+        "not compiled here, or an example comes out otherwise; given through a turn, or by a " +
+        "caller believed below Authority.",
+      Args
+        .of((method = Field.text("The method version and its worked examples, as JSON.")))
+        .refine(a =>
+          Try(ujson.read(a.method)).toOption
+            .toRight(ArgsError.Refused("method", "it is not JSON"))
+            .map(Declaring(_))
+        )
+    )
+
+    def run(
+        args: Declaring,
+        by: CommandBy,
+        own: DocumentKeeper,
+        claims: Claims,
+        at: Instant
+    )(using Tx^): Either[StoreError, CommandOutcome] = answered {
+      for {
+        _ <- direct(by)
+        declared <- MethodJson
+          .read(args.json, checks)
+          .left
+          .map(why => Stop.Refused(s"The method does not read: ${why.mkString("; ")}."))
+        method = declared.method
+        named = s"method ${MethodName.value(method.name)} version ${method.version}"
+        _ <- MethodBench.failures(method, declared.examples) match {
+          case Vector() => Right(())
+          case failed =>
+            Left(
+              Stop.Refused(
+                s"The $named is refused: its worked examples come out otherwise than they say: " +
+                  failed.map(benched).mkString("; ") + "."
+              )
+            )
+        }
+        held <- current(own, method.name, method.version)
+        answer <- held match {
+          case Some(document) =>
+            readBack(document).flatMap(was =>
+              Either.cond(
+                was.method.digest == method.digest,
+                s"The $named is declared already, under the same digest; nothing changed.",
+                Stop.Refused(
+                  s"The $named is declared already, under digest ${was.method.digest.hex}, and a " +
+                    s"version never changes: declare this one as version ${method.version + 1}."
+                )
+              )
+            )
+          case None => kept(own, declared, named, at)
+        }
+      } yield answer
+    }
+  }
+
+  /** `project_methods`. */
+  object Methods extends ReadingCommand[Asking] {
+    override def shown(args: Asking): String =
+      args.name.fold("")(n => MethodName.value(n) + args.version.fold("")(v => s"@$v"))
+
+    val spec: ToolSpec[Asking] = ToolSpec(
+      ToolName("project_methods"),
+      "Lists the methods declared here, each with its versions and their digests; given a " +
+        "name, that method's versions; given a name and a version, that version as JSON, with " +
+        "its worked examples, as project_declare takes it.",
+      Args
+        .of(
+          (
+            name = Field.text("The method's name.").optional,
+            version = Field.count("One of its versions.", 1, Int.MaxValue).optional
+          )
+        )
+        .refine(a =>
+          for {
+            name <- a.name.fold(Right(None))(n => parsed("name", n, MethodName.of).map(Some(_)))
+            _ <- Either.cond(
+              a.version.isEmpty || name.nonEmpty,
+              (),
+              ArgsError.Refused("version", "a version is asked of a method named")
+            )
+          } yield Asking(name, a.version)
+        )
+    )
+
+    def run(args: Asking, by: CommandBy, own: PluginReads, at: Instant)(using
+        Tx^
+    ): Either[StoreError, CommandOutcome] = answered {
+      (args.name, args.version) match {
+        case (Some(name), Some(v)) =>
+          for {
+            document <- current(own.documents, name, v).flatMap(
+              _.toRight(Stop.Refused(undeclared(name, v)))
+            )
+            was <- readBack(document)
+          } yield ujson.write(MethodJson.written(was.method, was.examples), indent = 2)
+        case (named, _) =>
+          for {
+            found <- listed(own.documents, named)
+            lines <- lined(found)
+          } yield
+            if (lines.isEmpty)
+              named.fold("No method is declared here.")(n =>
+                s"No method ${MethodName.value(n)} is declared here."
+              )
+            else lines.mkString("\n")
+      }
+    }
+
+    /** One line per version `found` holds, `<name>@<version> <digest>`, or why one does not read. */
+    private def lined(found: Vector[Document]): Either[Stop, Vector[String]] =
+      found.foldLeft[Either[Stop, Vector[String]]](Right(Vector.empty)) { (so, d) =>
+        so.flatMap(lines =>
+          readBack(d).map(was => lines :+ s"${DocKey.value(d.key)} ${was.method.digest.hex}")
+        )
+      }
+  }
+
+  /** The latest version of the method `name` declared, or why none is. */
+  def latest(own: DocumentShelf, name: MethodName)(using Tx^): Either[Stop, Method] =
+    for {
+      found <- listed(own, Some(name))
+      newest <- found.lastOption.toRight(
+        Stop.Refused(
+          s"No method ${MethodName.value(name)} is declared here: declare it with project_declare."
+        )
+      )
+      was <- readBack(newest)
+    } yield was.method
+
+  /** The method `name` at `version`, as declared, or why not: it is not, or it does not read. */
+  def version(own: DocumentShelf, name: MethodName, version: Int)(using
+      Tx^
+  ): Either[Stop, Method] =
+    for {
+      held <- current(own, name, version)
+      document <- held match {
+        case Some(d) => Right(d)
+        case None =>
+          listed(own, Some(name)).flatMap { found =>
+            val versions = found.flatMap(d => versionOf(d.key)).mkString(", ")
+            Left(
+              Stop.Refused(
+                undeclared(name, version) +
+                  (if (versions.isEmpty) "" else s"; its versions here: $versions")
+              )
+            )
+          }
+      }
+      was <- readBack(document)
+    } yield was.method
+
+  /** Nothing when `by` asks directly; a refusal when through a turn. */
+  private def direct(by: CommandBy): Either[Stop, Unit] = by match {
+    case CommandBy.Direct(_) => Right(())
+    case CommandBy.Turn(_, _) =>
+      Left(
+        Stop.Refused(
+          "A method is declared only directly, by a caller believed at Authority, never through a turn."
+        )
+      )
+  }
+
+  /** Keeps `declared` as its version's document, answering `named` declared; refused, keeping
+    * nothing, when it would be believed below `Authority` (the asker's words, met with their
+    * room's cap) or its JSON is over [[Document.DataMost]].
+    */
+  private def kept(own: DocumentKeeper, declared: Declared, named: String, at: Instant)(using
+      Tx^
+  ): Either[Stop, String] = {
+    val method = declared.method
+    val data = MethodJson.written(method, declared.examples)
+    for {
+      _ <- Document
+        .oversized(data)
+        .fold(Right(()))(why => Left(Stop.Refused(s"The $named is $why.")))
+      key <- refuse(MethodCommands.key(method.name, method.version))
+      text <- refuse(
+        DocText.of(s"Method ${MethodName.value(method.name)} version ${method.version}.")
+      )
+      refs <- refuse(MethodCommands.refs(method.name))
+      wrote <- written(
+        own.write(
+          key,
+          Label.Public,
+          Integrity.Authority,
+          Place.Everywhere,
+          text,
+          data,
+          None,
+          at,
+          refs
+        )
+      )
+      // The keeper believes a write at no more than its asker (ADR 0062's proxy, met with the
+      // room's cap): what it kept says whether they are believed at Authority. A refusal is
+      // never committed, so nothing of this write stays.
+      believed <- stored(own.current(key, wrote.kept)).map(_.map(_.integrity))
+      _ <- Either.cond(
+        believed.exists(_.dominates(Integrity.Authority)),
+        (),
+        Stop.Refused(
+          s"The $named is refused: a method is declared only by a caller believed at Authority, " +
+            "and here you are not."
+        )
+      )
+    } yield s"Declared the $named, digest ${method.digest.hex}."
+  }
+
+  /** The document of `name` at `version`, at the newest label this transaction reads it at. */
+  private def current(own: DocumentShelf, name: MethodName, version: Int)(using
+      Tx^
+  ): Either[Stop, Option[Document]] =
+    for {
+      key <- refuse(MethodCommands.key(name, version))
+      labels <- stored(own.labels(key))
+      held <- labels.headOption.fold(Right(None))(l => stored(own.current(key, l)))
+    } yield held
+
+  /** Each version declared of `name`, or of every method when `None`, once, oldest version
+    * first within a method, the methods by name.
+    */
+  private def listed(own: DocumentShelf, name: Option[MethodName])(using
+      Tx^
+  ): Either[Stop, Vector[Document]] =
+    for {
+      ref <- refuse(name.fold(MethodCommands.All)(MethodCommands.naming))
+      found <- stored(own.referring(ref, Projects.Terms.bound))
+    } yield found
+      .distinctBy(_.key)
+      .flatMap(d => versionOf(d.key).map(v => (DocKey.value(d.key).takeWhile(_ != '@'), v, d)))
+      .sortBy((n, v, _) => (n, v))
+      .map(_._3)
+
+  /** `document` read back as declared, or why not, naming it. */
+  private def readBack(document: Document): Either[Stop, Declared] =
+    MethodJson
+      .read(document.data, checks)
+      .left
+      .map(why =>
+        Stop.Refused(
+          s"${DocKey.value(document.key)} is declared but does not read: ${why.mkString("; ")}"
+        )
+      )
+
+  /** The version a method's key names. */
+  private def versionOf(key: DocKey): Option[Int] =
+    DocKey.value(key).split('@') match {
+      case Array(_, v) => v.toIntOption
+      case _ => None
+    }
+
+  private def undeclared(name: MethodName, version: Int): String =
+    s"the method ${MethodName.value(name)} version $version is not declared here"
+
+  /** `failed` in words. */
+  private def benched(failed: MethodBench.Failed): String = {
+    val expected = failed.move.expect match {
+      case Example.Expect.Allowed => "allowed"
+      case Example.Expect.RefusedBy(check) => s"refused by ${CheckName.value(check)}"
+    }
+    s"example \"${failed.example}\", move ${failed.at} (${failed.move.key.value} to " +
+      s"${StateName.value(failed.move.to)}) expected $expected, " +
+      failed.met.fold("but allowed")(r => s"but ${refusal(r)}")
+  }
+}
+
+private[plugin] object MethodCommands {
+
+  /** `project_declare`'s argument: the method's JSON, read in the command. */
+  final case class Declaring(json: ujson.Value) extends caps.Pure
+
+  /** `project_methods`'s arguments: a method, and one of its versions. */
+  final case class Asking(name: Option[MethodName], version: Option[Int]) extends caps.Pure
+
+  /** The key `name` at `version` is kept under: `<name>@<version>`, which no artifact's or
+    * project's key is (theirs hold no `@`).
+    */
+  def key(name: MethodName, version: Int): Either[String, DocKey] =
+    DocKey.of(s"${MethodName.value(name)}@$version")
+
+  /** The ref every method version holds. */
+  val All: Either[String, DocRef] = DocRef.of("methods", "declared")
+
+  /** The ref every version of `name` holds. */
+  def naming(name: MethodName): Either[String, DocRef] = DocRef.of("method", MethodName.value(name))
+
+  /** The refs a version of `name` holds. */
+  def refs(name: MethodName): Either[String, Set[DocRef]] =
+    for {
+      all <- All
+      named <- naming(name)
+    } yield Set(all, named)
+}

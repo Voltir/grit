@@ -33,6 +33,9 @@ Packages, in one-way order (each names only those before it):
   (`BriefTests`). Imports `name`, `artifact` and `method` (a brief is shaped by a role view).
 - **`plugin`**: `Projects`, the plugin, and its commands (ADR 0053): the only writers of its
   documents, each run in one transaction, whether a person gives it or a turn calls it;
+  `MethodCommands`, `project_declare` and `project_methods`, over the methods the plugin keeps
+  (each version a document of its own under `<name>@<version>`, declared once its examples
+  replay, never changed or withdrawn), which every other command reads in its transaction;
   `TurnCommands`, which of them a turn is offered and the states only a person moves an
   artifact to; and `Projects.reaching`, the watch an edge waits on an
   artifact's state with (ADR 0051). Imports every package before it.

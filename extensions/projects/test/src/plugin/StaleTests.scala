@@ -1,6 +1,6 @@
 package grit.projects.plugin
 
-import grit.projects.method.{Declared, Method}
+import grit.projects.method.{Method, TransitionChecks}
 import grit.projects.paper.{ElephantGoldfishTests, OpenSpecTests}
 
 import utest.*
@@ -85,9 +85,9 @@ object StaleTests extends TestSuite {
       )
       val answers = under.map { (m, kind, _, end) =>
         val projects = Projects
-          .of(Vector(Declared(m, Vector.empty)), m.name)
+          .of(TransitionChecks.all, m.name)
           .fold(e => throw new java.lang.AssertionError(e.toString), identity)
-        val store = Store()
+        val store = Store(declared = Vector(m))
         started(projects, store)
         keptOn(projects, store, 0, "x", kind, "The parent.")
         keptOn(projects, store, 0, "y", kind, "The child.", "parent" -> "p/x")

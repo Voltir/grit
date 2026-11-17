@@ -195,10 +195,11 @@ object OpenSpecTests extends TestSuite {
       assert(first.exists(_.nonEmpty), last == first)
     }
     test("project_move to archived keeps the spec merged, recording its mover") {
-      import CommandFixtures.{ask, askAs, done as answered, other, otherBy, shown, Store}
+      import CommandFixtures.{ask, askAs, declaring, done as answered, other, otherBy, shown, Store}
       val projects =
-        right(Projects.of(Vector(Declared(openSpec, examples)), openSpec.name).left.map(_.toString))
-      val store = Store()
+        right(Projects.of(TransitionChecks.all, openSpec.name).left.map(_.toString))
+      val store = Store(declared = Vector.empty)
+      answered(ask(projects, store, "project_declare", declaring(openSpec, examples)))
       answered(ask(projects, store, "project_new", "project" -> "p"))
       def keep(local: String, kind: String, body: String, cites: String*) = answered(
         ask(

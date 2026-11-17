@@ -7,14 +7,17 @@ import grit.core.edge.{WatchFor, Watched}
 import grit.core.id.{DocKey, PluginName}
 import grit.core.plugin.{DocumentPosting, Documents, Plugin, PluginCommand}
 import grit.projects.artifact.ArtifactJson
-import grit.projects.method.{Declared, Method, MethodBench}
+import grit.projects.method.{MethodRefusal, TransitionCheck}
 import grit.projects.name.{ArtifactKey, KindName, MethodName, StateName}
 
-/** The projects plugin (ADR 0049): projects of `methods`, new ones under the latest version of
+/** The projects plugin (ADR 0049): projects of the methods declared through `project_declare`
+  * (each version a document of its own, never withdrawn, and read by every command from the store
+  * in its own transaction, its checks found among `checks`), new ones under the latest version of
   * `default` unless another is named, kept under [[Projects.Terms]], and changed only by its
   * commands: `project_new`, `project_keep` (never a state, and refused when it would put the
   * brief of a claimed artifact over [[grit.core.document.DocRef.BriefChars]]), `project_move` (only as the
-  * project's pinned method allows, refused once that method's digest has changed),
+  * project's pinned method allows, refused when that version is not declared or its digest is not
+  * the pin's),
   * `project_batch` (keeps and moves of one project, all or none, or a dry run of them),
   * `project_claim` and `project_release` (a claim on an artifact, one of the plugin's claims and
   * never a document, so the artifact keeps its version; a claim keeps the artifact's brief for its
@@ -26,19 +29,24 @@ import grit.projects.name.{ArtifactKey, KindName, MethodName, StateName}
   * instant), `project_sweep` (a project's old ended artifacts of the kinds named, withdrawn at
   * once unless claimed or cited by live work, ended citers rewritten; or a dry run of it),
   * `project_migrate` (a project moved to another version of its method, the artifacts it
-  * renames kept again, the rest left as they are), and the reading `project_show`, `project_history`, `project_list`, `project_find`
+  * renames kept again, the rest left as they are), `project_declare` (a method version, given
+  * directly by a caller believed at `Authority`, accepted once its worked examples replay),
+  * and the reading `project_show`, `project_history`, `project_list`, `project_find`
   * (ended artifacts only when asked), `project_stale` (what no live work names, untouched for
-  * weeks), `project_export`, `project_claims` and `project_brief`. Each write records its writer
+  * weeks), `project_export`, `project_claims`, `project_brief` and `project_methods`. Each write records its writer
   * as the artifact's `by`, and a claim its claimer. Which of them a turn is offered, and what a
   * turn may not do with them, is `turns`'s.
   */
-final class Projects private (methods: Vector[Method], default: MethodName, turns: TurnCommands)
-    extends Plugin {
+final class Projects private (
+    checks: Vector[TransitionCheck],
+    default: MethodName,
+    turns: TurnCommands
+) extends Plugin {
   val name: PluginName = Projects.Name
   val version: Int = 1
   override val documents: Option[Documents] = Some(Projects.Kept)
   override val commands: Vector[PluginCommand[?]] =
-    new ProjectCommands(methods, default, turns).all
+    new ProjectCommands(checks, default, turns).all
 }
 
 object Projects {
@@ -72,41 +80,20 @@ object Projects {
     s"this deployment keeps at most $bound project documents and holds that many already, " +
       "so nothing was kept"
 
-  /** The plugin of these methods, each with its worked examples, its turns offered as `turns`
-    * says, or why not: two of one name and version, `default` not among them, a method failing
-    * its examples ([[MethodBench]]), or a state `turns` guards that no method's kind of that name
-    * has.
+  /** The plugin over these compiled checks; its methods are those declared through
+    * `project_declare`, new projects under the latest version of `default`.
     */
   def of(
-      methods: Vector[Declared],
+      checks: Vector[TransitionCheck],
       default: MethodName,
       turns: TurnCommands = TurnCommands.Unguarded
-  ): Either[ProjectsRefusal, Projects] = {
-    val declared = methods.map(_.method)
-    declared.groupBy(m => (m.name, m.version)).collectFirst {
-      case ((name, version), same) if same.size > 1 => ProjectsRefusal.Twice(name, version)
-    } match {
-      case Some(twice) => Left(twice)
-      case None if !declared.exists(_.name == default) => Left(ProjectsRefusal.NoDefault(default))
-      case None =>
-        val unbenched: Vector[ProjectsRefusal] = methods.flatMap { case Declared(m, examples) =>
-          val failed = MethodBench.failures(m, examples)
-          if (failed.isEmpty) None else Some(ProjectsRefusal.Unbenched(m.name, m.version, failed))
-        }
-        val unguardable = turns match {
-          case TurnCommands.Shipped(guarded) =>
-            guarded.toVector
-              .filterNot((kind, state) =>
-                declared.exists(_.kinds.exists(k => k.name == kind && k.all.contains(state)))
-              )
-              .map(ProjectsRefusal.Unguardable(_, _))
-          case TurnCommands.Proposing(kind) =>
-            Vector(ProjectsRefusal.NoKind(kind)).filterNot(_ =>
-              declared.exists(_.kinds.exists(_.name == kind))
-            )
-        }
-        (unbenched ++ unguardable).headOption.toLeft(new Projects(declared, default, turns))
-    }
+  ): Either[MethodRefusal.CheckTwice, Projects] = {
+    val names = checks.map(_.name)
+    names
+      .diff(names.distinct)
+      .headOption
+      .map(name => new MethodRefusal.CheckTwice(name))
+      .toLeft(new Projects(checks, default, turns))
   }
 
   /** A watch for the artifact `key` to be in one of `states`, or why not: no states, or a key
@@ -129,25 +116,4 @@ object Projects {
     val terms: DocumentTerms = Terms
     val posting: Option[DocumentPosting] = None
   }
-}
-
-/** Why some methods are no projects plugin. */
-enum ProjectsRefusal extends caps.Pure {
-
-  /** No method is named the default. */
-  case NoDefault(default: MethodName)
-
-  /** Two methods share a name and a version. */
-  case Twice(method: MethodName, version: Int)
-
-  /** A method's worked examples came out otherwise than expected: each such, with its first such
-    * move.
-    */
-  case Unbenched(method: MethodName, version: Int, failed: Vector[MethodBench.Failed])
-
-  /** A guarded state no method's kind `kind` has, so its guard would hold nothing. */
-  case Unguardable(kind: KindName, state: StateName)
-
-  /** A kind to propose that no method declares. */
-  case NoKind(kind: KindName)
 }

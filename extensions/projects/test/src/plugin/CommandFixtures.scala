@@ -12,7 +12,14 @@ import grit.core.store.Tx
 import grit.core.tool.ToolName
 import grit.core.visibility.{Clearance, Label}
 import grit.dbos.sql.TestTx
-import grit.projects.method.{Declared, Method, MethodFixtures, RoleView, TransitionChecks}
+import grit.projects.method.{
+  Example,
+  Method,
+  MethodFixtures,
+  MethodJson,
+  RoleView,
+  TransitionChecks
+}
 import grit.projects.name.{LocalKey, MethodName}
 
 /** A projects plugin over an in-memory store, and its commands asked as an edge asks them, for
@@ -80,16 +87,26 @@ object CommandFixtures {
       .fold(e => throw new java.lang.AssertionError(e.toString), identity)
   }
 
-  def plugin(m: Method = method()): Projects =
+  def plugin(turns: TurnCommands = TurnCommands.Unguarded): Projects =
     Projects
-      .of(Vector(Declared(m, Vector.empty)), methodName)
+      .of(TransitionChecks.all, methodName, turns)
       .fold(e => throw new java.lang.AssertionError(e.toString), identity)
 
-  /** A fresh store, its projects keeper under `terms`, and its projects claims. */
-  final class Store(terms: DocumentTerms = Projects.Terms) {
+  /** `m` and its worked `examples` as `project_declare` takes them. */
+  def declaring(m: Method, examples: Vector[Example] = Vector.empty): (String, ujson.Value) =
+    "method" -> ujson.write(MethodJson.written(m, examples))
+
+  /** A fresh store, its projects keeper under `terms`, and its projects claims, `declared`
+    * declared in it through `project_declare`.
+    */
+  final class Store(
+      terms: DocumentTerms = Projects.Terms,
+      declared: Vector[Method] = Vector(method())
+  ) {
     val documents = new InMemoryDocuments
     val keeper: DocumentKeeper = documents.keeper(Projects.Name, terms)
     val claims: Claims = new InMemoryClaims().of(Projects.Name, _ => None)
+    declared.foreach(m => done(ask(plugin(), this, "project_declare", declaring(m))))
     def reads: PluginReads = PluginReads(new InMemoryPlugins().docs(Projects.Name), keeper)
     def count: Int =
       inTx(keeper.newest(100_000)).fold(e => throw new java.lang.AssertionError(e.toString), _.size)

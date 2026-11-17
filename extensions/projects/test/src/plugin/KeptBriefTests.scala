@@ -152,8 +152,8 @@ object KeptBriefTests extends TestSuite {
       claimedAt: Instant = at,
       method: Method = managing
   ): (Projects, Store) = {
-    val projects = plugin(method)
-    val store = Store()
+    val projects = plugin()
+    val store = Store(declared = Vector(method))
     started(projects, store)
     kept(projects, store, "c", "note", "Cited.")
     kept(projects, store, "b", "note", "Named by nothing.")
@@ -279,8 +279,8 @@ object KeptBriefTests extends TestSuite {
       (before.isDefined, briefText(store), versions(store)) ==> (true, before, 1)
     }
     test("a keep of an artifact no live claim holds keeps no brief") {
-      val projects = plugin(managing)
-      val unclaimed = Store()
+      val projects = plugin()
+      val unclaimed = Store(declared = Vector(managing))
       started(projects, unclaimed)
       done(keep(projects, unclaimed, "m", "Never claimed."))
       done(keep(projects, unclaimed, "m", "Never claimed, rewritten."))
