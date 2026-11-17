@@ -58,6 +58,11 @@ object Projects {
       )
       .fold(e => sys.error(e), identity)
 
+  /** The words `project_declare`'s answer holds when the version it was given is declared
+    * already under the same digest, and so it kept nothing; no other answer of it holds them.
+    */
+  val DeclaredAlready: String = "declared already, under the same digest; nothing changed"
+
   /** What a write refused past `bound` current documents answers. */
   def full(bound: Int): String =
     s"this deployment keeps at most $bound project documents and holds that many already, " +

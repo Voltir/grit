@@ -87,7 +87,7 @@ private[plugin] final class MethodCommands(checks: Vector[TransitionCheck], meth
             readBack(document).flatMap(was =>
               Either.cond(
                 was.method.digest == method.digest,
-                s"The $named is declared already, under the same digest; nothing changed.",
+                s"The $named is ${Projects.DeclaredAlready}.",
                 Stop.Refused(
                   s"The $named is declared already, under digest ${was.method.digest.hex}, and a " +
                     s"version never changes: declare this one as version ${method.version + 1}."
