@@ -303,7 +303,7 @@ object KeptBriefTests extends TestSuite {
     ) {
       val (projects, store) = claimedProject()
       // At the claim's own instant, where a claim made anew is not told from the one renewed.
-      val answer = askBy(CommandBy.Direct(person), at, Clearance.of(TestLabels.Trial))(
+      val answer = askBy(direct(), at, Clearance.of(TestLabels.Trial))(
         projects,
         store,
         "project_keep",

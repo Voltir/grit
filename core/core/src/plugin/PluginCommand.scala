@@ -90,7 +90,11 @@ object KeepingCommand {
   * answering them ([[Turn]]).
   */
 enum CommandBy extends caps.Pure {
-  case Direct(person: Principal.Person)
+
+  /** `believed`: the integrity its caller's words are believed at, met with nothing: the room's
+    * cap is the keeper's.
+    */
+  case Direct(person: Principal.Person, believed: Integrity)
   case Turn(person: Principal.Person, turn: TurnRef)
 
   def person: Principal.Person

@@ -7,8 +7,9 @@ import grit.core.id.{ConversationId, TurnRef, TurnSeq}
 import grit.core.identity.Principal
 import grit.core.plugin.{CommandBy, CommandOutcome}
 import grit.core.tool.{ArgsError, ToolName}
+import grit.core.visibility.Integrity
 import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
-import grit.projects.method.MethodFixtures
+import grit.projects.method.{MethodFixtures, Movers}
 import grit.projects.name.{ArtifactKey, Pin, ProjectKey}
 import grit.projects.render.{Brief, ProjectMarkdown}
 
@@ -24,6 +25,17 @@ object ProjectCommandsTests extends TestSuite {
     plugin(TurnCommands.Proposing(MethodFixtures.change.name))
 
   /** Keeps note `p/<local>`, titled `Title <local>`, under `parent`. */
+  /** The fixtures' method, a change made done only by people. */
+  private val peopleFinish = method(transitions.map { t =>
+    if (t.to == state("done")) t.copy(movers = Movers.People) else t
+  })
+
+  /** What a move only people make answers when it is not a person's. */
+  private val peopleOnly =
+    "p/a cannot move to done here: that move is made only by someone believed at Authority " +
+      "giving the command directly, never through a turn or a session believed lower; ask the " +
+      "person to make it"
+
   private def under(projects: Projects, store: Store, local: String, parent: String): Unit =
     done(
       ask(
@@ -92,19 +104,20 @@ object ProjectCommandsTests extends TestSuite {
       assert(text.contains(writer))
     }
 
-    test("a turn's move to a guarded state is refused and a person's is not") {
-      val guarded = Set((MethodFixtures.change.name, state("done")))
-      val projects = plugin(TurnCommands.Shipped(guarded))
-      val store = Store()
+    test(
+      "a move only people make is refused through a turn and below Authority, and made at it"
+    ) {
+      val projects = plugin()
+      val store = Store(declared = Vector(peopleFinish))
       started(projects, store)
       kept(projects, store, "a", "change", "## Why\n\nBecause.")
       val turn = CommandBy.Turn(person, TurnRef(ConversationId("c7"), TurnSeq(5)))
       def move(who: CommandBy, to: String) =
         askBy(who)(projects, store, "project_move", "key" -> "p/a", "state" -> to)
       val building = move(turn, "building")
-      val refused = move(turn, "done")
+      val refused = (move(turn, "done"), move(CommandBy.Direct(person, Integrity.Member), "done"))
       val stayed = shown(projects, store, "p/a").contains("state: building")
-      val personal = move(CommandBy.Direct(person), "done")
+      val personal = move(direct(), "done")
       (
         building.getClass,
         refused,
@@ -114,9 +127,7 @@ object ProjectCommandsTests extends TestSuite {
           .contains("state: done")
       ) ==> (
         classOf[CommandOutcome.Done],
-        CommandOutcome.Refused(
-          "A turn cannot move p/a (change) to done: only a person can, and not by asking a turn."
-        ),
+        (CommandOutcome.Refused(peopleOnly), CommandOutcome.Refused(peopleOnly)),
         true,
         classOf[CommandOutcome.Done],
         true
@@ -124,11 +135,10 @@ object ProjectCommandsTests extends TestSuite {
     }
 
     test(
-      "a turn's batch moving to a guarded state is refused, naming the step, and keeps nothing"
+      "a turn's batch with a move only people make is refused, naming the step, and keeps nothing"
     ) {
-      val guarded = Set((MethodFixtures.change.name, state("done")))
-      val projects = plugin(TurnCommands.Shipped(guarded))
-      val store = Store()
+      val projects = plugin()
+      val store = Store(declared = Vector(peopleFinish))
       started(projects, store)
       kept(projects, store, "a", "change", "## Why\n\nBecause.")
       def step(to: String) = ujson.Obj("command" -> "move", "key" -> "p/a", "state" -> to)
@@ -141,8 +151,7 @@ object ProjectCommandsTests extends TestSuite {
       )
       (refused, shown(projects, store, "p/a").contains("state: proposed")) ==> (
         CommandOutcome.Refused(
-          "Nothing was kept: step 2 of 2 (move p/a to done) was refused: A turn cannot move p/a " +
-            "(change) to done: only a person can, and not by asking a turn."
+          s"Nothing was kept: step 2 of 2 (move p/a to done) was refused: $peopleOnly"
         ),
         true
       )

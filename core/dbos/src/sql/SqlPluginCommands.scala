@@ -58,7 +58,7 @@ private[dbos] final class SqlPluginCommands(
     commanded.find(_.command.spec.name == name) match {
       case None => Left(CommandError.Unknown(name))
       case Some(Commanded.Reading(plugin, command)) =>
-        reading(command, plugin, by, room, name, args, at)
+        reading(command, plugin, by, room, believed, name, args, at)
       case Some(Commanded.Keeping(plugin, terms, command)) =>
         keeping(command, plugin, terms, by, room, believed, name, args, at)
     }
@@ -68,6 +68,7 @@ private[dbos] final class SqlPluginCommands(
       plugin: PluginName,
       by: Account,
       room: Place,
+      believed: Integrity,
       name: ToolName,
       args: ujson.Value,
       at: Instant
@@ -76,7 +77,7 @@ private[dbos] final class SqlPluginCommands(
       case Left(e) => Left(CommandError.Unread(name, e.message))
       case Right(a) =>
         transaction(by, room, name, keeps = false)((person, tx) =>
-          command.run(a, CommandBy.Direct(person), reads(plugin), at)(using tx)
+          command.run(a, CommandBy.Direct(person, believed), reads(plugin), at)(using tx)
         )
     }
 
@@ -95,7 +96,7 @@ private[dbos] final class SqlPluginCommands(
       case Left(e) => Left(CommandError.Unread(name, e.message))
       case Right(a) =>
         transaction(by, room, name, keeps = !command.onlyReads) { (person, tx) =>
-          val asker = CommandBy.Direct(person)
+          val asker = CommandBy.Direct(person, believed)
           KeepingCommand.run(
             command,
             a,

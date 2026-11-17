@@ -81,9 +81,12 @@ Consequences:
   its pinned version until `project_migrate` moves it, renaming kinds and states as asked.
 - A check needing a parameter is a compiled check of its own until checks take arguments.
 - OpenSpec and the elephant-goldfish model, written as method data, show what it cannot say: a
-  section by pattern, a merge removing a section or below `##`, and a goldfish's freshness. Who
-  may make a transition becomes method data in its turn (a transition only a caller believed at
-  `Authority` makes); until then a deployment guards states through `TurnCommands`.
+  section by pattern, a merge removing a section or below `##`, and a goldfish's freshness.
+  *Revised:* who may make a transition is method data: a transition of `Movers.People` is made
+  only by a caller giving the command directly and believed at `Authority` (ADR 0062's proxy,
+  not an identity), and a worked example states it (`Expect.RefusedPersonOnly`). A turn, or a
+  session believed lower, moves as an agent. `TurnCommands` says only which commands a turn is
+  offered.
 - Export, import and restore are one function pair for a project, and one for a method, so a
   backup is checked by reading it. A restore declares the methods first, from their files, then
   restores the projects that pin them.

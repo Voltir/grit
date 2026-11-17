@@ -18,7 +18,7 @@ import grit.core.tool.ToolName
 import grit.core.visibility.Integrity
 import grit.core.visibility.{Clearance, Label, Level}
 import grit.dbos.sql.LiveDb
-import grit.projects.method.{ArtifactKind, Method, MethodFixtures, TransitionChecks}
+import grit.projects.method.{ArtifactKind, Method, MethodFixtures, Movers, TransitionChecks}
 import grit.projects.plugin.{CommandFixtures, Projects}
 
 import utest.*
@@ -164,14 +164,13 @@ object ProjectsLiveTests extends TestSuite {
             at
           )
           val lower = CommandOutcome.Refused(
-            "The method grit version 1 is refused: a method is declared only by a caller " +
-              "believed at Authority, and here you are not."
+            "A method is declared only by a caller believed at Authority, giving the command " +
+              "directly; never through a turn, or by a session believed lower."
           )
-          (
-            declare(desk, Integrity.Member),
-            declare(team, Integrity.Authority),
-            kept(config, engine, Projects.Name)
-          ) ==> (Right(lower), Right(lower), Vector())
+          (declare(desk, Integrity.Member), kept(config, engine, Projects.Name)) ==> (
+            Right(lower),
+            Vector()
+          )
           declared(commands)
           (
             ran(commands, ann, desk, ToolName("project_new"), "project" -> "p").map(_.getClass),
@@ -200,6 +199,56 @@ object ProjectsLiveTests extends TestSuite {
           )
           kept(config, engine, Projects.Name).take(1) ==> Vector(
             ("grit@1", "internal", "authority")
+          )
+      }
+    }
+
+    test(
+      "a move only people make is refused for a session believed below Authority, and made at it"
+    ) {
+      CommandRooms.commanding("projects_people", _ => Vector(CommandFixtures.plugin())) {
+        (_, _, commands) =>
+          declared(
+            commands,
+            CommandFixtures.method(MethodFixtures.transitions.map { t =>
+              if (t.to == MethodFixtures.state("done")) t.copy(movers = Movers.People) else t
+            })
+          )
+          def move(believed: Integrity, to: String) = commands.run(
+            ann,
+            desk,
+            believed,
+            ToolName("project_move"),
+            ujson.Obj("key" -> "p/a", "state" -> to),
+            at
+          )
+          (
+            ran(commands, ann, desk, ToolName("project_new"), "project" -> "p").map(_.getClass),
+            ran(
+              commands,
+              ann,
+              desk,
+              ToolName("project_keep"),
+              "key" -> "p/a",
+              "kind" -> "change",
+              "title" -> "A",
+              "body" -> "## Why\n\nBecause."
+            ).map(_.getClass)
+          ) ==> (Right(classOf[CommandOutcome.Done]), Right(classOf[CommandOutcome.Done]))
+          (
+            move(Integrity.Member, "building"),
+            move(Integrity.Member, "done"),
+            move(Integrity.Authority, "done")
+          ) ==> (
+            Right(CommandOutcome.Done("Moved p/a (change, building).")),
+            Right(
+              CommandOutcome.Refused(
+                "p/a cannot move to done here: that move is made only by someone believed at " +
+                  "Authority giving the command directly, never through a turn or a session " +
+                  "believed lower; ask the person to make it"
+              )
+            ),
+            Right(CommandOutcome.Done("Moved p/a (change, done)."))
           )
       }
     }

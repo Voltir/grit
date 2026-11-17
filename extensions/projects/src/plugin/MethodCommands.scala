@@ -13,10 +13,18 @@ import grit.core.plugin.{CommandBy, CommandOutcome, KeepingCommand, ReadingComma
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Args, ArgsError, Field, ToolName, ToolSpec}
 import grit.core.visibility.{Integrity, Label}
-import grit.projects.method.{Declared, Example, Method, MethodBench, MethodJson, TransitionCheck}
+import grit.projects.method.{
+  Declared,
+  Example,
+  Method,
+  MethodBench,
+  MethodJson,
+  Mover,
+  TransitionCheck
+}
 import grit.projects.name.{CheckName, MethodName, StateName}
 
-import ProjectCommands.{Stop, answered, parsed, refusal, refuse, stored, written}
+import ProjectCommands.{Stop, answered, moverOf, parsed, refusal, refuse, stored, written}
 import MethodCommands.{Asking, Declaring}
 
 /** `project_declare` and `project_methods`, and the method versions every other command reads:
@@ -185,20 +193,20 @@ private[plugin] final class MethodCommands(checks: Vector[TransitionCheck]) exte
       was <- readBack(document)
     } yield was.method
 
-  /** Nothing when `by` asks directly; a refusal when through a turn. */
-  private def direct(by: CommandBy): Either[Stop, Unit] = by match {
-    case CommandBy.Direct(_) => Right(())
-    case CommandBy.Turn(_, _) =>
+  /** Nothing when `by` moves as [[Mover.Person]] ([[ProjectCommands.moverOf]]); else a refusal. */
+  private def direct(by: CommandBy): Either[Stop, Unit] = moverOf(by) match {
+    case Mover.Person => Right(())
+    case Mover.Agent =>
       Left(
         Stop.Refused(
-          "A method is declared only directly, by a caller believed at Authority, never through a turn."
+          "A method is declared only by a caller believed at Authority, giving the command " +
+            "directly; never through a turn, or by a session believed lower."
         )
       )
   }
 
   /** Keeps `declared` as its version's document, answering `named` declared; refused, keeping
-    * nothing, when it would be believed below `Authority` (the asker's words, met with their
-    * room's cap) or its JSON is over [[Document.DataMost]].
+    * nothing, when its JSON is over [[Document.DataMost]].
     */
   private def kept(own: DocumentKeeper, declared: Declared, named: String, at: Instant)(using
       Tx^
@@ -214,7 +222,7 @@ private[plugin] final class MethodCommands(checks: Vector[TransitionCheck]) exte
         DocText.of(s"Method ${MethodName.value(method.name)} version ${method.version}.")
       )
       refs <- refuse(MethodCommands.refs(method.name))
-      wrote <- written(
+      _ <- written(
         own.write(
           key,
           Label.Public,
@@ -225,18 +233,6 @@ private[plugin] final class MethodCommands(checks: Vector[TransitionCheck]) exte
           None,
           at,
           refs
-        )
-      )
-      // The keeper believes a write at no more than its asker (ADR 0062's proxy, met with the
-      // room's cap): what it kept says whether they are believed at Authority. A refusal is
-      // never committed, so nothing of this write stays.
-      believed <- stored(own.current(key, wrote.kept)).map(_.map(_.integrity))
-      _ <- Either.cond(
-        believed.exists(_.dominates(Integrity.Authority)),
-        (),
-        Stop.Refused(
-          s"The $named is refused: a method is declared only by a caller believed at Authority, " +
-            "and here you are not."
         )
       )
     } yield s"Declared the $named, digest ${method.digest.hex}."

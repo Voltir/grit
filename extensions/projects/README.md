@@ -36,8 +36,7 @@ Packages, in one-way order (each names only those before it):
   `MethodCommands`, `project_declare` and `project_methods`, over the methods the plugin keeps
   (each version a document of its own under `<name>@<version>`, declared once its examples
   replay, never changed or withdrawn), which every other command reads in its transaction;
-  `TurnCommands`, which of them a turn is offered and the states only a person moves an
-  artifact to; and `Projects.reaching`, the watch an edge waits on an
+  `TurnCommands`, which of them a turn is offered; and `Projects.reaching`, the watch an edge waits on an
   artifact's state with (ADR 0051). Imports every package before it.
 
 No source file sits at the module's root.

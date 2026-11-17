@@ -10,7 +10,7 @@ import grit.core.need.PluginReads
 import grit.core.plugin.{CommandBy, CommandOutcome, InMemoryPlugins, KeepingCommand, ReadingCommand}
 import grit.core.store.Tx
 import grit.core.tool.ToolName
-import grit.core.visibility.{Clearance, Label}
+import grit.core.visibility.{Clearance, Integrity, Label}
 import grit.dbos.sql.TestTx
 import grit.projects.method.{
   Example,
@@ -87,7 +87,7 @@ object CommandFixtures {
       .fold(e => throw new java.lang.AssertionError(e.toString), identity)
   }
 
-  def plugin(turns: TurnCommands = TurnCommands.Unguarded): Projects =
+  def plugin(turns: TurnCommands = TurnCommands.Shipped): Projects =
     Projects
       .of(TransitionChecks.all, methodName, turns)
       .fold(e => throw new java.lang.AssertionError(e.toString), identity)
@@ -136,7 +136,11 @@ object CommandFixtures {
       store: Store,
       name: String,
       args: (String, ujson.Value)*
-  ): CommandOutcome = askBy(CommandBy.Direct(who), when)(projects, store, name, args*)
+  ): CommandOutcome = askBy(direct(who), when)(projects, store, name, args*)
+
+  /** `who` giving a command directly, believed at `Authority`, as the local operator is. */
+  def direct(who: Principal.Person = person): CommandBy =
+    CommandBy.Direct(who, Integrity.Authority)
 
   /** As [[ask]], asked for `who` at `when`, from a room `cleared` (public unless given). */
   def askBy(who: CommandBy, when: Instant = at, cleared: Clearance = Clearance.of(Label.Public))(
@@ -157,7 +161,7 @@ object CommandFixtures {
   def askThrough(
       keeper: DocumentKeeper,
       claims: Claims,
-      who: CommandBy = CommandBy.Direct(person),
+      who: CommandBy = direct(),
       when: Instant = at,
       cleared: Clearance = Clearance.of(Label.Public)
   )(

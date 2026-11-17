@@ -53,7 +53,7 @@ object MigrateTests extends TestSuite {
       cleared: Clearance,
       more: (String, ujson.Value)*
   ): CommandOutcome =
-    askBy(CommandBy.Direct(other), later, cleared)(
+    askBy(direct(other), later, cleared)(
       both,
       store,
       "project_migrate",

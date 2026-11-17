@@ -1,6 +1,5 @@
 package grit.projects.plugin
 
-import grit.core.document.DocumentKeeper
 import grit.core.id.{ConversationId, Sha256, TurnRef, TurnSeq}
 import grit.core.place.Place
 import grit.core.plugin.{CommandBy, CommandOutcome}
@@ -52,6 +51,11 @@ object DeclareTests extends TestSuite {
     )
   }
 
+  /** What a declaration answers when its caller is not believed at Authority, giving it directly. */
+  private val byAuthority =
+    "A method is declared only by a caller believed at Authority, giving the command directly; " +
+      "never through a turn, or by a session believed lower."
+
   /** `p`'s index rewritten to pin [[methodName]] at `version` under `digest`. */
   private def repinned(store: Store, version: Int, digest: Sha256): Unit = {
     val (key, text, data, refs) = right(
@@ -88,23 +92,15 @@ object DeclareTests extends TestSuite {
         0
       )
     }
-    test("a declaration through a turn, or believed below Authority, is refused") {
+    test("a declaration through a turn, or believed below Authority, is refused, keeping nothing") {
       val store = Store(declared = Vector.empty)
       val turn = CommandBy.Turn(person, TurnRef(ConversationId("c7"), TurnSeq(5)))
-      val member = DocumentKeeper.believedAtMost(store.keeper, Integrity.Member)
+      val member = CommandBy.Direct(person, Integrity.Member)
       (
         askBy(turn)(plugin(), store, "project_declare", declaring(method())),
-        askThrough(member, store.claims)(plugin(), store, "project_declare", declaring(method()))
-      ) ==> (
-        CommandOutcome.Refused(
-          "A method is declared only directly, by a caller believed at Authority, never through " +
-            "a turn."
-        ),
-        CommandOutcome.Refused(
-          "The method grit version 1 is refused: a method is declared only by a caller " +
-            "believed at Authority, and here you are not."
-        )
-      )
+        askBy(member)(plugin(), store, "project_declare", declaring(method())),
+        store.count
+      ) ==> (CommandOutcome.Refused(byAuthority), CommandOutcome.Refused(byAuthority), 0)
     }
     test("a version declared again under its digest changes nothing; under another is refused") {
       val store = Store()

@@ -59,7 +59,7 @@ private[plugin] final class ProjectCommands(
 
   /** Whether turns are offered the shipped commands, not `project_propose` alone. */
   private val shipped: Boolean = turns match {
-    case TurnCommands.Shipped(_) => true
+    case TurnCommands.Shipped => true
     case TurnCommands.Proposing(_) => false
   }
 
@@ -67,7 +67,7 @@ private[plugin] final class ProjectCommands(
   def all: Vector[PluginCommand[?]] = {
     val proposing = turns match {
       case TurnCommands.Proposing(kind) => Vector(new Propose(kind))
-      case TurnCommands.Shipped(_) => Vector.empty
+      case TurnCommands.Shipped => Vector.empty
     }
     Vector(
       New,
@@ -299,14 +299,6 @@ private[plugin] final class ProjectCommands(
       }
   }
 
-  /** The states, each with a kind, into which `by` may not move an artifact of that kind: those
-    * `turns` guards when `by` is a turn; none for a person.
-    */
-  private def guarding(by: CommandBy): Set[(KindName, StateName)] = (turns, by) match {
-    case (TurnCommands.Shipped(guarded), CommandBy.Turn(_, _)) => guarded
-    case _ => Set.empty
-  }
-
   /** `project_batch`. */
   object Batch extends KeepingCommand[Batching] {
 
@@ -415,7 +407,7 @@ private[plugin] final class ProjectCommands(
         held <- if (args.dry) Right(Vector.empty) else holding(claims, args.project, at)
         project <- loaded(own, args.project)
         method <- declared(own, project.pin)
-        plan = planned(project, method, args.steps, author(by), guarding(by), onward = args.dry)
+        plan = planned(project, method, args.steps, author(by), moverOf(by), onward = args.dry)
         (said, steps) = plan
         answers <- Traversal.traverse(said.zipWithIndex) {
           case (Right(answer), i) => Right(s"${i + 1}. $answer")
@@ -1479,7 +1471,7 @@ private[plugin] final class ProjectCommands(
       project <- loaded(own, key)
       _ <- admits(project)
       method <- declared(own, project.pin)
-      plan = planned(project, method, Vector(step), author(by), guarding(by), onward = false)
+      plan = planned(project, method, Vector(step), author(by), moverOf(by), onward = false)
       (said, steps) = plan
       answer <- said.headOption.toRight(Stop.Refused("nothing was asked")).flatten
       _ <- settled(claims, project, method, key, steps, at, verb)
@@ -2041,16 +2033,16 @@ private[plugin] object ProjectCommands {
       extends caps.Pure
 
   /** `steps` over `project`, each as its command would take it and seeing what those before it
-    * did, written as `writer`, a move into a state `guarded` pairs with its artifact's kind
-    * refused ([[Projects.guardedMove]]): each step's answer or refusal, in order, and what they
-    * made of it. A refused step changes nothing; past one, the rest are taken only when `onward`.
+    * did, written as `writer` and moved by `mover`: each step's answer or refusal, in order, and
+    * what they made of it. A refused step changes nothing; past one, the rest are taken only when
+    * `onward`.
     */
   private def planned(
       project: Loaded,
       method: Method,
       steps: Vector[Step],
       writer: String,
-      guarded: Set[(KindName, StateName)],
+      mover: Mover,
       onward: Boolean
   ): (Vector[Either[Stop, String]], Stepping) =
     steps.foldLeft(
@@ -2059,13 +2051,13 @@ private[plugin] object ProjectCommands {
       val (said, now) = sofar
       if (!onward && said.exists(_.isLeft)) sofar
       else
-        stepped(project, method, now, step, writer, guarded) match {
+        stepped(project, method, now, step, writer, mover) match {
           case Right((next, answer)) => (said :+ Right(answer), next)
           case Left(why) => (said :+ Left(why), now)
         }
     }
 
-  /** `step` taken over `now`, from `project` as loaded, written as `writer`, `guarded` as
+  /** `step` taken over `now`, from `project` as loaded, written as `writer`, `mover` as
     * [[planned]] takes it: what it makes of `now` and its answer, or why it is refused, as
     * `project_keep` or `project_move` refuses.
     */
@@ -2075,7 +2067,7 @@ private[plugin] object ProjectCommands {
       now: Stepping,
       step: Step,
       writer: String,
-      guarded: Set[(KindName, StateName)]
+      mover: Mover
   ): Either[Stop, (Stepping, String)] = {
     def changing(changed: Vector[Artifact]): Stepping = {
       val keys = changed.map(_.head.key)
@@ -2140,11 +2132,6 @@ private[plugin] object ProjectCommands {
         } yield (next, s"Kept ${headed(artifact.head)}.")
       case Step.Move(args) =>
         for {
-          _ <- now.artifacts.find(_.head.key == args.key).map(_.head.kind) match {
-            case Some(kind) if guarded((kind, args.to)) =>
-              Left(Stop.Refused(Projects.guardedMove(args.key, kind, args.to)))
-            case _ => Right(())
-          }
           _ <- Either.cond(
             method.digest == project.pin.digest,
             (),
@@ -2154,7 +2141,7 @@ private[plugin] object ProjectCommands {
             .find(_.head.key == args.key)
             .toRight(lacking(args.key, now.artifacts))
           done <- method
-            .move(now.artifacts, args.key, args.to, Mover.Person)
+            .move(now.artifacts, args.key, args.to, mover)
             .left
             .map(r => Stop.Refused(refusal(r)))
           moved = Artifact(done.artifact.head.copy(by = Some(writer)), done.artifact.body)
@@ -2461,10 +2448,18 @@ private[plugin] object ProjectCommands {
     * that wrote for them when one did.
     */
   private def author(by: CommandBy): String = by match {
-    case CommandBy.Direct(person) => accounts(person)
+    case CommandBy.Direct(person, _) => accounts(person)
     case CommandBy.Turn(person, turn) =>
       s"${accounts(person)}, through grit (turn ${TurnSeq.value(turn.turnSeq)} of conversation " +
         s"${ConversationId.value(turn.conversationId)})"
+  }
+
+  /** Who `by` moves as: [[Mover.Person]] when giving the command directly, believed at
+    * `Authority`; [[Mover.Agent]] through a turn or believed lower.
+    */
+  private[plugin] def moverOf(by: CommandBy): Mover = by match {
+    case CommandBy.Direct(_, believed) if believed.dominates(Integrity.Authority) => Mover.Person
+    case _ => Mover.Agent
   }
 
   /** Who `person` is, as a claim or a writer names them: each of their accounts, sorted. */

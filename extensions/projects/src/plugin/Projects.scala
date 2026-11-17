@@ -8,7 +8,7 @@ import grit.core.id.{DocKey, PluginName}
 import grit.core.plugin.{DocumentPosting, Documents, Plugin, PluginCommand}
 import grit.projects.artifact.ArtifactJson
 import grit.projects.method.{MethodRefusal, TransitionCheck}
-import grit.projects.name.{ArtifactKey, KindName, MethodName, StateName}
+import grit.projects.name.{ArtifactKey, MethodName, StateName}
 
 /** The projects plugin (ADR 0049): projects of the methods declared through `project_declare`
   * (each version a document of its own, never withdrawn, and read by every command from the store
@@ -34,8 +34,8 @@ import grit.projects.name.{ArtifactKey, KindName, MethodName, StateName}
   * and the reading `project_show`, `project_history`, `project_list`, `project_find`
   * (ended artifacts only when asked), `project_stale` (what no live work names, untouched for
   * weeks), `project_export`, `project_claims`, `project_brief` and `project_methods`. Each write records its writer
-  * as the artifact's `by`, and a claim its claimer. Which of them a turn is offered, and what a
-  * turn may not do with them, is `turns`'s.
+  * as the artifact's `by`, and a claim its claimer. Which of them a turn is offered is `turns`'s;
+  * who may make each move, its method's.
   */
 final class Projects private (
     checks: Vector[TransitionCheck],
@@ -86,7 +86,7 @@ object Projects {
   def of(
       checks: Vector[TransitionCheck],
       default: MethodName,
-      turns: TurnCommands = TurnCommands.Unguarded
+      turns: TurnCommands = TurnCommands.Shipped
   ): Either[MethodRefusal.CheckTwice, Projects] = {
     val names = checks.map(_.name)
     names
@@ -104,13 +104,6 @@ object Projects {
 
   /** The states a watch from [[reaching]] was met in: those of its refs that name one. */
   def reached(held: Watched.Held): Set[StateName] = held.refs.flatMap(ArtifactJson.stateOf)
-
-  /** Why a turn's move of `key`, of `kind`, to `state` is refused, when [[TurnCommands]] guards
-    * that state.
-    */
-  def guardedMove(key: ArtifactKey, kind: KindName, state: StateName): String =
-    s"A turn cannot move ${key.value} (${KindName.value(kind)}) to ${StateName.value(state)}: " +
-      "only a person can, and not by asking a turn."
 
   private object Kept extends Documents {
     val terms: DocumentTerms = Terms
