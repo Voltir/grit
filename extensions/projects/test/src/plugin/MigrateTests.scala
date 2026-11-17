@@ -3,7 +3,7 @@ package grit.projects.plugin
 import java.time.Instant
 
 import grit.core.id.{DocKey, DocumentVersionId}
-import grit.core.plugin.{CommandBy, CommandOutcome}
+import grit.core.plugin.CommandOutcome
 import grit.core.visibility.{Clearance, Label, TestLabels}
 import grit.projects.method.{ArtifactKind, Method, MethodFixtures, TransitionChecks}
 import grit.projects.name.KindName

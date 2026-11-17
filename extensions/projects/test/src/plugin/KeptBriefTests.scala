@@ -7,7 +7,7 @@ import grit.core.document.{DocRef, DocText, Document, DocumentKeeper}
 import grit.core.id.{ClaimHolder, DocKey}
 import grit.core.identity.Principal
 import grit.core.place.Place
-import grit.core.plugin.{CommandBy, CommandOutcome}
+import grit.core.plugin.CommandOutcome
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.{Clearance, Integrity, Label, TestLabels}
 import grit.projects.method.{Method, MethodFixtures, RoleView}
