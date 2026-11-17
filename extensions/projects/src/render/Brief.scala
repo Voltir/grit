@@ -36,10 +36,16 @@ enum BriefRefusal extends caps.Pure {
   * kinds are cited, and none it carries. Pointers replace the farthest whole
   * citations first; then each pointer, nearest first, is given whole again if it still fits.
   * `pointed` lists the keys shown as pointers, and a citation that does not fit even as a
-  * pointer is left out.
+  * pointer is left out. `shows` lists every artifact whose words the text holds, whole or as a
+  * pointer, in the order it shows them: `artifact`, each carried, then each cited; what is
+  * made from them is believed at no more than the least of them.
   */
-final case class Brief private (artifact: ArtifactKey, text: String, pointed: Vector[ArtifactKey])
-    extends caps.Pure
+final case class Brief private (
+    artifact: ArtifactKey,
+    text: String,
+    pointed: Vector[ArtifactKey],
+    shows: Vector[ArtifactKey]
+) extends caps.Pure
 
 object Brief {
 
@@ -71,6 +77,7 @@ object Brief {
           Right(
             fit(
               judged,
+              carried.map(_.head.key),
               ownText,
               reach(project, judged, view).filterNot(c => held(c._1.head.key)),
               chars
@@ -170,6 +177,7 @@ object Brief {
 
   private def fit(
       judged: ArtifactKey,
+      carried: Vector[ArtifactKey],
       ownText: String,
       cited: Vector[(Artifact, Int)],
       chars: Int
@@ -179,7 +187,8 @@ object Brief {
     new Brief(
       judged,
       render(ownText, kept),
-      kept.collect { case (a, false) => a.head.key }
+      kept.collect { case (a, false) => a.head.key },
+      (judged +: carried) ++ kept.map(_._1.head.key)
     )
   }
 }

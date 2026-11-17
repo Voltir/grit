@@ -283,7 +283,8 @@ private[plugin] final class ProjectCommands(
               .left
               .map(why => Stop.Refused(s"${key.value} cannot be edited: $why"))
           } yield Step.Keep(
-            Keeping(key, None, current._2.head.title, body, None, None, Some(args.version))
+            Keeping(key, None, current._2.head.title, body, None, None, Some(args.version)),
+            Whose.Carried
           )
         }
         // An edit that changes nothing writes nothing, and the version given is current.
@@ -557,7 +558,7 @@ private[plugin] final class ProjectCommands(
     /** Step `i` of `steps` in a few words: `keep <key>`, or `move <key> to <state>`. */
     private def described(steps: Vector[Step], i: Int): String =
       steps.lift(i).fold("") {
-        case Step.Keep(k) => s"keep ${k.key.value}"
+        case Step.Keep(k, _) => s"keep ${k.key.value}"
         case Step.Move(m) => s"move ${m.key.value} to ${StateName.value(m.to)}"
       }
   }
@@ -1079,7 +1080,7 @@ private[plugin] final class ProjectCommands(
         // The role has a view and the artifact is the project's, so the claim has its brief.
         unkept <- rendered(method, whole, Vector(made)).headOption
           .toRight(Stop.Refused(s"$key has no brief as ${RoleName.value(args.role)}"))
-          .flatMap(briefed(own, _, document.place, at))
+          .flatMap(briefed(own, _, document.place, after, at))
       } yield AnswerText.claimed(
         s"Claimed ${headed(a.head)} as ${RoleName.value(args.role)} for $holder.",
         unkept
@@ -1458,13 +1459,18 @@ private[plugin] final class ProjectCommands(
           "migrate"
         )
         writer = Some(author(by))
-        labels = project.documents.map((d, a) => a.head.key -> d.label).toMap
+        before = project.documents.map((d, a) => a.head.key -> d).toMap
         _ <- done.project.artifacts
           .filter(a => renamed(a.head.key))
           .foldLeft[Either[Stop, Unit]](Right(())) { (so, a) =>
             so.flatMap(_ =>
-              kept(own, Artifact(a.head.copy(by = writer), a.body), labels.get(a.head.key), at)
-                .map(_ => ())
+              kept(
+                own,
+                Artifact(a.head.copy(by = writer), a.body),
+                before.get(a.head.key),
+                Whose.Carried,
+                at
+              ).map(_ => ())
             )
           }
         rewritten <- refuse(ArtifactJson.index(args.project, done.project.pin, author(by)))
@@ -1639,10 +1645,10 @@ private[plugin] final class ProjectCommands(
         m <- method
         whole <- Project.of(key, p.pin, p.artifacts).toOption
       } yield rendered(m, whole, held).flatMap(r =>
-        p.documents.find(_._2.head.key == r.key).map(d => r -> d._1.place)
+        p.documents.find(_._2.head.key == r.key).map(d => (r, d._1.place, p))
       )).getOrElse(Vector.empty)
       _ <- Traversal
-        .traverse(briefs)((r, place) => briefed(own, r, place, at))
+        .traverse(briefs)((r, place, p) => briefed(own, r, place, p, at))
         .map((_: Vector[Option[String]]) => ())
     } yield ()
 
@@ -1740,7 +1746,7 @@ private[plugin] object ProjectCommands {
     def of(project: ProjectKey, steps: Vector[Step], dry: Boolean): Either[String, Batching] = {
       val outside = steps.zipWithIndex
         .map {
-          case (Step.Keep(k), i) => (k.key, i)
+          case (Step.Keep(k, _), i) => (k.key, i)
           case (Step.Move(m), i) => (m.key, i)
         }
         .filterNot(_._1.project == project)
@@ -1783,8 +1789,15 @@ private[plugin] object ProjectCommands {
 
   /** One step of `project_batch`, read as its command reads its arguments. */
   enum Step extends caps.Pure {
-    case Keep(args: Keeping)
+    case Keep(args: Keeping, whose: Whose = Whose.Caller)
     case Move(args: Moving)
+  }
+
+  /** Whose words a kept body is: wholly its caller's, as `project_keep` gives it; or the version
+    * before's, carried forward with a part its caller changed, as `project_edit` makes it.
+    */
+  enum Whose extends caps.Pure {
+    case Caller, Carried
   }
 
   /** What `project_keep`'s fields mean, said once for it and for a batch's keeps. */
@@ -2165,11 +2178,15 @@ private[plugin] object ProjectCommands {
     }
   }
 
-  /** What steps have made of a loaded project so far: its artifacts, and the keys of those they
-    * changed, in the order first changed.
+  /** What steps have made of a loaded project so far: its artifacts, the keys of those they
+    * changed, in the order first changed, and the keys of those whose every word their caller
+    * wrote ([[Whose.Caller]]).
     */
-  private final case class Stepping(artifacts: Vector[Artifact], changed: Vector[ArtifactKey])
-      extends caps.Pure
+  private final case class Stepping(
+      artifacts: Vector[Artifact],
+      changed: Vector[ArtifactKey],
+      callers: Set[ArtifactKey]
+  ) extends caps.Pure
 
   /** `steps` over `project`, each as its command would take it and seeing what those before it
     * did, written as `writer` and moved by `mover`: each step's answer or refusal, in order, and
@@ -2185,7 +2202,7 @@ private[plugin] object ProjectCommands {
       onward: Boolean
   ): (Vector[Either[Stop, String]], Stepping) =
     steps.foldLeft(
-      (Vector.empty[Either[Stop, String]], Stepping(project.artifacts, Vector.empty))
+      (Vector.empty[Either[Stop, String]], Stepping(project.artifacts, Vector.empty, Set.empty))
     ) { (sofar: (Vector[Either[Stop, String]], Stepping), step: Step) =>
       val (said, now) = sofar
       if (!onward && said.exists(_.isLeft)) sofar
@@ -2208,16 +2225,17 @@ private[plugin] object ProjectCommands {
       writer: String,
       mover: Mover
   ): Either[Stop, (Stepping, String)] = {
-    def changing(changed: Vector[Artifact]): Stepping = {
+    def changing(changed: Vector[Artifact], wrote: Set[ArtifactKey] = Set.empty): Stepping = {
       val keys = changed.map(_.head.key)
       Stepping(
         now.artifacts.map(a => changed.find(_.head.key == a.head.key).getOrElse(a)) ++
           changed.filterNot(c => now.artifacts.exists(_.head.key == c.head.key)),
-        now.changed ++ keys.filterNot(now.changed.contains)
+        now.changed ++ keys.filterNot(now.changed.contains),
+        now.callers ++ wrote
       )
     }
     step match {
-      case Step.Keep(args) =>
+      case Step.Keep(args, whose) =>
         val existing = now.artifacts.find(_.head.key == args.key)
         for {
           _ <- unchanged(
@@ -2266,7 +2284,13 @@ private[plugin] object ProjectCommands {
             ),
             body
           )
-          next = changing(Vector(artifact))
+          next = changing(
+            Vector(artifact),
+            whose match {
+              case Whose.Caller => Set(args.key)
+              case Whose.Carried => Set.empty
+            }
+          )
           _ <- refuse(Project.of(args.key.project, project.pin, next.artifacts))
         } yield (next, s"Kept ${headed(artifact.head)}.")
       case Step.Move(args) =>
@@ -2323,16 +2347,21 @@ private[plugin] object ProjectCommands {
       )
     } yield ()
 
-  /** Keeps each artifact `steps` changed through `own`, once, as they left it: at its document's
-    * label, or at public when new.
+  /** Keeps each artifact `steps` changed through `own`, once, as they left it ([[kept]]): wholly
+    * its caller's when a step wrote every word of it, else carrying its document's.
     */
   private def wrote(own: DocumentKeeper, project: Loaded, steps: Stepping, at: Instant)(using
       Tx^
   ): Either[Stop, Map[ArtifactKey, DocumentVersionId]] =
     Traversal
       .traverse(steps.changed.flatMap(k => steps.artifacts.find(_.head.key == k)))(a =>
-        kept(own, a, project.documents.find(_._2.head.key == a.head.key).map(_._1.label), at)
-          .map(a.head.key -> _)
+        kept(
+          own,
+          a,
+          project.documents.find(_._2.head.key == a.head.key).map(_._1),
+          if (steps.callers(a.head.key)) Whose.Caller else Whose.Carried,
+          at
+        ).map(a.head.key -> _)
       )
       .map(_.toMap)
 
@@ -2429,7 +2458,8 @@ private[plugin] object ProjectCommands {
     for {
       _ <- docs.uncited.foldLeft[Either[Stop, Unit]](Right(())) { case (so, (d, a)) =>
         so.flatMap(_ =>
-          kept(own, Artifact(a.head.copy(by = writer), a.body), Some(d.label), at).map(_ => ())
+          kept(own, Artifact(a.head.copy(by = writer), a.body), Some(d), Whose.Carried, at)
+            .map(_ => ())
         )
       }
       _ <- docs.gone.foldLeft[Either[Stop, Unit]](Right(())) { case (so, (d, a)) =>
@@ -2487,17 +2517,25 @@ private[plugin] object ProjectCommands {
     DocKey.of(s"${artifact.value}#brief")
 
   /** Keeps `r`'s brief through `own`, at its claim's label and at `place`, as the brief of the
-    * claim's holder ([[DocRef.brief]]), its data naming the holder, unless the one current there
-    * holds that text for that holder: `None` when it is current, else why none is, the one current
-    * there withdrawn: it is over [[DocRef.BriefChars]], or the plugin is full.
+    * claim's holder ([[DocRef.brief]]), its data naming the holder, believed at no more than the
+    * least of what it shows as `project` holds them ([[Brief.shows]]), unless the one current
+    * there holds that text for that holder believed no higher: `None` when it is current, else
+    * why none is, the one current there withdrawn: it is over [[DocRef.BriefChars]], or the
+    * plugin is full.
     */
-  private def briefed(own: DocumentKeeper, r: Rendered, place: Place, at: Instant)(using
-      Tx^
+  private def briefed(own: DocumentKeeper, r: Rendered, place: Place, project: Loaded, at: Instant)(
+      using Tx^
   ): Either[Stop, Option[String]] = {
     val over =
       f"it is over ${DocRef.BriefChars}%,d characters; shorten the artifact or what its role carries"
     val (label, holder) = (r.claim.label, r.claim.holder)
     val data = ujson.Obj(BriefHolder -> ClaimHolder.value(holder))
+    val believed = r.brief.fold(
+      _ => Integrity.Authority,
+      _.shows
+        .flatMap(k => project.documents.find(_._2.head.key == k).map(_._1.integrity))
+        .foldLeft(Integrity.Authority)(_.meet(_))
+    )
     briefKey(r.key).fold(
       _ => Right(Some(s"No brief was kept: $over.")),
       key =>
@@ -2510,12 +2548,16 @@ private[plugin] object ProjectCommands {
             ).map(_ => Some(s"No brief was kept: $why."))
           r.brief.left.map(_ => over).flatMap(b => DocText.of(b.text).left.map(_ => over)) match {
             case Left(why) => none(why)
-            case Right(text) if was.exists(d => d.text == text && d.data == data) => Right(None)
+            case Right(text)
+                if was.exists(d =>
+                  d.text == text && d.data == data && believed.dominates(d.integrity)
+                ) =>
+              Right(None)
             case Right(text) =>
               own.write(
                 key,
                 label,
-                Integrity.Authority,
+                believed,
                 place,
                 text,
                 data,
@@ -2558,10 +2600,17 @@ private[plugin] object ProjectCommands {
   /** `holder`: the key a brief's data names its holder under. */
   private val BriefHolder: String = "holder"
 
-  /** Keeps `artifact` through `own` at `label`, or at public when new: the version it is now at. */
-  private def kept(own: DocumentKeeper, artifact: Artifact, label: Option[Label], at: Instant)(using
-      Tx^
-  ): Either[Stop, DocumentVersionId] =
+  /** Keeps `artifact` through `own` at the label of `before`, its document, or at public when new:
+    * the version it is now at. It is believed at no more than `before` was unless `whose` is
+    * [[Whose.Caller]], at no more than `own` believes its caller.
+    */
+  private def kept(
+      own: DocumentKeeper,
+      artifact: Artifact,
+      before: Option[Document],
+      whose: Whose,
+      at: Instant
+  )(using Tx^): Either[Stop, DocumentVersionId] =
     for {
       document <- refuse(
         ArtifactJson
@@ -2574,8 +2623,12 @@ private[plugin] object ProjectCommands {
       write <- written(
         own.write(
           key,
-          label.getOrElse(Label.Public),
-          Integrity.Authority,
+          before.fold(Label.Public)(_.label),
+          // The keeper meets what it is given with its caller's: Authority leaves theirs alone.
+          whose match {
+            case Whose.Caller => Integrity.Authority
+            case Whose.Carried => before.fold(Integrity.Authority)(_.integrity)
+          },
           Place.Everywhere,
           text,
           data,

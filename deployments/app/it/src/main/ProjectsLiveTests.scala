@@ -318,6 +318,44 @@ object ProjectsLiveTests extends TestSuite {
     }
 
     test(
+      "a person's move of what a session kept, and the brief showing it, are believed at the session's"
+    ) {
+      CommandRooms.commanding("projects_carried", _ => Vector(atInternal)) {
+        (config, engine, commands) =>
+          declared(commands)
+          val moved = for {
+            _ <- ran(commands, ann, desk, ToolName("project_new"), "project" -> "p")
+            _ <- keep(commands, desk, "a", "A session's note.")
+            _ <- ran(
+              commands,
+              ann,
+              desk,
+              ToolName("project_claim"),
+              "key" -> "p/a",
+              "role" -> "builder",
+              "holder" -> "coder/abc"
+            )
+            moved <- commands.run(
+              ann,
+              desk,
+              Integrity.Authority,
+              ToolName("project_move"),
+              ujson.Obj("key" -> "p/a", "state" -> "closed"),
+              at
+            )
+          } yield moved
+          (moved, artifactsKept(config, engine)) ==> (
+            Right(CommandOutcome.Done("Moved p/a (note, closed).")),
+            Vector(
+              ("p", "internal", "member"),
+              ("p/a", "internal", "member"),
+              ("p/a#brief", "internal", "member")
+            )
+          )
+      }
+    }
+
+    test(
       "a projects command keeps at the room's label, believed at no more than the edge gave"
     ) {
       CommandRooms.commanding("projects_keeps", _ => Vector(atInternal)) {

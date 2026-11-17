@@ -4,9 +4,10 @@ import java.time.Instant
 
 import grit.core.claim.{Claims, InMemoryClaims}
 import grit.core.document.{Document, DocumentKeeper, DocumentTerms, InMemoryDocuments}
-import grit.core.id.ClaimHolder
+import grit.core.id.{ClaimHolder, DocKey}
 import grit.core.identity.{Principal, TestAccounts}
 import grit.core.need.PluginReads
+import grit.core.place.Place
 import grit.core.plugin.{CommandBy, CommandOutcome, InMemoryPlugins, KeepingCommand, ReadingCommand}
 import grit.core.store.Tx
 import grit.core.tool.ToolName
@@ -189,6 +190,54 @@ object CommandFixtures {
         )
       case _ => throw new java.lang.AssertionError(s"no command $name")
     }
+
+  /** As [[ask]], keeping command `name` run as an edge runs it ([[KeepingCommand.run]]) for
+    * `who` believed at `believed`, in a room no cap covers: each document it keeps believed at no
+    * more than `believed`.
+    */
+  def askBelieved(believed: Integrity, who: Principal.Person = person)(
+      projects: Projects,
+      store: Store,
+      name: String,
+      args: (String, ujson.Value)*
+  ): CommandOutcome =
+    projects.commands.find(c => ToolName.value(c.spec.name) == name) match {
+      case Some(c: KeepingCommand[a]) =>
+        c.spec.args
+          .read(ujson.Obj.from(args))
+          .fold(
+            e => throw new java.lang.AssertionError(e.message),
+            a =>
+              KeepingCommand
+                .run(
+                  c,
+                  a,
+                  CommandBy.Direct(who, believed),
+                  store.keeper,
+                  store.claims,
+                  Place.Everywhere,
+                  believed,
+                  at
+                )(using TestTx.fake)
+                .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+          )
+      case _ => throw new java.lang.AssertionError(s"no keeping command $name")
+    }
+
+  /** How far the current document of `key` at public is believed, as [[Integrity.written]]
+    * writes it: what a projects command kept it at.
+    */
+  def believedOf(store: Store, key: String): Option[String] =
+    DocKey
+      .of(key)
+      .fold(
+        why => throw new java.lang.AssertionError(why),
+        k =>
+          inTx(store.keeper.current(k, Label.Public)).fold(
+            e => throw new java.lang.AssertionError(e.toString),
+            _.map(d => Integrity.written(d.integrity))
+          )
+      )
 
   def done(answer: CommandOutcome): String = answer match {
     case CommandOutcome.Done(text) => text

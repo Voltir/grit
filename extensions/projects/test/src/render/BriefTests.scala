@@ -188,6 +188,34 @@ object BriefTests extends TestSuite {
       )
     }
 
+    test("a brief shows its artifact, then what it carries, then what it cites, as given") {
+      val judged = artifact("j", "note", "j", "J", cites = Vector("a", "b", "c", "rules"))
+      val pr = project(
+        Vector(
+          judged,
+          artifact("a", "note", "a", fifty),
+          artifact("b", "note", "b", fifty),
+          artifact("c", "note", "c", fifty),
+          artifact("rules", "note", "rules", "R")
+        )
+      )
+      val carrying = right(
+        RoleView.of(
+          right(RoleName.of("builder")),
+          Set(right(KindName.of("note"))),
+          1,
+          Set(right(LocalKey.of("rules")))
+        )
+      )
+      // `a` and `b` fit as pointers; `c` does not fit even as one, so it is not shown.
+      val fits =
+        header + "\n\nJ\n\n## Carried\n\n### p/rules — rules\n\nR\n\n## Cited\n\n" +
+          "- p/a (note, a, 50 chars)\n\n- p/b (note, b, 50 chars)"
+      assert(
+        Brief.of(pr, key("j"), carrying, fits.length).map(b => (b.text, b.shows)) ==
+          Right((fits, Vector(key("j"), key("rules"), key("a"), key("b"))))
+      )
+    }
     test("a brief is the same for a project's artifacts in any order") {
       val seeds = (1 to 20).toVector
       val shuffled = seeds.map { seed =>

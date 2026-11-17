@@ -224,6 +224,48 @@ object KeptBriefTests extends TestSuite {
       (briefText(store), now.linesIterator.nextOption().exists(_.contains("| closed |"))) ==>
         (Some(now), true)
     }
+    test("a brief is believed at the least of what it renders, not at its last renderer's") {
+      val (projects, store) = claimedProject()
+      done(
+        askBelieved(Integrity.Member)(
+          projects,
+          store,
+          "project_keep",
+          "key" -> "p/c",
+          "title" -> "Title c",
+          "body" -> "A session's citation."
+        )
+      )
+      done(
+        askBelieved(Integrity.Authority)(
+          projects,
+          store,
+          "project_keep",
+          "key" -> "p/m",
+          "title" -> "Title m",
+          "body" -> "A person's note."
+        )
+      )
+      current(store).map(d =>
+        (DocText.value(d.text).contains("A person's note."), Integrity.written(d.integrity))
+      ) ==> Some((true, "member"))
+    }
+    test("a keep that lowers what a brief shows, its text unchanged, keeps the brief lower") {
+      val (projects, store) = claimedProject()
+      val before = current(store).map(d => DocText.value(d.text))
+      done(
+        askBelieved(Integrity.Member)(
+          projects,
+          store,
+          "project_keep",
+          "key" -> "p/c",
+          "title" -> "Title c",
+          "body" -> "Cited."
+        )
+      )
+      current(store).map(d => (DocText.value(d.text), Integrity.written(d.integrity))) ==>
+        before.map(_ -> "member")
+    }
     test("a batch that keeps a claimed artifact twice keeps its brief once, with the last text") {
       val (projects, store) = claimedProject()
       def step(body: String) = ujson.Obj(
