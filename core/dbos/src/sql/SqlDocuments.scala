@@ -497,6 +497,8 @@ private[sql] object SqlDocuments {
     )(using tx: Tx^): Either[StoreError, Written] =
       put(key, label.join(Tx.clearance(tx).floor), integrity, place, text, data, pointer, at, refs)
 
+    def believing(integrity: Integrity): Integrity = integrity
+
     /** As [[write]], kept at exactly `kept`. */
     private def put(
         key: DocKey,

@@ -92,7 +92,7 @@ trait DocumentKeeper extends DocumentShelf {
 
   /** Makes `text`, `data`, `pointer` and `refs`, at `place`, the current document under `key` at `label`
     * joined with its transaction's floor ([[grit.core.visibility.Clearance.floor]]), written `at`:
-    * never below what its writer could read. It is believed at `integrity`, as given. It is kept in the transaction's own room, or in none
+    * never below what its writer could read. It is believed at [[believing]]`(integrity)`. It is kept in the transaction's own room, or in none
     * when it has none, never a room the writer names. [[Written.kept]] says which label it was kept
     * at, and `current(key, kept)` finds it again. Under posting and a job's run the floor is
     * [[grit.core.store.Tx.cleared]], so that is `label join Tx.cleared(tx)`; a person's turn may
@@ -167,10 +167,15 @@ trait DocumentKeeper extends DocumentShelf {
       Tx^
   ): Either[StoreError, Option[DeclassificationPolicy.Over]]
 
+  /** What a document this keeper writes or keeps declassified, given `integrity`, is believed at:
+    * `integrity`, met with every cap [[DocumentKeeper.believedAtMost]] put on this keeper.
+    */
+  def believing(integrity: Integrity): Integrity
+
   /** Keeps `d` as the current document of this plugin under a key derived from its source's
     * plugin and key (never repeating the source's key), at `d.label`, below this transaction's
     * floor (the *-property's one exception besides the trusted subject), at its source's place,
-    * believed at `integrity`, holding its text, data naming only its source version and
+    * believed at [[believing]]`(integrity)`, holding its text, data naming only its source version and
     * application, and no pointer or refs; and records it as declassified. A rewrite kept under
     * that key at another label is withdrawn. As [[write]] in all else. [[StoreError.Invalid]],
     * writing nothing, when `d.applied`'s policy version is no longer in force ([[declassifying]])
@@ -241,6 +246,8 @@ object DocumentKeeper {
     ): Either[StoreError, Vector[DocumentVersion]] = keeper.versions(key, label, n)
 
     def labels(key: DocKey)(using Tx^): Either[StoreError, Vector[Label]] = keeper.labels(key)
+
+    def believing(integrity: Integrity): Integrity = keeper.believing(integrity.meet(most))
 
     def newest(n: Int)(using Tx^): Either[StoreError, Vector[Document]] = keeper.newest(n)
 

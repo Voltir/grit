@@ -207,6 +207,8 @@ final class InMemoryDocuments extends DocumentStore {
   /** `plugin`'s documents as it writes them, under `under`. */
   def keeper(plugin: PluginName, under: DocumentTerms): DocumentKeeper =
     new Shelf(plugin) with DocumentKeeper {
+      def believing(integrity: Integrity): Integrity = integrity
+
       def write(
           key: DocKey,
           label: Label,

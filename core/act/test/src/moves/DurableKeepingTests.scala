@@ -38,6 +38,7 @@ object DurableKeepingTests extends TestSuite {
     export inner.{
       applying,
       asOf,
+      believing,
       benchable,
       benched,
       checks,

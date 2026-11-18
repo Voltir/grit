@@ -54,7 +54,8 @@ trait KeepingCommand[A <: caps.Pure] extends PluginCommand[A] {
   def onlyReads: Boolean = false
 
   /** As [[ReadingCommand.run]], keeping through `own`, which believes each document at no more
-    * than its asker's words are believed, met with their room's cap ([[KeepingCommand.run]]), and
+    * than its asker's words are believed, met with their room's cap ([[KeepingCommand.run]];
+    * what a write lands at is its [[grit.core.document.DocumentKeeper.believing]]), and
     * claiming through `claims`, its plugin's: committed only when it answers
     * [[CommandOutcome.Done]].
     */

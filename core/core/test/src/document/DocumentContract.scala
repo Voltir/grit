@@ -322,6 +322,35 @@ abstract class DocumentContract extends TestSuite {
       transaction(ok(search.read(Vector(first)))).map(_.integrity) ==> Vector(endorsed)
     }
 
+    test(
+      "a keeper capped twice believes what it writes as its believing says: met with both caps"
+    ) {
+      val p = name("doc-capped")
+      val endorsed = Integrity.at(Integrity.Level.Authority, TestLabels.trial)
+      val k = DocumentKeeper.believedAtMost(
+        DocumentKeeper.believedAtMost(keeper(p, terms()), Integrity.Member),
+        Integrity.Outside
+      )
+      transaction(
+        ok(
+          k.write(
+            key("k"),
+            Label.Public,
+            endorsed,
+            place("here"),
+            text("words"),
+            Empty,
+            None,
+            at(1)
+          )
+        )
+      )
+      (
+        transaction(ok(shelf(p).current(key("k"), Label.Public))).map(_.integrity),
+        k.believing(endorsed)
+      ) ==> (Some(Integrity.Outside), Integrity.Outside)
+    }
+
     test("a withdrawn key holds nothing, its withdrawal is never read, and its old version is") {
       val p = name("doc-withdraw")
       val k = keeper(p, terms())
