@@ -158,9 +158,9 @@ object CommandFixtures {
 
   /** As [[askBy]], a keeping command writing through `keeper` and claiming through `claims` in
     * place of `store`'s, run as an edge or a turn runs it ([[KeepingCommand.run]]) in `room`
-    * under `visibility`: each document believed at no more than its caller (a direct caller's
-    * own integrity, a turn's call `stamped`) met with `room`'s cap, and what `store` wrote kept
-    * only when it answers `Done`.
+    * under `visibility`: a direct caller handed their own integrity met with `room`'s cap, each
+    * document believed at no more than that (a turn's, its call `stamped` met with the cap), and
+    * what `store` wrote kept only when it answers `Done`.
     */
   def askThrough(
       keeper: DocumentKeeper,
@@ -178,22 +178,25 @@ object CommandFixtures {
       args: (String, ujson.Value)*
   ): CommandOutcome = {
     given Tx = TestTx.fake(cleared, visibility)
+    // As the edge does, a direct caller is handed their integrity met with the room's cap.
+    val (by, believed) = who match {
+      case CommandBy.Direct(p, b) =>
+        val most = visibility.believedIn(room, b)
+        (CommandBy.Direct(p, most), most)
+      case turn: CommandBy.Turn => (turn, stamped)
+    }
     projects.commands.find(c => ToolName.value(c.spec.name) == name) match {
       case Some(c: KeepingCommand[a]) =>
         val read = c.spec.args.read(ujson.Obj.from(args))
         read.fold(
           e => throw new java.lang.AssertionError(e.message),
           a => {
-            val believed = who match {
-              case CommandBy.Direct(_, b) => b
-              case _: CommandBy.Turn => stamped
-            }
             // A transaction a refusal rolls back: a refusal leaves through `Left`, undoing it.
             var refused: Option[CommandOutcome] = None
             store.documents.savepoints
               .atomic(
                 KeepingCommand
-                  .run(c, a, who, keeper, claims, room, believed, when)
+                  .run(c, a, by, keeper, claims, room, believed, when)
                   .flatMap {
                     case done: CommandOutcome.Done => Right(done)
                     case no: CommandOutcome.Refused =>
@@ -212,7 +215,7 @@ object CommandFixtures {
         read.fold(
           e => throw new java.lang.AssertionError(e.message),
           a =>
-            c.run(a, who, store.reads, when)
+            c.run(a, by, store.reads, when)
               .fold(e => throw new java.lang.AssertionError(e.toString), identity)
         )
       case _ => throw new java.lang.AssertionError(s"no command $name")

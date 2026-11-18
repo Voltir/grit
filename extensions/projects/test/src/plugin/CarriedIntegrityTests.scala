@@ -1,7 +1,8 @@
 package grit.projects.plugin
 
+import grit.core.id.{ConversationId, TurnRef, TurnSeq}
 import grit.core.plugin.{CommandBy, CommandOutcome}
-import grit.core.visibility.{Integrity, TestLabels}
+import grit.core.visibility.{Cap, Integrity, RoomLabels, TestLabels, Visibility}
 import grit.projects.name.MethodName
 
 import utest.*
@@ -120,6 +121,53 @@ object CarriedIntegrityTests extends TestSuite {
       val store = Store()
       done(asSteward(projects, store)("project_new", "project" -> "p"))
       believedOf(store, "p") ==> Some(Integrity.written(steward))
+    }
+
+    test("an edit through a turn is believed at no more than the turn's call") {
+      val (projects, store) = changeKeptBy(personally)
+      done(
+        askThrough(
+          store.keeper,
+          store.claims,
+          CommandBy.Turn(person, TurnRef(ConversationId("c1"), TurnSeq(1))),
+          stamped = session
+        )(
+          projects,
+          store,
+          "project_edit",
+          "key" -> "p/a",
+          "version" -> versionOf(projects, store, "p/a"),
+          "old" -> "Because.",
+          "new" -> "Because it is so."
+        )
+      )
+      believedOf(store, "p/a") ==> Some("member")
+    }
+
+    test("a method declared from a capped room is believed at no more than its cap") {
+      val room = TestLabels.place("slack:acme/C-trial")
+      val capped = Visibility
+        .of(
+          TestLabels.Trialled.compartments,
+          RoomLabels.Public,
+          Vector.empty,
+          Vector.empty,
+          caps = Vector(Cap(room, steward))
+        )
+        .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+      val store = Store(declared = Vector.empty)
+      val m = method()
+      done(
+        askThrough(
+          store.keeper,
+          store.claims,
+          CommandBy.Direct(person, Integrity.top(capped.compartments)),
+          room = room,
+          visibility = capped
+        )(plugin(), store, "project_declare", declaring(m))
+      )
+      believedOf(store, s"${MethodName.value(m.name)}@${m.version}") ==>
+        Some(Integrity.written(steward))
     }
 
     test("a method a steward declares is believed in the compartments they steward") {

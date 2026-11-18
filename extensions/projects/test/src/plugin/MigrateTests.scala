@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.id.{DocKey, DocumentVersionId}
 import grit.core.plugin.CommandOutcome
-import grit.core.visibility.{Clearance, Label, TestLabels}
+import grit.core.visibility.{Clearance, Integrity, Label, TestLabels}
 import grit.projects.method.{ArtifactKind, Method, MethodFixtures, TransitionChecks}
 import grit.projects.name.KindName
 import grit.projects.render.ProjectMarkdown
@@ -133,6 +133,23 @@ object MigrateTests extends TestSuite {
           Vector.fill(2)(Some((true, later, Some(otherBy))))
         )
       )
+    }
+
+    test("a migration believes an artifact it renames at no more than its version before") {
+      val store = Store()
+      holding(store)
+      done(
+        askBelieved(Integrity.Member)(
+          both,
+          store,
+          "project_keep",
+          "key" -> "p/a",
+          "title" -> "Title a",
+          "body" -> "A member's words."
+        )
+      )
+      done(migrated(store, noteToMemo))
+      (believedOf(store, "p/a"), believedOf(store, "p/b")) ==> (Some("member"), Some("authority"))
     }
 
     test("what a migration leaves exports and reads back under the new version, renamed") {
