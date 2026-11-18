@@ -12,7 +12,7 @@ import grit.core.place.Place
 import grit.core.plugin.{CommandBy, CommandOutcome, KeepingCommand, ReadingCommand}
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Args, ArgsError, Field, ToolName, ToolSpec}
-import grit.core.visibility.{Integrity, Label}
+import grit.core.visibility.Label
 import grit.projects.method.{
   Declared,
   Example,
@@ -24,7 +24,7 @@ import grit.projects.method.{
 }
 import grit.projects.name.{CheckName, MethodName, StateName}
 
-import ProjectCommands.{Stop, answered, moverOf, parsed, refusal, refuse, stored, written}
+import ProjectCommands.{Stop, answered, asCaller, moverOf, parsed, refusal, refuse, stored, written}
 import MethodCommands.{Asking, Declaring}
 
 /** `project_declare` and `project_methods`, and the method versions every other command reads:
@@ -236,7 +236,7 @@ private[plugin] final class MethodCommands(checks: Vector[TransitionCheck], meth
         own.write(
           key,
           methodsAt,
-          Integrity.Authority,
+          asCaller,
           Place.Everywhere,
           text,
           data,

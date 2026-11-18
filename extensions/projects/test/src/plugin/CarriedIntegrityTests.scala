@@ -1,6 +1,8 @@
 package grit.projects.plugin
 
-import grit.core.visibility.Integrity
+import grit.core.plugin.{CommandBy, CommandOutcome}
+import grit.core.visibility.{Integrity, TestLabels}
+import grit.projects.name.MethodName
 
 import utest.*
 
@@ -13,6 +15,21 @@ object CarriedIntegrityTests extends TestSuite {
   import CommandFixtures.*
 
   private val (session, personally) = (Integrity.Member, Integrity.Authority)
+
+  /** A steward of [[TestLabels.trial]]: `Authority` in it alone, as `Tx.integrityOf` gives. */
+  private val steward = Integrity.at(Integrity.Level.Authority, TestLabels.trial)
+
+  /** Command `name` asked by [[steward]] in a deployment declaring [[TestLabels.trial]]. */
+  private def asSteward(projects: Projects, store: Store)(
+      name: String,
+      args: (String, ujson.Value)*
+  ): CommandOutcome =
+    askThrough(
+      store.keeper,
+      store.claims,
+      CommandBy.Direct(person, steward),
+      visibility = TestLabels.Trialled
+    )(projects, store, name, args*)
 
   /** Project `p` with change `p/<local>` kept by a caller believed at `by`. */
   private def changeKeptBy(by: Integrity, local: String = "a"): (Projects, Store) = {
@@ -80,6 +97,37 @@ object CarriedIntegrityTests extends TestSuite {
         )
       )
       believedOf(store, "p/a") ==> Some("authority")
+    }
+
+    test("a steward's whole keep is believed in the compartments they steward") {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      done(
+        asSteward(projects, store)(
+          "project_keep",
+          "key" -> "p/a",
+          "kind" -> "note",
+          "title" -> "A",
+          "body" -> "A steward's words."
+        )
+      )
+      believedOf(store, "p/a") ==> Some(Integrity.written(steward))
+    }
+
+    test("a project a steward starts is believed in the compartments they steward") {
+      val projects = plugin()
+      val store = Store()
+      done(asSteward(projects, store)("project_new", "project" -> "p"))
+      believedOf(store, "p") ==> Some(Integrity.written(steward))
+    }
+
+    test("a method a steward declares is believed in the compartments they steward") {
+      val store = Store(declared = Vector.empty)
+      val m = method()
+      done(asSteward(plugin(), store)("project_declare", declaring(m)))
+      believedOf(store, s"${MethodName.value(m.name)}@${m.version}") ==>
+        Some(Integrity.written(steward))
     }
     test("a citer a cascade rewrites keeps how far it was believed") {
       val (projects, store) = changeKeptBy(personally, "x")
