@@ -175,7 +175,8 @@ object ProjectsLiveTests extends TestSuite {
           )
           val lower = CommandOutcome.Refused(
             "A method is declared only by a caller believed at Authority, giving the command " +
-              "directly; never through a turn, or by a session believed lower."
+              "directly; never through a turn, or by a session believed lower. Ask a person to " +
+              "declare it from the method's file."
           )
           (declare(desk, Integrity.Member), kept(config, engine, Projects.Name)) ==> (
             Right(lower),
@@ -287,7 +288,8 @@ object ProjectsLiveTests extends TestSuite {
         )
         val declareRefused = CommandOutcome.Refused(
           "A method is declared only by a caller believed at Authority, giving the command " +
-            "directly; never through a turn, or by a session believed lower."
+            "directly; never through a turn, or by a session believed lower. Ask a person to " +
+            "declare it from the method's file."
         )
         val moveRefused = CommandOutcome.Refused(
           "p/a cannot move to done here: that move is made only by someone believed at " +

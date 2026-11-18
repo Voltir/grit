@@ -62,7 +62,8 @@ object DeclareTests extends TestSuite {
   /** What a declaration answers when its caller is not believed at Authority, giving it directly. */
   private val byAuthority =
     "A method is declared only by a caller believed at Authority, giving the command directly; " +
-      "never through a turn, or by a session believed lower."
+      "never through a turn, or by a session believed lower. Ask a person to declare it from " +
+      "the method's file."
 
   /** What a command answers over a project whose method no longer reads here. */
   private val unreadable =

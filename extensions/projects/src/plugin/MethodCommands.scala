@@ -210,7 +210,8 @@ private[plugin] final class MethodCommands(checks: Vector[TransitionCheck], meth
       Left(
         Stop.Refused(
           "A method is declared only by a caller believed at Authority, giving the command " +
-            "directly; never through a turn, or by a session believed lower."
+            "directly; never through a turn, or by a session believed lower. Ask a person to " +
+            "declare it from the method's file."
         )
       )
   }
