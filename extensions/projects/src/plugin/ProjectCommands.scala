@@ -2527,7 +2527,8 @@ private[plugin] object ProjectCommands {
   /** Keeps `r`'s brief through `own`, at its claim's label and at `place`, as the brief of the
     * claim's holder ([[DocRef.brief]]), its data naming the holder, believed at no more than the
     * least of what it shows as `project` holds them ([[Brief.shows]]), unless the one current
-    * there holds that text for that holder believed no higher: `None` when it is current, else
+    * there holds that text for that holder, believed no higher than what it shows, and a write
+    * through `own` would not believe it higher: `None` when it is current, else
     * why none is, the one current there withdrawn: it is over [[DocRef.BriefChars]], or the
     * plugin is full.
     */
@@ -2552,6 +2553,9 @@ private[plugin] object ProjectCommands {
           )
           .getOrElse(whole)
     )
+    // What a write through `own` would believe it at: no rewrite only lowers it to its caller.
+    val target = own.believing(believed)
+    def raises(was: Integrity): Boolean = target.dominates(was) && target != was
     briefKey(r.key).fold(
       _ => Right(Some(s"No brief was kept: $over.")),
       key =>
@@ -2566,7 +2570,8 @@ private[plugin] object ProjectCommands {
             case Left(why) => none(why)
             case Right(text)
                 if was.exists(d =>
-                  d.text == text && d.data == data && believed.dominates(d.integrity)
+                  d.text == text && d.data == data && believed.dominates(d.integrity) &&
+                    !raises(d.integrity)
                 ) =>
               Right(None)
             case Right(text) =>

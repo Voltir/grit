@@ -266,6 +266,43 @@ object KeptBriefTests extends TestSuite {
       current(store).map(d => (DocText.value(d.text), Integrity.written(d.integrity))) ==>
         before.map(_ -> "member")
     }
+    test("a keep that raises what a lowered brief shows, its text unchanged, raises the brief") {
+      val (projects, store) = claimedProject()
+      val first = current(store).map(d => (DocText.value(d.text), Integrity.written(d.integrity)))
+      val cited =
+        Vector[(String, ujson.Value)]("key" -> "p/c", "title" -> "Title c", "body" -> "Cited.")
+      done(askBelieved(Integrity.Member)(projects, store, "project_keep", cited*))
+      done(ask(projects, store, "project_keep", cited*))
+      (
+        first.map(_._2),
+        current(store).map(d => (DocText.value(d.text), Integrity.written(d.integrity)))
+      ) ==>
+        (Some("authority"), first)
+    }
+    test("a lower keep of what a brief does not show writes no version of one kept below it") {
+      val (projects, store) = claimedProject()
+      done(
+        askThrough(DocumentKeeper.believedAtMost(store.keeper, Integrity.Member), store.claims)(
+          projects,
+          store,
+          "project_withdraw",
+          "key" -> "p/process"
+        )
+      )
+      val before = (versions(store), current(store).map(d => Integrity.written(d.integrity)))
+      done(
+        askThrough(DocumentKeeper.believedAtMost(store.keeper, Integrity.Outside), store.claims)(
+          projects,
+          store,
+          "project_keep",
+          "key" -> "p/b",
+          "title" -> "Title b",
+          "body" -> "New."
+        )
+      )
+      (before, versions(store), current(store).map(d => Integrity.written(d.integrity))) ==>
+        ((2, Some("member")), 2, Some("member"))
+    }
     test("a batch that keeps a claimed artifact twice keeps its brief once, with the last text") {
       val (projects, store) = claimedProject()
       def step(body: String) = ujson.Obj(
