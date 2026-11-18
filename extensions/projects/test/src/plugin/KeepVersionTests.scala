@@ -91,7 +91,7 @@ object KeepVersionTests extends TestSuite {
         .find(_.startsWith("by: \""))
         .fold("")(_.drop(5).dropRight(1))
       (first, keep("Three."), shown(projects, store, "p/a").endsWith("\nTwo.\n")) ==> (
-        CommandOutcome.Done("Kept p/a (note, open)."),
+        CommandOutcome.Done("Kept p/a (note, open). Now at version 4."),
         CommandOutcome.Refused(
           s"p/a is at version $current, not $read as given: kept since by $by at " +
             s"${at.plusSeconds(60)}. Show it again and keep from what it holds now."

@@ -262,7 +262,7 @@ object ClaimTests extends TestSuite {
         "title" -> "Title a",
         "body" -> ("Text. " * 1900).trim
       )
-      answer ==> CommandOutcome.Done("Kept p/a (note, open).")
+      answer ==> CommandOutcome.Done("Kept p/a (note, open). Now at version 6.")
     }
 
     test("a brief over its cap is kept as none, and the claim stands") {

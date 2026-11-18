@@ -162,6 +162,27 @@ object ProjectCommandsTests extends TestSuite {
         Vector("project_propose")
     }
 
+    test("project_keep answers the version it kept at, and one that changes nothing the current") {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      def keep() = ask(
+        projects,
+        store,
+        "project_keep",
+        "key" -> "p/a",
+        "kind" -> "note",
+        "title" -> "A",
+        "body" -> "Text."
+      )
+      val first = keep()
+      val version = versionOf(projects, store, "p/a")
+      (first, keep()) ==> (
+        CommandOutcome.Done(s"Kept p/a (note, open). Now at version $version."),
+        CommandOutcome.Done(s"Kept p/a (note, open). Now at version $version.")
+      )
+    }
+
     test(
       "project_propose keeps a new artifact of its kind in its first state, naming the turn as its writer"
     ) {

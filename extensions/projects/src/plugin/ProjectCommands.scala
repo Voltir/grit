@@ -165,8 +165,8 @@ private[plugin] final class ProjectCommands(
         "that artifact. Keeping one that exists, leave out parent or cites to keep them as " +
         "they are; give cites as [] to clear them, or parent as \"\" to remove it; give " +
         "version, as project_show shows it, to keep it only if no one has kept it since. " +
-        "Refused, keeping nothing: for a parent or a cite the project lacks, naming the " +
-        "nearest keys it has; for a version that is not the artifact's current one; and when " +
+        "Answers with the version it is kept at. Refused, keeping nothing: for a parent or a " +
+        "cite the project lacks, naming the nearest keys it has; for a version that is not the artifact's current one; and when " +
         f"the brief of an artifact claimed in the project would pass ${DocRef.BriefChars}%,d " +
         "characters, naming the characters to cut.",
       Args
@@ -200,7 +200,7 @@ private[plugin] final class ProjectCommands(
     )(using Tx^): Either[StoreError, CommandOutcome] =
       answered(
         alone(own, claims, args.key.project, by, at, "keep")(_ => Right(Step.Keep(args)))
-          .map(_.said)
+          .map(done => done.versions.get(args.key).fold(done.said)(AnswerText.nowAt(done.said, _)))
       )
   }
 
@@ -289,7 +289,7 @@ private[plugin] final class ProjectCommands(
         }
         // An edit that changes nothing writes nothing, and the version given is current.
         now = done.versions.getOrElse(key, args.version)
-      } yield s"${done.said} Now at version ${DocumentVersionId.value(now)}."
+      } yield AnswerText.nowAt(done.said, now)
     }
   }
 

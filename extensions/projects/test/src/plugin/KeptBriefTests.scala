@@ -313,7 +313,11 @@ object KeptBriefTests extends TestSuite {
         DocumentKeeper.believedAtMost(store.keeper, Integrity.Member),
         store.claims
       )(projects, store, "project_keep", "key" -> "p/b", "title" -> "Title b", "body" -> "New.")
-      (answer, before, versions(store)) ==> (CommandOutcome.Done("Kept p/b (note, open)."), 1, 1)
+      (answer, before, versions(store)) ==> (
+        CommandOutcome.Done("Kept p/b (note, open). Now at version 8."),
+        1,
+        1
+      )
     }
     test("one keep keeps again the brief of each live claim on the project it changes") {
       val (projects, store) = claimedProject()
@@ -380,7 +384,11 @@ object KeptBriefTests extends TestSuite {
           .labels(briefKey)(using grit.dbos.sql.TestTx.fake(Clearance.of(TestLabels.Trial)))
           .fold(failed, identity),
         versions(store)
-      ) ==> (CommandOutcome.Done("Kept p/x (note, open)."), Vector(Label.Public), 1)
+      ) ==> (
+        CommandOutcome.Done("Kept p/x (note, open). Now at version 8."),
+        Vector(Label.Public),
+        1
+      )
     }
     test("a claim released after a keep read it is not made again, and keeps no brief") {
       val (projects, store) = claimedProject()
@@ -388,7 +396,7 @@ object KeptBriefTests extends TestSuite {
       done(ask(projects, store, "project_release", "key" -> "p/m"))
       val answer = keptAfter(projects, store, read)
       (answer, liveNow(store), current(store)) ==>
-        (CommandOutcome.Done("Kept p/m (note, open)."), Vector(), None)
+        (CommandOutcome.Done("Kept p/m (note, open). Now at version 9."), Vector(), None)
     }
 
     test("a claim released and made again after a keep read it is left as it was made") {
@@ -399,7 +407,11 @@ object KeptBriefTests extends TestSuite {
       val again = liveNow(store)
       val answer = keptAfter(projects, store, read)
       (answer, again.map(_.made), liveNow(store)) ==>
-        (CommandOutcome.Done("Kept p/m (note, open)."), Vector(at.plusSeconds(30)), again)
+        (
+          CommandOutcome.Done("Kept p/m (note, open). Now at version 10."),
+          Vector(at.plusSeconds(30)),
+          again
+        )
     }
 
     test("a claim made again as another role after a keep read it keeps that role, briefed so") {

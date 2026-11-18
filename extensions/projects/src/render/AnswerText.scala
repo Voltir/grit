@@ -6,7 +6,7 @@ import java.time.{Instant, ZoneOffset}
 import scala.concurrent.duration.FiniteDuration
 
 import grit.core.claim.{Claim, ClaimRole}
-import grit.core.id.ClaimHolder
+import grit.core.id.{ClaimHolder, DocumentVersionId}
 import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
 import grit.projects.name.{ArtifactKey, KindName, MethodName, Pin, ProjectKey, StateName}
 import grit.prose.words.Words
@@ -144,6 +144,10 @@ object AnswerText {
       Option.when(kind)(KindName.value(h.kind)) ++ Option.when(state)(StateName.value(h.state))
     s"${h.key.value}${if (named.isEmpty) "" else named.mkString(" (", ", ", ")")}: ${h.title}"
   }
+
+  /** `said`, the answer to a keep or an edit of one artifact, then the version it is now at. */
+  def nowAt(said: String, version: DocumentVersionId): String =
+    s"$said Now at version ${DocumentVersionId.value(version)}."
 
   /** One line per version, in the order given: `<version> <written> by <by> (<state>): <title>`,
     * leaving out `by <by> ` when the head records no writer, and `<version> <written> withdrawn`
