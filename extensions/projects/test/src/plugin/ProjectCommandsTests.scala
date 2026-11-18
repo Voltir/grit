@@ -381,6 +381,35 @@ object ProjectCommandsTests extends TestSuite {
       )
     }
 
+    test("a batch the deployment's bound refuses partway keeps none of its steps") {
+      val terms = Projects.Terms
+      val small = right(
+        DocumentTerms.of(terms.label, terms.weight, terms.retention, 3, terms.keepLast, terms.full)
+      )
+      val store = Store(small)
+      val projects = plugin()
+      started(projects, store)
+      def keep(local: String) =
+        ujson.Obj(
+          "command" -> "keep",
+          "key" -> s"p/$local",
+          "kind" -> "note",
+          "title" -> local,
+          "body" -> "Text."
+        )
+      val answer = ask(
+        projects,
+        store,
+        "project_batch",
+        "project" -> "p",
+        "steps" -> ujson.Arr(keep("a"), keep("b"))
+      )
+      assert(
+        answer.isInstanceOf[CommandOutcome.Refused],
+        store.count == 2
+      )
+    }
+
     test("export pages concatenate to ProjectMarkdown.render's files") {
       val projects = plugin()
       val store = Store()

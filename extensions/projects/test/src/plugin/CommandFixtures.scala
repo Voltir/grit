@@ -9,9 +9,9 @@ import grit.core.identity.{Principal, TestAccounts}
 import grit.core.need.PluginReads
 import grit.core.place.Place
 import grit.core.plugin.{CommandBy, CommandOutcome, InMemoryPlugins, KeepingCommand, ReadingCommand}
-import grit.core.store.Tx
+import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
-import grit.core.visibility.{Clearance, Integrity, Label}
+import grit.core.visibility.{Clearance, Integrity, Label, Visibility}
 import grit.dbos.sql.TestTx
 import grit.projects.method.{
   Example,
@@ -157,72 +157,75 @@ object CommandFixtures {
   )
 
   /** As [[askBy]], a keeping command writing through `keeper` and claiming through `claims` in
-    * place of `store`'s.
+    * place of `store`'s, run as an edge or a turn runs it ([[KeepingCommand.run]]) in `room`
+    * under `visibility`: each document believed at no more than its caller (a direct caller's
+    * own integrity, a turn's call `stamped`) met with `room`'s cap, and what `store` wrote kept
+    * only when it answers `Done`.
     */
   def askThrough(
       keeper: DocumentKeeper,
       claims: Claims,
       who: CommandBy = direct(),
       when: Instant = at,
-      cleared: Clearance = Clearance.of(Label.Public)
+      cleared: Clearance = Clearance.of(Label.Public),
+      room: Place = Place.Everywhere,
+      visibility: Visibility = Visibility.Shipped,
+      stamped: Integrity = Integrity.Authority
   )(
       projects: Projects,
       store: Store,
       name: String,
       args: (String, ujson.Value)*
-  ): CommandOutcome =
+  ): CommandOutcome = {
+    given Tx = TestTx.fake(cleared, visibility)
     projects.commands.find(c => ToolName.value(c.spec.name) == name) match {
       case Some(c: KeepingCommand[a]) =>
         val read = c.spec.args.read(ujson.Obj.from(args))
         read.fold(
           e => throw new java.lang.AssertionError(e.message),
-          a =>
-            c.run(a, who, keeper, claims, when)(using TestTx.fake(cleared))
-              .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+          a => {
+            val believed = who match {
+              case CommandBy.Direct(_, b) => b
+              case _: CommandBy.Turn => stamped
+            }
+            // A transaction a refusal rolls back: a refusal leaves through `Left`, undoing it.
+            var refused: Option[CommandOutcome] = None
+            store.documents.savepoints
+              .atomic(
+                KeepingCommand
+                  .run(c, a, who, keeper, claims, room, believed, when)
+                  .flatMap {
+                    case done: CommandOutcome.Done => Right(done)
+                    case no: CommandOutcome.Refused =>
+                      refused = Some(no)
+                      Left(StoreError.Invalid("refused"))
+                  }
+              )
+              .fold(
+                e => refused.getOrElse(throw new java.lang.AssertionError(e.toString)),
+                identity
+              )
+          }
         )
       case Some(c: ReadingCommand[a]) =>
         val read = c.spec.args.read(ujson.Obj.from(args))
         read.fold(
           e => throw new java.lang.AssertionError(e.message),
           a =>
-            c.run(a, who, store.reads, when)(using TestTx.fake(cleared))
+            c.run(a, who, store.reads, when)
               .fold(e => throw new java.lang.AssertionError(e.toString), identity)
         )
       case _ => throw new java.lang.AssertionError(s"no command $name")
     }
+  }
 
-  /** As [[ask]], keeping command `name` run as an edge runs it ([[KeepingCommand.run]]) for
-    * `who` believed at `believed`, in a room no cap covers: each document it keeps believed at no
-    * more than `believed`.
-    */
+  /** As [[ask]], asked by `who` believed at `believed`, in a room no cap covers. */
   def askBelieved(believed: Integrity, who: Principal.Person = person)(
       projects: Projects,
       store: Store,
       name: String,
       args: (String, ujson.Value)*
-  ): CommandOutcome =
-    projects.commands.find(c => ToolName.value(c.spec.name) == name) match {
-      case Some(c: KeepingCommand[a]) =>
-        c.spec.args
-          .read(ujson.Obj.from(args))
-          .fold(
-            e => throw new java.lang.AssertionError(e.message),
-            a =>
-              KeepingCommand
-                .run(
-                  c,
-                  a,
-                  CommandBy.Direct(who, believed),
-                  store.keeper,
-                  store.claims,
-                  Place.Everywhere,
-                  believed,
-                  at
-                )(using TestTx.fake)
-                .fold(e => throw new java.lang.AssertionError(e.toString), identity)
-          )
-      case _ => throw new java.lang.AssertionError(s"no keeping command $name")
-    }
+  ): CommandOutcome = askBy(CommandBy.Direct(who, believed))(projects, store, name, args*)
 
   /** How far the current document of `key` at public is believed, as [[Integrity.written]]
     * writes it: what a projects command kept it at.
