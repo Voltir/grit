@@ -25,10 +25,10 @@
 # The current pin passed all three; the commit that set it records the numbers.
 set -euo pipefail
 
-ENOLA_VERSION=0.5.0
+ENOLA_VERSION=0.5.3
 # The release's published digests, pinned here as well, so a re-uploaded asset fails the check.
-ENOLA_SHA256_AMD64=a128191c7475c2411837c3bbe26afaec3e27944904c49a163fc44bfb033a3cad
-ENOLA_SHA256_ARM64=5048cfcd817f5774a070272d1c074821e8c4ccdb764f2b2e8d1e6a8c3691dd47
+ENOLA_SHA256_AMD64=67f2839946709a02a311d014a7560eab914ffd63a0015ec8d83abba478dc97e5
+ENOLA_SHA256_ARM64=b84b054d547dd2e71f3d4fdc433e74cf20ef8aa9c9161cfabb04a9f0f5766d62
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 dest="$repo_root/tools"
 
