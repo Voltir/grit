@@ -13,10 +13,7 @@ object Earning {
   /** The yes/no whose yes says a heard message is worth keeping: `durable`, the name every
     * question set triage has asked keeps it under.
     */
-  val Durable: QuestionName =
-    // A lowercase word, a declared name by QuestionName.of's rule, so no Left is taken;
-    // EarningTests reads it.
-    QuestionName.of("durable").fold(why => throw new IllegalStateException(why), identity)
+  val Durable: QuestionName = QuestionName.literal("durable")
 
   /** The probability that a heard message is worth keeping at or above which it earns its
     * period a written closing.

@@ -35,17 +35,12 @@ object Tags {
   /** v1, the question set triage asked before v2: the names it asks under, and the gate it
     * drafts by.
     */
-  private def named(text: String): QuestionName =
-    // Each is a lowercase word, a declared name by QuestionName.of's rule, so no Left is
-    // taken; TagsTests and PartsTests read every one.
-    QuestionName.of(text).fold(why => throw new IllegalStateException(why), identity)
-
   object V1 {
 
-    val kind: QuestionName = named("kind")
-    val waiting: QuestionName = named("waiting")
+    val kind: QuestionName = QuestionName.literal("kind")
+    val waiting: QuestionName = QuestionName.literal("waiting")
     val durable: QuestionName = Earning.Durable
-    val helps: QuestionName = named("helps")
+    val helps: QuestionName = QuestionName.literal("helps")
 
     /** v1's gate: `kind`'s most weighted key not `chatter`, and `helps` at least 0.5. */
     val gate: Gate = {
@@ -87,14 +82,14 @@ object Tags {
     /** A choice of what its message leaves open: `asks`, `owes`, `closes` or `nothing`, and
       * since v5 [[V5.states]].
       */
-    val gap: QuestionName = named("gap")
-    val open: QuestionName = named("open")
-    val to: QuestionName = named("to")
+    val gap: QuestionName = QuestionName.literal("gap")
+    val open: QuestionName = QuestionName.literal("open")
+    val to: QuestionName = QuestionName.literal("to")
     val durable: QuestionName = Earning.Durable
-    val anchor: QuestionName = named("anchor")
+    val anchor: QuestionName = QuestionName.literal("anchor")
 
     /** The prefix of its yes/no asked once per corpus ([[QuestionName.per]]). */
-    val sourcePrefix: QuestionName = named("source")
+    val sourcePrefix: QuestionName = QuestionName.literal("source")
 
     private val half = Probability.clamped(0.5)
 
@@ -131,7 +126,7 @@ object Tags {
     /** Whether its message is directed at grit, by its persona's name or as a reply to it.
       * Stored under this name: a pin of recorded answers.
       */
-    val toGrit: QuestionName = named("to-grit")
+    val toGrit: QuestionName = QuestionName.literal("to-grit")
 
     private val half = Probability.clamped(0.5)
 
@@ -165,7 +160,7 @@ object Tags {
       * fact asked of a particular person may still be in one. Stored under this name: a pin of
       * recorded answers.
       */
-    val anchorRecord: QuestionName = named("anchor-record")
+    val anchorRecord: QuestionName = QuestionName.literal("anchor-record")
 
     private val half = Probability.clamped(0.5)
 
@@ -211,7 +206,7 @@ object Tags {
     /** Whether something the team has written down could hold an answer to what its message
       * asks. Stored under this name: a pin of recorded answers.
       */
-    val recordsHold: QuestionName = named("records-hold")
+    val recordsHold: QuestionName = QuestionName.literal("records-hold")
 
     private val half = Probability.clamped(0.5)
     private val likely = Probability.clamped(0.7)
@@ -253,7 +248,7 @@ object Tags {
       * heads-up, something several people asked, a decision the room needs, or an ask to tell
       * everyone.
       */
-    val forRoom: QuestionName = named("for-room")
+    val forRoom: QuestionName = QuestionName.literal("for-room")
 
     /** v7's placement gate: `for-room` at least 0.8; or the message opens its thread
       * ([[Fact.AtTop]]), `for-room` at least 0.6 and the room is calm ([[Fact.Calm]] at least
