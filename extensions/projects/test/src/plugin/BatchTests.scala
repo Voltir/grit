@@ -44,12 +44,6 @@ object BatchTests extends TestSuite {
       "new" -> replaced
     )
 
-  /** Why `answer` refused, or what it was when it did not. */
-  private def why(answer: CommandOutcome): String = answer match {
-    case CommandOutcome.Refused(why) => why
-    case other => other.toString
-  }
-
   /** The version `project_history` lists first for `key`: its current one. */
   private def current(projects: Projects, store: Store, key: String): Long =
     done(ask(projects, store, "project_history", "key" -> key)).takeWhile(_ != ' ').toLong
