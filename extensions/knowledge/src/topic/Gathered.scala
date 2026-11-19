@@ -8,8 +8,8 @@ import grit.knowledge.card.NotWritten
   * version; how many strands and cards it found `unchanged` since the topic they are in was
   * written or they were set aside, how many its sorts placed in no topic (`aside`), and how
   * many it `left` for the next run (past its most, changed since its scan, or a sort refused);
-  * how many strands opened a topic of their own though a topic was chosen for them below the
-  * mark (`unsure`); how many refs it `skipped` (too long to keep, their links still in the
+  * how many of those set aside were strands a topic was chosen for below the mark (`unsure`);
+  * how many refs it `skipped` (too long to keep, their links still in the
   * text); what it did not write, each named, and why; and why it stopped, if it did. [[line]]
   * is its reply.
   */
@@ -31,7 +31,7 @@ final case class Gathered(
   /** `topics: {written} written ({opened} opened), {withdrawn} withdrawn, {unchanged}
     * unchanged, {aside} set aside, {left} left for the next run`, then, when some were, `,
     * {unreadable} unreadable withdrawn`, then, when some were, `, {later} of a later version
-    * left`, then, when some were, `; {unsure} opened unsure`, then, when some were, `; {n} refs
+    * left`, then, when some were, `; {unsure} set aside unsure`, then, when some were, `; {n} refs
     * too long to keep`, then `; not written: {name} ({why})` for at most [[NotWritten.Shown]] of
     * them, separated by `, `, and `and {n} more` for the rest; then, when it stopped, `;
     * stopped: {why}`.
@@ -42,7 +42,7 @@ final case class Gathered(
       (if (unreadable == 0) "" else s", $unreadable unreadable withdrawn") +
       (if (later == 0) "" else s", $later of a later version left")
     // Draft wording, for Nick.
-    val doubted = if (unsure == 0) "" else s"; $unsure opened unsure"
+    val doubted = if (unsure == 0) "" else s"; $unsure set aside unsure"
     val refs =
       if (skipped == 0) ""
       else if (skipped == 1) "; 1 ref too long to keep"

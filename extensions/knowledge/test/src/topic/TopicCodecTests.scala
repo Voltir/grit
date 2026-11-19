@@ -235,18 +235,18 @@ object TopicCodecTests extends TestSuite {
         Vector.empty,
         Vector.empty,
         Vector.empty,
+        Vector(grit.core.id.ConversationId("c1") -> Vector.empty),
         0,
         0,
         0,
-        Vector.empty,
         Vector.empty,
         unreadable,
         later
       )
       codec.decode(codec.encode(scan(1, 2))) ==> Right(scan(1, 2))
-      // A scan as it was journaled before it counted unreadable and later topics.
-      val recorded = """{"attached":[],"strands":[],"cards":[],"leads":[],"withdrew":0,""" +
-        """"unchanged":0,"left":0,"linked":[],"holds":[]}"""
+      // A scan journaled with neither count, as one that counted none is.
+      val recorded = """{"attached":[],"strands":[],"cards":[],"topics":[],""" +
+        """"near":[{"root":"c1","topics":[]}],"withdrew":0,"unchanged":0,"left":0,"linked":[]}"""
       codec.decode(recorded) ==> Right(scan(0, 0))
     }
   }

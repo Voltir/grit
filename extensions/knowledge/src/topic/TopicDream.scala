@@ -11,6 +11,7 @@ import grit.core.job.{DreamingJob, JobRun}
 import grit.core.need.Exported
 import grit.core.prompt.Tag
 import grit.core.schema.{JsonSchema, Typed}
+import grit.core.stitch.Strand
 import grit.core.store.{StoreError, Tx}
 import grit.knowledge.card.{CardMoves, CardShelf}
 import grit.knowledge.ref.{Ref, TopicKey}
@@ -92,8 +93,20 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
           .map(t => t.copy(cards = (t.cards ++ scan.of(t.strands)._2).distinctBy(_.version)))
         val ordered = touched.filter(_.opened) ++ touched.filterNot(_.opened)
         val (now, later) = ordered.splitAt(most)
+        val kept = now.filterNot(_.opened).map(_.key)
+        val (holds, read) =
+          if (kept.isEmpty) (TopicScan.Holding(Vector.empty), done)
+          else
+            moves.scan(TopicDream.Holds, run.tainted.map(_ => kept))((keys, keeper, _, needs, at) =>
+              TopicScan.holding(keys, if (end.isBefore(at)) end else at, shelf, keeper, needs)
+            ) match {
+              case Left(e) =>
+                val why = (MoveName.value(TopicDream.Holds), MoveError.said(e))
+                (TopicScan.Holding(Vector.empty), done.copy(unwritten = done.unwritten :+ why))
+              case Right(h) => (h, done)
+            }
         now.zipWithIndex
-          .foldLeft((done.copy(left = done.left + TopicDream.items(later)), 0)) {
+          .foldLeft((read.copy(left = read.left + TopicDream.items(later)), 0)) {
             case ((g, reviewed), (t, i)) =>
               written(
                 run,
@@ -101,7 +114,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
                 day,
                 t,
                 scan.of(t.strands)._1,
-                scan.holding(t.key),
+                holds.of(t.key),
                 i,
                 reviewed < TopicDream.Reviewed,
                 g
@@ -115,11 +128,15 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
   }
 
   /** Each of `scan`'s strands, then each of its cards, placed by a sort of its own (`sort-{i}`,
-    * numbered from 0 in that order) among the topics it shows: a strand joins the topic chosen
-    * at [[TopicDream.TopicAt]] or more, is set aside when `aside` is chosen, and otherwise opens
-    * a topic of its own (counted `unsure` when a topic was chosen below the mark); a card goes
-    * to the topic likeliest about it at [[TopicDream.CardAt]] or more, and is otherwise set
-    * aside. With no topic shown, cards are left and nothing is asked of them. Those set aside,
+    * numbered from 0 in that order). A strand's is shown, by ids alone, the topics attached to
+    * by ref, those it shares something with ([[TopicDream.Structural]]) and the newest
+    * ([[TopicDream.Newest]], none for a short strand), then filled from every topic by text
+    * ([[TopicDream.Fill]], [[TopicDream.ShortFill]] for a short one); it joins the topic chosen
+    * at [[TopicDream.TopicAt]] or more, opens a topic of its own when `new` is chosen, and is
+    * otherwise set aside (counted `unsure` when a topic was chosen below the mark). A card's is
+    * the 8 topics its text matches best; it goes to the topic likeliest about it at
+    * [[TopicDream.CardAt]] or more, and is otherwise set aside. With no topic kept, cards are
+    * left and nothing is asked of them. Those set aside,
     * with the cards their strands link, are joined to the floor's [[Aside]] (`aside`); `g` counts
     * them, those left (changed since the scan, or a sort refused, named by its move), and each
     * strand that could not open its topic as not written.
@@ -130,10 +147,24 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
       scan: Scanned,
       g: Gathered
   ): (Vector[Touch], Gathered) = {
-    val leads = scan.leads.map((k, v) => (TopicDream.Placed.Into(k, v), v))
-    val topics = Sorting.Among(leads, Vector.empty, 0)
-    // A card's nearest topics are those of the leads its text matches best.
-    val near = Sorting.Among(Vector.empty, leads, Sorting.Most)
+    val all = scan.topics.map((k, v) => (TopicDream.Placed.Into(k, v), v))
+    val versions = scan.topics.toMap
+    val byRef = scan.attached.map(_.key)
+    // A strand's sort shows what it must, by ids alone, then fills from every topic by text.
+    def among(st: Strand.Digested): Sorting.Among[TopicDream.Placed] = {
+      val short = st.chars < TopicDream.ShortChars
+      val newest = if (short) Vector.empty else scan.topics.take(TopicDream.Newest).map(_._1)
+      val pinned = (byRef ++ scan.nearOf(st.root) ++ newest).distinct.flatMap(k =>
+        versions.get(k).map(v => (TopicDream.Placed.Into(k, v), v))
+      )
+      Sorting.Among(
+        pinned,
+        all,
+        if (short) TopicDream.ShortFill else TopicDream.Fill - pinned.size
+      )
+    }
+    // A card's nearest topics are those its text matches best.
+    val near = Sorting.Among(Vector.empty, all, Sorting.Most)
     // Where each goes decides only which topics are written; each written topic is believed
     // as its own write ask's reply is, so a sort's answer need not be checked.
     type Sorted = (Vector[Touch], Tainted[Vector[Lineage.Tag]], Gathered)
@@ -151,7 +182,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
       (Vector.empty, run.tainted.map(_ => Vector.empty), g)
     ) { case (s @ (ts, aside, g), (st, i)) =>
       val name = CardMoves.numbered("sort", i)
-      moves.sort(name, Dreaming.Item.Discussion(st), topics, discussion) match {
+      moves.sort(name, Dreaming.Item.Discussion(st), among(st), discussion) match {
         case Left(e) => failed(s, name, Some(e))
         case Right(None) => failed(s, name, None)
         case Right(Some(sorted)) =>
@@ -159,28 +190,27 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
           d.choice match {
             case TopicDream.Placed.Into(k, v) if d.top >= TopicDream.TopicAt =>
               (ts :+ Touch(k, Some(v), Vector(st), Vector.empty), aside, g)
-            case TopicDream.Placed.Aside =>
+            case TopicDream.Placed.Opened =>
+              // A new topic is keyed by its discussion.
+              TopicKey.strand(st.root) match {
+                case Left(why) => (ts, aside, g.copy(unwritten = g.unwritten :+ ("a strand", why)))
+                case Right(k) => (ts :+ Touch(k, None, Vector(st), Vector.empty), aside, g)
+              }
+            case chosen =>
+              // Set aside at its digest, so it is offered again once its thread grows.
               val tags = Lineage.Tag.Strand(st.root, st.room, st.digest) +:
                 scan.of(Vector(st))._2.map(c => Lineage.Tag.Card(c.version))
-              (ts, aside.zip(sorted.asked.reply).map((a, _) => a ++ tags), g)
-            case chosen =>
               val unsure = chosen match {
                 case TopicDream.Placed.Into(_, _) => g.unsure + 1
                 case _ => g.unsure
               }
-              // A new topic is keyed by its discussion.
-              TopicKey.strand(st.root) match {
-                case Left(why) =>
-                  (ts, aside, g.copy(unsure = unsure, unwritten = g.unwritten :+ ("a strand", why)))
-                case Right(k) =>
-                  (ts :+ Touch(k, None, Vector(st), Vector.empty), aside, g.copy(unsure = unsure))
-              }
+              (ts, aside.zip(sorted.asked.reply).map((a, _) => a ++ tags), g.copy(unsure = unsure))
           }
       }
     }
     val card = run.tainted.map(_ => TopicDream.sortCard)
     val (touches, aside, sorted) =
-      if (leads.isEmpty) strands match {
+      if (all.isEmpty) strands match {
         case (ts, aside, g) => (ts, aside, g.copy(left = g.left + scan.cards.size))
       }
       else
@@ -293,6 +323,8 @@ object TopicDream {
 
   private val SetAside: MoveName = MoveName.literal("aside")
 
+  private val Holds: MoveName = MoveName.literal("holds")
+
   /** Where a sort may put a strand or a card: into a topic shown, by key and version; `Opened`,
     * a topic of its own; or set `Aside`.
     */
@@ -308,10 +340,38 @@ object TopicDream {
   private[topic] val CardAt: Double = 0.72
 
   /** 0.86: the least probability at which a strand joins the topic chosen for it; below it, the
-    * strand opens a topic of its own, counted unsure. Provisional: measured on discussions
-    * against the topics they opened, an easier set than a real continuation.
+    * strand is set aside, counted unsure, at its digest, so it is offered again once its thread
+    * grows. Provisional: measured on discussions against the topics they opened, an easier set
+    * than a real continuation.
     */
   private[topic] val TopicAt: Double = 0.86
+
+  /** 16: the most topics a strand's sort is shown for what they share with it
+    * ([[TopicScan.Scanned.near]]), after those attached to by ref.
+    */
+  private[topic] val Structural: Int = 16
+
+  /** 8: the newest topics a strand's sort is shown, after those it shares something with,
+    * unless the strand is short ([[ShortChars]]).
+    */
+  private[topic] val Newest: Int = 8
+
+  /** 32: the most topics a strand's sort shows once filled with those its text matches best:
+    * the placement spike found a choice over 32 exactly as accurate as one over 64. Those it
+    * must show may take it past 32, up to [[Sorting.Chosen]]; the text never does.
+    */
+  private[topic] val Fill: Int = 32
+
+  /** 150: under this many characters ([[grit.core.stitch.Strand.Digested.chars]]) a strand is
+    * short: its sort is shown the topics attached by ref and those it shares something with,
+    * then at most [[ShortFill]] its text matches best, and none for being newest. A short
+    * strand's words are few, so the newest crowd out its matches; measured, this matched a
+    * choice over 64 at half the tokens.
+    */
+  private[topic] val ShortChars: Int = 150
+
+  /** 16: the most topics a short strand's sort is filled with by text ([[ShortChars]]). */
+  private[topic] val ShortFill: Int = 16
 
   /** 700: the most characters of a topic's text a sort shows, its lead (at most [[LeadChars]])
     * and the head of its newest passage, and of a card's, its title and summary.

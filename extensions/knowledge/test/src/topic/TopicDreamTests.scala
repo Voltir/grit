@@ -470,18 +470,70 @@ object TopicDreamTests extends TestSuite {
       )
     }
 
-    test("a topic chosen below the mark opens a new one and is counted unsure") {
+    test(
+      "a topic chosen below the mark sets the discussion aside, counted unsure, until its thread grows"
+    ) {
       val w = new StrandWorld
       val a = strand(w, "C1", "deploy pipeline")
       val runs = new Runs(w)
       val _ = runs.run()
       val b = strand(w, "C2", "deploy rollback", 100)
       val second = runs.run(now = Now.plusSeconds(600), sort = judging("1", 0.85))
-      (second, runs.kept.map(_._1), runs.referring(Ref.Strand(b.id))) ==> (
-        "topics: 1 written (1 opened), 0 withdrawn, 1 unchanged, 0 set aside, 0 left for the next run; 1 opened unsure",
-        Vector(key(a), key(b)).sorted,
-        Vector(key(b))
+      val again = runs.run(now = Now.plusSeconds(700), sort = judging("1", 0.85))
+      w.say(b, "the rollback is scripted now", 800)
+      val grown = runs.run(now = Now.plusSeconds(900), sort = judging("1"))
+      (second, again, grown, runs.kept.map(_._1), runs.referring(Ref.Strand(b.id))) ==> (
+        "topics: 0 written (0 opened), 0 withdrawn, 1 unchanged, 1 set aside, 0 left for the next run; 1 set aside unsure",
+        "topics: 0 written (0 opened), 0 withdrawn, 2 unchanged, 0 set aside, 0 left for the next run",
+        "topics: 1 written (0 opened), 0 withdrawn, 1 unchanged, 0 set aside, 0 left for the next run",
+        Vector(key(a)),
+        Vector(key(a))
       )
+    }
+
+    test("a strand's sort is shown a topic of its room, though newer topics fill the newest") {
+      val w = new StrandWorld
+      val a = strand(w, "C1", "deploy pipeline")
+      val runs = new Runs(w)
+      val _ = runs.run()
+      val newer = TopicDream.Newest + 2
+      (1 to newer).foreach(i => strand(w, s"N$i", s"matter $i", 20))
+      val _ = runs.run(perRun = newer, most = newer, now = Now.plusSeconds(300))
+      val b = w.thread("C1", "3.0")
+      val _ = w.say(b, "lunch " * 40, 100)
+      w.follow(w.say(w.thread("C1", "4.0"), "lunch " * 40, 110), b)
+      val _ = runs.run(now = Now.plusSeconds(600), sort = asideAll)
+      val shown = runs.asked.filter(_.kind == "sort").last
+      (counted(shown), shown.shown.split("\n").count(_ == Lead)) ==>
+        ((1, 1 + TopicDream.Newest, 0), 1 + TopicDream.Newest)
+    }
+
+    test(
+      "a strand's sort is filled from every topic by its text, past the newest, to Fill in all"
+    ) {
+      val w = new StrandWorld
+      val runs = new Runs(w)
+      val topics = TopicDream.Fill + 4
+      (1 to topics).foreach(i => strand(w, s"N$i", s"matter $i", 20))
+      val _ = runs.run(perRun = topics, most = topics)
+      val _ = strand(w, "C0", "the deploy pipeline breaks " * 8, 100)
+      val _ = runs.run(now = Now.plusSeconds(600), sort = asideAll)
+      counted(runs.asked.filter(_.kind == "sort").last) ==> (1, TopicDream.Fill, 0)
+    }
+
+    test(
+      "a short strand's sort is shown no topic for being newest, and is filled by text to ShortFill"
+    ) {
+      val w = new StrandWorld
+      val runs = new Runs(w)
+      val topics = TopicDream.ShortFill + 4
+      (1 to topics).foreach(i => strand(w, s"N$i", s"matter $i", 20))
+      val _ = runs.run(perRun = topics, most = topics)
+      val _ = strand(w, "C0", "lunch", 100)
+      val _ = strand(w, "C9", "the deploy", 110)
+      val _ = runs.run(now = Now.plusSeconds(600), sort = asideAll)
+      runs.asked.filter(_.kind == "sort").takeRight(2).map(counted) ==>
+        Vector((1, 0, 0), (1, TopicDream.ShortFill, 0))
     }
 
     test("a discussion chosen aside is set aside, and opens no topic") {
@@ -569,9 +621,10 @@ object TopicDreamTests extends TestSuite {
       val a = strand(w, "C1", "deploy pipeline")
       val runs = new Runs(w)
       val _ = runs.run()
-      // A full page of newer topics, so a's is not shown as one of the newest.
-      (1 to TopicScan.Leads).foreach(i => strand(w, s"N$i", s"matter $i", 20))
-      val _ = runs.run(perRun = TopicScan.Leads, most = TopicScan.Leads, now = Now.plusSeconds(300))
+      // More newer topics than the text fills, so a's is shown first for its ref alone.
+      val newer = TopicDream.ShortFill + 4
+      (1 to newer).foreach(i => strand(w, s"N$i", s"matter $i", 20))
+      val _ = runs.run(perRun = newer, most = newer, now = Now.plusSeconds(300))
       w.say(a, "the rollback works now", 50)
       val b = strand(w, "C2", "deploy rollback", 100)
       val reply = runs.run(
@@ -580,8 +633,8 @@ object TopicDreamTests extends TestSuite {
       )
       val sorted = runs.asked.filter(_.kind == "sort").last
       (reply, counted(sorted), runs.referring(Ref.Strand(b.id))) ==> (
-        s"topics: 1 written (0 opened), 0 withdrawn, ${TopicScan.Leads} unchanged, 0 set aside, 0 left for the next run",
-        (1, grit.core.act.Sorting.Chosen, 0),
+        s"topics: 1 written (0 opened), 0 withdrawn, $newer unchanged, 0 set aside, 0 left for the next run",
+        (1, 1 + TopicDream.ShortFill, 0),
         Vector(key(a))
       )
     }

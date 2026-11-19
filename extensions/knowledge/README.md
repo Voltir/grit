@@ -133,21 +133,31 @@ whether it was set aside) with that strand, to go wherever the strand goes, the 
 never sorted; and sorts the others (`Dreaming.sort`, `sort-{i}`, a classifier's judgment each,
 no model ask), but a directory's cards and those kept below its floor, which attach only by ref
 or a strand's link: at most `perRun` strands, then `TopicScan.Cards` cards, past those already
-placed, among the topics shown (those attached to, and at most `TopicScan.Leads` more, newest
-first, each by its text's head within `TopicDream.SortChars`).
+placed. Each topic is shown by its text's head within `TopicDream.SortChars` (its lead, then the
+head of its newest passage), cut further only if the request would pass the classifier's limit
+(`Request.MostChars`).
 
-A strand is one choice over every topic shown, a new one, or none (`TopicDream.sortDiscussion`).
-It joins the topic chosen at `TopicDream.TopicAt` or more; a new one, or a topic chosen below
-that mark, opens a topic keyed by the strand alone (the latter counted unsure). A card is a yes
-or no for each of the topics its words match best (`TopicDream.sortCard`); it joins the likeliest
-at `TopicDream.CardAt` or more, and no card alone opens a topic; with no topic to sort among, its
-cards are left for a later run. Those placed in none are set aside (`aside`), in a document of its
-floor under `topic:aside` holding no topic, while within `recent` or `cardRecent` at the digest or
-version set aside, and for at most `asideFor`. A sort that cannot read what it was named (changed
-since the scan, or read by no candidate), or that fails, leaves its item for the next run.
+A strand's sort is shown, chosen by ids alone, the topics attached to by ref, those it shares
+something with (`TopicScan.Scanned.near`: written from the same strand, holding a card it links,
+or written from a strand of its room; at most `TopicDream.Structural`) and the
+`TopicDream.Newest` newest; then the step fills it from every topic of the floor by the documents'
+index over their whole text, to `TopicDream.Fill` in all, never past `Sorting.Chosen`. A short
+strand (under `TopicDream.ShortChars` characters) is shown none for being newest, and is filled
+with at most `TopicDream.ShortFill`. It is one choice over those, a new one, or none
+(`TopicDream.sortDiscussion`): it joins the topic chosen at `TopicDream.TopicAt` or more, opens
+a topic keyed by the strand alone when `new` is chosen, and is otherwise set aside, counted
+unsure when a topic was chosen below the mark. A card is a yes or no for each of the 8 topics its
+words match best (`TopicDream.sortCard`); it joins the likeliest at `TopicDream.CardAt` or more,
+and no card alone opens a topic; with no topic to sort among, its cards are left for a later
+run. Those placed in none are set aside (`aside`), in a document of its floor under
+`topic:aside` holding no topic, while within `recent` or `cardRecent` at the digest or version
+set aside, and for at most `asideFor`, so a strand set aside is offered again once its thread
+grows. A sort that cannot read what it was named (changed since the scan, or read by no
+candidate), or that fails, leaves its item for the next run.
 
 Each topic touched is written (`write-{i}`) from the strands and cards attached, the current
-cards of at most `TopicScan.Holds` more units it refers to, and its current text, and kept
+cards of at most `TopicScan.Holds` more units it refers to (read for the topics written, in a
+step of their own, `holds`), and its current text, and kept
 (`keep-{i}`): the day's passage replacing one the topic holds for that day, its lineage joined.
 A topic's version refers to each strand it was written from, each card's unit and each card unit
 its strands link (newest first), each topic it links and the unit of each other link; a ref
