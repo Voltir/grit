@@ -58,6 +58,7 @@ object OfferedCommandsTests extends TestSuite {
         .distinct
       val reading = Set(
         "project_show",
+        "project_stored",
         "project_history",
         "project_list",
         "project_find",
