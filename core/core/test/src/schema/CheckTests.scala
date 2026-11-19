@@ -38,6 +38,46 @@ object CheckTests extends TestSuite {
     case Left(e) => throw new java.lang.AssertionError(e.message)
   }
 
+  private def read(v: ujson.Value): JsonSchema = JsonSchema.read(v) match {
+    case Right(s) => s
+    case Left(e) => throw new java.lang.AssertionError(e.message)
+  }
+
+  /** A card's summary: its prose and a required list of terms. */
+  private val carded: JsonSchema = read(
+    ujson.Obj(
+      "type" -> "object",
+      "properties" -> ujson.Obj(
+        "summary" -> ujson.Obj("type" -> "string"),
+        "terms" -> ujson.Obj("type" -> "array", "items" -> ujson.Obj("type" -> "string"))
+      ),
+      "required" -> ujson.Arr("summary", "terms"),
+      "additionalProperties" -> false
+    )
+  )
+
+  /** A topic's write: two prose fields and a nullable meeting. */
+  private val written: JsonSchema = read(
+    ujson.Obj(
+      "type" -> "object",
+      "properties" -> ujson.Obj(
+        "lead" -> ujson.Obj("type" -> "string"),
+        "passage" -> ujson.Obj("type" -> "string"),
+        "meeting" -> ujson.Obj(
+          "type" -> ujson.Arr("object", "null"),
+          "properties" -> ujson.Obj(
+            "state" -> ujson.Obj("type" -> "string"),
+            "who" -> ujson.Obj("type" -> "array", "items" -> ujson.Obj("type" -> "string"))
+          ),
+          "required" -> ujson.Arr("state", "who"),
+          "additionalProperties" -> false
+        )
+      ),
+      "required" -> ujson.Arr("lead", "passage", "meeting"),
+      "additionalProperties" -> false
+    )
+  )
+
   private def edit(old: ujson.Value): ujson.Obj = ujson.Obj("oldText" -> old)
 
   /** A value that conforms, in property order. */
@@ -143,6 +183,59 @@ object CheckTests extends TestSuite {
         Some(Mismatch("edits[0].oldText", "expected a string, got 1"))
       checked(with_("label", ujson.Str("[1]")), ArgRepair.values.toSet) ==>
         Right(with_("label", ujson.Str("[1]")))
+    }
+
+    test(
+      "a field carrying a required list after its close is cut there, and the list read, only when asked"
+    ) {
+      // As a provider parsed a model's call: `terms` given inside `summary`, after its close.
+      val sent = ujson.Obj(
+        "summary" -> ("An order form. Signature blocks are unfilled.</summary>\n" +
+          "<parameter name=\"terms\">[\"revenue share\", \"payment terms\"]"),
+        "terms" -> ujson.Null
+      )
+      (
+        carded.check(sent, Set(ArgRepair.CarriedParameter)).map(_.json),
+        carded.check(sent, Set.empty).left.map(_.path)
+      ) ==> (
+        Right(
+          ujson.Obj(
+            "summary" -> "An order form. Signature blocks are unfilled.",
+            "terms" -> ujson.Arr("revenue share", "payment terms")
+          )
+        ),
+        Left("terms")
+      )
+    }
+
+    test("a field carrying a nullable object after its close is cut there, and the object read") {
+      val meeting = ujson.Obj("state" -> "proposed", "who" -> ujson.Arr("Ana"))
+      val sent = ujson.Obj(
+        "lead" -> "Meetings with a partner.",
+        "passage" -> (s"Nick suggested inviting Emily.</passage>\n<parameter name=\"meeting\">" +
+          ujson.write(meeting)),
+        "meeting" -> ujson.Null
+      )
+      written.check(sent, Set(ArgRepair.CarriedParameter)).map(_.json) ==> Right(
+        ujson.Obj(
+          "lead" -> "Meetings with a partner.",
+          "passage" -> "Nick suggested inviting Emily.",
+          "meeting" -> meeting
+        )
+      )
+    }
+
+    test("markup carrying a name that is no property, or one sent already, is left as sent") {
+      val stray = "A passage.</passage>\n<parameter name=\"mood\">\"glad\""
+      val again = "A passage.</passage>\n<parameter name=\"lead\">\"Another.\""
+      Vector(stray, again).map(p =>
+        written
+          .check(
+            ujson.Obj("lead" -> "A lead.", "passage" -> p, "meeting" -> ujson.Null),
+            Set(ArgRepair.CarriedParameter)
+          )
+          .map(_.json("passage").str)
+      ) ==> Vector(Right(stray), Right(again))
     }
 
     test("a conforming value's JSON is a fresh copy: changing it changes nothing kept") {

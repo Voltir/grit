@@ -38,6 +38,12 @@ enum ArgRepair {
 
   /** A list sent as a string holding a JSON list is read as the list. */
   case QuotedList
+
+  /** A string field holding its own close tag and then other fields as
+    * `<parameter name="…">` markup is cut at the close, and each carried field sent null or
+    * absent is read from the markup.
+    */
+  case CarriedParameter
 }
 
 /** A repair made to a tool call's name before it is looked up. */

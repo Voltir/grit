@@ -51,7 +51,7 @@ object CatalogTests extends TestSuite {
         StrictSchemas.Ignored,
         ReasoningReplay.Details,
         NameRepair.HarmonyCut,
-        Set(ArgRepair.QuotedNumber, ArgRepair.QuotedList),
+        Set(ArgRepair.QuotedNumber, ArgRepair.QuotedList, ArgRepair.CarriedParameter),
         AfterToolResult.UserMessage,
         ToolGuidance.SchemaOnly,
         profiled = false
@@ -287,7 +287,7 @@ object CatalogTests extends TestSuite {
         .of(policy.copy(summary = policy.turn, query = policy.turn), Vector(priced))
         .pin
       val settingsForm =
-        """"settings":{"strict":"ignored","replay":"details","names":"harmony-cut","repairs":["quoted-list","quoted-number"],""" +
+        """"settings":{"strict":"ignored","replay":"details","names":"harmony-cut","repairs":["carried-parameter","quoted-list","quoted-number"],""" +
           s""""afterResult":"user-message","guidance":"schema-only","profiled":true,"effectiveContext":500000,"pricing":$pricingForm}}"""
       val pinForm =
         s"""{"catalog":"${CatalogVersion.value(t.turn.first.version)}",""" +
@@ -307,7 +307,7 @@ object CatalogTests extends TestSuite {
       val pinned =
         s"""{"catalog":"${CatalogVersion.value(t.turn.first.version)}",""" +
           """"assignment":{"model":"openai/gpt-oss-120b","upstream":"cerebras/fp16","maxTokens":4096,"effort":"low"},""" +
-          """"settings":{"strict":"ignored","replay":"details","names":"harmony-cut","repairs":["quoted-list","quoted-number"],""" +
+          """"settings":{"strict":"ignored","replay":"details","names":"harmony-cut","repairs":["carried-parameter","quoted-list","quoted-number"],""" +
           """"afterResult":"user-message","guidance":"schema-only","profiled":true}}"""
       CatalogJson
         .writeTurn(t)
@@ -470,7 +470,7 @@ object CatalogTests extends TestSuite {
       CatalogJson.setting("strict", "sometimes") ==>
         Left("strict is not one of enforced, when-required, ignored, rejected")
       CatalogJson.setting("repairs", "quoted-number, guess") ==>
-        Left("repairs[1] is not one of quoted-number, quoted-list")
+        Left("repairs[1] is not one of quoted-number, quoted-list, carried-parameter")
       CatalogJson.setting("speed", "fast") ==>
         Left("speed is not a setting: one of strict, replay, names, repairs, afterResult, guidance")
     }

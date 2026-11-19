@@ -18,7 +18,9 @@ final class JsonSchema private (root: JsonSchema.Node) extends caps.Pure {
   /** `value`, with `repairs` made where this schema directs them, if it conforms: a string
     * of decimal digits where a number or integer is asked for under
     * [[grit.core.model.ArgRepair.QuotedNumber]], a string holding a JSON list where a list is
-    * asked for under [[grit.core.model.ArgRepair.QuotedList]]. A property left out whose schema
+    * asked for under [[grit.core.model.ArgRepair.QuotedList]], a string field carrying other
+    * fields as markup after its close under [[grit.core.model.ArgRepair.CarriedParameter]]
+    * ([[carried]]). A property left out whose schema
     * admits `null` checks as `null`. Otherwise the first place, in document order, where it
     * does not ([[Mismatch]]).
     */
@@ -391,7 +393,10 @@ object JsonSchema {
               }
           }
         case Shape.Properties(properties) =>
-          val sent = v.objOpt.fold(Vector.empty[(String, ujson.Value)])(_.toVector)
+          val received = v.objOpt.fold(Vector.empty[(String, ujson.Value)])(_.toVector)
+          val sent =
+            if (repairs.contains(ArgRepair.CarriedParameter)) carried(properties, received, repairs)
+            else received
           val names = properties.map(_._1)
           def at(name: String): String = if (path.isEmpty) name else s"$path.$name"
           for {
@@ -433,6 +438,50 @@ object JsonSchema {
     }
 
   private val Digits = "-?[0-9]+".r
+
+  /** `sent` with each string field that holds its own `</name>` close and then only
+    * `<parameter name="…">` markup cut at the close, and each carried field set from the
+    * markup: only when every carried name is a property, not the field itself, sent null or
+    * not at all, and its value conforms; otherwise the field is left as sent. A carried value is
+    * read as JSON, or else as the string it is.
+    */
+  private def carried(
+      properties: Vector[(String, Node)],
+      sent: Vector[(String, ujson.Value)],
+      repairs: Set[ArgRepair]
+  ): Vector[(String, ujson.Value)] =
+    sent.foldLeft(sent) { (now, field) =>
+      field match {
+        case (name, ujson.Str(s)) =>
+          val close = s"</$name>"
+          val at = s.indexOf(close)
+          val rest = if (at < 0) "" else s.drop(at + close.length).trim
+          val markup =
+            Parameter.findAllMatchIn(rest).map(m => (m.group(1), m.group(2).trim)).toVector
+          val values = markup.map { (n, t) =>
+            val value = scala.util.Try(ujson.read(t)).getOrElse(ujson.Str(t))
+            n -> properties
+              .find(_._1 == n)
+              .filter(_ => n != name && now.find(_._1 == n).forall(_._2.isNull))
+              .flatMap((_, node) =>
+                conform(node, value, n, repairs - ArgRepair.CarriedParameter).toOption
+              )
+          }
+          val whole = markup.nonEmpty && Parameter.replaceAllIn(rest, "").trim.isEmpty
+          if (at < 0 || !whole || values.exists(_._2.isEmpty)) now
+          else {
+            val set = values.collect { case (n, Some(value)) => n -> value }
+            val cut = now.map((k, x) => if (k == name) k -> ujson.Str(s.take(at).trim) else k -> x)
+            cut.map((k, x) => set.find(_._1 == k).getOrElse(k -> x)) ++
+              set.filterNot((k, _) => cut.exists(_._1 == k))
+          }
+        case _ => now
+      }
+    }
+
+  // `<parameter name="x">value`, up to its close, the next parameter, or the end.
+  private val Parameter =
+    """(?s)<parameter name="([^"]+)">(.*?)(?:</parameter>|(?=<parameter name=)|\z)""".r
 
   /** `path` joined with `step`, a schema's path. */
   private def within(path: String, step: String): String =

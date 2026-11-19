@@ -155,10 +155,13 @@ object CatalogJson {
     {
       case ArgRepair.QuotedNumber => "quoted-number"
       case ArgRepair.QuotedList => "quoted-list"
+      case ArgRepair.CarriedParameter => "carried-parameter"
     }
   )
 
-  /** `repair` as it is written in stored forms: `quoted-number`, `quoted-list`. */
+  /** `repair` as it is written in stored forms: `quoted-number`, `quoted-list`,
+    * `carried-parameter`.
+    */
   def argRepair(repair: ArgRepair): String = RepairWords.of(repair)
 
   /** The repair written `v` ([[argRepair]]'s form), or why it is none. */
