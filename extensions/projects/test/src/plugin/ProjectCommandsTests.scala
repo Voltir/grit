@@ -521,6 +521,64 @@ object ProjectCommandsTests extends TestSuite {
         )
       )
 
+    test(
+      "history of a withdrawn artifact a re-key gave an id reads where the re-key left it, by its id alone"
+    ) {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "a", "note", "A.")
+      kept(projects, store, "b", "note", "B.")
+      storedUnder(store, "p/1", "p/old")
+      storedUnder(store, "p/2", "p/other")
+      def plant(names: (Int, String)*): Unit = inTx(
+        store.keeper.write(
+          right(grit.core.id.DocKey.of("p#rekeyed-0")),
+          grit.core.visibility.Label.Public,
+          Integrity.Authority,
+          grit.core.place.Place.Everywhere,
+          right(grit.core.document.DocText.of("Where a re-key left its artifacts.")),
+          right(
+            grit.projects.artifact.Rekeyed.data(
+              right(ProjectKey.of("p")),
+              names.toVector.map((n, k) =>
+                right(ArtifactNumber.of(n)) -> right(grit.core.id.DocKey.of(k))
+              )
+            )
+          ),
+          None,
+          at,
+          Set.empty
+        )
+      ).fold(e => throw new java.lang.AssertionError(e.toString), _ => ())
+      done(ask(projects, store, "project_withdraw", "key" -> "p/a"))
+      // p/1 named where p/2 is kept: its newest version's id is not the one asked for.
+      plant(1 -> "p/other")
+      val misnamed = ask(projects, store, "project_history", "key" -> "p/1")
+      plant(1 -> "p/old")
+      val atOld = inTx(
+        store.keeper.versions(
+          right(grit.core.id.DocKey.of("p/old")),
+          grit.core.visibility.Label.Public,
+          10
+        )
+      ).fold(
+        e => throw new java.lang.AssertionError(e.toString),
+        _.map {
+          case grit.core.document.DocumentVersion.Holding(d) => d.version
+          case grit.core.document.DocumentVersion.Withdrawal(v, _) => v
+        }.map(grit.core.id.DocumentVersionId.value)
+      )
+      (
+        misnamed,
+        ask(projects, store, "project_history", "key" -> "p/1") match {
+          case CommandOutcome.Done(text) =>
+            text.linesIterator.map(_.takeWhile(_ != ' ').toLong).toVector
+          case other => other
+        },
+        atOld.size
+      ) ==> (CommandOutcome.Refused("project p has no artifact p/1 (its highest is p/2)"), atOld, 2)
+    }
     test("history lists versions newest first with who wrote each") {
       val projects = plugin()
       val store = Store()

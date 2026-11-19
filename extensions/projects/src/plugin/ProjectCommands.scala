@@ -20,7 +20,7 @@ import grit.core.plugin.{CommandBy, CommandOutcome, KeepingCommand, PluginComman
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Args, ArgsError, Field, ToolName, ToolSpec}
 import grit.core.visibility.{Integrity, Label}
-import grit.projects.artifact.{Artifact, ArtifactHead, ArtifactJson, Body, Project}
+import grit.projects.artifact.{Artifact, ArtifactHead, ArtifactJson, Body, Project, Rekeyed}
 import grit.projects.method.{
   ArtifactKind,
   Method,
@@ -2831,8 +2831,10 @@ private[plugin] object ProjectCommands {
 
   /** The key and label the versions of the artifact `key` names are kept under: its current
     * document's, as [[resolved]] finds it; or, for an artifact of `project` no longer current,
-    * the store key `key` writes and the label its newest version `own` reads is at; or why not,
-    * as [[resolved]] refuses, when `own` reads no version of it.
+    * the key it is kept under (for an id, the one [[Rekeyed]] gives, else the id; for a handle,
+    * the key it writes) and the label its newest version `own` reads is at; or why not, as
+    * [[resolved]] refuses, when `own` reads no version of it, or, for an id, the newest holds
+    * another id.
     */
   private def recorded(own: DocumentShelf, project: Loaded, key: ArtifactRef)(using
       Tx^
@@ -2841,11 +2843,38 @@ private[plugin] object ProjectCommands {
       case Right((document, _)) => Right((document.key, document.label))
       case Left(missing) =>
         for {
-          docKey <- refuse(DocKey.of(key.value))
+          docKey <- key match {
+            case ArtifactRef.Id(id) =>
+              rekeyed(own, id).flatMap(_.fold(refuse(DocKey.of(id.value)))(Right(_)))
+            case named => refuse(DocKey.of(named.value))
+          }
           labels <- stored(own.labels(docKey))
           label <- labels.headOption.toRight(missing)
+          newest <- stored(own.versions(docKey, label, HistoryMost))
+          _ <- key match {
+            case ArtifactRef.Id(id)
+                if !newest
+                  .collectFirst { case DocumentVersion.Holding(d) => readable(d).toOption }
+                  .flatten
+                  .forall(_.head.key == id) =>
+              Left(missing)
+            case _ => Right(())
+          }
         } yield (docKey, label)
     }
+
+  /** The key [[Rekeyed]] says `id` is kept under, its documents read at every label `own` reads,
+    * or why one cannot be read.
+    */
+  private def rekeyed(own: DocumentShelf, id: ArtifactKey)(using
+      Tx^
+  ): Either[Stop, Option[DocKey]] =
+    for {
+      key <- refuse(Rekeyed.key(id))
+      labels <- stored(own.labels(key))
+      documents <- stored(Traversal.traverse(labels)(own.current(key, _)))
+      under <- refuse(Rekeyed.storeKey(id, documents.flatten))
+    } yield under
 
   /** Nothing, or a refusal naming each of `writing` kept at a label below what this room writes,
     * as `<subject> is kept <label>, below what this room writes (<clearance>): <verb> from a room

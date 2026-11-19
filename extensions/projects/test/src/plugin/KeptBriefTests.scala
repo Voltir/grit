@@ -188,31 +188,7 @@ object KeptBriefTests extends TestSuite {
       started(projects, store)
       kept(projects, store, "c", "note", "Cited.")
       done(keep(projects, store, "m", "The manager's note.", "cites" -> ujson.Arr("p/c")))
-      // As a re-key leaves it: p/2 kept under the key it had before it had an id.
-      inTx {
-        for {
-          was <- store.keeper.current(right(DocKey.of("p/2")), Label.Public)
-          d <- was.toRight(StoreError.Invalid("no p/2"))
-          written <- grit.projects.artifact.Artifact
-            .of(d)
-            .flatMap(grit.projects.artifact.ArtifactJson.write)
-            .left
-            .map(StoreError.Invalid(_))
-          (text, data, refs) = written
-          _ <- store.keeper.write(
-            right(DocKey.of("p/m")),
-            Label.Public,
-            d.integrity,
-            d.place,
-            text,
-            data,
-            None,
-            at,
-            refs
-          )
-          _ <- store.keeper.withdraw(d.key, Label.Public, at)
-        } yield ()
-      }.fold(failed, identity)
+      storedUnder(store, "p/2", "p/m")
       claim(projects, store, "p/m")
       done(keep(projects, store, "m", "The note, rewritten.", "cites" -> ujson.Arr("p/c")))
       val now = rendered(projects, store)
