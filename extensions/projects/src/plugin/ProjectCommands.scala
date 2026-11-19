@@ -2664,7 +2664,9 @@ private[plugin] object ProjectCommands {
         s"${ConversationId.value(turn.conversationId)})"
   }
 
-  /** Who `by` moves as ([[Mover]]). */
+  /** Who `by` moves as ([[Mover]]): a person when a direct caller believed at `Authority` or
+    * more, else an agent (a turn, or a caller believed lower).
+    */
   private[plugin] def moverOf(by: CommandBy): Mover = by match {
     case CommandBy.Direct(_, believed) if believed.dominates(Integrity.Authority) => Mover.Person
     case _ => Mover.Agent

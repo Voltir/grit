@@ -333,9 +333,7 @@ enum MoveRefusal extends caps.Pure {
   case PersonOnly(head: ArtifactHead, to: StateName)
 }
 
-/** Who is making a move: a caller giving the command directly and believed at `Authority`, or
-  * any other: a turn, or a session believed lower.
-  */
+/** Who is making a move, as the plugin reads its caller: a person, or an agent acting otherwise. */
 enum Mover extends caps.Pure {
   case Person, Agent
 }
