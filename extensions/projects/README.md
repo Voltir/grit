@@ -13,7 +13,8 @@ Packages, in one-way order (each names only those before it):
   `<project>/<number>`, minted by its project and never reused), `Handle` (the name an artifact
   may carry beside its id), `ArtifactRef` (what a caller names one by: an id or a handle), and `Pin`, the method version a project holds to. What an artifact
   is claimed for is core's `ClaimHolder`.
-- **`artifact`**: what a project is: `ArtifactHead` (everything but the body), `Body` (opaque:
+- **`artifact`**: what a project is: `ArtifactHead` (everything but the body), `Rank` (where an
+  artifact sits among its siblings), `Body` (opaque:
   its prose and its stored form in one file, so a stored-form version bump is one migration),
   `Artifact` and `Project`, which holds no dangling link and no parent cycle; and `ArtifactJson`,
   an artifact and a project's index as ledger documents hold them (`Artifact.of` reads one
