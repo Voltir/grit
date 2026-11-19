@@ -1187,7 +1187,7 @@ object ProjectCommandsTests extends TestSuite {
       assert(found == "p/1 a (note, open): Title a")
     }
     test(
-      "project_find names the section holding most of the query's words, the first of a tie, none when what sits above holds as many"
+      "project_find names the section holding most of the query's words"
     ) {
       val projects = plugin()
       val store = Store()
