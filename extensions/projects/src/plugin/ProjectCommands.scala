@@ -162,7 +162,8 @@ private[plugin] final class ProjectCommands(
         "it, to keep it only if no one has kept it since. Answers with the artifact's key and " +
         "the version it is kept at. Refused, keeping nothing: for a key, parent or cite the " +
         "project lacks, naming the nearest it has; for a version that is not the artifact's " +
-        f"current one; and when the brief of an artifact claimed in the project would pass ${DocRef.BriefChars}%,d " +
+        "current one; for a handle another artifact holds, or a change of one a role's brief " +
+        f"carries by name; and when the brief of an artifact claimed in the project would pass ${DocRef.BriefChars}%,d " +
         "characters, naming the characters to cut.",
       Args
         .of(
@@ -2503,6 +2504,47 @@ private[plugin] object ProjectCommands {
         }
     }
 
+  /** The handle `change` leaves the artifact `key` (`existing` as it is now in `now`), or why not:
+    * another artifact holds it, or it renames or removes a handle a role of `method` carries.
+    */
+  private def handled(
+      method: Method,
+      now: Stepping,
+      key: ArtifactKey,
+      existing: Option[Artifact],
+      change: HandleChange
+  ): Either[Stop, Option[Handle]] = {
+    val was = existing.flatMap(_.head.handle)
+    val called = existing.fold(key.value)(_.head.called)
+    val becomes = change match {
+      case HandleChange.Unchanged => was
+      case HandleChange.Removed => None
+      case HandleChange.To(h) => Some(h)
+    }
+    val holder =
+      becomes.flatMap(h => now.artifacts.find(a => a.head.key != key && a.head.handle.contains(h)))
+    val carrying = was
+      .filterNot(becomes.contains)
+      .map(h => method.views.filter(_.carried.contains(h)).map(_.role))
+      .getOrElse(Vector.empty)
+    (holder, becomes, carrying, was) match {
+      case (Some(other), Some(h), _, _) =>
+        Left(
+          Stop.Refused(
+            s"$called cannot take the handle ${Handle.value(h)}: ${other.head.called} holds it"
+          )
+        )
+      case (_, _, roles @ (_ +: _), Some(h)) =>
+        Left(
+          Stop.Refused(
+            s"$called keeps its handle: the brief of role " +
+              s"${roles.map(RoleName.value).mkString(", ")} carries the artifact named ${Handle.value(h)}"
+          )
+        )
+      case _ => Right(becomes)
+    }
+  }
+
   /** `step` taken over `now`, from `project` as loaded, written as `writer`, `mover` as
     * [[planned]] takes it: what it makes of `now` and its answer, or why it is refused, as
     * `project_keep`, `project_edit` or `project_move` refuses.
@@ -2566,14 +2608,11 @@ private[plugin] object ProjectCommands {
             refuse(Traversal.traverse(cs)(resolve))
           )
           body <- refuse(Body.read(args.body, resolve))
+          handle <- handled(method, now, key, existing, args.handle)
           artifact = Artifact(
             ArtifactHead(
               key,
-              args.handle match {
-                case HandleChange.Unchanged => existing.flatMap(_.head.handle)
-                case HandleChange.Removed => None
-                case HandleChange.To(h) => Some(h)
-              },
+              handle,
               kind,
               state,
               args.title,
