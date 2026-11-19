@@ -91,6 +91,7 @@ private[plugin] final class ProjectCommands(
       Withdraw,
       Sweep,
       Migrate,
+      Rekey,
       Stale,
       declaring.Declare,
       declaring.Methods
@@ -137,7 +138,7 @@ private[plugin] final class ProjectCommands(
           _ <- Either.cond(was.isEmpty, (), Stop.Refused(s"project $p exists already"))
           pin <- refuse(Pin.of(method.name, method.version, method.digest))
           index <- refuse(
-            ArtifactJson.index(args.project, pin, author(by), Some(ArtifactNumber.First))
+            ArtifactJson.index(args.project, pin, author(by), ArtifactNumber.First)
           )
           (key, text, data, refs) = index
           _ <- keptEverywhere(own, key, Label.Public, Tx.top, text, data, refs, at)
@@ -1020,16 +1021,69 @@ private[plugin] final class ProjectCommands(
         Tx^
     ): Either[StoreError, CommandOutcome] = answered {
       for {
-        project <- loaded(own.documents, args.project)
-        whole <- refuse(Project.of(args.project, project.pin, project.artifacts))
-        rest = ProjectMarkdown
-          .render(whole)
+        files <- exported(own.documents, args.project)
+        rest = files
           .sortBy(_._1)
           .filter((path, _) => args.after.forall(path > _))
         page = rest.take(ExportPage)
       } yield AnswerText.page(page, page.lastOption.map(_._1).filter(_ => rest.size > page.size))
     }
   }
+
+  /** `project_rekey`: not built yet, so a project of the old form stays in it. */
+  object Rekey extends KeepingCommand[Rekeying] {
+    val spec: ToolSpec[Rekeying] = ToolSpec(
+      ToolName("project_rekey"),
+      "Gives each artifact of a project of the old form, its artifacts keyed by name, a " +
+        "number, keeping its name as its handle. Not built yet: always refused.",
+      Args
+        .of((project = Field.text("The project's key.")))
+        .refine(a => parsed("project", a.project, ProjectKey.of).map(Rekeying(_)))
+    )
+    def run(
+        args: Rekeying,
+        by: CommandBy,
+        own: DocumentKeeper,
+        claims: Claims,
+        at: Instant
+    )(using Tx^): Either[StoreError, CommandOutcome] =
+      Right(
+        CommandOutcome.Refused(
+          s"project_rekey is not built yet: project ${ProjectKey.value(args.project)} is left " +
+            "as it is"
+        )
+      )
+  }
+
+  /** `project` as files ([[ProjectMarkdown.render]]), or, in the old form, as it was exported
+    * then ([[ProjectMarkdown.oldForm]]); or why not.
+    */
+  private def exported(own: DocumentShelf, project: ProjectKey)(using
+      Tx^
+  ): Either[Stop, Vector[(String, String)]] =
+    for {
+      found <- indexed(own, project)
+      (index, pin) = found
+      next <- refuse(ArtifactJson.nextOf(index))
+      files <- next match {
+        case Some(_) =>
+          loaded(own, project)
+            .flatMap(p => refuse(Project.of(project, p.pin, p.artifacts)))
+            .map(ProjectMarkdown.render)
+        case None =>
+          for {
+            holding <- refuse(ArtifactJson.holding(project))
+            documents <- stored(own.referring(holding, Projects.Terms.bound))
+            files <- refuse(
+              ProjectMarkdown.oldForm(
+                project,
+                pin,
+                documents.map(d => DocKey.value(d.key) -> d.data)
+              )
+            )
+          } yield files
+      }
+    } yield files
 
   /** `project_claim`. */
   object ProjectClaim extends KeepingCommand[Claiming] {
@@ -2125,6 +2179,9 @@ private[plugin] object ProjectCommands {
   /** `project_export`'s arguments. */
   final case class Exporting(project: ProjectKey, after: Option[String]) extends caps.Pure
 
+  /** `project_rekey`'s arguments: the project to re-key. */
+  final case class Rekeying(project: ProjectKey) extends caps.Pure
+
   /** `project_claim`'s arguments. */
   final case class Claiming(key: ArtifactRef, role: RoleName, holder: ClaimHolder) extends caps.Pure
 
@@ -2226,13 +2283,13 @@ private[plugin] object ProjectCommands {
   }
 
   /** A project as its documents hold it: its key, its index, its pin, the number its next new
-    * artifact takes (none in the old form), and each artifact with its document.
+    * artifact takes, and each artifact with its document.
     */
   private final case class Loaded(
       key: ProjectKey,
       index: Document,
       pin: Pin,
-      next: Option[ArtifactNumber],
+      next: ArtifactNumber,
       documents: Vector[(Document, Artifact)]
   ) {
     def artifacts: Vector[Artifact] = documents.map(_._2)
@@ -2294,19 +2351,22 @@ private[plugin] object ProjectCommands {
     */
   private val FoundAmong: Int = 100
 
-  /** `project` and its artifacts as `own` holds them, or why not. */
+  /** `project` and its artifacts as `own` holds them, or why not: among them, that it is in the
+    * old form ([[OldForm]]).
+    */
   private def loaded(own: DocumentShelf, project: ProjectKey)(using
       Tx^
   ): Either[Stop, Loaded] = {
     for {
       found <- indexed(own, project)
       (index, pin) = found
-      next <- refuse(
+      read <- refuse(
         ArtifactJson
           .nextOf(index)
           .left
           .map(why => s"project ${ProjectKey.value(project)} cannot be read: $why")
       )
+      next <- read.toRight(Stop.Refused(OldForm(project)))
       holding <- refuse(ArtifactJson.holding(project))
       documents <- stored(own.referring(holding, Projects.Terms.bound))
       artifacts <- refuse(Traversal.sequence(documents.map(d => readable(d).map(d -> _))))
@@ -2473,7 +2533,7 @@ private[plugin] object ProjectCommands {
       artifacts: Vector[Artifact],
       changed: Vector[ArtifactKey],
       callers: Set[ArtifactKey],
-      next: Option[ArtifactNumber]
+      next: ArtifactNumber
   ) extends caps.Pure
 
   /** `steps` over `project`, each as its command would take it and seeing what those before it
@@ -2573,11 +2633,7 @@ private[plugin] object ProjectCommands {
         for {
           named <- args.key.fold(Right(None))(r => refuse(resolve(r)).map(Some(_)))
           existing = named.flatMap(k => now.artifacts.find(_.head.key == k))
-          key <- named.fold(
-            now.next
-              .map(ArtifactKey.of(project.key, _))
-              .toRight(Stop.Refused(OldForm(project.key)))
-          )(Right(_))
+          key = named.getOrElse(ArtifactKey.of(project.key, now.next))
           _ <- unchanged(key, args.version, project.documents.find(_._2.head.key == key))
           placed <- (existing, args.kind) match {
             case (Some(a), Some(k)) if k != a.head.kind =>
@@ -2631,7 +2687,7 @@ private[plugin] object ProjectCommands {
           )
           next =
             if (named.isDefined) changed
-            else changed.copy(next = Some(ArtifactNumber.after(key.number)))
+            else changed.copy(next = ArtifactNumber.after(key.number))
           _ <- refuse(Project.of(project.key, project.pin, next.artifacts))
         } yield (next, s"Kept ${AnswerText.named(artifact.head)}.")
       case Step.Edit(args) =>

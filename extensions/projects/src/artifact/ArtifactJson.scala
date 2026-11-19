@@ -65,13 +65,14 @@ object ArtifactJson {
   /** `project`'s index as its document holds it, or why not: under the project's key, which no
     * artifact's is; text naming the project and its method; its pin's method, version and
     * digest, `by`, and `next`, the number its next new artifact takes, as data; and the one ref
-    * [[indexing]] gives. With no `next` it is in the old form, before the re-key (ADR 0063).
+    * [[indexing]] gives. An index with no `next` is in the old form, before the re-key
+    * (ADR 0063), and is no longer written.
     */
   def index(
       project: ProjectKey,
       pin: Pin,
       by: String,
-      next: Option[ArtifactNumber]
+      next: ArtifactNumber
   ): Either[String, (DocKey, DocText, ujson.Value, Set[DocRef])] = {
     val method = MethodName.value(pin.method)
     for {
@@ -84,8 +85,10 @@ object ArtifactJson {
       key,
       text,
       ujson.Obj.from(
-        pinData(pin).value.toSeq ++ Seq("by" -> ujson.Str(by)) ++
-          next.map(n => NextField -> ujson.Num(ArtifactNumber.value(n)))
+        pinData(pin).value.toSeq ++ Seq(
+          "by" -> ujson.Str(by),
+          NextField -> ujson.Num(ArtifactNumber.value(next))
+        )
       ),
       Set(ref)
     )

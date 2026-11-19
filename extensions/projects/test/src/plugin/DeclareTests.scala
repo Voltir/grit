@@ -58,7 +58,7 @@ object DeclareTests extends TestSuite {
         right(ProjectKey.of("p")),
         right(Pin.of(methodName, version, digest)),
         by,
-        Some(ArtifactNumber.First)
+        ArtifactNumber.First
       )
     )
     inTx(
