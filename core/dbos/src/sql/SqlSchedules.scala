@@ -17,7 +17,6 @@ import grit.core.id.{
   TurnSeq,
   WorkflowId
 }
-import grit.core.identity.Principal
 import grit.core.job.{
   Booking,
   Declared,
@@ -90,7 +89,7 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
   private def declareOne(id: ScheduleId, d: Declared[?], now: Instant)(using
       tx: Tx^
   ): Either[StoreError, Unit] = {
-    val declared = Tx.integrityOf(Principal.Grit)
+    val declared = Tx.top
     many("SELECT rule, ended FROM grit.schedules WHERE id = ? FOR UPDATE")(
       _.setString(1, ScheduleId.value(id))
     )(rs => (SlotRuleJson.read(ujson.read(rs.getString(1))), Option(rs.getString(2))))

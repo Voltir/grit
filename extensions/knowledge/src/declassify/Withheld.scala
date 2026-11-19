@@ -7,7 +7,6 @@ import grit.core.id.DocKey
 import grit.core.place.Place
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.Label
-import grit.knowledge.card.Believed
 
 /** What a label's declassify runs withheld: each card version, under the policy and application
   * versions it was asked at, whose rewrite the check kept back or the model wrote nothing of, so
@@ -51,7 +50,7 @@ object Withheld {
 
   /** `withheld` as what is withheld at `floor`, written `at`, in no one room: withdrawn when it
     * holds nothing. Believed at no more than the withholding it replaces
-    * ([[Believed.replacing]]).
+    * ([[DocumentKeeper.replacing]]).
     */
   private[declassify] def kept(
       keeper: DocumentKeeper,
@@ -61,8 +60,9 @@ object Withheld {
   )(using Tx^): Either[StoreError, Kept.type] =
     if (withheld.isEmpty) keeper.withdraw(Key, floor, at).map(_ => Kept)
     else
-      Believed
-        .replacing(keeper, Key, floor)
+      keeper
+        .current(Key, floor)
+        .map(DocumentKeeper.replacing)
         .flatMap(
           keeper.write(
             Key,

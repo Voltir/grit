@@ -24,7 +24,7 @@ import grit.projects.method.{
 }
 import grit.projects.name.{CheckName, MethodName, StateName}
 
-import ProjectCommands.{Stop, answered, asCaller, moverOf, parsed, refusal, refuse, stored, written}
+import ProjectCommands.{Stop, answered, moverOf, parsed, refusal, refuse, stored, written}
 import MethodCommands.{Asking, Declaring}
 
 /** `project_declare` and `project_methods`, and the method versions every other command reads:
@@ -237,7 +237,7 @@ private[plugin] final class MethodCommands(checks: Vector[TransitionCheck], meth
         own.write(
           key,
           methodsAt,
-          asCaller,
+          Tx.top,
           Place.Everywhere,
           text,
           data,

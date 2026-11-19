@@ -227,6 +227,13 @@ trait DocumentKeeper extends DocumentShelf {
 
 object DocumentKeeper {
 
+  /** What a write replacing `current` hands its keeper: that document's integrity, or
+    * [[Tx.top]] when there is none, so the replacement is believed at no more than what it
+    * replaces.
+    */
+  def replacing(current: Option[Document])(using Tx^): Integrity =
+    current.fold(Tx.top)(_.integrity)
+
   /** `keeper`, each document it writes believed at the meet of the integrity given and `most`.
     */
   def believedAtMost(keeper: DocumentKeeper, most: Integrity): DocumentKeeper =

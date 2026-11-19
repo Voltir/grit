@@ -14,7 +14,7 @@ import grit.core.prompt.Tag
 import grit.core.stitch.{Strand, StrandShelf}
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.Label
-import grit.knowledge.card.{Believed, CardMoves, CardSummary, NotWritten}
+import grit.knowledge.card.{CardMoves, CardSummary, NotWritten}
 
 /** What a dream run is told: at most how many strands it summarises, and how far back a
   * strand's last message may be for it to be looked at when it holds no document.
@@ -189,7 +189,7 @@ object StrandDream {
   }
 
   /** `summary` of `seen` kept as its document, at the floor, in its room, believed at what its
-    * keeper is capped at ([[Believed.input]]).
+    * keeper is capped at ([[Tx.top]]).
     */
   private def written(
       seen: Strand.Digested,
@@ -201,7 +201,7 @@ object StrandDream {
       .write(
         StrandDocument.key(seen.root),
         Label.Public,
-        Believed.input,
+        Tx.top,
         seen.room,
         StrandDocument.text(seen, summary),
         StrandDocument.data(seen),

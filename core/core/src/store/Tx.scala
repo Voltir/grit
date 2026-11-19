@@ -128,14 +128,20 @@ object Tx {
         memberships(held).map(_.label).foldLeft[Label](Label.Public)(_.join(_))
     }
 
+  /** [[Integrity.top]] over this transaction's compartments: grit's own integrity, the meet's
+    * identity, so a write handed it is believed at exactly its keeper's cap
+    * ([[grit.core.document.DocumentKeeper.believing]]).
+    */
+  def top(using tx: Tx^): Integrity = Integrity.top(tx.visibility.compartments)
+
   /** `principal`'s integrity, as their words enter grit before their room's cap: grit's,
-    * [[Integrity.top]]; the local operator's and a declared administrator's, `Authority`; a
+    * [[top]]; the local operator's and a declared administrator's, `Authority`; a
     * steward's, `Authority` in the compartments they steward; a person attested in a realm,
     * `Member`; anyone else, `Outside`.
     */
   def integrityOf(principal: Principal)(using tx: Tx^): Integrity =
     principal match {
-      case Principal.Grit => Integrity.top(tx.visibility.compartments)
+      case Principal.Grit => top
       case Principal.Person(_, held) =>
         val v = tx.visibility
         val in = declaredIn(principal).map(_.group).toSet

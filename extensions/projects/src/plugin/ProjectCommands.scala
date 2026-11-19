@@ -139,7 +139,7 @@ private[plugin] final class ProjectCommands(
           own.write(
             key,
             Label.Public,
-            asCaller,
+            Tx.top,
             Place.Everywhere,
             text,
             data,
@@ -1479,7 +1479,7 @@ private[plugin] final class ProjectCommands(
           own.write(
             key,
             index._1.label,
-            asCaller,
+            Tx.top,
             Place.Everywhere,
             text,
             data,
@@ -2049,14 +2049,6 @@ private[plugin] object ProjectCommands {
   private[plugin] def stored[A](e: Either[StoreError, A]): Either[Stop, A] =
     e.left.map(Stop.Store(_))
 
-  /** What a write of words wholly its caller's hands the keeper it goes through: the meet's
-    * identity, grit's own integrity. The keeper a command is handed believes each document at
-    * no more than its asker's words ([[grit.core.plugin.KeepingCommand]]'s `run`, its `own`), so
-    * what is written is believed at exactly that, compartments included; through a keeper capped
-    * at nothing, it is grit's own.
-    */
-  private[plugin] def asCaller(using Tx^): Integrity = Tx.integrityOf(Principal.Grit)
-
   /** As [[stored]], a write refused past the bound refused in words. */
   private[plugin] def written[A](e: Either[StoreError, A]): Either[Stop, A] = e.left.map {
     case StoreError.Full(bound) => Stop.Refused(Projects.full(bound))
@@ -2541,7 +2533,7 @@ private[plugin] object ProjectCommands {
     val data = ujson.Obj(BriefHolder -> ClaimHolder.value(holder))
     // A shown artifact `project` holds no document of is believed at nothing, so a brief
     // rendered from another project's value fails closed.
-    val whole = asCaller
+    val whole = Tx.top
     val believed = r.brief.fold(
       _ => whole,
       b =>
@@ -2646,8 +2638,8 @@ private[plugin] object ProjectCommands {
           key,
           before.fold(Label.Public)(_.label),
           whose match {
-            case Whose.Caller => asCaller
-            case Whose.Prior => before.fold(asCaller)(_.integrity)
+            case Whose.Caller => Tx.top
+            case Whose.Prior => DocumentKeeper.replacing(before)
           },
           Place.Everywhere,
           text,
