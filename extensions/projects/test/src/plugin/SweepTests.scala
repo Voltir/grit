@@ -31,8 +31,7 @@ object SweepTests extends TestSuite {
         projects,
         store,
         "project_keep",
-        (Vector[(String, ujson.Value)](
-          "key" -> s"p/$local",
+        (naming(projects, store, local) ++ Vector[(String, ujson.Value)](
           "kind" -> "note",
           "title" -> s"Title $local",
           "body" -> body
@@ -98,9 +97,9 @@ object SweepTests extends TestSuite {
   }
 
   private val lines: String =
-    "p/a (note, closed): Title a · stays: cited by p/live (note, open)\n" +
-      "p/b (note, closed): Title b · stays: p/c (note, closed) under it stays\n" +
-      "p/d (note, closed): Title d · stays: claimed for slot\n"
+    "p/1 a (note, closed): Title a · stays: cited by p/2 live (note, open)\n" +
+      "p/3 b (note, closed): Title b · stays: p/4 c (note, closed) under it stays\n" +
+      "p/5 d (note, closed): Title d · stays: claimed for slot\n"
 
   val tests: Tests = Tests {
 
@@ -125,14 +124,14 @@ object SweepTests extends TestSuite {
               "Citations of them dropped from 1.\n" +
               "3 old enough stayed: claimed 1; has one under it that stays 1; still cited 1.\n" +
               lines +
-              "p/g (note, closed): Title g · rewritten without its citations of what went\n" +
-              "p/e (note, closed): Title e · withdrawn\n" +
-              "p/f (note, closed): Title f · withdrawn\n" +
-              "p/h (note, closed): Title h · withdrawn\n" +
+              "p/8 g (note, closed): Title g · rewritten without its citations of what went\n" +
+              "p/6 f (note, closed): Title f · withdrawn\n" +
+              "p/7 e (note, closed): Title e · withdrawn\n" +
+              "p/9 h (note, closed): Title h · withdrawn\n" +
               "Their history stays readable for 180 days: project_show with an `at` before now, " +
               "and project_history."
           ),
-          Vector("p/a", "p/b", "p/c", "p/d", "p/g", "p/live"),
+          Vector("p/1", "p/2", "p/3", "p/4", "p/5", "p/8"),
           classOf[CommandOutcome.Done]
         )
       )
@@ -151,10 +150,10 @@ object SweepTests extends TestSuite {
               "Would drop citations of them from 1.\n" +
               "3 old enough stayed: claimed 1; has one under it that stays 1; still cited 1.\n" +
               lines +
-              "p/g (note, closed): Title g · would be rewritten without its citations of what goes\n" +
-              "p/e (note, closed): Title e · would be withdrawn\n" +
-              "p/f (note, closed): Title f · would be withdrawn\n" +
-              "p/h (note, closed): Title h · would be withdrawn"
+              "p/8 g (note, closed): Title g · would be rewritten without its citations of what goes\n" +
+              "p/6 f (note, closed): Title f · would be withdrawn\n" +
+              "p/7 e (note, closed): Title e · would be withdrawn\n" +
+              "p/9 h (note, closed): Title h · would be withdrawn"
           ),
           before
         )
@@ -171,7 +170,7 @@ object SweepTests extends TestSuite {
         g.linesIterator.filter(_.startsWith("by:")).toVector,
         g.linesIterator.toVector.lastOption,
         done(ask(projects, store, "project_list", "project" -> "p", "ended" -> true)).linesIterator
-          .filter(_.startsWith("p/g "))
+          .filter(_.startsWith("p/8 g "))
           .map(_.split(" · ").toVector.filter(_.startsWith("changed")))
           .toVector
       ) ==> (
@@ -191,7 +190,7 @@ object SweepTests extends TestSuite {
       closed(projects, store, Instant.parse("2026-10-28T00:00:00Z"), "y", "Y.")
       done(swept(projects, store)) ==>
         "Withdrew 1: note 1 (closed 1).\n" +
-        "p/x (note, closed): Title x · withdrawn\n" +
+        "p/1 x (note, closed): Title x · withdrawn\n" +
         "Their history stays readable for 180 days: project_show with an `at` before now, and " +
         "project_history."
     }
@@ -210,8 +209,8 @@ object SweepTests extends TestSuite {
         (
           "Withdrew none.\n" +
             "1 old enough stayed: still cited 1.\n" +
-            "p/r (note, closed): Title r · stays: cited by p/q (note, closed)",
-          Some("See [r](artifact:p/r).")
+            "p/1 r (note, closed): Title r · stays: cited by p/2 q (note, closed)",
+          Some("See [r](artifact:p/1).")
         )
       )
     }
@@ -226,7 +225,8 @@ object SweepTests extends TestSuite {
           projects,
           store,
           "project_keep",
-          "key" -> "p/k",
+          "project" -> "p",
+          "handle" -> "k",
           "kind" -> "change",
           "title" -> "Title k",
           "body" -> "## Why\n\nBecause.",
@@ -238,7 +238,7 @@ object SweepTests extends TestSuite {
       done(swept(projects, store)) ==>
         "Withdrew none.\n" +
         "1 old enough stayed: has one under it that stays 1.\n" +
-        "p/n (note, closed): Title n · stays: p/k (change, done) under it stays"
+        "p/1 n (note, closed): Title n · stays: p/2 k (change, done) under it stays"
     }
 
     test(
@@ -278,7 +278,7 @@ object SweepTests extends TestSuite {
         "Would withdraw 3: note 3 (closed 3).\n" +
         "Would drop citations of them from 1.\n" +
         "3 old enough stayed: claimed 1; has one under it that stays 1; still cited 1.\n" +
-        "p/g (note, closed): Title g · would be rewritten without its citations of what goes"
+        "p/8 g (note, closed): Title g · would be rewritten without its citations of what goes"
     }
 
     test(
@@ -300,8 +300,8 @@ object SweepTests extends TestSuite {
       ) ==> (
         (
           counts(
-            "p/f (note, closed): Title f · would be withdrawn",
-            "p/h (note, closed): Title h · would be withdrawn"
+            "p/7 e (note, closed): Title e · would be withdrawn",
+            "p/9 h (note, closed): Title h · would be withdrawn"
           ),
           counts("No line past 3.")
         )

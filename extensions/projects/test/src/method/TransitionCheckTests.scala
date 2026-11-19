@@ -24,7 +24,7 @@ object TransitionCheckTests extends TestSuite {
       val unended = Set(key("p/b"), key("p/e"))
       assert(
         ChildrenEnded.holds(parent, heads, kinds) == Left(
-          "not ended yet: p/b (building), p/e (open)"
+          "not ended yet: p/2 b (building), p/5 e (open)"
         ),
         ChildrenEnded.holds(parent, heads.filterNot(h => unended(h.key)), kinds) == Right(())
       )
@@ -34,7 +34,7 @@ object TransitionCheckTests extends TestSuite {
       val elsewhere = head("p/other", note, "accepted", cites = Vector("p/a"))
       assert(
         CitedAccepted.holds(parent, Vector(parent.head, citing, elsewhere), kinds) ==
-          Left("nothing citing p/epic is accepted"),
+          Left("nothing citing p/21 epic is accepted"),
         CitedAccepted.holds(
           parent,
           Vector(parent.head, citing.copy(state = state("accepted"))),

@@ -28,7 +28,7 @@ object KeptBriefTests extends TestSuite {
   /** When a claim made at `at` that no session works lapses. */
   private val lapse = at.plusMillis(Claims.Lease.toMillis)
 
-  private val briefKey: DocKey = right(DocKey.of("p/m#brief"))
+  private val briefKey: DocKey = right(DocKey.of("p/4#brief"))
 
   private def failed(e: StoreError): Nothing = throw new java.lang.AssertionError(e.toString)
 
@@ -44,8 +44,7 @@ object KeptBriefTests extends TestSuite {
       projects,
       store,
       "project_keep",
-      (Vector[(String, ujson.Value)](
-        "key" -> s"p/$local",
+      (naming(projects, store, local) ++ Vector[(String, ujson.Value)](
         "kind" -> "note",
         "title" -> s"Title $local",
         "body" -> body
@@ -347,7 +346,7 @@ object KeptBriefTests extends TestSuite {
       )(projects, store, "project_keep", "key" -> "p/b", "title" -> "Title b", "body" -> "New.")
       (answer, before, versions(store)) ==> (
         CommandOutcome.Done(
-          s"Kept p/b (note, open). Now at version ${versionOf(projects, store, "p/b")}."
+          s"Kept p/2 b (note, open). Now at version ${versionOf(projects, store, "p/b")}."
         ),
         1,
         1
@@ -406,7 +405,8 @@ object KeptBriefTests extends TestSuite {
         projects,
         store,
         "project_keep",
-        "key" -> "p/x",
+        "project" -> "p",
+        "handle" -> "x",
         "kind" -> "note",
         "title" -> "Title x",
         "body" -> "Kept above public, citing p/m.",
@@ -414,14 +414,14 @@ object KeptBriefTests extends TestSuite {
       )
       val above = grit.dbos.sql.TestTx.fake(Clearance.of(TestLabels.Trial))
       val keptAt = store.keeper
-        .current(right(DocKey.of("p/x")), TestLabels.Trial)(using above)
+        .current(right(DocKey.of("p/5")), TestLabels.Trial)(using above)
         .fold(failed, _.fold(0L)(d => DocumentVersionId.value(d.version)))
       (
         answer,
         store.keeper.labels(briefKey)(using above).fold(failed, identity),
         versions(store)
       ) ==> (
-        CommandOutcome.Done(s"Kept p/x (note, open). Now at version $keptAt."),
+        CommandOutcome.Done(s"Kept p/5 x (note, open). Now at version $keptAt."),
         Vector(Label.Public),
         1
       )
@@ -434,7 +434,7 @@ object KeptBriefTests extends TestSuite {
       (answer, liveNow(store), current(store)) ==>
         (
           CommandOutcome.Done(
-            s"Kept p/m (note, open). Now at version ${versionOf(projects, store, "p/m")}."
+            s"Kept p/4 m (note, open). Now at version ${versionOf(projects, store, "p/m")}."
           ),
           Vector(),
           None
@@ -451,7 +451,7 @@ object KeptBriefTests extends TestSuite {
       (answer, again.map(_.made), liveNow(store)) ==>
         (
           CommandOutcome.Done(
-            s"Kept p/m (note, open). Now at version ${versionOf(projects, store, "p/m")}."
+            s"Kept p/4 m (note, open). Now at version ${versionOf(projects, store, "p/m")}."
           ),
           Vector(at.plusSeconds(30)),
           again

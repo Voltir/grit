@@ -1,12 +1,12 @@
 package grit.projects.method
 
 import grit.core.json.Fields
-import grit.projects.artifact.ArtifactJson
+import grit.projects.artifact.{ArtifactJson, Project}
 import grit.projects.name.{
-  ArtifactKey,
+  ArtifactRef,
   CheckName,
+  Handle,
   KindName,
-  LocalKey,
   MethodName,
   RoleName,
   StateName
@@ -60,7 +60,7 @@ object MethodJson {
           "role" -> RoleName.value(v.role),
           "kinds" -> strings(v.kinds.toVector.map(KindName.value).sorted),
           "depth" -> v.depth,
-          "carried" -> strings(v.carried.toVector.map(LocalKey.value).sorted)
+          "carried" -> strings(v.carried.toVector.map(Handle.value).sorted)
         )
       }),
       "checks" -> ujson.Arr.from(method.checks.sortBy(c => CheckName.value(c.name)).map { c =>
@@ -224,7 +224,7 @@ object MethodJson {
       role <- named(f, "role")(RoleName.of)
       kinds <- names(f, "kinds")(KindName.of)
       depth <- f.int("depth")
-      carried <- names(f, "carried")(LocalKey.of)
+      carried <- names(f, "carried")(Handle.of)
       view <- RoleView.of(role, kinds.toSet, depth, carried.toSet).left.map(w => s"${f.what}: $w")
     } yield view
 
@@ -248,13 +248,14 @@ object MethodJson {
       start <- ArtifactJson.projectFrom(written).left.map(w => s"${f.what}'s start: $w")
       written <- array(f, "moves")
       moves <- traverse(written.zipWithIndex)((m, i) =>
-        move(Fields(s"${f.what}'s move ${i + 1}", m))
+        move(Fields(s"${f.what}'s move ${i + 1}", m), start)
       )
     } yield Example(name, start, moves)
 
-  private def move(f: Fields): Either[String, Example.Move] =
+  /** A move of `start`'s, its key an id or a handle of `start`'s. */
+  private def move(f: Fields, start: Project): Either[String, Example.Move] =
     for {
-      key <- named(f, "key")(ArtifactKey.read)
+      key <- named(f, "key")(k => ArtifactRef.read(k).flatMap(start.resolve))
       to <- named(f, "to")(StateName.of)
       expect <- f.field("expect").flatMap(e => expect(Fields(s"${f.what}'s expect", e)))
       named <- f.addedStr("by")

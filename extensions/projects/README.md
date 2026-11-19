@@ -9,8 +9,9 @@ to other artifacts as notes on their spans.
 Packages, in one-way order (each names only those before it):
 
 - **`name`**: the names a method and a project use: `MethodName`, `KindName`, `StateName`,
-  `CheckName`, `RoleName` (each core's `Slug`, free to start with a digit), `ProjectKey`, `LocalKey` (an artifact's part of its key), `ArtifactKey`
-  (`<project>/<artifact>`, an id, never a title), and `Pin`, the method version a project holds to. What an artifact
+  `CheckName`, `RoleName` (each core's `Slug`, free to start with a digit), `ProjectKey`, `ArtifactKey` (an artifact's id,
+  `<project>/<number>`, minted by its project and never reused), `Handle` (the name an artifact
+  may carry beside its id), `ArtifactRef` (what a caller names one by: an id or a handle), and `Pin`, the method version a project holds to. What an artifact
   is claimed for is core's `ClaimHolder`.
 - **`artifact`**: what a project is: `ArtifactHead` (everything but the body), `Body` (opaque:
   its prose and its stored form in one file, so a stored-form version bump is one migration),

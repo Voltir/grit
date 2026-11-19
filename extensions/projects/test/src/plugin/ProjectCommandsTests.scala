@@ -10,7 +10,7 @@ import grit.core.tool.{ArgsError, ToolName}
 import grit.core.visibility.Integrity
 import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
 import grit.projects.method.MethodFixtures
-import grit.projects.name.{ArtifactKey, Pin, ProjectKey}
+import grit.projects.name.{ArtifactKey, ArtifactNumber, Handle, Pin, ProjectKey}
 import grit.projects.render.{Brief, ProjectMarkdown}
 
 import utest.*
@@ -34,7 +34,8 @@ object ProjectCommandsTests extends TestSuite {
         projects,
         store,
         "project_keep",
-        "key" -> s"p/$local",
+        "project" -> "p",
+        "handle" -> local,
         "kind" -> "note",
         "title" -> s"Title $local",
         "body" -> "Below.",
@@ -56,7 +57,7 @@ object ProjectCommandsTests extends TestSuite {
       val answer = ask(projects, store, "project_move", "key" -> "p/a", "state" -> "done")
       assert(
         answer == CommandOutcome.Refused(
-          "p/a cannot move to done: sections-present: its body lacks ## Why"
+          "p/1 a cannot move to done: sections-present: its body lacks ## Why"
         ),
         before == 2,
         versions == before,
@@ -85,7 +86,8 @@ object ProjectCommandsTests extends TestSuite {
           projects,
           store,
           "project_keep",
-          "key" -> "p/a",
+          "project" -> "p",
+          "handle" -> "a",
           "kind" -> "change",
           "title" -> "Title a",
           "body" -> "## Why\n\nBecause."
@@ -162,16 +164,14 @@ object ProjectCommandsTests extends TestSuite {
         projects,
         store,
         "project_keep",
-        "key" -> "p/a",
-        "kind" -> "note",
-        "title" -> "A",
-        "body" -> "Text."
+        (naming(projects, store, "a") ++
+          Vector[(String, ujson.Value)]("kind" -> "note", "title" -> "A", "body" -> "Text."))*
       )
       val first = keep()
       val version = versionOf(projects, store, "p/a")
       (first, keep()) ==> (
-        CommandOutcome.Done(s"Kept p/a (note, open). Now at version $version."),
-        CommandOutcome.Done(s"Kept p/a (note, open). Now at version $version.")
+        CommandOutcome.Done(s"Kept p/1 a (note, open). Now at version $version."),
+        CommandOutcome.Done(s"Kept p/1 a (note, open). Now at version $version.")
       )
     }
 
@@ -186,7 +186,8 @@ object ProjectCommandsTests extends TestSuite {
         projects,
         store,
         "project_propose",
-        "key" -> "p/idea",
+        "project" -> "p",
+        "handle" -> "idea",
         "title" -> "An idea",
         "body" -> "## Why\n\nBecause."
       )
@@ -196,10 +197,10 @@ object ProjectCommandsTests extends TestSuite {
         text.contains("kind: change"),
         text.contains("state: proposed"),
         text.contains(s"by: \"$by, through grit (turn 5 of conversation c7)\"")
-      ) ==> (CommandOutcome.Done("Kept p/idea (change, proposed)."), true, true, true)
+      ) ==> (CommandOutcome.Done("Kept p/1 idea (change, proposed)."), true, true, true)
     }
 
-    test("project_propose refuses a key the project holds, keeping nothing") {
+    test("project_propose refuses a handle another artifact holds, keeping nothing") {
       val projects = proposing()
       val store = Store()
       started(projects, store)
@@ -209,15 +210,13 @@ object ProjectCommandsTests extends TestSuite {
         projects,
         store,
         "project_propose",
-        "key" -> "p/a",
+        "project" -> "p",
+        "handle" -> "a",
         "title" -> "Over it",
         "body" -> "## Why\n\nBecause."
       )
       (answer, shown(projects, store, "p/a")) ==> (
-        CommandOutcome.Refused(
-          "p/a (note, open) is kept already; a proposal is a new artifact: give a key the " +
-            "project does not have"
-        ),
+        CommandOutcome.Refused("p/2 cannot take the handle a: p/1 a holds it"),
         before
       )
     }
@@ -249,7 +248,7 @@ object ProjectCommandsTests extends TestSuite {
       val answer = ask(projects, store, "project_move", "key" -> "p/a", "state" -> "done")
       assert(
         answer == CommandOutcome.Refused(
-          "p/a (change, proposed) cannot move to done; it may move to building"
+          "p/1 a (change, proposed) cannot move to done; it may move to building"
         )
       )
     }
@@ -285,7 +284,8 @@ object ProjectCommandsTests extends TestSuite {
           projects,
           store,
           "project_keep",
-          "key" -> "p/a",
+          "project" -> "p",
+          "handle" -> "a",
           "kind" -> "note",
           "title" -> "A",
           "body" -> "Text.",
@@ -295,7 +295,7 @@ object ProjectCommandsTests extends TestSuite {
       )
       done(ask(projects, store, "project_keep", "key" -> "p/a", "title" -> "A", "body" -> "New."))
       val text = shown(projects, store, "p/a")
-      assert(text.contains("parent: p/b\ncites: [p/b]\n"), text.contains("New."))
+      assert(text.contains("parent: p/1\ncites: [p/1]\n"), text.contains("New."))
     }
     test("an empty cites clears them, and an empty parent clears it") {
       val projects = plugin()
@@ -308,8 +308,8 @@ object ProjectCommandsTests extends TestSuite {
             projects,
             store,
             "project_keep",
-            (Vector[(String, ujson.Value)]("key" -> "p/a", "title" -> "A", "body" -> "Text.") ++
-              args)*
+            (naming(projects, store, "a") ++
+              Vector[(String, ujson.Value)]("title" -> "A", "body" -> "Text.") ++ args)*
           )
         )
       keep("kind" -> "note", "parent" -> "p/b", "cites" -> ujson.Arr("p/b"))
@@ -325,7 +325,8 @@ object ProjectCommandsTests extends TestSuite {
         projects,
         store,
         "project_keep",
-        "key" -> "p/a",
+        "project" -> "p",
+        "handle" -> "a",
         "kind" -> "note",
         "title" -> "A",
         "body" -> "See [b](artifact:p/b)."
@@ -348,7 +349,8 @@ object ProjectCommandsTests extends TestSuite {
           projects,
           store,
           "project_keep",
-          "key" -> "p/n",
+          "project" -> "p",
+          "handle" -> "n",
           "kind" -> "note",
           "title" -> "N",
           "body" -> "Text.",
@@ -356,9 +358,9 @@ object ProjectCommandsTests extends TestSuite {
         )
       (keep("p/plan-c5"), keep("p/q")) ==> (
         CommandOutcome.Refused(
-          "p/n's parent p/plan-c5 is no artifact of it (nearest: p/plan-c5-runs-turns)"
+          "project p has no artifact named plan-c5 (nearest: plan-c5-runs-turns)"
         ),
-        CommandOutcome.Refused("p/n's parent p/q is no artifact of it")
+        CommandOutcome.Refused("project p has no artifact named q")
       )
     }
 
@@ -381,7 +383,8 @@ object ProjectCommandsTests extends TestSuite {
         projects,
         store,
         "project_keep",
-        "key" -> "p/b",
+        "project" -> "p",
+        "handle" -> "b",
         "kind" -> "note",
         "title" -> "B",
         "body" -> "Text."
@@ -405,7 +408,7 @@ object ProjectCommandsTests extends TestSuite {
       def keep(local: String) =
         ujson.Obj(
           "command" -> "keep",
-          "key" -> s"p/$local",
+          "handle" -> local,
           "kind" -> "note",
           "title" -> local,
           "body" -> "Text."
@@ -438,10 +441,11 @@ object ProjectCommandsTests extends TestSuite {
         Project.of(
           p,
           right(Pin.of(m.name, m.version, m.digest)),
-          locals.map { l =>
+          locals.zipWithIndex.map { (l, i) =>
             Artifact(
               ArtifactHead(
-                right(ArtifactKey.of(p, l)),
+                ArtifactKey.of(p, right(ArtifactNumber.of(i + 1))),
+                Some(right(Handle.of(l))),
                 note.name,
                 state("open"),
                 s"Title $l",
@@ -449,7 +453,7 @@ object ProjectCommandsTests extends TestSuite {
                 Vector.empty,
                 Some(by)
               ),
-              right(Body.read(s"Text of $l."))
+              right(Body.read(s"Text of $l.", MethodFixtures.ids))
             )
           }
         )
@@ -477,10 +481,13 @@ object ProjectCommandsTests extends TestSuite {
       started(projects, store)
       kept(projects, store, "a", "note", "Text.")
       val text = shown(projects, store, "p/a")
-      assert(text.startsWith("---\nkey: p/a\nkind: note\nstate: open\n"), text.endsWith("Text.\n"))
+      assert(
+        text.startsWith("---\nkey: p/1\nhandle: a\nkind: note\nstate: open\n"),
+        text.endsWith("Text.\n")
+      )
       assert(
         ask(projects, store, "project_show", "key" -> "p/z") == CommandOutcome.Refused(
-          "project p has no artifact p/z"
+          "project p has no artifact named z"
         )
       )
     }
@@ -499,10 +506,11 @@ object ProjectCommandsTests extends TestSuite {
           projects,
           store,
           "project_keep",
-          "key" -> "p/a",
-          "kind" -> "change",
-          "title" -> title,
-          "body" -> body
+          (naming(projects, store, "a") ++ Vector[(String, ujson.Value)](
+            "kind" -> "change",
+            "title" -> title,
+            "body" -> body
+          ))*
         )
       )
 
@@ -562,7 +570,7 @@ object ProjectCommandsTests extends TestSuite {
         )
       ).linesIterator.toVector
       (diff.take(2), diff.filter(l => l.startsWith("-") || l.startsWith("+")).drop(2)) ==> (
-        (Vector(s"--- p/a version $older", s"+++ p/a version $newer"), Vector("- One.", "+ Two."))
+        (Vector(s"--- p/1 version $older", s"+++ p/1 version $newer"), Vector("- One.", "+ Two."))
       )
     }
 
@@ -577,7 +585,7 @@ object ProjectCommandsTests extends TestSuite {
       )
       several ==> Vector(
         shown(projects, store, "p/b"),
-        "project p has no artifact p/z\n",
+        "project p has no artifact named z\n",
         shown(projects, store, "p/a")
       ).mkString
     }
@@ -595,7 +603,7 @@ object ProjectCommandsTests extends TestSuite {
       )
       val headed = done(ask(projects, store, "project_show", "key" -> "p/a", "head" -> true))
       headed ==>
-        "---\nkey: p/a\nkind: note\nstate: open\ntitle: \"Title a\"\nparent: null\ncites: []\n" +
+        "---\nkey: p/1\nhandle: a\nkind: note\nstate: open\ntitle: \"Title a\"\nparent: null\ncites: []\n" +
         s"by: ${shown(projects, store, "p/a").linesIterator.find(_.startsWith("by: ")).fold("")(_.drop(4))}\n" +
         s"version: ${versionOf(projects, store, "p/a")}\n---\n\n" +
         "Opening words, all of them.\n\nSections: Goal; Reads (0.1 KB in all)\n"
@@ -687,7 +695,8 @@ object ProjectCommandsTests extends TestSuite {
           projects,
           store,
           "project_keep",
-          "key" -> "p/c",
+          "project" -> "p",
+          "handle" -> "c",
           "kind" -> "change",
           "title" -> "Title c",
           "parent" -> "p/a",
@@ -699,7 +708,8 @@ object ProjectCommandsTests extends TestSuite {
           projects,
           store,
           "project_keep",
-          "key" -> "p/b",
+          "project" -> "p",
+          "handle" -> "b",
           "kind" -> "note",
           "title" -> "Title b",
           "parent" -> "p/a",
@@ -727,14 +737,14 @@ object ProjectCommandsTests extends TestSuite {
         lines("parent" -> "p/a", "ended" -> true)
       ) ==> (
         Vector(
-          "p/c (change, proposed): Title c · under p/a · 0.3 KB · changed 2026-10-28",
-          "p/a (note, open): Title a · 0.1 KB · changed 2026-10-27 · 1 under it"
+          "p/2 c (change, proposed): Title c · under p/1 · 0.3 KB · changed 2026-10-28",
+          "p/1 a (note, open): Title a · 0.1 KB · changed 2026-10-27 · 1 under it"
         ),
-        Vector("p/a: Title a · 0.1 KB · changed 2026-10-27 · 1 under it"),
-        Vector("p/b (note): Title b · under p/a · 0.1 KB · changed 2026-10-29"),
+        Vector("p/1 a: Title a · 0.1 KB · changed 2026-10-27 · 1 under it"),
+        Vector("p/3 b (note): Title b · under p/1 · 0.1 KB · changed 2026-10-29"),
         Vector(
-          "p/b (note, closed): Title b · 0.1 KB · changed 2026-10-29",
-          "p/c (change, proposed): Title c · 0.3 KB · changed 2026-10-28"
+          "p/3 b (note, closed): Title b · 0.1 KB · changed 2026-10-29",
+          "p/2 c (change, proposed): Title c · 0.3 KB · changed 2026-10-28"
         )
       )
     }
@@ -750,8 +760,8 @@ object ProjectCommandsTests extends TestSuite {
         .split("\n")
         .toVector
         .drop(1) ==> Vector(
-        "p/b (note, open): Title b · 0.1 KB · changed 2026-10-27 · The second one.",
-        "p/c (change, proposed): Title c · 0.3 KB · changed 2026-10-27 · " +
+        "p/1 b (note, open): Title b · 0.1 KB · changed 2026-10-27 · The second one.",
+        "p/2 c (change, proposed): Title c · 0.3 KB · changed 2026-10-27 · " +
           ("word " * 23).trim + " word…"
       )
     }
@@ -772,8 +782,8 @@ object ProjectCommandsTests extends TestSuite {
           .toVector
           .drop(1)
           .map(_.takeWhile(c => c != ' ' && c != ':'))
-      list() ==> Vector("p/a")
-      (list("ended" -> true), list("state" -> "closed")) ==> (Vector("p/a", "p/b"), Vector("p/b"))
+      list() ==> Vector("p/1")
+      (list("ended" -> true), list("state" -> "closed")) ==> (Vector("p/1", "p/2"), Vector("p/2"))
     }
 
     test(
@@ -788,7 +798,8 @@ object ProjectCommandsTests extends TestSuite {
             projects,
             store,
             "project_keep",
-            "key" -> f"p/n$i%02d",
+            "project" -> "p",
+            "handle" -> f"n$i%02d",
             "kind" -> "note",
             "title" -> s"Title $i",
             "body" -> "Body."
@@ -813,7 +824,7 @@ object ProjectCommandsTests extends TestSuite {
       ) ==> (
         Some("41 match: note 41 (open 41). 1 ended one not listed; ended: true lists it."),
         42,
-        (42 to 3 by -1).map(i => f"p/n$i%02d").toVector,
+        (42 to 3 by -1).map(i => s"p/$i").toVector,
         Some("1 more not shown; skip: 40 shows the next, or narrow with kind, state or parent.")
       )
     }
@@ -836,7 +847,7 @@ object ProjectCommandsTests extends TestSuite {
       ) ==> (
         Some("85 match: note 85 (open 85)."),
         42,
-        (45 to 6 by -1).map(i => f"p/n$i%02d").toVector,
+        (45 to 6 by -1).map(i => s"p/$i").toVector,
         Some("5 more not shown; skip: 80 shows the next, or narrow with kind, state or parent.")
       )
     }
@@ -848,7 +859,7 @@ object ProjectCommandsTests extends TestSuite {
       done(ask(projects, store, "project_list", "project" -> "p", "skip" -> 80))
         .split("\n")
         .toVector
-        .map(_.takeWhile(_ != ' ')) ==> ("85" +: (5 to 1 by -1).map(i => f"p/n$i%02d").toVector)
+        .map(_.takeWhile(_ != ' ')) ==> ("85" +: (5 to 1 by -1).map(i => s"p/$i").toVector)
     }
 
     test(
@@ -896,8 +907,8 @@ object ProjectCommandsTests extends TestSuite {
       under(projects, store, "d", "p/a")
       done(ask(projects, store, "project_list", "project" -> "p", "parent" -> "p/a")) ==>
         "2 match: note 2 (open 2).\n" +
-        "p/b (note, open): Title b · 0.1 KB · changed 2026-10-27 · 1 under it\n" +
-        "p/d (note, open): Title d · 0.1 KB · changed 2026-10-27"
+        "p/2 b (note, open): Title b · 0.1 KB · changed 2026-10-27 · 1 under it\n" +
+        "p/4 d (note, open): Title d · 0.1 KB · changed 2026-10-27"
     }
 
     test(
@@ -917,9 +928,9 @@ object ProjectCommandsTests extends TestSuite {
         ask(projects, store, "project_list", "project" -> "p", "parent" -> "p/a", "depth" -> 2)
       ) ==>
         "3 match: note 3 (open 3). 1 ended one not listed; ended: true lists it.\n" +
-        "p/b (note, open): Title b · 0.1 KB · changed 2026-10-27 · 1 under it\n" +
-        "p/c (note, open): Title c · under p/b · 0.1 KB · changed 2026-10-27 · 1 under it\n" +
-        "p/d (note, open): Title d · 0.1 KB · changed 2026-10-27"
+        "p/2 b (note, open): Title b · 0.1 KB · changed 2026-10-27 · 1 under it\n" +
+        "p/3 c (note, open): Title c · under p/2 · 0.1 KB · changed 2026-10-27 · 1 under it\n" +
+        "p/4 d (note, open): Title d · 0.1 KB · changed 2026-10-27"
     }
 
     test(
@@ -952,7 +963,8 @@ object ProjectCommandsTests extends TestSuite {
           projects,
           store,
           "project_keep",
-          "key" -> "p/x",
+          "project" -> "p",
+          "handle" -> "x",
           "kind" -> "change",
           "title" -> "Title x",
           "parent" -> "p/a",
@@ -975,8 +987,8 @@ object ProjectCommandsTests extends TestSuite {
         )
       ) ==>
         "2 match: open 2. 1 ended one not listed; ended: true lists it.\n" +
-        "p/y (open): Title y · under p/x · 0.1 KB · changed 2026-10-27\n" +
-        "p/w (open): Title w · under p/z · 0.1 KB · changed 2026-10-27"
+        "p/3 y (open): Title y · under p/2 · 0.1 KB · changed 2026-10-27\n" +
+        "p/5 w (open): Title w · under p/4 · 0.1 KB · changed 2026-10-27"
     }
 
     test("project_list refuses depth without a parent") {
@@ -1007,7 +1019,7 @@ object ProjectCommandsTests extends TestSuite {
         Some(
           Left(ArgsError.Refused("parent", "The parent q/plan-c5 is not in project p.").message)
         ),
-        CommandOutcome.Refused("project p has no artifact p/plan-c (nearest: p/plan-c5)")
+        CommandOutcome.Refused("project p has no artifact named plan-c (nearest: plan-c5)")
       )
     }
 
@@ -1020,7 +1032,7 @@ object ProjectCommandsTests extends TestSuite {
       // A find reads the documents current at its moment: kept before it.
       val found =
         done(askAt(at.plusSeconds(1))(projects, store, "project_find", "query" -> "cache"))
-      assert(found == "p/a (note, open): Title a")
+      assert(found == "p/1 a (note, open): Title a")
     }
 
     test("project_find leaves out ended artifacts unless asked for them") {
@@ -1039,9 +1051,12 @@ object ProjectCommandsTests extends TestSuite {
             (Seq("query" -> ujson.Str("cache")) ++ more)*
           )
         ).linesIterator.toVector.sorted
-      assert(found() == Vector("p/a (note, open): Title a"))
+      assert(found() == Vector("p/1 a (note, open): Title a"))
       assert(
-        found("ended" -> true) == Vector("p/a (note, open): Title a", "p/b (note, closed): Title b")
+        found("ended" -> true) == Vector(
+          "p/1 a (note, open): Title a",
+          "p/2 b (note, closed): Title b"
+        )
       )
     }
 
@@ -1081,7 +1096,7 @@ object ProjectCommandsTests extends TestSuite {
         .map(_.map(_ => ()))
       assert(
         unbudgeted == Some(Left("`chars` is missing: it takes a whole number from 1 to 100000.")),
-        text.startsWith(s"p/a | change | proposed | Title a | grit v1 | pin $pin\n"),
+        text.startsWith(s"p/1 a | change | proposed | Title a | grit v1 | pin $pin\n"),
         text.contains("Because."),
         stranger == CommandOutcome.Refused(
           "method grit version 1 shows no role reviewer; its roles: builder"

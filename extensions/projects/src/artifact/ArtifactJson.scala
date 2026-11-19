@@ -4,7 +4,17 @@ import java.nio.charset.StandardCharsets
 
 import grit.core.document.{DocRef, DocText, Document}
 import grit.core.id.DocKey
-import grit.projects.name.{ArtifactKey, KindName, MethodName, Pin, ProjectKey, StateName}
+import grit.projects.name.{
+  ArtifactKey,
+  ArtifactNumber,
+  ArtifactRef,
+  Handle,
+  KindName,
+  MethodName,
+  Pin,
+  ProjectKey,
+  StateName
+}
 import grit.std.either.Proven
 import grit.std.either.Traversal.sequence
 
@@ -54,12 +64,14 @@ object ArtifactJson {
 
   /** `project`'s index as its document holds it, or why not: under the project's key, which no
     * artifact's is; text naming the project and its method; its pin's method, version and
-    * digest, and `by`, as data; and the one ref [[indexing]] gives.
+    * digest, `by`, and `next`, the number its next new artifact takes, as data; and the one ref
+    * [[indexing]] gives. With no `next` it is in the old form, before the re-key (ADR 0063).
     */
   def index(
       project: ProjectKey,
       pin: Pin,
-      by: String
+      by: String,
+      next: Option[ArtifactNumber]
   ): Either[String, (DocKey, DocText, ujson.Value, Set[DocRef])] = {
     val method = MethodName.value(pin.method)
     for {
@@ -71,30 +83,52 @@ object ArtifactJson {
     } yield (
       key,
       text,
-      ujson.Obj.from(pinData(pin).value.toSeq :+ ("by" -> ujson.Str(by))),
+      ujson.Obj.from(
+        pinData(pin).value.toSeq ++ Seq("by" -> ujson.Str(by)) ++
+          next.map(n => NextField -> ujson.Num(ArtifactNumber.value(n)))
+      ),
       Set(ref)
     )
   }
 
+  /** Who started the project of the index `document`, as [[index]] wrote it; none when it names
+    * no one.
+    */
+  def startedBy(document: Document): Option[String] =
+    document.data.objOpt.flatMap(_.get("by")).flatMap(_.strOpt)
+
+  /** The number the next new artifact of the index `document` takes, as [[index]] wrote it:
+    * `None` in the old form; or why not: a `next` that is no number.
+    */
+  def nextOf(document: Document): Either[String, Option[ArtifactNumber]] =
+    document.data.objOpt.flatMap(_.get(NextField)) match {
+      case None => Right(None)
+      case Some(n) =>
+        n.numOpt
+          .filter(_.isValidInt)
+          .toRight(s"its next is no number: $n")
+          .flatMap(d => ArtifactNumber.of(d.toInt))
+          .map(Some(_))
+    }
+
   /** The pin of the index `document` holds, as [[index]] wrote it, or why not. */
   def pinOf(document: Document): Either[String, Pin] = pinFrom(document.data)
 
-  /** `project` as JSON, apart from any document: its key, its pin as [[index]] writes
-    * it, and each artifact's key beside its head and body's stored form as [[write]] writes them.
+  /** `project` as JSON, apart from any document: its key, its pin as [[index]] writes it, and
+    * each artifact's head and body's stored form as [[write]] writes them.
     */
   def projectData(project: Project): ujson.Obj =
     ujson.Obj(
       "key" -> ProjectKey.value(project.key),
       "pin" -> pinData(project.pin),
-      "artifacts" -> ujson.Arr.from(
-        project.artifacts.map(a =>
-          ujson.Obj.from(("key" -> ujson.Str(a.head.key.value)) +: dataOf(a).value.toSeq)
-        )
-      )
+      "artifacts" -> ujson.Arr.from(project.artifacts.map(dataOf))
     )
 
   /** The project [[projectData]] wrote as `json`, or why not: a field missing or malformed, a
-    * stored body [[Body.fromStored]] refuses, or what [[Project.of]] refuses.
+    * stored body [[Body.fromStored]] refuses, or what [[Project.of]] refuses. It reads too the
+    * old form, each artifact beside its key `<project>/<name>` and its head without an id: each
+    * takes `<name>` as its handle and its place in the list, from 1, as its number, and every
+    * reference names a handle. Refused for artifacts of both forms.
     */
   def projectFrom(json: ujson.Value): Either[String, Project] =
     for {
@@ -102,19 +136,52 @@ object ArtifactJson {
       key <- fields.get("key").flatMap(_.strOpt).toRight("it holds no key").flatMap(ProjectKey.of)
       pin <- fields.get("pin").toRight("it holds no pin").flatMap(pinFrom)
       each <- fields.get("artifacts").flatMap(_.arrOpt).toRight("it holds no artifacts")
-      artifacts <- sequence(each.toVector.map { a =>
-        a.objOpt
-          .flatMap(_.get("key"))
-          .flatMap(_.strOpt)
-          .toRight("an artifact holds no key")
-          .flatMap(fromData(_, a))
-      })
+      heads <- sequence(each.toVector.map(headOf))
+      artifacts <- heads.count(_.contains(IdField)) match {
+        case n if n == heads.size => sequence(each.toVector.map(fromData))
+        case 0 => oldForm(key, each.toVector)
+        case _ => Left("its artifacts are of both forms, some with an id and some without")
+      }
       project <- Project.of(key, pin, artifacts)
     } yield project
 
+  /** `written`, artifacts of project `project` in the old form [[projectFrom]] reads, or why not:
+    * a key that is not `<project>/<handle>` ([[ArtifactRef.read]]), or a reference no handle of
+    * them is.
+    */
+  private def oldForm(
+      project: ProjectKey,
+      written: Vector[ujson.Value]
+  ): Either[String, Vector[Artifact]] =
+    for {
+      named <- sequence(written.zipWithIndex.map { (a, i) =>
+        for {
+          ref <- a.objOpt
+            .flatMap(_.get("key"))
+            .flatMap(_.strOpt)
+            .toRight("an artifact holds no key")
+            .flatMap(ArtifactRef.read)
+          handle <- ref match {
+            case ArtifactRef.Named(`project`, h) => Right(h)
+            case other => Left(s"an artifact's key is no name in project $project: ${other.value}")
+          }
+          number <- ArtifactNumber.of(i + 1)
+        } yield handle -> ArtifactKey.of(project, number)
+      })
+      ids = named.toMap
+      reference = (s: String) =>
+        ArtifactRef.read(s).flatMap {
+          case ArtifactRef.Named(`project`, h) => ids.get(h).toRight(s"no artifact is named $s")
+          case other => Left(s"no artifact is named ${other.value}")
+        }
+      artifacts <- sequence(written.zip(named).map { case (a, (handle, key)) =>
+        headOf(a).flatMap(fromHead(key, Some(handle), _, a, reference))
+      })
+    } yield artifacts
+
   /** `document` as [[write]] wrote it, as an artifact, or why not. */
   private[artifact] def read(document: Document): Either[String, Artifact] =
-    fromData(DocKey.value(document.key), document.data)
+    fromData(document.data)
 
   private def dataOf(artifact: Artifact): ujson.Obj =
     ujson.Obj(HeadField -> head(artifact.head), BodyField -> Body.stored(artifact.body))
@@ -138,22 +205,45 @@ object ArtifactJson {
       .toRight("its pin holds no method, version and digest")
       .flatMap((m, v, d) => MethodName.of(m).flatMap(Pin.read(_, v, d)))
 
-  /** The artifact of key `written` whose head and stored body `data` holds, or why not. */
-  private def fromData(written: String, data: ujson.Value): Either[String, Artifact] =
+  /** The artifact whose head and stored body `data` holds, its id and handle as the head holds
+    * them, or why not.
+    */
+  private def fromData(data: ujson.Value): Either[String, Artifact] =
     for {
-      key <- ArtifactKey
-        .read(written)
-        .left
-        .map(why => s"its key is no artifact's: $why")
-      fields <- data.objOpt
-        .flatMap(_.get(HeadField))
-        .flatMap(_.objOpt)
-        .toRight("its data holds no head")
+      fields <- headOf(data)
+      key <- text(fields, IdField).flatMap(
+        ArtifactKey.read(_).left.map(why => s"its id is no artifact's: $why")
+      )
+      handle <- nullable(fields, "handle").flatMap {
+        case Some(h) => Handle.of(h).map(Some(_))
+        case None => Right(None)
+      }
+      artifact <- fromHead(key, handle, fields, data, ArtifactKey.read)
+    } yield artifact
+
+  /** The head of `data`, or why not. */
+  private def headOf(data: ujson.Value): Either[String, collection.Map[String, ujson.Value]] =
+    data.objOpt
+      .flatMap(_.get(HeadField))
+      .flatMap(_.objOpt)
+      .toRight("its data holds no head")
+
+  /** The artifact `key`, `handle`, of head `fields` and the stored body `data` holds, each
+    * reference read by `reference`, or why not.
+    */
+  private def fromHead(
+      key: ArtifactKey,
+      handle: Option[Handle],
+      fields: collection.Map[String, ujson.Value],
+      data: ujson.Value,
+      reference: String -> Either[String, ArtifactKey]
+  ): Either[String, Artifact] =
+    for {
       kind <- text(fields, "kind").flatMap(KindName.of)
       state <- text(fields, "state").flatMap(StateName.of)
       title <- text(fields, "title")
       parent <- nullable(fields, "parent").flatMap {
-        case Some(p) => ArtifactKey.read(p).map(Some(_))
+        case Some(p) => reference(p).map(Some(_))
         case None => Right(None)
       }
       cites <- fields
@@ -161,11 +251,11 @@ object ArtifactJson {
         .flatMap(_.arrOpt)
         .toRight("its head holds no cites")
         .flatMap(cs => sequence(cs.toVector.map(c => c.strOpt.toRight("a cite is not text"))))
-        .flatMap(cs => sequence(cs.map(ArtifactKey.read)))
+        .flatMap(cs => sequence(cs.map(reference)))
       by <- nullable(fields, "by")
       stored <- data.objOpt.flatMap(_.get(BodyField)).toRight("its data holds no body")
-      body <- Body.fromStored(stored)
-    } yield Artifact(ArtifactHead(key, kind, state, title, parent, cites, by), body)
+      body <- Body.fromStored(stored, reference)
+    } yield Artifact(ArtifactHead(key, handle, kind, state, title, parent, cites, by), body)
 
   /** The ref an artifact in `state` holds, as [[write]] names it. */
   def stateRef(state: StateName): DocRef =
@@ -180,10 +270,14 @@ object ArtifactJson {
 
   private val HoldingKind: String = "project"
   private val HeadField: String = "head"
+  private val IdField: String = "id"
+  private val NextField: String = "next"
   private val BodyField: String = "body"
 
   private def head(h: ArtifactHead): ujson.Value =
     ujson.Obj(
+      IdField -> h.key.value,
+      "handle" -> h.handle.fold[ujson.Value](ujson.Null)(n => ujson.Str(Handle.value(n))),
       "kind" -> KindName.value(h.kind),
       "state" -> StateName.value(h.state),
       "title" -> h.title,

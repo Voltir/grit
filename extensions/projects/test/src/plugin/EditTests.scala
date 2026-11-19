@@ -57,7 +57,7 @@ object EditTests extends TestSuite {
         edit(projects, store, "version" -> read, "old" -> "One.", "new" -> "Uno.")
       val now = versionOf(projects, store, "p/a")
       (answer, body(projects, store), now > read) ==> (
-        CommandOutcome.Done(s"Kept p/a (note, open). Now at version $now."),
+        CommandOutcome.Done(s"Kept p/1 a (note, open). Now at version $now."),
         "\nLead.\n\n## Goal\n\nUno.\n\n## Reads\n\nTwo.\n",
         true
       )
@@ -72,11 +72,11 @@ object EditTests extends TestSuite {
         versionOf(projects, store, "p/a")
       ) ==> (
         CommandOutcome.Refused(
-          "p/a cannot be edited: it holds the old text 2 times; give more of the text around " +
+          "p/1 a cannot be edited: it holds the old text 2 times; give more of the text around " +
             "it, so it is held once"
         ),
         CommandOutcome.Refused(
-          "p/a cannot be edited: it does not hold the old text; show it again and copy the " +
+          "p/1 a cannot be edited: it does not hold the old text; show it again and copy the " +
             "text exactly"
         ),
         read
@@ -101,7 +101,7 @@ object EditTests extends TestSuite {
         edit(projects, store, "version" -> read, "section" -> "Goal", "body" -> "Eins.")
       (refused, versionOf(projects, store, "p/a")) ==> (
         CommandOutcome.Refused(
-          s"p/a is at version $current, not $read as given: kept since by $by at $at. Show it " +
+          s"p/1 a is at version $current, not $read as given: kept since by $by at $at. Show it " +
             "again and keep from what it holds now."
         ),
         current
@@ -113,7 +113,7 @@ object EditTests extends TestSuite {
       val read = versionOf(projects, store, "p/a")
       edit(projects, store, "version" -> read, "section" -> "Reads", "body" -> "D.") ==>
         CommandOutcome.Refused(
-          "p/a cannot be edited: it has 2 sections titled \"Reads\": its sections 1 and 3 of 3"
+          "p/1 a cannot be edited: it has 2 sections titled \"Reads\": its sections 1 and 3 of 3"
         )
     }
 

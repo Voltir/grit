@@ -97,10 +97,10 @@ object OpenSpecTests extends TestSuite {
       cites: Vector[String] = Vector("p/auth"),
       body: String = deltas
   ) =
-    artifact(head("p/2fa", change, in, cites = cites), body)
+    artifact(head("p/tfa", change, in, cites = cites), body)
   private val theDesign =
-    artifact(head("p/2fa-design", design, "drafted", parent = Some("p/2fa")), "How.")
-  private val theTask = artifact(head("p/2fa-task", task, "open", parent = Some("p/2fa")), "Do it.")
+    artifact(head("p/tfa-design", design, "drafted", parent = Some("p/tfa")), "How.")
+  private val theTask = artifact(head("p/tfa-task", task, "open", parent = Some("p/tfa")), "Do it.")
 
   private def to(k: String, s: String, expect: Expect = Expect.Allowed) =
     Move(key(k), state(s), expect)
@@ -110,24 +110,24 @@ object OpenSpecTests extends TestSuite {
       "a change is archived once its design and tasks are done",
       project(theSpec, theChange("proposed"), theDesign, theTask),
       Vector(
-        to("p/2fa", "specified"),
-        to("p/2fa", "designed"),
-        to("p/2fa", "tasked"),
-        to("p/2fa", "archived", Expect.RefusedBy(check("children-ended"))),
-        to("p/2fa-design", "accepted"),
-        to("p/2fa-task", "done"),
-        to("p/2fa", "archived")
+        to("p/tfa", "specified"),
+        to("p/tfa", "designed"),
+        to("p/tfa", "tasked"),
+        to("p/tfa", "archived", Expect.RefusedBy(check("children-ended"))),
+        to("p/tfa-design", "accepted"),
+        to("p/tfa-task", "done"),
+        to("p/tfa", "archived")
       )
     ),
     Example(
       "a proposal without its why is not specified",
       project(theSpec, theChange("proposed", body = "## What changes\n\nA second factor.")),
-      Vector(to("p/2fa", "specified", Expect.RefusedBy(check("sections-present"))))
+      Vector(to("p/tfa", "specified", Expect.RefusedBy(check("sections-present"))))
     )
   )
 
   private def merged(in: Vector[Artifact]): Either[MoveRefusal, Option[Artifact]] =
-    openSpec.move(in, key("p/2fa"), state("archived"), Mover.Agent).map(_.changed)
+    openSpec.move(in, key("p/tfa"), state("archived"), Mover.Agent).map(_.changed)
 
   val tests = Tests {
     test("OpenSpec passes Method.of and its examples pass the bench") {
@@ -143,7 +143,8 @@ object OpenSpecTests extends TestSuite {
       val expected = right(
         Body.read(
           "## Purpose\n\nSign people in.\n\n## Login\n\nA password and a code.\n\n" +
-            "## Recovery\n\nA code by mail."
+            "## Recovery\n\nA code by mail.",
+          ids
         )
       )
       assert(
@@ -154,7 +155,7 @@ object OpenSpecTests extends TestSuite {
     }
     test("archiving is refused citing no spec, or past the cap") {
       val tasked = theChange("tasked", cites = Vector.empty)
-      val citesTask = theChange("tasked", cites = Vector("p/2fa-task"))
+      val citesTask = theChange("tasked", cites = Vector("p/tfa-task"))
       val full = artifact(theSpec.head, "## Purpose\n\n" + "a" * (Body.StoredMost - 200))
       val big = theChange("tasked", body = "## Delta: More\n\n" + "b" * 400)
       val done = artifact(theTask.head.copy(state = state("done")), "Do it.")
@@ -187,7 +188,7 @@ object OpenSpecTests extends TestSuite {
       )
     }
     test("the spec is found whatever the order of cites") {
-      val taskFirst = theChange("tasked", cites = Vector("p/2fa-task", "p/auth"))
+      val taskFirst = theChange("tasked", cites = Vector("p/tfa-task", "p/auth"))
       val done = artifact(theTask.head.copy(state = state("done")), "Do it.")
       val (first, last) = (
         merged(Vector(theSpec, theChange("tasked"), done)),
@@ -207,7 +208,8 @@ object OpenSpecTests extends TestSuite {
           projects,
           store,
           "project_keep",
-          "key" -> s"p/$local",
+          "project" -> "p",
+          "handle" -> local,
           "kind" -> kind,
           "title" -> local,
           "body" -> body,
@@ -215,9 +217,9 @@ object OpenSpecTests extends TestSuite {
         )
       )
       keep("auth", "spec", specBody)
-      keep("2fa", "change", deltas, "p/auth")
+      keep("tfa", "change", deltas, "p/auth")
       Vector("specified", "designed", "tasked", "archived").foreach { s =>
-        answered(askAs(other)(projects, store, "project_move", "key" -> "p/2fa", "state" -> s))
+        answered(askAs(other)(projects, store, "project_move", "key" -> "p/tfa", "state" -> s))
       }
       val spec = shown(projects, store, "p/auth")
       assert(

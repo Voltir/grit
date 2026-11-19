@@ -51,7 +51,8 @@ object CarriedIntegrityTests extends TestSuite {
     done(
       askIn(by)(projects, store)(
         "project_keep",
-        "key" -> s"p/$local",
+        "project" -> "p",
+        "handle" -> local,
         "kind" -> "change",
         "title" -> "A",
         "body" -> "## Why\n\nBecause."
@@ -64,7 +65,7 @@ object CarriedIntegrityTests extends TestSuite {
   private def moved(keeper: Integrity, mover: Integrity): Option[String] = {
     val (projects, store) = changeKeptBy(keeper)
     done(askIn(mover)(projects, store)("project_move", "key" -> "p/a", "state" -> "building"))
-    believedOf(store, "p/a")
+    believedOf(store, "p/1")
   }
 
   /** How far `p/a` is believed once a caller believed at `editor` edits it, kept by one at `keeper`. */
@@ -79,7 +80,7 @@ object CarriedIntegrityTests extends TestSuite {
         "new" -> "Because it is so."
       )
     )
-    believedOf(store, "p/a")
+    believedOf(store, "p/1")
   }
 
   val tests = Tests {
@@ -103,7 +104,7 @@ object CarriedIntegrityTests extends TestSuite {
           "body" -> "## Why\n\nA person's reason."
         )
       )
-      believedOf(store, "p/a") ==> Some("authority")
+      believedOf(store, "p/1") ==> Some("authority")
     }
 
     test("a steward's whole keep is believed in the compartments they steward") {
@@ -113,13 +114,14 @@ object CarriedIntegrityTests extends TestSuite {
       done(
         asSteward(projects, store)(
           "project_keep",
-          "key" -> "p/a",
+          "project" -> "p",
+          "handle" -> "a",
           "kind" -> "note",
           "title" -> "A",
           "body" -> "A steward's words."
         )
       )
-      believedOf(store, "p/a") ==> Some(Integrity.written(steward))
+      believedOf(store, "p/1") ==> Some(Integrity.written(steward))
     }
 
     test("a project a steward starts is believed in the compartments they steward") {
@@ -147,7 +149,7 @@ object CarriedIntegrityTests extends TestSuite {
           "new" -> "Because it is so."
         )
       )
-      believedOf(store, "p/a") ==> Some("member")
+      believedOf(store, "p/1") ==> Some("member")
     }
 
     test("a method declared from a capped room is believed at no more than its cap") {
@@ -190,7 +192,8 @@ object CarriedIntegrityTests extends TestSuite {
           projects,
           store,
           "project_keep",
-          "key" -> "p/e",
+          "project" -> "p",
+          "handle" -> "e",
           "kind" -> "note",
           "title" -> "E",
           "body" -> "Cites x.",
@@ -209,7 +212,7 @@ object CarriedIntegrityTests extends TestSuite {
           "cascade" -> true
         )
       )
-      (believedOf(store, "p/x"), believedOf(store, "p/e")) ==> (None, Some("member"))
+      (believedOf(store, "p/1"), believedOf(store, "p/2")) ==> (None, Some("member"))
     }
   }
 }

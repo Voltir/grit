@@ -3,17 +3,55 @@ package grit.projects.artifact
 import scala.annotation.tailrec
 
 import grit.core.id.ClaimHolder
-import grit.projects.name.{ArtifactKey, Pin, ProjectKey}
+import grit.projects.name.{ArtifactKey, ArtifactNumber, ArtifactRef, Handle, Pin, ProjectKey}
 
 /** A project as one value: its key, the method version it pinned, and its artifacts by key. */
 final case class Project private (key: ProjectKey, pin: Pin, artifacts: Vector[Artifact])
-    extends caps.Pure
+    extends caps.Pure {
+
+  /** `ref`'s id in this project, by id or by current handle, or why not: another project's
+    * (naming it); a number none holds (naming the highest); a name no current handle is (naming
+    * the nearest, [[Handle.near]]). Store keys are the commands'.
+    */
+  def resolve(ref: ArtifactRef): Either[String, ArtifactKey] =
+    Project.resolving(key, artifacts, ref)
+}
 
 object Project {
 
+  /** [[Project.resolve]] of `ref` among `artifacts`, those of project `project`. */
+  private[projects] def resolving(
+      project: ProjectKey,
+      artifacts: Vector[Artifact],
+      ref: ArtifactRef
+  ): Either[String, ArtifactKey] = {
+    val p = ProjectKey.value(project)
+    ref match {
+      case _ if ref.project != project =>
+        Left(s"${ref.value} is of project ${ProjectKey.value(ref.project)}, not $p")
+      case ArtifactRef.Id(k) if artifacts.exists(_.head.key == k) => Right(k)
+      case ArtifactRef.Id(k) =>
+        Left(
+          s"project $p has no artifact ${k.value}" +
+            artifacts
+              .map(_.head.key.number)
+              .maxOption
+              .fold(" (it has none)")(n => s" (its highest is ${ArtifactKey.of(project, n).value})")
+        )
+      case ArtifactRef.Named(_, h) =>
+        artifacts
+          .find(_.head.handle.contains(h))
+          .map(_.head.key)
+          .toRight(
+            s"project $p has no artifact named ${Handle.value(h)}" +
+              Handle.near(h, artifacts.flatMap(_.head.handle))
+          )
+    }
+  }
+
   /** These as a project, or why not, every reason joined by `; `: an artifact of another
-    * project, two artifacts of one key, a parent or a cite (in its head or its body) that is
-    * none of them (naming the nearest that are, [[ArtifactKey.near]]), or a parent cycle.
+    * project, two artifacts of one key, a handle an artifact of a lower number holds too, a
+    * parent or a cite (in its head or its body) that is none of them, or a parent cycle.
     */
   def of(key: ProjectKey, pin: Pin, artifacts: Vector[Artifact]): Either[String, Project] =
     refusals(key, artifacts) match {
@@ -42,13 +80,13 @@ object Project {
       ended: ArtifactHead -> Boolean
   ): Either[String, Withdrawn] = {
     val gone =
-      key +: (if (cascade) beneath(project, key).toVector.sortBy(_.value) else Vector())
+      key +: (if (cascade) beneath(project, key).toVector.sorted else Vector())
     val withdrawing = gone.toSet
     val (inside, outside) = project.artifacts.partition(a => withdrawing(a.head.key))
     val citers = outside.filter(_.cites.exists(withdrawing))
     val held = inside.map(a => a.head.key -> a).toMap
     val going = gone.flatMap(held.get)
-    def named(as: Vector[Artifact]): String = as.map(_.head.key.value).sorted.mkString(", ")
+    def named(as: Vector[Artifact]): String = as.map(_.head.key).sorted.map(_.value).mkString(", ")
     if (inside.isEmpty)
       Left(s"project ${ProjectKey.value(project.key)} has no artifact ${key.value}")
     else if (!cascade)
@@ -106,7 +144,7 @@ object Project {
       ended: ArtifactHead -> Boolean,
       claimed: Map[ArtifactKey, ClaimHolder]
   ): Swept = {
-    val byKey = project.artifacts.sortBy(_.head.key.value)
+    val byKey = project.artifacts.sortBy(_.head.key)
     val children = byKey.flatMap(a => a.head.parent.map(_ -> a)).groupMap(_._1)(_._2)
     val citedBy = byKey
       .filter(a => !ended(a.head) || claimed.contains(a.head.key))
@@ -150,7 +188,7 @@ object Project {
       .map(a =>
         Artifact(a.head.copy(cites = a.head.cites.filterNot(gone)), Body.uncited(a.body, gone))
       )
-      .sortBy(_.head.key.value)
+      .sortBy(_.head.key)
 
   /** `outside` as `project`, each of `uncited` in place of the artifact of its key. Its callers
     * pass an `outside` holding no artifact whose parent is in `gone`, and an `uncited` holding
@@ -182,7 +220,7 @@ object Project {
     among
       .filter(a => a.head.parent.contains(key) || a.cites.contains(key))
       .map(_.head.key)
-      .sortBy(_.value)
+      .sorted
 
   /** Why `artifacts` are not project `key`'s, each with the artifact it is about. */
   private[projects] def refusals(
@@ -203,16 +241,22 @@ object Project {
         k -> s"${k.value} is not of project ${ProjectKey.value(key)}"
       ) ++
         Option.when(keys.count(_ == k) > 1)(k -> s"${k.value} is two artifacts") ++
+        a.head.handle.flatMap(h =>
+          artifacts
+            .find(b =>
+              b.head.handle.contains(h) &&
+                ArtifactNumber.value(b.head.key.number) < ArtifactNumber.value(k.number)
+            )
+            .map(b =>
+              k -> s"${k.value} cannot take the handle ${Handle.value(h)}: ${b.head.called} holds it"
+            )
+        ) ++
         a.head.parent
           .filterNot(keys.contains)
-          .map(p =>
-            k -> s"${k.value}'s parent ${p.value} is no artifact of it${ArtifactKey.near(p, keys)}"
-          ) ++
+          .map(p => k -> s"${k.value}'s parent ${p.value} is no artifact of it") ++
         links
           .filterNot(keys.contains)
-          .map(c =>
-            k -> s"${k.value} cites ${c.value}, no artifact of it${ArtifactKey.near(c, keys)}"
-          ) ++
+          .map(c => k -> s"${k.value} cites ${c.value}, no artifact of it") ++
         Option.when(cycles(k, Set(k)))(k -> s"${k.value} is its own ancestor")
     }.distinct
   }

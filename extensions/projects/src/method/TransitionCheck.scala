@@ -35,7 +35,7 @@ object TransitionChecks {
       if (open.isEmpty) Right(())
       else
         Left(
-          s"not ended yet: ${open.map(h => s"${h.key.value} (${StateName.value(h.state)})").mkString(", ")}"
+          s"not ended yet: ${open.map(h => s"${h.called} (${StateName.value(h.state)})").mkString(", ")}"
         )
     }
   }
@@ -52,7 +52,7 @@ object TransitionChecks {
           .exists(h => h.cites.contains(judged.head.key) && StateName.value(h.state) == "accepted")
       )
         Right(())
-      else Left(s"nothing citing ${judged.head.key.value} is accepted")
+      else Left(s"nothing citing ${judged.head.called} is accepted")
   }
 
   /** `sections-present`: its body holds a `##` section of each name its kind lists. */

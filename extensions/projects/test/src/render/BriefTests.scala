@@ -3,11 +3,11 @@ package grit.projects.render
 import scala.util.Random
 
 import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
-import grit.projects.method.RoleView
+import grit.projects.method.{MethodFixtures, RoleView}
 import grit.projects.name.{
   ArtifactKey,
+  Handle,
   KindName,
-  LocalKey,
   MethodName,
   Pin,
   ProjectKey,
@@ -26,9 +26,9 @@ object BriefTests extends TestSuite {
   private val pin: Pin = right(Pin.read(right(MethodName.of("m")), 1, "0f" * 32))
 
   /** The header of judged `p/j`, titled `j`, under method `m` version 1 and that pin. */
-  private val header = "p/j | note | open | j | m v1 | pin 0f0f0f0f0f0f"
+  private val header = "p/9 j | note | open | j | m v1 | pin 0f0f0f0f0f0f"
 
-  private def key(local: String): ArtifactKey = right(ArtifactKey.of(p, local))
+  private def key(local: String): ArtifactKey = MethodFixtures.key(s"p/$local")
 
   private def artifact(
       local: String,
@@ -41,6 +41,7 @@ object BriefTests extends TestSuite {
     Artifact(
       ArtifactHead(
         key(local),
+        MethodFixtures.handleOf(key(local)),
         right(KindName.of(kind)),
         right(StateName.of("open")),
         title,
@@ -48,7 +49,7 @@ object BriefTests extends TestSuite {
         cites.map(key),
         None
       ),
-      right(Body.read(body))
+      right(Body.read(body, MethodFixtures.ids))
     )
 
   private def project(artifacts: Vector[Artifact]): Project = right(Project.of(p, pin, artifacts))
@@ -81,7 +82,7 @@ object BriefTests extends TestSuite {
       )
       // `b`, the farther, is pointed out first, then `a`; with `a` a pointer, `b` fits whole.
       val expected =
-        header + "\n\nJ\n\n## Cited\n\n- p/a (note, a, 500 chars)\n\n### p/b — b\n\n" + fifty
+        header + "\n\nJ\n\n## Cited\n\n- p/1 a (note, a, 500 chars)\n\n### p/2 b — b\n\n" + fifty
       assert(
         Brief.of(pr, key("j"), everything, expected.length).map(b => (b.text, b.pointed)) ==
           Right((expected, Vector(key("a"))))
@@ -100,8 +101,8 @@ object BriefTests extends TestSuite {
       )
       // Only `a` fits whole: `b` and `c` are the farthest, so they become pointers.
       val expected =
-        header + "\n\nJ\n\n## Cited\n\n### p/a — a\n\n" + fifty +
-          "\n\n- p/b (note, b, 50 chars)\n\n- p/c (note, c, 50 chars)"
+        header + "\n\nJ\n\n## Cited\n\n### p/1 a — a\n\n" + fifty +
+          "\n\n- p/2 b (note, b, 50 chars)\n\n- p/3 c (note, c, 50 chars)"
       assert(
         Brief.of(pr, key("j"), everything, expected.length).map(b => (b.text, b.pointed)) ==
           Right((expected, Vector(key("b"), key("c"))))
@@ -131,10 +132,10 @@ object BriefTests extends TestSuite {
       val twoLinks = Brief.of(pr, key("j"), view(Set("note"), 2), 10000)
       val threeLinks = Brief.of(pr, key("j"), view(Set("note"), 3), 10000)
       assert(
-        twoLinks.map(_.text.contains("### p/a — a")) == Right(true),
+        twoLinks.map(_.text.contains("### p/1 a — a")) == Right(true),
         twoLinks.map(_.text.contains("p/b")) == Right(false),
         twoLinks.map(_.text.contains("p/c")) == Right(false),
-        threeLinks.map(_.text.contains("### p/c — c")) == Right(true),
+        threeLinks.map(_.text.contains("### p/3 c — c")) == Right(true),
         threeLinks.map(_.text.contains("p/d")) == Right(false)
       )
     }
@@ -153,7 +154,7 @@ object BriefTests extends TestSuite {
       Brief
         .of(pr, key("j"), view(Set("note"), 2), 10000)
         .map(_.text.linesIterator.filter(_.startsWith("### ")).toVector) ==> Right(
-        Vector("### p/c — c", "### p/m — m", "### p/r — r")
+        Vector("### p/3 c — c", "### p/11 m — m", "### p/41 r — r")
       )
     }
 
@@ -174,12 +175,12 @@ object BriefTests extends TestSuite {
           right(RoleName.of("builder")),
           Set(right(KindName.of("note"))),
           1,
-          Set(right(LocalKey.of("rules")), right(LocalKey.of("more")), right(LocalKey.of("none")))
+          Set(right(Handle.of("rules")), right(Handle.of("more")), right(Handle.of("none")))
         )
       )
       val carried =
-        header + "\n\nJ\n\n## Carried\n\n### p/more — more\n\nM\n\n### p/rules — rules\n\n" + fifty
-      val expected = carried + "\n\n## Cited\n\n- p/a (note, a, 50 chars)"
+        header + "\n\nJ\n\n## Carried\n\n### p/42 more — more\n\nM\n\n### p/33 rules — rules\n\n" + fifty
+      val expected = carried + "\n\n## Cited\n\n- p/1 a (note, a, 50 chars)"
       assert(
         Brief.of(pr, key("j"), carrying, expected.length).map(b => (b.text, b.pointed)) ==
           Right((expected, Vector(key("a")))),
@@ -204,13 +205,13 @@ object BriefTests extends TestSuite {
           right(RoleName.of("builder")),
           Set(right(KindName.of("note"))),
           1,
-          Set(right(LocalKey.of("rules")))
+          Set(right(Handle.of("rules")))
         )
       )
       // `a` and `b` fit as pointers; `c` does not fit even as one, so it is not shown.
       val fits =
-        header + "\n\nJ\n\n## Carried\n\n### p/rules — rules\n\nR\n\n## Cited\n\n" +
-          "- p/a (note, a, 50 chars)\n\n- p/b (note, b, 50 chars)"
+        header + "\n\nJ\n\n## Carried\n\n### p/33 rules — rules\n\nR\n\n## Cited\n\n" +
+          "- p/1 a (note, a, 50 chars)\n\n- p/2 b (note, b, 50 chars)"
       assert(
         Brief.of(pr, key("j"), carrying, fits.length).map(b => (b.text, b.shows)) ==
           Right((fits, Vector(key("j"), key("rules"), key("a"), key("b"))))

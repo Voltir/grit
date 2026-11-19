@@ -22,7 +22,7 @@ import grit.projects.method.{
   RoleView,
   TransitionChecks
 }
-import grit.projects.name.{LocalKey, MethodName}
+import grit.projects.name.{Handle, MethodName}
 
 /** A projects plugin over an in-memory store, and its commands asked as an edge asks them, for
   * the plugin package's suites.
@@ -63,7 +63,7 @@ object CommandFixtures {
 
   /** What moving `p/a` to done answers when only people make that move and its mover is not one. */
   val personOnlyMove: String =
-    "p/a cannot move to done here: that move is made only by a caller believed at Authority " +
+    "p/1 a cannot move to done here: that move is made only by a caller believed at Authority " +
       "giving the command directly, never through a turn or by a session believed lower; ask " +
       "the person to make it"
 
@@ -91,7 +91,7 @@ object CommandFixtures {
           MethodFixtures.role("manager"),
           Set(note.name),
           1,
-          Set(MethodFixtures.right(LocalKey.of("process")))
+          Set(MethodFixtures.right(Handle.of("process")))
         )
       )
     )
@@ -282,12 +282,22 @@ object CommandFixtures {
         projects,
         store,
         "project_keep",
-        "key" -> s"p/$local",
-        "kind" -> kind,
-        "title" -> s"Title $local",
-        "body" -> body
+        (naming(projects, store, local) ++ Vector[(String, ujson.Value)](
+          "kind" -> kind,
+          "title" -> s"Title $local",
+          "body" -> body
+        ))*
       )
     )
+
+  /** How a keep names artifact `p/<local>`: by that key when the project has it, else as a new
+    * artifact taking `local` as its handle.
+    */
+  def naming(projects: Projects, store: Store, local: String): Vector[(String, ujson.Value)] =
+    ask(projects, store, "project_show", "key" -> s"p/$local", "head" -> true) match {
+      case CommandOutcome.Done(_) => Vector("key" -> s"p/$local")
+      case CommandOutcome.Refused(_) => Vector("project" -> "p", "handle" -> local)
+    }
 
   def shown(projects: Projects, store: Store, key: String): String =
     done(ask(projects, store, "project_show", "key" -> key))
@@ -310,7 +320,8 @@ object CommandFixtures {
           projects,
           store,
           "project_keep",
-          "key" -> f"p/n$i%02d",
+          "project" -> "p",
+          "handle" -> f"n$i%02d",
           "kind" -> "note",
           "title" -> s"Title $i",
           "body" -> "Body."

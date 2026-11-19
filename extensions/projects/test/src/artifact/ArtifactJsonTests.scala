@@ -19,6 +19,7 @@ import grit.core.place.Place
 import grit.core.store.Tx
 import grit.core.visibility.{Integrity, Label}
 import grit.dbos.sql.TestTx
+import grit.projects.method.MethodFixtures
 import grit.projects.name.{ArtifactKey, KindName, MethodName, Pin, ProjectKey, StateName}
 import grit.projects.plugin.Projects
 import grit.projects.render.ProjectGen
@@ -38,11 +39,12 @@ object ArtifactJsonTests extends TestSuite {
   private val at: Instant = Instant.parse("2026-10-27T12:00:00Z")
 
   private val p: ProjectKey = right(ProjectKey.of("p"))
-  private def key(local: String): ArtifactKey = right(ArtifactKey.of(p, local))
+  private def key(local: String): ArtifactKey = MethodFixtures.key(s"p/$local")
 
   private def head(local: String, cites: Vector[ArtifactKey] = Vector.empty): ArtifactHead =
     ArtifactHead(
       key(local),
+      MethodFixtures.handleOf(key(local)),
       right(KindName.of("note")),
       right(StateName.of("open")),
       "A title",
@@ -88,46 +90,52 @@ object ArtifactJsonTests extends TestSuite {
       }
       val a = Artifact(
         head("a", Vector(key("b"))).copy(parent = Some(key("p0"))),
-        right(Body.read("See [c](artifact:p/c)."))
+        right(Body.read("See [c](artifact:p/c).", MethodFixtures.ids))
       )
       val (_, _, refs) = right(ArtifactJson.write(a))
       val expected = Set(
         "project" -> "p",
         "kind" -> "note",
         "state" -> "open",
-        "parent" -> "p/p0",
-        "cites" -> "p/b",
-        "cites" -> "p/c"
+        "parent" -> "p/32",
+        "cites" -> "p/2",
+        "cites" -> "p/3"
       ).map((kind, ref) => right(DocRef.of(kind, ref)))
       assert(refs == expected)
     }
 
-    test("a document whose key or data is not an artifact's is not one, saying why") {
-      val a = Artifact(head("a"), right(Body.read("Some text.")))
+    test(
+      "a document is an artifact by its head, whatever its key, and one whose head is not an artifact's is not one, saying why"
+    ) {
+      val a = Artifact(head("a"), right(Body.read("Some text.", MethodFixtures.ids)))
       val (text, data, refs) = right(ArtifactJson.write(a))
-      val noKey = Artifact.of(kept("p", text, data, refs))
-      assert(noKey == Left("its key is no artifact's: an artifact's key has no '/': p"))
-      val noState = ujson.Obj(
-        "head" -> ujson.Obj.from(data("head").obj.toSeq.filterNot(_._1 == "state")),
+      def without(field: String) = ujson.Obj(
+        "head" -> ujson.Obj.from(data("head").obj.toSeq.filterNot(_._1 == field)),
         "body" -> data("body")
       )
-      val stateless = Artifact.of(kept("p/a", text, noState, refs))
-      assert(stateless == Left("its head holds no state"))
+      assert(
+        Artifact.of(kept("p/old-name", text, data, refs)) == Right(a),
+        Artifact.of(kept("p/1", text, without("id"), refs)) == Left("its head holds no id"),
+        Artifact.of(kept("p/1", text, without("state"), refs)) == Left("its head holds no state")
+      )
     }
 
     test("a head past 4 KiB beside its body is refused, naming its size") {
-      val a = Artifact(head("a").copy(title = "x" * 5000), right(Body.read("Some text.")))
+      val a = Artifact(
+        head("a").copy(title = "x" * 5000),
+        right(Body.read("Some text.", MethodFixtures.ids))
+      )
       val written = ArtifactJson.write(a)
       assert(
         written.map(_ => ()) == Left(
-          "its head is 5095 bytes, over 4096: shorten its title or cite fewer"
+          "its head is 5119 bytes, over 4096: shorten its title or cite fewer"
         )
       )
     }
 
     test("an artifact citing more than a document's refs hold is refused, naming how many") {
-      val cites = Vector.tabulate(300)(i => key(s"a$i"))
-      val a = Artifact(head("a", cites), right(Body.read("Some text.")))
+      val cites = Vector.tabulate(300)(i => key(s"${i + 100}"))
+      val a = Artifact(head("a", cites), right(Body.read("Some text.", MethodFixtures.ids)))
       val written = ArtifactJson.write(a)
       assert(written.map(_ => ()) == Left("it would hold 303 references, over 256: cite fewer"))
     }
@@ -140,7 +148,7 @@ object ArtifactJsonTests extends TestSuite {
     }
 
     test("an artifact whose stored body is empty is reported, not read") {
-      val a = Artifact(head("a"), right(Body.read("Some text.")))
+      val a = Artifact(head("a"), right(Body.read("Some text.", MethodFixtures.ids)))
       val (text, data, refs) = right(ArtifactJson.write(a))
       val emptied = ujson.Obj("head" -> data("head"), "body" -> stored(Vector.empty))
       assert(Artifact.of(kept("p/a", text, emptied, refs)) == Left("a body is empty"))
@@ -151,12 +159,16 @@ object ArtifactJsonTests extends TestSuite {
       val review = right(StateName.of("review"))
       val merged = right(StateName.of("merged"))
       val (_, _, refs) =
-        right(ArtifactJson.write(Artifact(head("a").copy(state = review), right(Body.read("x")))))
+        right(
+          ArtifactJson.write(
+            Artifact(head("a").copy(state = review), right(Body.read("x", MethodFixtures.ids)))
+          )
+        )
       val watch = right(Projects.reaching(key("a"), Set(review, merged)))
       val met = watch.refs.intersect(refs)
       val version = DocumentVersionId.of(1L).getOrElse(throw new java.lang.AssertionError("id"))
       assert(
-        (watch.plugin, watch.key) == (Projects.Name, right(DocKey.of("p/a"))),
+        (watch.plugin, watch.key) == (Projects.Name, right(DocKey.of("p/1"))),
         Projects.reached(Watched.Held(version, met, at)) == Set(review)
       )
     }
@@ -166,15 +178,16 @@ object ArtifactJsonTests extends TestSuite {
     test("an artifact is stored as its head and its body, under these keys") {
       val a = Artifact(
         head("a", Vector(key("b"))).copy(parent = Some(key("p0"))),
-        right(Body.read("See [b](artifact:p/b)."))
+        right(Body.read("See [b](artifact:p/b).", MethodFixtures.ids))
       )
       val (text, data, _) = right(ArtifactJson.write(a))
       val rendered = data.render()
       val shown = DocText.value(text)
       assert(
         rendered ==
-          """{"head":{"kind":"note","state":"open","title":"A title","parent":"p/p0",""" +
-          """"cites":["p/b"],"by":"nick"},"body":{"v":1,"notes":["p/b"],"blocks":""" +
+          """{"head":{"id":"p/1","handle":"a","kind":"note","state":"open","title":"A title",""" +
+          """"parent":"p/32","cites":["p/2"],"by":"nick"},"body":{"v":1,"notes":["p/2"],""" +
+          """"blocks":""" +
           """[{"type":"para","text":[{"t":"See "},{"t":"b","n":[0]},{"t":"."}]}]}}"""
       )
       assert(shown == "A title\n\nSee b.")
@@ -187,14 +200,14 @@ object ArtifactJsonTests extends TestSuite {
     }
     test("data whose artifacts are another project's is not that project, saying why") {
       val pin = right(Pin.read(right(MethodName.of("grit")), 1, "0" * 64))
-      val body = right(Body.read("Text."))
+      val body = right(Body.read("Text.", MethodFixtures.ids))
       val project = right(
         Project.of(p, pin, Vector(Artifact(head("a"), body), Artifact(head("b"), body)))
       )
       val data = ArtifactJson.projectData(project)
       data("key") = "elsewhere"
       ArtifactJson.projectFrom(data) ==>
-        Left("p/a is not of project elsewhere; p/b is not of project elsewhere")
+        Left("p/1 is not of project elsewhere; p/2 is not of project elsewhere")
     }
     test("a project's data with no key is refused as holding none, naming no head") {
       val pin = right(Pin.read(right(MethodName.of("grit")), 1, "0" * 64))

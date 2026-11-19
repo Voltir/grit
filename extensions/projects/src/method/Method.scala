@@ -7,8 +7,8 @@ import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
 import grit.projects.name.{
   ArtifactKey,
   CheckName,
+  Handle,
   KindName,
-  LocalKey,
   MethodName,
   Pin,
   ProjectKey,
@@ -106,7 +106,8 @@ final case class Method private (
         a.body
       )
     }
-    def keys(as: Vector[Artifact]): String = as.map(_.head.key.value).sorted.mkString(", ")
+    def keys(as: Vector[Artifact]): String =
+      as.sortBy(_.head.key.number).map(_.head.called).mkString(", ")
     val ours = s"${MethodName.value(name)} version $version"
     val pinned = project.pin
     val reasons =
@@ -118,7 +119,7 @@ final case class Method private (
        else if (pinned.version == version && pinned.digest != digest)
          Vector(Method.changed(project.key, this))
        else Vector()) ++
-        remap.artifacts.keys.filterNot(held).map(_.value).toVector.sorted.map { k =>
+        remap.artifacts.keys.filterNot(held).toVector.sorted.map(_.value).map { k =>
           s"project ${ProjectKey.value(project.key)} has no artifact $k"
         } ++
         renamed
@@ -149,7 +150,7 @@ final case class Method private (
         .collect {
           case (was, now) if was.head != now.head => now.head.key
         }
-        .sortBy(_.value)
+        .sorted
     )
   }
 
@@ -183,7 +184,7 @@ final case class Method private (
       } ++ views.map { v =>
         "view " + field(RoleName.value(v.role)) + names(v.kinds.map(KindName.value)) + field(
           v.depth.toString
-        ) + (if (v.carried.isEmpty) "" else names(v.carried.map(LocalKey.value)))
+        ) + (if (v.carried.isEmpty) "" else names(v.carried.map(Handle.value)))
       } ++ checks.map(c => "check " + field(CheckName.value(c.name)) + field(c.version.toString))
     Sha256.text(
       (Vector(field(MethodName.value(name)), field(version.toString)) ++ lines.sorted)
