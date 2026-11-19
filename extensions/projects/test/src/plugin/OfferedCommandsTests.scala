@@ -72,6 +72,7 @@ object OfferedCommandsTests extends TestSuite {
         "project_keep",
         "project_edit",
         "project_move",
+        "project_reorder",
         "project_propose",
         "project_batch",
         "project_claim",
