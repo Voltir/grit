@@ -114,6 +114,12 @@ object ArtifactJson {
   /** The pin of the index `document` holds, as [[index]] wrote it, or why not. */
   def pinOf(document: Document): Either[String, Pin] = pinFrom(document.data)
 
+  /** Whether `document` is kept as an artifact, by its data, whatever its key: a project's index,
+    * a brief and [[Rekeyed]]'s documents are not.
+    */
+  def isArtifact(document: Document): Boolean =
+    document.data.objOpt.exists(_.contains(HeadField))
+
   /** `project` as JSON, apart from any document: its key, its pin as [[index]] writes it, and
     * each artifact's head and body's stored form as [[write]] writes them.
     */

@@ -970,8 +970,7 @@ private[plugin] final class ProjectCommands(
     ): Either[StoreError, CommandOutcome] = answered {
       for {
         hits <- stored(own.documents.search(args.query, FoundAmong, at))
-        // A project's index is no artifact: its key has no `/`.
-        documents = hits.map(_.document).filter(d => ArtifactKey.read(DocKey.value(d.key)).isRight)
+        documents = hits.map(_.document).filter(ArtifactJson.isArtifact)
         artifacts <- refuse(Traversal.sequence(documents.map(readable)))
         heads = artifacts
           .map(_.head)

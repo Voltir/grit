@@ -1099,6 +1099,16 @@ object ProjectCommandsTests extends TestSuite {
         done(askAt(at.plusSeconds(1))(projects, store, "project_find", "query" -> "cache"))
       assert(found == "p/1 a (note, open): Title a")
     }
+    test("project_find finds an artifact a re-key left under its name, by its id") {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "a", "note", "The cache is cold.")
+      storedUnder(store, "p/1", "p/cache-notes")
+      done(
+        askAt(at.plusSeconds(1))(projects, store, "project_find", "query" -> "cache")
+      ) ==> "p/1 a (note, open): Title a"
+    }
 
     test("project_find leaves out ended artifacts unless asked for them") {
       val projects = plugin()
