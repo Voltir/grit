@@ -167,6 +167,20 @@ object MethodTests extends TestSuite {
       (digests.distinct.size, digest(right(Nesting.under(both.toVector.reverse.toSet)))) ==>
         ((4, digests(3)))
     }
+    test("a role view's covering changes the digest") {
+      def digest(covers: Boolean) =
+        Method
+          .of(
+            method,
+            1,
+            kinds,
+            transitions,
+            Vector(right(RoleView.of(role("manager"), Set(note.name), 1, covers = covers))),
+            TransitionChecks.all
+          )
+          .map(_.digest)
+      (digest(true) != digest(false), digest(false).isRight) ==> ((true, true))
+    }
     test("a transition only people make changes the digest") {
       // That one anyone makes adds nothing is pinned by "a method's digest is pinned".
       def digest(ts: Vector[Transition]) =

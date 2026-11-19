@@ -167,6 +167,32 @@ object MethodJsonTests extends TestSuite {
         )
       )
     }
+    test("a view's covers is written only when true, and read back under an equal digest") {
+      val m = right(
+        MethodJson.read(declared(), TransitionChecks.all).left.map(_.mkString("; "))
+      ).method
+      val covering = right(
+        Method
+          .of(
+            m.name,
+            m.version,
+            m.kinds,
+            m.transitions,
+            m.views.map(v =>
+              right(RoleView.of(v.role, v.kinds, v.depth, v.carried, covers = true))
+            ),
+            TransitionChecks.all
+          )
+          .left
+          .map(_.mkString("; "))
+      )
+      def round(method: Method) = {
+        val json = MethodJson.written(method, Vector.empty)
+        val back = MethodJson.read(json, TransitionChecks.all).map(_.method.digest)
+        (json("views")(0).obj.get("covers"), back == Right(method.digest))
+      }
+      (round(m), round(covering)) ==> ((None, true), (Some(ujson.True), true))
+    }
     test("a nesting neither anywhere, root nor under kinds is refused, naming the kind") {
       val json = declared()
       json("kinds")(0)("nesting") = "inside"

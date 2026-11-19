@@ -2,6 +2,8 @@ package grit.projects.plugin
 
 import java.time.{Instant, LocalDate, ZoneOffset}
 
+import scala.annotation.tailrec
+
 import grit.core.claim.{Claim, ClaimRole, Claimed, Claims}
 import grit.core.document.{
   DocRef,
@@ -1155,7 +1157,10 @@ private[plugin] final class ProjectCommands(
         "JSON object: `claimed`, a sentence saying what was claimed; `brief`, `kept` or " +
         "`none`; and with `none`, `note`, saying why. Refused, naming who holds it, when it " +
         "is claimed already; refused, naming the artifact, when what it is claimed for works " +
-        "another; and refused for a role the project's method lacks. Claims made at the same " +
+        "another; and refused for a role the project's method lacks. A role the method says " +
+        "covers claims everything under the artifact too: such a claim is refused, naming " +
+        "the other, when another session or agent holds one at, above or under it in that " +
+        "role or another that covers. Claims made at the same " +
         "moment are not refused: of two for one artifact, the later fails with a store error " +
         "(asked again, it is refused naming the first), and two for one session or agent on " +
         "different artifacts may both be kept. A claim kept where the asker cannot read it " +
@@ -1196,6 +1201,9 @@ private[plugin] final class ProjectCommands(
           key <- resolved(project, args.key)
           found <- artifact(project, key)
           (document, a) = found
+          whole <- refuse(Project.of(args.key.project, project.pin, project.artifacts))
+          live <- stored(claims.live(at))
+          _ <- uncovered(method, whole, ids(project), live, key, args.role, args.holder)
           claimed <- claimedFor(claims, document, args, by.person, at)
           made <- claimed match {
             case Claimed.Made(c) => Right(c)
@@ -1222,7 +1230,6 @@ private[plugin] final class ProjectCommands(
                 )
               )
           }
-          whole <- refuse(Project.of(args.key.project, project.pin, project.artifacts))
           // The role has a view and the artifact is the project's, so the claim has its brief.
           unkept <- rendered(method, whole, ids(project), Vector(made)).headOption
             .toRight(Stop.Refused(s"${a.head.called} has no brief as ${RoleName.value(args.role)}"))
@@ -2915,9 +2922,11 @@ private[plugin] object ProjectCommands {
     for {
       after <- refuse(Project.of(key, project.pin, steps.artifacts))
       live <- stored(claims.live(at))
+      before = Project.of(key, project.pin, project.artifacts).toOption
+      _ <- stillUncovered(method, before, after, ids(project), live)
       _ <- within(
         method,
-        Project.of(key, project.pin, project.artifacts).toOption,
+        before,
         ids(project),
         rendered(method, after, ids(project), live),
         steps.changed.flatMap(k => steps.artifacts.find(_.head.key == k)).map(_.head)
@@ -3044,6 +3053,102 @@ private[plugin] object ProjectCommands {
       documents: Vector[(Document, Artifact)]
   ): Vector[(Artifact, ClaimHolder)] =
     documents.flatMap((d, a) => live.find(_.subject == d.key).map(c => a -> c.holder))
+
+  /** Whether a claim as `role` covers under `method`: its role's view covers; a role with no view
+    * covers nothing.
+    */
+  private def covers(method: Method, role: ClaimRole): Boolean =
+    method.views.exists(v => v.covers && v.role == role)
+
+  /** Each of `live` that covers under `method`, with its artifact's id among `ids`. */
+  private def covering(
+      method: Method,
+      live: Vector[Claim],
+      ids: Map[DocKey, ArtifactKey]
+  ): Vector[(claim: Claim, key: ArtifactKey)] =
+    live.filter(c => covers(method, c.role)).flatMap(c => ids.get(c.subject).map(k => (c, k)))
+
+  /** Whether `above` is `below`, or sits above it by parent, in `project`. */
+  private def atOrAbove(project: Project, above: ArtifactKey, below: ArtifactKey): Boolean = {
+    @tailrec def climbs(k: Option[ArtifactKey]): Boolean = k match {
+      case Some(at) if at == above => true
+      case Some(at) => climbs(project.artifacts.find(_.head.key == at).flatMap(_.head.parent))
+      case None => false
+    }
+    climbs(Some(below))
+  }
+
+  /** Each pair of `claims` for two holders whose artifacts overlap in `project`, the higher first. */
+  private def overlapping(
+      project: Project,
+      claims: Vector[(claim: Claim, key: ArtifactKey)]
+  ): Vector[((claim: Claim, key: ArtifactKey), (claim: Claim, key: ArtifactKey))] =
+    for {
+      upper <- claims
+      lower <- claims
+      if upper.claim.holder != lower.claim.holder && upper.key != lower.key &&
+        atOrAbove(project, upper.key, lower.key)
+    } yield (upper, lower)
+
+  /** How `key` is named in `project`: its head's [[ArtifactHead.called]], or its id. */
+  private def calledIn(project: Project, key: ArtifactKey): String =
+    project.artifacts.find(_.head.key == key).fold(key.value)(_.head.called)
+
+  /** Nothing, or why a claim on `key` as `role` for `holder` may not be made in `project`: it
+    * would cover, and another holder's covering claim among `live` overlaps it.
+    */
+  private def uncovered(
+      method: Method,
+      project: Project,
+      ids: Map[DocKey, ArtifactKey],
+      live: Vector[Claim],
+      key: ArtifactKey,
+      role: ClaimRole,
+      holder: ClaimHolder
+  ): Either[Stop, Unit] =
+    covering(method, live, ids)
+      .filter(c => covers(method, role) && c.claim.holder != holder)
+      .find(c => atOrAbove(project, c.key, key) || atOrAbove(project, key, c.key)) match {
+      case None => Right(())
+      case Some(other) =>
+        val c = other.claim
+        val side = if (atOrAbove(project, other.key, key)) "under" else "above"
+        Left(
+          Stop.Refused(
+            s"${calledIn(project, key)} is $side ${calledIn(project, other.key)}, which is claimed " +
+              s"as ${ClaimRole.value(c.role)} for ${ClaimHolder.value(c.holder)} by ${accounts(c.by)} " +
+              s"since ${c.made}; that claim covers everything under it, and so would this one; " +
+              s"it lapses at ${c.lapses} unless they keep working; project_release frees it"
+          )
+        )
+    }
+
+  /** Nothing, or why `after` may not be kept over `before`: in it two holders' covering claims
+    * among `live` overlap that did not in `before`. An overlap `before` held already is let stand.
+    */
+  private def stillUncovered(
+      method: Method,
+      before: Option[Project],
+      after: Project,
+      ids: Map[DocKey, ArtifactKey],
+      live: Vector[Claim]
+  ): Either[Stop, Unit] = {
+    val claims = covering(method, live, ids)
+    def keys(p: Project) = overlapping(p, claims).map((u, l) => (u.key, l.key)).toSet
+    val had = before.fold(Set.empty)(keys)
+    overlapping(after, claims).find((u, l) => !had((u.key, l.key))) match {
+      case None => Right(())
+      case Some((upper, lower)) =>
+        def as(c: Claim) = s"as ${ClaimRole.value(c.role)} for ${ClaimHolder.value(c.holder)}"
+        Left(
+          Stop.Refused(
+            s"${calledIn(after, lower.key)} would sit under ${calledIn(after, upper.key)}, and " +
+              s"their covering claims, ${as(lower.claim)} and ${as(upper.claim)}, would overlap; " +
+              "release one first with project_release"
+          )
+        )
+    }
+  }
 
   /** What a withdrawal changes, each artifact with its document as loaded: those withdrawn, as
     * they were, and those rewritten, as rewritten.
