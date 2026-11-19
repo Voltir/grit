@@ -781,7 +781,7 @@ private[plugin] final class ProjectCommands(
               version <- refuse(readable(document))
             } yield (document, version)
         }
-      def rendered(key: ArtifactRef)(kept: (Document, Artifact)): Either[Stop, String] =
+      def shown(key: ArtifactRef)(kept: (Document, Artifact)): Either[Stop, String] =
         args.part match {
           case ShowPart.Whole => Right(ProjectMarkdown.shown(kept._2, kept._1.version))
           case ShowPart.Head => Right(ProjectMarkdown.head(kept._2, kept._1.version))
@@ -793,7 +793,7 @@ private[plugin] final class ProjectCommands(
         }
       args.keys match {
         case ShowKeys.One(key) =>
-          loaded(own.documents, key.project).flatMap(version(_, key)).flatMap(rendered(key))
+          loaded(own.documents, key.project).flatMap(version(_, key)).flatMap(shown(key))
         case ShowKeys.Several(keys) =>
           // Each project read once, however many of its keys are asked for.
           val projects = keys.map(_.project).distinct.map(p => p -> loaded(own.documents, p)).toMap
@@ -806,7 +806,7 @@ private[plugin] final class ProjectCommands(
                     Left(Stop.Refused(s"no project ${ProjectKey.value(key.project)}"))
                   )
                   .flatMap(version(_, key))
-                  .flatMap(rendered(key)) match {
+                  .flatMap(shown(key)) match {
                   case Right(text) => Right(done :+ text)
                   case Left(Stop.Refused(why)) => Right(done :+ s"$why\n")
                   case Left(failed) => Left(failed)
@@ -1298,8 +1298,7 @@ private[plugin] final class ProjectCommands(
       found <- indexed(own, project)
       (index, pin) = found
       next <- refuse(ArtifactJson.nextOf(index).left.map(why => s"project $p cannot be read: $why"))
-      holding <- refuse(ArtifactJson.holding(project))
-      documents <- stored(own.referring(holding, Projects.Terms.bound))
+      documents <- projectDocuments(own, project)
       (legacy, now) = documents.partition(ArtifactJson.isOldForm)
       _ <- (next, legacy.isEmpty, now.isEmpty) match {
         case (Some(_), false, _) => Left(Stop.Refused(LeftOver(project, index, legacy)))
@@ -1404,8 +1403,8 @@ private[plugin] final class ProjectCommands(
       dry: Boolean
   ): String = {
     val p = ProjectKey.value(project)
-    val ids = planned.artifacts.map(_.after.head.key)
-    (ids.headOption, ids.lastOption) match {
+    val numbered = planned.artifacts.map(_.after.head.key)
+    (numbered.headOption, numbered.lastOption) match {
       case (Some(lo), Some(hi)) =>
         val verb = if (dry) "would give" else "gave"
         (Vector(
@@ -1439,8 +1438,7 @@ private[plugin] final class ProjectCommands(
             .map(ProjectMarkdown.render)
         case None =>
           for {
-            holding <- refuse(ArtifactJson.holding(project))
-            documents <- stored(own.referring(holding, Projects.Terms.bound))
+            documents <- projectDocuments(own, project)
             files <- refuse(
               ProjectMarkdown.oldForm(
                 project,
@@ -1667,7 +1665,7 @@ private[plugin] final class ProjectCommands(
         given Locked = lock
         for {
           project <- loaded(own, args.key.project)
-          held <- holding(claims, project, at)
+          held <- heldClaims(claims, project, at)
           whole <- refuse(Project.of(args.key.project, project.pin, project.artifacts))
           ended <-
             if (args.cascade) ending(own, project.pin)
@@ -1773,7 +1771,7 @@ private[plugin] final class ProjectCommands(
               Left(Stop.Refused(s"before is ${args.before}, later than today, $today (UTC)"))
             else Right(())
           project <- loaded(own, args.project)
-          held <- if (args.dry) Right(Vector.empty) else holding(claims, project, at)
+          held <- if (args.dry) Right(Vector.empty) else heldClaims(claims, project, at)
           method <- declared(own, project.pin)
           _ <- args.kinds.filterNot(k => method.kinds.exists(_.name == k)).toVector match {
             case Vector() => Right(())
@@ -2099,7 +2097,7 @@ private[plugin] final class ProjectCommands(
       given Locked = lock
       for {
         project <- loaded(own, key)
-        held <- if (dry) Right(Vector.empty) else holding(claims, project, at)
+        held <- if (dry) Right(Vector.empty) else heldClaims(claims, project, at)
         method <- declared(own, project.pin)
         plan = planned(project, method, steps, author(by), moverOf(by), onward = dry)
         (said, stepping) = plan
@@ -2133,7 +2131,7 @@ private[plugin] final class ProjectCommands(
     * the floor is passed over: a command changes only artifacts kept at its floor
     * ([[atTheirLabels]]), so nothing that brief shows changes.
     */
-  private def holding(claims: Claims, project: Loaded, at: Instant)(using
+  private def heldClaims(claims: Claims, project: Loaded, at: Instant)(using
       tx: Tx^
   )(using Locked): Either[Stop, Vector[Claim]] =
     for {
@@ -2143,7 +2141,7 @@ private[plugin] final class ProjectCommands(
       held <- Traversal.traverse(here)(c => stored(claims.held(c)))
     } yield held.flatten
 
-  /** Keeps again ([[briefed]]) the brief of each of `held` ([[holding]]), claims on artifacts of
+  /** Keeps again ([[briefed]]) the brief of each of `held` ([[heldClaims]]), claims on artifacts of
     * project `key`, as the project now stands. Nothing when the project's method is not declared
     * here; refused when it is and does not read. A brief already over its budget before the
     * command is withdrawn ([[briefed]]); one the command would have put over it, [[settled]] has
@@ -2845,8 +2843,7 @@ private[plugin] object ProjectCommands {
           .map(why => s"project ${ProjectKey.value(project)} cannot be read: $why")
       )
       next <- read.toRight(Stop.Refused(OldForm(project)))
-      holding <- refuse(ArtifactJson.holding(project))
-      documents <- stored(own.referring(holding, Projects.Terms.bound))
+      documents <- projectDocuments(own, project)
       _ <-
         if (documents.exists(ArtifactJson.isOldForm))
           Left(Stop.Refused(LeftOver(project, index, documents.filter(ArtifactJson.isOldForm))))
@@ -2927,6 +2924,16 @@ private[plugin] object ProjectCommands {
         at
       )
     } yield ()
+
+  /** The documents `own` reads that hold an artifact of `project`, of either form, at most
+    * [[Projects.Terms.bound]] of them; or why not.
+    */
+  private def projectDocuments(own: DocumentShelf, project: ProjectKey)(using
+      Tx^
+  ): Either[Stop, Vector[Document]] =
+    refuse(ArtifactJson.holding(project)).flatMap(holding =>
+      stored(own.referring(holding, Projects.Terms.bound))
+    )
 
   /** `project`'s index document as `own` holds it, and the pin it holds, or why not. */
   private def indexed(own: DocumentShelf, project: ProjectKey)(using
@@ -3744,7 +3751,7 @@ private[plugin] object ProjectCommands {
         for {
           docKey <- key match {
             case ArtifactRef.Id(id) =>
-              rekeyed(own, id).flatMap(_.fold(refuse(DocKey.of(id.value)))(Right(_)))
+              rekeyedKey(own, id).flatMap(_.fold(refuse(DocKey.of(id.value)))(Right(_)))
             case named => refuse(DocKey.of(named.value))
           }
           labels <- stored(own.labels(docKey))
@@ -3765,7 +3772,7 @@ private[plugin] object ProjectCommands {
   /** The key [[Rekeyed]] says `id` is kept under, its documents read at every label `own` reads,
     * or why one cannot be read.
     */
-  private def rekeyed(own: DocumentShelf, id: ArtifactKey)(using
+  private def rekeyedKey(own: DocumentShelf, id: ArtifactKey)(using
       Tx^
   ): Either[Stop, Option[DocKey]] =
     for {
@@ -3790,7 +3797,7 @@ private[plugin] object ProjectCommands {
         documents <- stored(Traversal.traverse(keys) { key =>
           own.labels(key).flatMap(labels => Traversal.traverse(labels)(own.current(key, _)))
         })
-        ids <- refuse(Rekeyed.ids(project.key, documents.flatten.flatten))
+        keyed <- refuse(Rekeyed.ids(project.key, documents.flatten.flatten))
       } yield {
         val rank = versions.iterator
           .filterNot(ArtifactJson.isOldForm)
@@ -3800,7 +3807,7 @@ private[plugin] object ProjectCommands {
         d =>
           if (ArtifactJson.isOldForm(d))
             grit.projects.artifact.Rekey
-              .before(d, ids, rank)
+              .before(d, keyed, rank)
               .left
               .map(why => s"${DocKey.value(d.key)} cannot be read: $why")
           else readable(d)
