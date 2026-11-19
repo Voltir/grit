@@ -1035,6 +1035,19 @@ private[plugin] final class ProjectCommands(
       for {
         hits <- stored(own.documents.search(args.query, FoundAmong, at))
         documents = hits.map(_.document).filter(ArtifactJson.isArtifact)
+        _ <- documents
+          .find(ArtifactJson.isOldForm)
+          .flatMap(d => ProjectKey.of(DocKey.value(d.key).takeWhile(_ != '/')).toOption)
+          .fold(Right(()))(p =>
+            indexOf(own.documents, p).flatMap(index =>
+              Left(
+                Stop.Refused(
+                  if (index.exists(ArtifactJson.nextOf(_).exists(_.isDefined))) LeftOver(p)
+                  else OldForm(p)
+                )
+              )
+            )
+          )
         artifacts <- refuse(Traversal.sequence(documents.map(readable)))
         heads = artifacts
           .map(_.head)
@@ -1092,15 +1105,39 @@ private[plugin] final class ProjectCommands(
     }
   }
 
-  /** `project_rekey`: not built yet, so a project of the old form stays in it. */
+  /** `project_rekey`. */
   object Rekey extends KeepingCommand[Rekeying] {
     val spec: ToolSpec[Rekeying] = ToolSpec(
       ToolName("project_rekey"),
-      "Gives each artifact of a project of the old form, its artifacts keyed by name, a " +
-        "number, keeping its name as its handle. Not built yet: always refused.",
+      "Gives each artifact of a project of the old form, whose artifacts are keyed by name, " +
+        "an id, numbered in the order the artifacts were made; its name becomes its handle " +
+        s"(`${grit.projects.artifact.Rekey.Carried}<name>` for a name starting with a digit, " +
+        "which its old key then no longer names), and every reference to it now names its id. " +
+        "One transaction: refused, it keeps nothing, naming each artifact in the way, such as " +
+        "one citing an artifact you cannot read. With `dry`, it counts what it would do and " +
+        "keeps nothing; with `dry` and no project, it lists every project left to re-key. " +
+        s"Only for $PersonOnlyBy.",
       Args
-        .of((project = Field.text("The project's key.")))
-        .refine(a => parsed("project", a.project, ProjectKey.of).map(Rekeying(_)))
+        .of(
+          (
+            project = Field.text("The project's key.").optional,
+            dry = Field.flag("Count what it would do, keeping nothing.").optional
+          )
+        )
+        .refine(a =>
+          (a.project, a.dry.getOrElse(false)) match {
+            case (Some(p), dry) => parsed("project", p, ProjectKey.of).map(Rekeying.One(_, dry))
+            case (None, true) => Right(Rekeying.Survey)
+            case (None, false) =>
+              Left(
+                ArgsError.Refused(
+                  "project",
+                  "Name the project to re-key, or give dry: true to list every project left " +
+                    "to re-key."
+                )
+              )
+          }
+        )
     )
     def run(
         args: Rekeying,
@@ -1108,13 +1145,211 @@ private[plugin] final class ProjectCommands(
         own: DocumentKeeper,
         claims: Claims,
         at: Instant
-    )(using Tx^): Either[StoreError, CommandOutcome] =
-      Right(
-        CommandOutcome.Refused(
-          s"project_rekey is not built yet: project ${ProjectKey.value(args.project)} is left " +
-            "as it is"
+    )(using Tx^): Either[StoreError, CommandOutcome] = answered {
+      moverOf(by) match {
+        case Mover.Other =>
+          Left(Stop.Refused(s"A project is re-keyed only by $PersonOnlyBy."))
+        case Mover.Person =>
+          args match {
+            case Rekeying.Survey => surveyed(own)
+            case Rekeying.One(project, true) =>
+              rekeyPlanned(own, project).map(rekeyAnswer(project, _, dry = true))
+            case Rekeying.One(project, false) =>
+              locked(claims, project).flatMap { lock =>
+                given Locked = lock
+                for {
+                  found <- indexed(own, project)
+                  _ <- atTheirLabels(
+                    Vector(found._1 -> s"project ${ProjectKey.value(project)}"),
+                    "re-key"
+                  )
+                  planned <- rekeyPlanned(own, project)
+                  answer <- rekeyed(own, project, planned, by, at)
+                } yield answer
+              }
+          }
+      }
+    }
+  }
+
+  /** Every project `own` reads that has anything left to re-key, a line each: its counts, or why
+    * it cannot be re-keyed; or that none is.
+    */
+  private def surveyed(own: DocumentShelf)(using Tx^): Either[Stop, String] =
+    for {
+      documents <- stored(own.newest(Projects.Terms.bound))
+      indexes = documents.filter(d => !ArtifactJson.isArtifact(d) && ArtifactJson.pinOf(d).isRight)
+      pending = indexes.flatMap { index =>
+        ProjectKey.of(DocKey.value(index.key)).toOption.filter { p =>
+          ArtifactJson.nextOf(index).fold(_ => true, _.isEmpty) ||
+          documents.exists(d =>
+            ArtifactJson.isOldForm(d) && DocKey.value(d.key).startsWith(s"${ProjectKey.value(p)}/")
+          )
+        }
+      }
+      lines <- Traversal.traverse(pending.sortBy(ProjectKey.value)) { p =>
+        rekeyPlanned(own, p) match {
+          case Right(planned) => Right(rekeyCounts(p, planned))
+          case Left(Stop.Refused(why)) => Right(why)
+          case Left(store) => Left(store)
+        }
+      }
+    } yield if (lines.isEmpty) "No project is left to re-key." else lines.mkString("\n")
+
+  /** 5: the most reasons a refused re-key names. */
+  private val RekeyReasonsMost: Int = 5
+
+  /** What a re-key of `project` would write, read from its documents as `own` holds them, or why
+    * not: no such project, or what [[grit.projects.artifact.Rekey.plan]] refuses.
+    */
+  private def rekeyPlanned(own: DocumentShelf, project: ProjectKey)(using
+      Tx^
+  ): Either[Stop, grit.projects.artifact.Rekey.Planned] = {
+    val p = ProjectKey.value(project)
+    for {
+      found <- indexed(own, project)
+      (index, pin) = found
+      next <- refuse(ArtifactJson.nextOf(index).left.map(why => s"project $p cannot be read: $why"))
+      holding <- refuse(ArtifactJson.holding(project))
+      documents <- stored(own.referring(holding, Projects.Terms.bound))
+      (legacy, now) = documents.partition(ArtifactJson.isOldForm)
+      _ <- (next, legacy.isEmpty, now.isEmpty) match {
+        case (Some(_), false, _) => Left(Stop.Refused(LeftOver(project)))
+        case (None, _, false) =>
+          Left(Stop.Refused(s"project $p is in the old form but holds artifacts with ids too"))
+        case _ => Right(())
+      }
+      old <- Traversal.traverse(legacy) { d =>
+        stored(own.versions(d.key, d.label, HistoryMost)).map { kept =>
+          grit.projects.artifact.Rekey.Old(
+            d,
+            kept
+              .collect { case DocumentVersion.Holding(v) => v.written }
+              .lastOption
+              .getOrElse(d.written)
+          )
+        }
+      }
+      planned <- next match {
+        case Some(n) =>
+          Right(grit.projects.artifact.Rekey.Planned(Vector.empty, Vector.empty, n, Vector.empty))
+        case None =>
+          grit.projects.artifact.Rekey
+            .plan(project, pin, old)
+            .left
+            .map { reasons =>
+              val more = reasons.size - RekeyReasonsMost
+              Stop.Refused(
+                s"project $p cannot be re-keyed, so nothing was kept: " +
+                  reasons.take(RekeyReasonsMost).mkString("; ") +
+                  (if (more > 0) s"; and $more more" else "")
+              )
+            }
+      }
+    } yield planned
+  }
+
+  /** `planned` kept: each artifact under its key and at its label, believed as it was; the
+    * table's documents, refused where one is kept already; and the index, its `next` the
+    * planned one, believed as it was. Nothing when nothing is left to re-key.
+    */
+  private def rekeyed(
+      own: DocumentKeeper,
+      project: ProjectKey,
+      planned: grit.projects.artifact.Rekey.Planned,
+      by: CommandBy,
+      at: Instant
+  )(using Tx^)(using Locked): Either[Stop, String] =
+    if (planned.artifacts.isEmpty) Right(rekeyAnswer(project, planned, dry = false))
+    else
+      for {
+        found <- indexed(own, project)
+        (index, pin) = found
+        _ <- atTheirLabels(
+          (index -> s"project ${ProjectKey.value(project)}") +:
+            planned.artifacts.map(a => a.before -> a.after.head.called),
+          "re-key"
         )
-      )
+        _ <- planned.artifacts.foldLeft[Either[Stop, Unit]](Right(())) { (so, a) =>
+          so.flatMap(_ => kept(own, a.after, Some(a.before), Whose.Prior, at).map(_ => ()))
+        }
+        _ <- planned.table.foldLeft[Either[Stop, Unit]](Right(())) { (so, t) =>
+          so.flatMap(_ =>
+            for {
+              there <- stored(own.current(t.key, t.label))
+              _ <- there.fold(Right(()))(_ =>
+                Left(
+                  Stop.Refused(
+                    s"${DocKey.value(t.key)} is kept already at that label: re-keying " +
+                      s"project ${ProjectKey.value(project)} would replace it, so nothing was kept"
+                  )
+                )
+              )
+              text <- refuse(
+                DocText.of(
+                  s"where project ${ProjectKey.value(project)}'s re-keyed artifacts are kept"
+                )
+              )
+              _ <- keptEverywhere(own, t.key, t.label, Tx.top, text, t.data, Set.empty, at)
+            } yield ()
+          )
+        }
+        rewritten <- refuse(
+          ArtifactJson.index(
+            project,
+            pin,
+            ArtifactJson.startedBy(index).getOrElse(author(by)),
+            planned.next
+          )
+        )
+        (key, text, data, refs) = rewritten
+        _ <- keptEverywhere(
+          own,
+          key,
+          index.label,
+          DocumentKeeper.replacing(Some(index)),
+          text,
+          data,
+          refs,
+          at
+        )
+      } yield rekeyAnswer(project, planned, dry = false)
+
+  /** A re-key's counts: `<project>: <n> artifacts, <n> body links, <n> head cites, <n> handles
+    * carried`.
+    */
+  private def rekeyCounts(
+      project: ProjectKey,
+      planned: grit.projects.artifact.Rekey.Planned
+  ): String =
+    s"${ProjectKey.value(project)}: ${planned.artifacts.size} artifacts, ${planned.links} body " +
+      s"links, ${planned.cites} head cites, ${planned.renamed.size} handles carried"
+
+  /** What a re-key of `project` answers: its counts, the ids it gave, the next new artifact's
+    * number, and each carried handle; or that nothing is left to re-key.
+    */
+  private def rekeyAnswer(
+      project: ProjectKey,
+      planned: grit.projects.artifact.Rekey.Planned,
+      dry: Boolean
+  ): String = {
+    val p = ProjectKey.value(project)
+    val ids = planned.artifacts.map(_.after.head.key)
+    (ids.headOption, ids.lastOption) match {
+      case (Some(lo), Some(hi)) =>
+        val verb = if (dry) "would give" else "gave"
+        (Vector(
+          rekeyCounts(project, planned),
+          s"It $verb ids ${lo.value} to ${hi.value}; the next new artifact is " +
+            s"${ArtifactKey.of(project, planned.next).value}." +
+            (if (dry) " Nothing was kept." else "")
+        ) ++ planned.artifacts.collect {
+          case a if planned.renamed.exists(_.was == a.before.key) =>
+            s"${a.after.head.called} was ${DocKey.value(a.before.key)}, a name a handle cannot " +
+              "be: that key no longer names it."
+        }).mkString("\n")
+      case _ => s"Project $p has nothing left to re-key."
+    }
   }
 
   /** `project` as files ([[ProjectMarkdown.render]]), or, in the old form, as it was exported
@@ -2260,8 +2495,13 @@ private[plugin] object ProjectCommands {
   /** `project_export`'s arguments. */
   final case class Exporting(project: ProjectKey, after: Option[String]) extends caps.Pure
 
-  /** `project_rekey`'s arguments: the project to re-key. */
-  final case class Rekeying(project: ProjectKey) extends caps.Pure
+  /** `project_rekey`'s arguments: a survey of every project left to re-key, keeping nothing; or
+    * one project re-keyed, or with `dry` only counted.
+    */
+  enum Rekeying extends caps.Pure {
+    case Survey
+    case One(project: ProjectKey, dry: Boolean)
+  }
 
   /** `project_claim`'s arguments. */
   final case class Claiming(key: ArtifactRef, role: RoleName, holder: ClaimHolder) extends caps.Pure
@@ -2351,6 +2591,13 @@ private[plugin] object ProjectCommands {
 
   /** 100,000: the most characters `project_brief` is asked to give. */
   private val BriefMost: Int = 100_000
+
+  /** Why project `project`, re-keyed, is refused a command to a reader of artifacts of the old
+    * form labelled above its index, which no re-key can number without writing down.
+    */
+  private def LeftOver(project: ProjectKey): String =
+    s"project ${ProjectKey.value(project)} holds artifacts of the old form, keyed by name, " +
+      "labelled above the project's index: no re-key can number them"
 
   /** Why project `project`, in the old form (ADR 0063), is refused a command. */
   private def OldForm(project: ProjectKey): String =
@@ -2450,6 +2697,9 @@ private[plugin] object ProjectCommands {
       next <- read.toRight(Stop.Refused(OldForm(project)))
       holding <- refuse(ArtifactJson.holding(project))
       documents <- stored(own.referring(holding, Projects.Terms.bound))
+      _ <-
+        if (documents.exists(ArtifactJson.isOldForm)) Left(Stop.Refused(LeftOver(project)))
+        else Right(())
       artifacts <- refuse(Traversal.sequence(documents.map(d => readable(d).map(d -> _))))
     } yield Loaded(project, index, pin, next, artifacts)
   }
