@@ -2,13 +2,13 @@ package grit.act.moves
 
 import java.time.Instant
 
-import grit.core.act.MovesFixtures.Answering
-import grit.core.act.{Keeping, MoveError, MoveLimits, MovesFixtures}
+import grit.core.act.MovesFixtures.{Answering, Judging}
+import grit.core.act.{Dreaming, Keeping, MoveError, MoveLimits, MovesFixtures}
 import grit.core.document.{DocRef, DocText, DocumentKeeper, Pointer, Written}
 import grit.core.durable.{Flows, InMemoryDurable}
-import grit.core.id.DocKey
+import grit.core.id.{DocKey, DocumentVersionId}
 import grit.core.place.Place
-import grit.core.stitch.StrandWorld
+import grit.core.stitch.{Strand, StrandWorld}
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.Integrity
 import grit.core.visibility.{Label, Level}
@@ -123,6 +123,150 @@ object DurableKeepingTests extends TestSuite {
       }
       models.pairs ==> Vector(MovesFixtures.Dream, MovesFixtures.Summary)
     }
+
+    test(
+      "a run resumed after a sort asks the classifier nothing, and reads its answer as the first run did"
+    ) {
+      val s = Sorts()
+      val first = s.world
+        .answering(
+          s.limits,
+          s.strands,
+          s.shelves.needs,
+          MovesContract.Answer,
+          new Judging(),
+          DurableMoves.Within
+        )(s.sort)
+        ._1
+      val steps = s.world.durable.recordedSteps(Turn.workflowId)
+      val again = new Judging()
+      val replayed =
+        new InMemoryDurable().replay(Turn.workflowId, s.world.durable.history(Turn.workflowId)) {
+          _ =>
+            val dreams = MovesWorld.dreams(
+              s.world.acting,
+              s.limits,
+              s.world.keeper,
+              s.strands,
+              s.shelves.needs,
+              s.shelves.documents
+            )(s.sort)
+            val env = KeepingEnv(
+              s.world.env(new Answering(MovesContract.Answer), again),
+              MovesWorld.Fileless,
+              s.world.jot
+            )
+            Flows.run(dreams, env, ()).merge.moves.mkString
+        }
+      (first, steps, replayed, again.calls) ==> (
+        MovesContract.Seen(
+          Vector(Right(s"c 1.0 at outside among ${DocumentVersionId.value(s.card)}"))
+        ),
+        Vector("ask:s", "ask:s:record"),
+        Right(first.moves.mkString),
+        0
+      )
+    }
+
+    test("a sort is not asked of a classifier not cleared for what it read: it is Uncleared") {
+      val s = Sorts(judgedAt = Some(Label.Public))
+      val judging = new Judging()
+      val (got, _) = s.world.answering(
+        s.limits,
+        s.strands,
+        s.shelves.needs,
+        MovesContract.Answer,
+        judging,
+        DurableMoves.Within
+      )(s.sort)
+      (got, judging.calls) ==> (
+        MovesContract.Seen(Vector(Left(MoveError.Uncleared(MovesContract.Floor)))),
+        0
+      )
+    }
+
+    test(
+      "a sort's record holds none of its item's text, nor its candidates': ids, a digest and answers"
+    ) {
+      val s = Sorts()
+      val _ = s.world.answering(
+        s.limits,
+        s.strands,
+        s.shelves.needs,
+        MovesContract.Answer,
+        new Judging(),
+        DurableMoves.Within
+      )(s.sort)
+      val recorded = s.world.durable.history(Turn.workflowId).collect {
+        case InMemoryDurable.Step("ask:s", InMemoryDurable.Outcome.Output(v)) => v
+      }
+      val judged = recorded.map(r => ujson.read(r)("judged").obj)
+      (
+        recorded.map(r => Vector("deploy", "stuck", "friday").filter(r.contains)),
+        judged.map(_.keys.toVector),
+        judged.map(j => (ujson.write(j("answers")), ujson.write(j("shown"))))
+      ) ==> (
+        Vector(Vector()),
+        Vector(
+          Vector(
+            "digest",
+            "answers",
+            "model",
+            "usage",
+            "estimate",
+            "upstream",
+            "at",
+            "level",
+            "shown"
+          )
+        ),
+        Vector(
+          (
+            """[{"choice":"1","weights":[{"key":"1","p":1},{"key":"new","p":0},{"key":"aside","p":0}]}]""",
+            s"[${DocumentVersionId.value(s.card)}]"
+          )
+        )
+      )
+    }
+  }
+
+  /** A world sorting the contract's strand, its deploy stuck, among one card, "deploys stay
+    * stuck by friday", by [[MovesContract.Choosing]], once (`s`), its classifier cleared for
+    * `judgedAt` when given.
+    */
+  private final case class Sorts(judgedAt: Option[Label] = None) {
+    val (strands, root) = MovesContract.strand()
+    val seen: Strand.Digested = MovesContract.one(
+      StrandWorld.right(strands.shelf.of(Vector(root), StrandWorld.at(600))(using TestTx.fake))
+    )
+    val shelves: MovesContract.Shelves = MovesContract.Shelves(needed = Vector(MovesContract.Cards))
+    MovesContract.declared(shelves)
+    val card: DocumentVersionId = MovesContract.put(
+      shelves,
+      MovesContract.Cards.name,
+      "c",
+      "deploys stay stuck by friday",
+      Integrity.Member
+    )
+    val world: MovesWorld = new MovesWorld(
+      broken = false,
+      MovesContract.Floor,
+      documents = shelves.documents,
+      judgedAt = judgedAt
+    )
+    val limits: MoveLimits = MovesContract.limits(1, 0)
+    val sort: Dreaming^ -> MovesContract.Seen = m =>
+      MovesContract.Seen(
+        Vector(
+          MovesContract.sorted(
+            m,
+            "s",
+            Dreaming.Item.Discussion(seen),
+            Vector(MovesContract.Pick("c") -> card),
+            MovesContract.Choosing
+          )(d => s"${d.choice.of} ${d.top}")
+        )
+      )
   }
 
   /** What a run's keeps came to. */
