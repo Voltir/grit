@@ -37,7 +37,9 @@ trait StrandShelf {
   /** The strands at the floor a run places, oldest touched first: [[atFloor]]'s; each thread
     * under a channel's top level spoken in within the range, whole, as it stood at `until`; and
     * each run `cut` makes of a channel's top level whose last message falls in the range and
-    * that is offered by `until`, cut from its true start, whatever the range.
+    * that is offered by `until`, cut from its true start, whatever the range: a chain of
+    * messages is read back at most [[StrandShelf.ReadBack]] days (or gaps, when longer), and
+    * one longer is cut from the oldest message read.
     */
   def units(from: Instant, until: Instant, cut: Strand.Cut)(using
       Tx^
@@ -65,6 +67,11 @@ object StrandShelf {
 
   /** A day: how far back each step reads to find where a run's chain of messages begins. */
   private[stitch] val Reach: java.time.Duration = java.time.Duration.ofDays(1)
+
+  /** 7: the most steps of [[Reach]] a run's chain is read back; past them, the oldest message
+    * read starts it.
+    */
+  val ReadBack: Int = 7
 
   /** How many characters of `said` a reader is shown, at most [[Stitching.MessageChars]] of
     * each.
@@ -177,27 +184,22 @@ object StrandShelf {
     )(using Tx^): Either[StoreError, Vector[Strand.Digested]] = {
       val reach = if (Reach.compareTo(cut.gap) >= 0) Reach else cut.gap
       // The chain the first message said from `from` is in begins after a gap of cut.gap or
-      // more; read back a step at a time until that gap is read.
-      def back(lo: Instant, got: Vector[Said]): Either[StoreError, Vector[Said]] = {
+      // more; read back a step of `reach` at a time, at most ReadBack steps, until that gap is
+      // read. A chain begun at the oldest message read may reach back past `lo`.
+      def back(lo: Instant, got: Vector[Said], steps: Int): Either[StoreError, Vector[Said]] = {
         val first = got.indexWhere(!_.entry.createdAt.isBefore(from))
-        val start = Iterator
-          .iterate(first)(_ - 1)
-          .find(i =>
-            i <= 0 || java.time.Duration
-              .between(got(i - 1).entry.createdAt, got(i).entry.createdAt)
-              .compareTo(cut.gap) >= 0
-          )
-        start.filter(_ => first >= 0).map(i => got(i.max(0)).entry.createdAt) match {
-          case Some(s) if lo.isAfter(s.minus(reach)) =>
-            stitches
-              .said(Vector(c.id), lo.minus(reach), lo)
-              .flatMap(older =>
-                if (older.isEmpty) Right(got) else back(lo.minus(reach), older ++ got)
-              )
-          case _ => Right(got)
-        }
+        val open = first >= 0 &&
+          cut.starts(got).takeWhile(_ <= first).lastOption.contains(0) &&
+          got.headOption.exists(h => lo.isAfter(h.entry.createdAt.minus(cut.gap)))
+        if (!open || steps >= ReadBack) Right(got)
+        else
+          stitches
+            .said(Vector(c.id), lo.minus(reach), lo)
+            .flatMap(older =>
+              if (older.isEmpty) Right(got) else back(lo.minus(reach), older ++ got, steps + 1)
+            )
       }
-      stitches.said(Vector(c.id), from, until).flatMap(back(from, _)).map { top =>
+      stitches.said(Vector(c.id), from, until).flatMap(back(from, _, 0)).map { top =>
         val room = c.origin.room
         cut
           .pieces(top, until)

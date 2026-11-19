@@ -97,17 +97,24 @@ object Strand {
     */
   final case class Cut private (gap: Duration, most: Int, settle: Duration) extends caps.Pure {
 
+    /** Where in `top`, messages oldest first, each chain of messages less than `gap` apart
+      * begins: 0, then each one said `gap` or more after the one before; none when `top` is.
+      */
+    private[stitch] def starts(top: Vector[Said]): Vector[Int] =
+      top.headOption.fold(Vector.empty[Int])(_ =>
+        0 +: top.zip(top.drop(1)).zipWithIndex.collect {
+          case ((a, b), i)
+              if Duration.between(a.entry.createdAt, b.entry.createdAt).compareTo(gap) >= 0 =>
+            i + 1
+        }
+      )
+
     /** The runs of `top`, one room's top-level messages oldest first from a run's true start,
       * that are offered at `until`.
       */
     private[stitch] def pieces(top: Vector[Said], until: Instant): Vector[Vector[Said]] = {
-      val starts = top.indices.filter(i =>
-        i == 0 || Duration
-          .between(top(i - 1).entry.createdAt, top(i).entry.createdAt)
-          .compareTo(gap) >= 0
-      )
       // Each gap-chain is cut into runs of at most `most`, counted from its start.
-      val bounds = (starts :+ top.size).sliding(2).toVector.flatMap {
+      val bounds = (starts(top) :+ top.size).sliding(2).toVector.flatMap {
         case Seq(s, e) => (s until e by most).map(a => (a, (a + most).min(e)))
         case _ => Vector.empty
       }

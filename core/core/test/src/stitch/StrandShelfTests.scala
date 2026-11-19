@@ -12,6 +12,11 @@ object StrandShelfTests extends TestSuite {
 
   import StrandWorld.{at, right}
 
+  /** Runs of messages less than 6 hours apart, at most 4, settled in 6 hours. */
+  private val sixHours: Strand.Cut = Strand.Cut
+    .of(java.time.Duration.ofHours(6), 4, java.time.Duration.ofHours(6))
+    .fold(e => throw new java.lang.AssertionError(e), identity)
+
   val tests = Tests {
     test("the same messages give the same digest; one more message another") {
       val w = new StrandWorld
@@ -208,6 +213,31 @@ object StrandShelfTests extends TestSuite {
       assert(ids(0).size == 3)
       ids(1200) ==> ids(0).drop(1)
       ids(2000) ==> ids(0).drop(2)
+    }
+
+    test("a chain begun more than a day before the window is cut from its start") {
+      val w = new StrandWorld
+      val top = w.room("C1")
+      // A chain every 5 hours, 6 apart joining, from 0 to 60 hours, cut at most 4.
+      (0 to 12).foreach(i => w.say(top, s"step $i", i * 18000L))
+      given Tx = TestTx.fake
+      def units(from: Long) = right(w.shelf.units(at(from), at(900000), sixHours))
+      // From 50 hours the chain's start is two days back: its runs are 8-11 and 12, not 6-9.
+      units(180000).map(_.since) ==> Vector(at(8 * 18000L), at(12 * 18000L))
+      units(180000) ==> units(0).filterNot(_.touched.isBefore(at(180000)))
+    }
+
+    test("a chain is read back at most ReadBack days; the oldest message read then starts it") {
+      val w = new StrandWorld
+      val top = w.room("C1")
+      // A chain every 5 hours from 0 to 225 hours; from 216 hours, 7 days back is 48 hours,
+      // whose first message is the 10th: runs count from it, not from 0.
+      (0 to 45).foreach(i => w.say(top, s"step $i", i * 18000L))
+      given Tx = TestTx.fake
+      (
+        StrandShelf.ReadBack,
+        right(w.shelf.units(at(777600), at(900000), sixHours)).map(_.since)
+      ) ==> (7, Vector(at(42 * 18000L)))
     }
 
     test("a run's excerpt and links read its range, not the whole root") {
