@@ -266,5 +266,19 @@ abstract class ClaimsContract extends TestSuite {
         live(c, lapse) == Vector(made("p/a", "live-2", when = hour))
       )
     }
+
+    test("a lock keeps no claim: its subject is claimed after it, in the same transaction") {
+      val c = claims(plugin("claims-lock"))
+      val claimed = opened(Low) {
+        ok(c.lock(key("p#lock")))
+        ok(c.claim(key("p#lock"), holder("lock-1"), builder, ann, Label.Public, at))
+      }
+      (claimed, live(c, at)) ==> (
+        Claimed.Made(made("p#lock", "lock-1")),
+        Vector(
+          made("p#lock", "lock-1")
+        )
+      )
+    }
   }
 }

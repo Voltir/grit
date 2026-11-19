@@ -238,5 +238,69 @@ object ClaimsLiveTests extends TestSuite {
         ))
       } finally pool.shutdownNow()
     }
+
+    test("a claim after a lock waits for the transaction holding it, then sees what it committed") {
+      val c = new SqlClaims(ok(PluginName.of("claims-locked")))
+      val subject = ok(DocKey.of("p#lock"))
+      val (holding, commit) = (new CountDownLatch(1), new CountDownLatch(1))
+      val pool = Executors.newFixedThreadPool(2)
+      try {
+        val first = pool.submit(new Callable[Boolean] {
+          def call(): Boolean = LiveDb.transaction(config, Clearance.of(Label.Public)) {
+            ok(c.lock(subject))
+            val claimed = ok(
+              c.claim(
+                ok(DocKey.of("p/one")),
+                ok(ClaimHolder.of("lock-1")),
+                builder,
+                by,
+                Label.Public,
+                at
+              )
+            )
+            holding.countDown()
+            val _ = commit.await(10, TimeUnit.SECONDS)
+            made(claimed)
+          }
+        })
+        assert(holding.await(10, TimeUnit.SECONDS))
+        val second = pool.submit(new Callable[Vector[String]] {
+          def call(): Vector[String] = LiveDb.transaction(config, Clearance.of(Label.Public)) {
+            ok(c.lock(subject))
+            ok(c.live(at)).map(claim => DocKey.value(claim.subject))
+          }
+        })
+        val waited = waiting()
+        commit.countDown()
+        (waited, first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS)) ==>
+          ((true, true, Vector("p/one")))
+      } finally pool.shutdownNow()
+    }
+
+    test("a lock held from a higher room delays a lower room's") {
+      val c = new SqlClaims(ok(PluginName.of("claims-locked-high")))
+      val subject = ok(DocKey.of("p#lock"))
+      val (holding, commit) = (new CountDownLatch(1), new CountDownLatch(1))
+      val high = Clearance.of(TestLabels.Trial)
+      val pool = Executors.newFixedThreadPool(2)
+      try {
+        val first = pool.submit(new Callable[Unit] {
+          def call(): Unit = LiveDb.transaction(config, high) {
+            ok(c.lock(subject))
+            holding.countDown()
+            val _ = commit.await(10, TimeUnit.SECONDS)
+          }
+        })
+        assert(holding.await(10, TimeUnit.SECONDS))
+        val second = pool.submit(new Callable[Either[StoreError, Unit]] {
+          def call(): Either[StoreError, Unit] =
+            LiveDb.transaction(config, Clearance.of(Label.Public))(c.lock(subject))
+        })
+        val waited = waiting()
+        commit.countDown()
+        first.get(10, TimeUnit.SECONDS)
+        (waited, second.get(10, TimeUnit.SECONDS)) ==> ((true, Right(())))
+      } finally pool.shutdownNow()
+    }
   }
 }

@@ -177,6 +177,8 @@ object PluginCaptureTests extends TestSuite {
       |    Right(Vector.empty)
       |  def held(claim: Claim)(using Tx^): Either[StoreError, Option[Claim]] =
       |    Right(None)
+      |  def lock(subject: DocKey)(using Tx^): Either[StoreError, Unit] =
+      |    Right(())
       |}
       |""".stripMargin
 
