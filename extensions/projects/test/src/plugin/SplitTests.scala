@@ -173,7 +173,7 @@ object SplitTests extends TestSuite {
           "\n" + plan + "\n"
         )
     }
-    test("each part is believed at no more than the artifact it was cut from, nor its caller") {
+    test("each part is believed at no more than the artifact it was cut from, kept below its caller") {
       val projects = plugin()
       val store = Store(declared = Vector(method(kinds = Vector(change, note, section))))
       started(projects, store)
@@ -191,6 +191,34 @@ object SplitTests extends TestSuite {
       )
       done(
         askBelieved(Integrity.Authority)(
+          projects,
+          store,
+          "project_split",
+          "artifact" -> "p/1",
+          "version" -> versionOf(projects, store, "p/1")
+        )
+      )
+      (believedOf(store, "p/1"), believedOf(store, "p/2")) ==>
+        (Some(Integrity.written(Integrity.Member)), Some(Integrity.written(Integrity.Member)))
+    }
+    test("each part is believed at no more than its caller, below the artifact it was cut from") {
+      val projects = plugin()
+      val store = Store(declared = Vector(method(kinds = Vector(change, note, section))))
+      started(projects, store)
+      done(
+        askBelieved(Integrity.Authority)(
+          projects,
+          store,
+          "project_keep",
+          "project" -> "p",
+          "handle" -> "a",
+          "kind" -> "note",
+          "title" -> "A",
+          "body" -> plan
+        )
+      )
+      done(
+        askBelieved(Integrity.Member)(
           projects,
           store,
           "project_split",
