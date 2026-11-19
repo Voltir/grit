@@ -141,23 +141,24 @@ abstract class StitchContract extends TestSuite {
         .map(_.entry) ==> Vector(asked)
     }
 
-    test("inRooms reads messages, replies and posts only, oldest first") {
+    test(
+      "roomsSpokenIn names each top level and thread a message, reply or post was said in once, by first said"
+    ) {
       val top = conversation(Origin.Room("T", "in-rooms"))
       val under = conversation(Origin.Thread("T", "in-rooms", "1.0"))
+      val drafted = conversation(Origin.Thread("T", "in-rooms", "5.0"))
       val legacy = thread("in-rooms", "2.0")
-      val post = say(top, Payload.Posted("The nightly report."), 10, Some("1.0"))
-      val answered = say(under, Payload.Message(reply), 30, Some("3.0"))
+      say(top, Payload.Posted("The nightly report."), 10, Some("1.0"))
+      say(under, Payload.Message(reply), 15, Some("3.0"))
       val heard = say(top, Payload.Heard("who is on call?"), 20, Some("2.0"))
       val asked = say(under, Payload.Message(Message.User("me, until six")), 40, Some("4.0"))
-      say(under, Payload.Draft(reply), 50)
+      say(drafted, Payload.Draft(reply), 50)
       say(legacy, Payload.Heard("a legacy thread"), 25)
-      val ours = Set(top, under, legacy)
-      right(transaction(stitches.inRooms(At, At.plusSeconds(3_600))))
-        .filter(s => ours.contains(s.conversation))
-        .map(_.entry) ==> Vector(post, heard, answered, asked)
-      right(transaction(stitches.inRooms(At.plusSeconds(20), At.plusSeconds(40))))
-        .filter(s => ours.contains(s.conversation))
-        .map(_.entry) ==> Vector(heard, answered)
+      val ours = Set(top, under, drafted, legacy)
+      def spoken(from: Long, until: Long) =
+        right(transaction(stitches.roomsSpokenIn(At.plusSeconds(from), At.plusSeconds(until))))
+          .filter(ours.contains)
+      (spoken(0, 3_600), spoken(16, 40)) ==> (Vector(top, under), Vector(top))
       Vector((top, "2.0"), (under, "4.0"), (top, "1.0"), (under, "3.0"), (top, "9.0")).map((c, s) =>
         right(transaction(stitches.asked(c, SourceId(s)))).map(_.entry)
       ) ==> Vector(Some(heard), Some(asked), None, None, None)

@@ -61,7 +61,9 @@ final class InMemoryStitchStore(entries: InMemoryEntryStore, origin: Conversatio
         .map(said)
     )
 
-  def inRooms(from: Instant, until: Instant)(using Tx^): Either[StoreError, Vector[Said]] =
+  def roomsSpokenIn(from: Instant, until: Instant)(using
+      Tx^
+  ): Either[StoreError, Vector[ConversationId]] =
     Right(
       inRange(from, until)
         .filter(e =>
@@ -70,7 +72,8 @@ final class InMemoryStitchStore(entries: InMemoryEntryStore, origin: Conversatio
             case _ => false
           })
         )
-        .map(said)
+        .map(_.conversationId)
+        .distinct
     )
 
   def asked(conversation: ConversationId, source: SourceId)(using

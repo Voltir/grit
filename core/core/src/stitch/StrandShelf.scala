@@ -163,8 +163,8 @@ object StrandShelf {
     ): Either[StoreError, Vector[Strand.Digested]] =
       for {
         stitched <- atFloor(from, until)
-        heard <- stitches.inRooms(from, until)
-        spoken <- each(heard.map(_.conversation).distinct)(conversations.get)
+        rooms <- stitches.roomsSpokenIn(from, until)
+        spoken <- each(rooms)(conversations.get)
         threads <- of(
           spoken.flatten.collect { case c if c.origin.asking.nonEmpty => c.id },
           until

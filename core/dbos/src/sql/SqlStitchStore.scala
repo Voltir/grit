@@ -109,20 +109,23 @@ final class SqlStitchStore extends StitchStore {
         ps.setObject(SqlClearance.Params + 3, until.atOffset(ZoneOffset.UTC))
       }(readSaid)
 
-  def inRooms(from: Instant, until: Instant)(using tx: Tx^): Either[StoreError, Vector[Said]] =
+  def roomsSpokenIn(from: Instant, until: Instant)(using
+      tx: Tx^
+  ): Either[StoreError, Vector[ConversationId]] =
     cleared(
       s"""WITH ${SqlClearance.With}
-         |SELECT $SaidColumns
+         |SELECT e.conversation_id
          |  FROM grit.entries e
          |  JOIN grit.conversations c ON c.id = e.conversation_id
          | WHERE c.origin ->> 'kind' IN ('room', 'thread')
          |   AND e.created_at >= ? AND e.created_at < ?
          |   AND $Spoken AND ${SqlClearance.entry("e")}
-         | ORDER BY e.created_at, e.seq""".stripMargin
+         | GROUP BY e.conversation_id
+         | ORDER BY min(e.created_at), e.conversation_id""".stripMargin
     ) { ps =>
       ps.setObject(SqlClearance.Params + 1, from.atOffset(ZoneOffset.UTC))
       ps.setObject(SqlClearance.Params + 2, until.atOffset(ZoneOffset.UTC))
-    }(readSaid)
+    }(rs => ConversationId(rs.getString(1)))
 
   def asked(conversation: ConversationId, source: SourceId)(using
       tx: Tx^

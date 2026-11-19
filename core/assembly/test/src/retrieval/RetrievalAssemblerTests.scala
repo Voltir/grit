@@ -698,9 +698,11 @@ object RetrievalAssemblerTests extends TestSuite {
       reads += 1
       under.spokenIn(room, from, until)
     }
-    def inRooms(from: Instant, until: Instant)(using Tx^): Either[StoreError, Vector[Said]] = {
+    def roomsSpokenIn(from: Instant, until: Instant)(using
+        Tx^
+    ): Either[StoreError, Vector[ConversationId]] = {
       reads += 1
-      under.inRooms(from, until)
+      under.roomsSpokenIn(from, until)
     }
     def asked(conversation: ConversationId, source: grit.core.id.SourceId)(using
         Tx^

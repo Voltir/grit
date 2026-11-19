@@ -44,12 +44,14 @@ trait StitchStore {
     */
   def openings(conversations: Vector[ConversationId])(using Tx^): Either[StoreError, Vector[Said]]
 
-  /** Each message, reply and post said in a channel's top level or a thread under it
-    * ([[grit.core.store.Origin.Room]], [[grit.core.store.Origin.Thread]]) from `from` until
-    * before `until` that its transaction reads, oldest first, as [[said]] reads them; no closing
-    * entry.
+  /** Each channel's top level and thread under it ([[grit.core.store.Origin.Room]],
+    * [[grit.core.store.Origin.Thread]]) with a message, reply or post said from `from` until
+    * before `until` that its transaction reads, each once, by its first such message; a closing
+    * or a draft alone names none.
     */
-  def inRooms(from: Instant, until: Instant)(using Tx^): Either[StoreError, Vector[Said]]
+  def roomsSpokenIn(from: Instant, until: Instant)(using
+      Tx^
+  ): Either[StoreError, Vector[ConversationId]]
 
   /** The person's message `conversation` holds from `source` (kept under its inbound id,
     * [[grit.core.inbox.InboundId]]), heard or said to grit, when its transaction reads it;
