@@ -6,6 +6,7 @@ import scala.concurrent.duration.*
 
 import grit.core.act.ScriptedMoves.Replied
 import grit.core.act.{Dreaming, MoveError, ScriptedDreaming}
+import grit.core.classify.{Answer as Judged, Question, Request}
 import grit.core.document.{
   DocLabel,
   DocRef,
@@ -35,16 +36,17 @@ import grit.knowledge.ref.{Ref, TopicKey}
 
 import utest.*
 
-/** What an ask of [[TopicDreamTests]]' runs was: `attach` or `write`, what it was told, and the
-  * message it was shown.
+/** What an ask of [[TopicDreamTests]]' runs was: a `sort`, what kind of item it placed
+  * (`discussion` or `document`) and its item's text then each topic's, one a line; or a
+  * `write`, what it was told, and the message it was shown.
   */
 private final case class Ask(kind: String, system: String, shown: String)
 
 /** The topics job's runs over rooms of threads in memory ([[StrandWorld]]) and cards kept by a
   * knowledge plugin beside it, their moves made by [[ScriptedDreaming]] over one document
-  * store, so a later run reads what an earlier one kept. Unless a test says, the attach ask
-  * opens a topic for everything it is shown, and each write ask answers [[Lead]] and
-  * [[Passage]].
+  * store, so a later run reads what an earlier one kept. Unless a test says, each discussion's
+  * sort chooses a topic of its own and each card's places it in none, and each write ask
+  * answers [[Lead]] and [[Passage]].
   */
 object TopicDreamTests extends TestSuite {
 
@@ -109,9 +111,9 @@ object TopicDreamTests extends TestSuite {
     def asked: Vector[Ask] = heard.asked
 
     /** One run for `day`, made `now`, of `perRun`, by a job writing at most `most`, kept at
-      * `floor`; its attach ask answered by `attach` of what it was told and shown, its write asks
-      * by `write`; its rooms labelled as `rooms` records them; its asks reading no document
-      * `unread` holds to: its reply.
+      * `floor`; its sorts judged by `sort`, its write asks answered by `write`; its rooms
+      * labelled as `rooms` records them; its asks reading no document `unread` holds to: its
+      * reply.
       */
     def run(
         perRun: Int = 10,
@@ -120,7 +122,7 @@ object TopicDreamTests extends TestSuite {
         seedUntil: Option[LocalDate] = None,
         now: Instant = Now,
         rooms: Recorded = Recorded.Empty,
-        attach: (String, String) -> ujson.Value = everyNew,
+        sort: Judge = everyNew,
         write: String -> ujson.Value = _ => wrote(Lead, Passage),
         unread: Document -> Boolean = _ => false,
         floor: Label = Label.Public,
@@ -135,11 +137,13 @@ object TopicDreamTests extends TestSuite {
       val answer: (String, Vector[Message]) -> Either[MoveError, Replied[ujson.Value]] =
         (system, messages) => {
           val shown = messages.collect { case Message.User(t) => t }.mkString
-          val isAttach = system.startsWith("You sort")
-          heard.ask(Ask(if (isAttach) "attach" else "write", system, shown))
-          val reply = if (isAttach) attach(system, shown) else write(shown)
-          Right(Replied(reply, Label.Public))
+          heard.ask(Ask("write", system, shown))
+          Right(Replied(write(shown), Label.Public))
         }
+      val judged: Request -> Either[MoveError, Replied[Vector[Judged]]] = r => {
+        heard.ask(sorted(r.state, r.questions))
+        Right(Replied(sort.answers(r.questions), Label.Public))
+      }
       val pieces = new InMemoryPieces
       val moves = new ScriptedDreaming(
         dream.limits,
@@ -152,6 +156,7 @@ object TopicDreamTests extends TestSuite {
         at = now,
         integrity = believed,
         rooms = rooms,
+        judgments = judged,
         visibility = visibility
       )
       dream.run(
@@ -210,7 +215,7 @@ object TopicDreamTests extends TestSuite {
       ok(documents.shelf(Plugin).referring(right(Ref.written(r)), 10)).map(d => DocKey.value(d.key))
 
     /** A topic of [[Lead]], not opened by any strand here, kept at `floor` with one passage of
-      * [[Day]] written from nothing, so a run at `floor` shows it to its attach ask.
+      * [[Day]] written from nothing, so a run at `floor` sorts among it.
       */
     def topic(floor: Label = Label.Public): Unit = {
       val held = TopicWrite.Held(
@@ -337,68 +342,63 @@ object TopicDreamTests extends TestSuite {
   private def wrote(lead: String, passage: String): ujson.Value =
     ujson.Obj("lead" -> lead, "passage" -> passage)
 
-  /** How many discussions, topics and cards an attach ask's message shows: each discussion a
-    * `<discussion>` fence, each document a `<document>` fence under its label.
+  /** A sort's request as [[Ask]] holds it: its item's kind and how many topics it asks about,
+    * then its item's text and each topic's, a line each.
     */
-  private def counted(shown: String): (Int, Int, Int) = {
-    def opened(tag: String) = tag.r.findAllIn(shown).size
-    (
-      opened("(?m)^<discussion>$"),
-      opened("(?m)^<document label=\"topic\">$"),
-      opened("(?m)^<document label=\"knowledge card\">$")
-    )
-  }
-
-  /** A topic group of an attach reply: `topic`, a number or `new`, and the discussions and cards
-    * it holds, by number.
-    */
-  private def group(topic: String, discussions: Seq[Int], cards: Seq[Int] = Nil): ujson.Value =
-    ujson.Obj(
-      "topic" -> topic,
-      "discussions" -> ujson.Arr.from(discussions.map(ujson.Num(_))),
-      "cards" -> ujson.Arr.from(cards.map(ujson.Num(_)))
-    )
-
-  /** An attach reply of `groups`, with the discussions and cards it sets aside. */
-  private def placed(
-      groups: Seq[ujson.Value],
-      asideDiscussions: Seq[Int] = Nil,
-      asideCards: Seq[Int] = Nil
-  ): ujson.Value =
-    ujson.Obj(
-      "topics" -> ujson.Arr.from(groups),
-      "aside" -> ujson.Obj(
-        "discussions" -> ujson.Arr.from(asideDiscussions.map(ujson.Num(_))),
-        "cards" -> ujson.Arr.from(asideCards.map(ujson.Num(_)))
-      )
-    )
-
-  /** Everything shown placed `place`: each in a new topic of its own for `new`, set aside for
-    * `none`, else all in the topic of that number; with no `discussions` anywhere when none was
-    * shown.
-    */
-  private def placing(place: String): (String, String) -> ujson.Value = (_, shown) => {
-    val (discussions, _, cards) = counted(shown)
-    val ds = 1 to discussions
-    val cs = 1 to cards
-    val reply = place match {
-      case "new" =>
-        placed(ds.map(i => group("new", Seq(i))) ++ cs.map(j => group("new", Nil, Seq(j))))
-      case "none" => placed(Nil, ds, cs)
-      case n => placed(Seq(group(n, ds, cs)))
+  private def sorted(state: ujson.Value, questions: Vector[Question]): Ask = {
+    val item = state.obj.get("item").flatMap(_.objOpt)
+    def field(k: String) = item.flatMap(_.get(k)).flatMap(_.strOpt).getOrElse("")
+    val topics = questions.flatMap {
+      case c: Question.Choice =>
+        c.keys.filter(_.name.forall(_.isDigit)).flatMap(_.description)
+      case Question.YesNo(instructions, _, _) => instructions.split("\n\n", 2).toVector.drop(1)
+      case _ => Vector.empty
     }
-    if (discussions == 0) cardsOnly(reply) else reply
+    Ask("sort", s"${field("kind")} ${topics.size}", (field("text") +: topics).mkString("\n"))
   }
 
-  /** `v` with every `discussions` key left out, as an attach reply shown no discussion is. */
-  private def cardsOnly(v: ujson.Value): ujson.Value = v match {
-    case o: ujson.Obj =>
-      ujson.Obj.from(o.value.collect { case (k, x) if k != "discussions" => k -> cardsOnly(x) })
-    case a: ujson.Arr => ujson.Arr.from(a.value.map(cardsOnly))
-    case x => x
+  /** How many discussions, topics and cards a sort was shown: its one discussion or card, and
+    * the topics it asked about.
+    */
+  private def counted(a: Ask): (Int, Int, Int) = a.system.split(' ').toVector match {
+    case Vector("discussion", n) => (1, n.toInt, 0)
+    case Vector("document", n) => (0, n.toInt, 1)
+    case _ => (0, 0, 0)
   }
 
-  private val everyNew: (String, String) -> ujson.Value = placing("new")
+  /** A classifier's answers to a sort's questions: a value, not a bare function, so a run's
+    * defaulted argument does not infer a capturing `Vector` (docs/capture-checking.md).
+    */
+  private final case class Judge(answers: Vector[Question] -> Vector[Judged])
+
+  /** Every sort judged alike: a discussion's choice `choice` (a topic's number from 1, `new` or
+    * `aside`) at `p`, the rest on `new` (on `aside` when `choice` is `new`); each topic a card is
+    * asked about, yes at `yes`.
+    */
+  private def judging(
+      choice: String,
+      p: Double = 1.0,
+      yes: Double = 0.0
+  ): Judge = Judge(qs =>
+    qs.map {
+      case c: Question.Choice =>
+        val rest = if (choice == "new") "aside" else "new"
+        Judged.Choice(
+          choice,
+          c.keys.map(k =>
+            Judged.Weight(k.name, if (k.name == choice) p else if (k.name == rest) 1 - p else 0.0)
+          ),
+          1.0
+        )
+      case _ => Judged.YesNo(yes)
+    }
+  )
+
+  /** Each discussion in a topic of its own, each card in none. */
+  private val everyNew: Judge = judging("new")
+
+  /** Each discussion and card set aside. */
+  private val asideAll: Judge = judging("aside")
 
   /** Each of `channels` kept at `label`. */
   private def labelled(label: Label, channels: String*): Recorded =
@@ -412,38 +412,88 @@ object TopicDreamTests extends TestSuite {
   private val Internal: Label = Label.at(Level.Internal)
 
   val tests = Tests {
-    test("an unreferred strand goes to the attach ask, and opens a topic or joins one") {
+    test("a discussion joins the topic chosen at 0.86 or more") {
       val w = new StrandWorld
       val a = strand(w, "C1", "deploy pipeline")
       val runs = new Runs(w)
       val first = runs.run()
       val b = strand(w, "C2", "deploy rollback", 100)
-      val c = strand(w, "C3", "lunch order", 200)
-      val second = runs.run(
-        now = Now.plusSeconds(600),
-        attach = (_, _) =>
-          // Two discussions, then one topic: the first joins it, the second opens its own.
-          placed(Seq(group("1", Seq(1)), group("new", Seq(2))))
-      )
+      val second = runs.run(now = Now.plusSeconds(600), sort = judging("1", TopicDream.TopicAt))
       (
         first,
         second,
-        runs.asked.map(_.kind),
+        runs.asked.map(x => (x.kind, counted(x))),
         runs.kept.map(_._1),
-        runs.referring(Ref.Strand(b.id)),
-        runs.referring(Ref.Strand(c.id))
+        runs.referring(Ref.Strand(b.id))
       ) ==> (
         "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
-        "topics: 2 written (1 opened), 0 withdrawn, 1 unchanged, 0 set aside, 0 left for the next run",
-        Vector("attach", "write", "attach", "write", "write"),
-        Vector(key(a), key(c)).sorted,
+        "topics: 1 written (0 opened), 0 withdrawn, 1 unchanged, 0 set aside, 0 left for the next run",
+        Vector(
+          ("sort", (1, 0, 0)),
+          ("write", (0, 0, 0)),
+          ("sort", (1, 1, 0)),
+          ("write", (0, 0, 0))
+        ),
         Vector(key(a)),
-        Vector(key(c))
+        Vector(key(a))
+      )
+    }
+
+    test("a discussion chosen new opens a topic of its own") {
+      val w = new StrandWorld
+      val a = strand(w, "C1", "deploy pipeline")
+      val runs = new Runs(w)
+      val _ = runs.run()
+      val b = strand(w, "C2", "lunch order", 100)
+      val second = runs.run(now = Now.plusSeconds(600), sort = judging("new", 0.9))
+      (second, runs.kept.map(_._1), runs.referring(Ref.Strand(b.id))) ==> (
+        "topics: 1 written (1 opened), 0 withdrawn, 1 unchanged, 0 set aside, 0 left for the next run",
+        Vector(key(a), key(b)).sorted,
+        Vector(key(b))
+      )
+    }
+
+    test("two new discussions open two topics") {
+      val w = new StrandWorld
+      val a = strand(w, "C1", "deploy pipeline")
+      val b = strand(w, "C2", "deploy rollback", 100)
+      val runs = new Runs(w)
+      val reply = runs.run()
+      (reply, runs.kept.map(_._1), runs.asked.map(_.kind)) ==> (
+        "topics: 2 written (2 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
+        Vector(key(a), key(b)).sorted,
+        Vector("sort", "sort", "write", "write")
+      )
+    }
+
+    test("a topic chosen below the mark opens a new one and is counted unsure") {
+      val w = new StrandWorld
+      val a = strand(w, "C1", "deploy pipeline")
+      val runs = new Runs(w)
+      val _ = runs.run()
+      val b = strand(w, "C2", "deploy rollback", 100)
+      val second = runs.run(now = Now.plusSeconds(600), sort = judging("1", 0.85))
+      (second, runs.kept.map(_._1), runs.referring(Ref.Strand(b.id))) ==> (
+        "topics: 1 written (1 opened), 0 withdrawn, 1 unchanged, 0 set aside, 0 left for the next run; 1 opened unsure",
+        Vector(key(a), key(b)).sorted,
+        Vector(key(b))
+      )
+    }
+
+    test("a discussion chosen aside is set aside, and opens no topic") {
+      val w = new StrandWorld
+      val a = strand(w, "C1", "hello all")
+      val runs = new Runs(w)
+      val reply = runs.run(sort = asideAll)
+      (reply, runs.kept, runs.aside._1) ==> (
+        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 1 set aside, 0 left for the next run",
+        Vector(),
+        Vector(a.id)
       )
     }
 
     test(
-      "a lead or card the attach ask cannot read is not shown or counted to it; the rest are placed as numbered in the order shown, and it is told how many discussions it is shown"
+      "a topic a sort cannot read is not asked about, the rest numbered in the order shown; a card it cannot read is left"
     ) {
       val w = new StrandWorld
       val a = strand(w, "C1", "deploy pipeline")
@@ -457,27 +507,60 @@ object TopicDreamTests extends TestSuite {
         now = Now.plusSeconds(600),
         unread =
           d => DocKey.value(d.key) == key(b) || DocText.value(d.text).contains("The deploy plan."),
-        attach = (_, shown) =>
-          placed(
-            group("1", 1 to counted(shown)._1) +:
-              (1 to counted(shown)._3).map(j => group("new", Nil, Seq(j)))
-          )
+        sort = judging("1", yes = 1.0)
       )
-      val attach = runs.asked.filter(_.kind == "attach").last
-      (
-        reply,
-        counted(attach.shown),
-        "\\d+ (discussion|topic|card)s?\\b".r.findAllIn(attach.system).toVector,
-        runs.referring(Ref.Strand(c.id))
-      ) ==> (
+      (reply, runs.asked.drop(4).map(counted), runs.referring(Ref.Strand(c.id))) ==> (
         "topics: 1 written (0 opened), 0 withdrawn, 2 unchanged, 0 set aside, 1 left for the next run",
-        (1, 1, 0),
-        Vector("1 discussion"),
+        Vector((1, 1, 0), (0, 0, 0)),
         Vector(key(a))
       )
     }
 
-    test("a topic a strand attaches to by ref is among those the attach ask shows") {
+    test("a card goes to the topic its sort says yes to at 0.72 or more") {
+      val w = new StrandWorld
+      val runs = new Runs(w)
+      runs.topic()
+      val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
+      val reply = runs.run(sort = judging("new", yes = TopicDream.CardAt))
+      (
+        reply,
+        runs.asked.map(x => (x.kind, counted(x))),
+        runs.asked.filter(_.kind == "write").map(_.shown.contains("The deploy plan.")),
+        runs.aside._2
+      ) ==> (
+        "topics: 1 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
+        Vector(("sort", (0, 1, 1)), ("write", (0, 0, 0))),
+        Vector(true),
+        Vector()
+      )
+    }
+
+    test("a card no topic takes is set aside") {
+      val w = new StrandWorld
+      val runs = new Runs(w)
+      runs.topic()
+      val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
+      val reply = runs.run(sort = judging("new", yes = 0.71))
+      (reply, runs.asked.map(_.kind), runs.aside._2.size) ==> (
+        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 1 set aside, 0 left for the next run",
+        Vector("sort"),
+        1
+      )
+    }
+
+    test("with no topic kept, cards are left and nothing is asked") {
+      val w = new StrandWorld
+      val runs = new Runs(w)
+      val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
+      val reply = runs.run(sort = judging("new", yes = 1.0))
+      (reply, runs.asked, runs.aside._2) ==> (
+        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 1 left for the next run",
+        Vector(),
+        Vector()
+      )
+    }
+
+    test("a topic a strand attaches to by ref is among those its sort asks about") {
       val w = new StrandWorld
       val a = strand(w, "C1", "deploy pipeline")
       val runs = new Runs(w)
@@ -489,156 +572,17 @@ object TopicDreamTests extends TestSuite {
       val b = strand(w, "C2", "deploy rollback", 100)
       val reply = runs.run(
         now = Now.plusSeconds(600),
-        attach = (_, _) => placed(Seq(group("1", Seq(1))))
+        sort = judging("1", yes = 1.0)
       )
-      val attach = runs.asked.filter(_.kind == "attach").last
-      (reply, counted(attach.shown), runs.referring(Ref.Strand(b.id))) ==> (
+      val sorted = runs.asked.filter(_.kind == "sort").last
+      (reply, counted(sorted), runs.referring(Ref.Strand(b.id))) ==> (
         s"topics: 1 written (0 opened), 0 withdrawn, ${TopicScan.Leads} unchanged, 0 set aside, 0 left for the next run",
         (1, TopicScan.Leads + 1, 0),
         Vector(key(a))
       )
     }
 
-    test(
-      "a discussion and a card one new topic group holds open one topic, written from both"
-    ) {
-      val w = new StrandWorld
-      val a = strand(w, "C1", "deploy pipeline")
-      val runs = new Runs(w)
-      val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
-      val reply = runs.run(attach = (_, _) => placed(Seq(group("new", Seq(1), Seq(1)))))
-      val lineage = runs.topics.flatMap(d =>
-        TopicKey
-          .read(d.key)
-          .toVector
-          .flatMap(k => TopicWrite.read(k, d.data).toOption.toVector)
-          .flatMap(_.topic.passages.flatMap(_.from.tags))
-      )
-      (
-        reply,
-        runs.kept.map(_._1),
-        lineage.map {
-          case Lineage.Tag.Strand(root, _, _) => s"strand ${ConversationId.value(root)}"
-          case Lineage.Tag.Card(_) => "card"
-          case Lineage.Tag.Topic(_) => "topic"
-        }
-      ) ==> (
-        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
-        Vector(key(a)),
-        Vector(s"strand ${a.id}", "card")
-      )
-    }
-
-    test(
-      "an attach reply's numbers and topics not shown are dropped and counted, the rest placed, not asked again"
-    ) {
-      val w = new StrandWorld
-      val a = strand(w, "C1", "deploy pipeline")
-      val runs = new Runs(w)
-      val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
-      // Card 2 and discussion 2 were not shown, nor was topic 3.
-      val reply = runs.run(attach =
-        (_, _) => placed(Seq(group("new", Seq(1), Seq(1, 2)), group("3", Seq(2))))
-      )
-      (reply, runs.asked.map(_.kind), runs.kept.map(_._1)) ==> (
-        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run; 3 named twice or not shown, dropped",
-        Vector("attach", "write"),
-        Vector(key(a))
-      )
-    }
-
-    test(
-      "a discussion or card an attach reply names in two places is dropped from both and offered again, the rest placed"
-    ) {
-      val w = new StrandWorld
-      val _ = strand(w, "C1", "deploy pipeline")
-      val b = strand(w, "C2", "lunch order", 10)
-      val runs = new Runs(w)
-      val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
-      val first = runs.run(attach =
-        (_, _) =>
-          placed(
-            Seq(group("new", Seq(1, 1), Seq(1)), group("new", Seq(2))),
-            asideDiscussions = Seq(1),
-            asideCards = Seq(1)
-          )
-      )
-      val _ = runs.run(now = Now.plusSeconds(600), attach = placing("none"))
-      (first, runs.kept.map(_._1), runs.asked.map(x => (x.kind, counted(x.shown)))) ==> (
-        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run; 2 unnamed, offered again; 2 named twice or not shown, dropped",
-        Vector(key(b)),
-        Vector(("attach", (2, 0, 1)), ("write", (1, 0, 0)), ("attach", (1, 1, 1)))
-      )
-    }
-
-    test(
-      "an attach reply placing nothing it was shown is asked once more, the second placed and counted asked again, within the job's limits"
-    ) {
-      val w = new StrandWorld
-      val a = strand(w, "C1", "deploy pipeline")
-      val runs = new Runs(w)
-      val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
-      val reply = runs.run(
-        most = 1,
-        attach = (system, _) =>
-          if (system.contains("Your previous reply")) placed(Seq(group("new", Seq(1), Seq(1))))
-          else placed(Nil, asideDiscussions = Seq(2), asideCards = Seq(2))
-      )
-      (reply, runs.asked.map(_.kind), runs.kept.map(_._1)) ==> (
-        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run; 1 asked again",
-        Vector("attach", "attach", "write"),
-        Vector(key(a))
-      )
-    }
-
-    test(
-      "an attach reply placing nothing it was shown, twice over, leaves all it was shown"
-    ) {
-      val w = new StrandWorld
-      val _ = strand(w, "C1", "deploy pipeline")
-      val runs = new Runs(w)
-      val reply = runs.run(attach = (_, _) => placed(Seq(group("2", Seq(1)))))
-      (reply, runs.asked.map(_.kind), runs.kept, runs.aside._1) ==> (
-        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 1 left for the next run; not written: attach (its reply placed nothing shown: each it named was named twice, or not shown, or in a topic not shown)",
-        Vector("attach", "attach"),
-        Vector(),
-        Vector()
-      )
-    }
-
-    test("an attach ask whose scan holds no topic or no card is told it is shown none") {
-      val w = new StrandWorld
-      val _ = strand(w, "C1", "deploy pipeline")
-      val runs = new Runs(w)
-      val _ = runs.run()
-      val _ = runs.card("plan1", "The deploy plan.", Now.plusSeconds(60))
-      val _ = strand(w, "C2", "deploy rollback", 100)
-      val _ = runs.run(now = Now.plusSeconds(600))
-      runs.asked
-        .filter(_.kind == "attach")
-        .map(a =>
-          (a.system.contains("No topic is shown yet"), a.system.contains("No card is shown"))
-        ) ==> Vector((true, true), (false, false))
-    }
-
-    test("an attach ask shown no discussion is offered none to name, nor a new topic") {
-      val w = new StrandWorld
-      val runs = new Runs(w)
-      runs.topic()
-      val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
-      val reply = runs.run(attach = placing("none"))
-      (
-        reply,
-        runs.asked.map(a =>
-          (a.kind, Seq("`discussions`", "`new`", "0 discussions").filter(a.system.contains))
-        )
-      ) ==> (
-        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 1 set aside, 0 left for the next run",
-        Vector(("attach", Seq()))
-      )
-    }
-
-    test("a strand a topic already refers to is attached to it without the attach ask") {
+    test("a strand a topic already refers to is attached to it without a sort") {
       val w = new StrandWorld
       val a = strand(w, "C1", "deploy pipeline")
       val runs = new Runs(w)
@@ -651,7 +595,7 @@ object TopicDreamTests extends TestSuite {
         runs.asked.last.shown.contains("the rollback works now")
       ) ==> (
         "topics: 1 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
-        Vector("attach", "write", "write"),
+        Vector("sort", "write", "write"),
         true
       )
     }
@@ -677,13 +621,12 @@ object TopicDreamTests extends TestSuite {
       ).filterNot(system.contains) ==> Vector()
     }
 
-    test("the attach and write asks name the fences they are shown in, and end with the rule") {
+    test("a write ask names the fences it is shown in, and ends with the rule") {
       val w = new StrandWorld
       val _ = strand(w, "C1", "deploy pipeline")
       val runs = new Runs(w)
       val _ = runs.run()
-      val systems =
-        Vector("attach", "write").map(k => runs.asked.find(_.kind == k).fold("")(_.system))
+      val systems = runs.asked.filter(_.kind == "write").map(_.system)
       systems.map(s =>
         (
           Vector("`<discussion>`", "`<document label=\"topic\">`", "`<document>`").filter(
@@ -692,7 +635,6 @@ object TopicDreamTests extends TestSuite {
           s.endsWith("\n\n" + grit.core.prompt.Fenced.Rule)
         )
       ) ==> Vector(
-        (Vector("`<discussion>`"), true),
         (Vector("`<discussion>`", "`<document label=\"topic\">`", "`<document>`"), true)
       )
     }
@@ -701,16 +643,17 @@ object TopicDreamTests extends TestSuite {
       val w = new StrandWorld
       val a = strand(w, "C1", "deploy pipeline")
       val runs = new Runs(w)
-      val _ = runs.card("runbook", "The rollback runbook.", Now.minusSeconds(60))
-      val _ = runs.run(attach = (_, _) => placed(Seq(group("new", Seq(1), Seq(1)))))
+      val _ = runs.run()
+      val _ = runs.card("runbook", "The rollback runbook.", Now.plusSeconds(60))
+      val _ = runs.run(now = Now.plusSeconds(300), sort = judging("new", yes = 1.0))
       w.say(a, "the rollback works now", 50)
       val _ = runs.run(now = Now.plusSeconds(600))
       runs.asked.map(x => (x.kind, x.shown.contains("The rollback runbook."))) ==>
-        Vector(("attach", true), ("write", true), ("write", true))
+        Vector(("sort", false), ("write", false), ("sort", true), ("write", true), ("write", true))
     }
 
     test(
-      "a changed card a topic links to attaches to it by its unit; one no topic refers to goes to the attach ask, and placed in none is counted set aside"
+      "a changed card a topic links to attaches to it by its unit; one no topic refers to is sorted, and placed in none is counted set aside"
     ) {
       val w = new StrandWorld
       val _ = strand(w, "C1", "deploy pipeline")
@@ -720,7 +663,7 @@ object TopicDreamTests extends TestSuite {
       )
       runs.card("plan1", "The deploy plan.", Now.plusSeconds(60))
       runs.card("menu2", "The lunch menu.", Now.plusSeconds(60))
-      val second = runs.run(now = Now.plusSeconds(600), attach = placing("none"))
+      val second = runs.run(now = Now.plusSeconds(600), sort = asideAll)
       val asks = runs.asked.drop(2)
       (
         second,
@@ -729,7 +672,7 @@ object TopicDreamTests extends TestSuite {
       ) ==> (
         // The strand, in the topic's lineage at its digest, and the card set aside.
         "topics: 1 written (0 opened), 0 withdrawn, 1 unchanged, 1 set aside, 0 left for the next run",
-        Vector("attach", "write"),
+        Vector("sort", "write"),
         Vector((false, true), (true, false))
       )
     }
@@ -744,7 +687,7 @@ object TopicDreamTests extends TestSuite {
       val reply = runs.run()
       (reply, runs.asked.map(_.kind), runs.kept) ==> (
         "topics: 2 written (2 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
-        Vector("attach", "write", "write"),
+        Vector("sort", "sort", "write", "write"),
         Vector(key(a), key(b)).sorted.map(_ -> s"$Lead\n\n## 2026-10-12\n\n$Passage")
       )
     }
@@ -762,7 +705,7 @@ object TopicDreamTests extends TestSuite {
       val _ = runs.run(
         day = day2,
         now = later,
-        attach = (_, _) => placed(Seq(group("1", Seq(1))))
+        sort = judging("1", yes = 1.0)
       )
       val joined = runs.kept
       val moved = runs.run(day = day2, now = later, rooms = labelled(Internal, "C1"))
@@ -840,7 +783,7 @@ object TopicDreamTests extends TestSuite {
       val reply = runs.run(now = Now.plusSeconds(60))
       (reply, runs.asked.map(_.kind), runs.topics.map(_.data("v").num)) ==> (
         "topics: 0 written (0 opened), 0 withdrawn, 1 unchanged, 0 set aside, 0 left for the next run, 1 of a later version left",
-        Vector("attach", "write"),
+        Vector("sort", "write"),
         Vector(3.0)
       )
     }
@@ -878,16 +821,17 @@ object TopicDreamTests extends TestSuite {
       val w = new StrandWorld
       val a = strand(w, "C1", "deploy pipeline")
       val runs = new Runs(w)
+      runs.topic()
       val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
-      val first = runs.run(attach = placing("none"))
+      val first = runs.run(sort = asideAll)
       val again = runs.run(now = Now.plusSeconds(600))
       w.say(a, "the rollback works now", 700)
-      val changed = runs.run(now = Now.plusSeconds(1200), attach = placing("none"))
-      (first, again, changed, runs.asked.map(a => (a.kind, counted(a.shown)))) ==> (
+      val changed = runs.run(now = Now.plusSeconds(1200), sort = asideAll)
+      (first, again, changed, runs.asked.map(a => (a.kind, counted(a)))) ==> (
         "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 2 set aside, 0 left for the next run",
         "topics: 0 written (0 opened), 0 withdrawn, 2 unchanged, 0 set aside, 0 left for the next run",
         "topics: 0 written (0 opened), 0 withdrawn, 1 unchanged, 1 set aside, 0 left for the next run",
-        Vector(("attach", (1, 0, 1)), ("attach", (1, 0, 0)))
+        Vector(("sort", (1, 1, 0)), ("sort", (0, 1, 1)), ("sort", (1, 1, 0)))
       )
     }
 
@@ -895,12 +839,13 @@ object TopicDreamTests extends TestSuite {
       val w = new StrandWorld
       val a = strand(w, "C1", "deploy pipeline")
       val runs = new Runs(w)
+      runs.topic()
       val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
-      val _ = runs.run(attach = placing("none"))
+      val _ = runs.run(sort = asideAll)
       val first = runs.aside
       val b = strand(w, "C2", "lunch order", 3 * 86400)
       val later = StrandWorld.at(3 * 86400 + 3600)
-      val _ = runs.run(day = Some(Day.plusDays(3)), now = later, attach = placing("none"))
+      val _ = runs.run(day = Some(Day.plusDays(3)), now = later, sort = asideAll)
       (first._1, first._2.size, runs.aside) ==> (Vector(a.id), 1, (Vector(b.id), Vector()))
     }
 
@@ -935,10 +880,11 @@ object TopicDreamTests extends TestSuite {
     }
 
     test("a run for a past day is shown no card written after that day's end") {
-      // The card shown goes to a new entry of its own, so is set aside: no topic writes it.
+      // The card sorted is set aside: no topic writes it.
       val w = new StrandWorld
       val _ = strand(w, "C1", "deploy pipeline")
       val runs = new Runs(w)
+      runs.topic()
       val _ = runs.card("plan1", "The deploy plan.", StrandWorld.at(3600))
       val _ = runs.card("menu2", "The lunch menu.", StrandWorld.at(86400))
       val _ = runs.run(day = Some(Day), now = StrandWorld.at(2 * 86400))
@@ -946,7 +892,7 @@ object TopicDreamTests extends TestSuite {
         .map(a =>
           (a.kind, a.shown.contains("The deploy plan."), a.shown.contains("The lunch menu."))
         ) ==>
-        Vector(("attach", true, false), ("write", false, false))
+        Vector(("sort", false, false), ("sort", true, false), ("write", false, false))
     }
 
     test("a link too long to keep as a ref is counted, and stays in the topic's text") {
@@ -961,16 +907,17 @@ object TopicDreamTests extends TestSuite {
       )
     }
 
-    test("a directory's card is never shown to the attach ask") {
+    test("a directory's card is never sorted") {
       val w = new StrandWorld
       val _ = strand(w, "C1", "deploy pipeline")
       val runs = new Runs(w)
+      runs.topic()
       runs.directory("skills", "The skills, a folder each.", Now.minusSeconds(60))
       runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
-      val _ = runs.run(attach = placing("none"))
+      val _ = runs.run(sort = asideAll)
       runs.asked.map(x =>
-        (counted(x.shown), x.shown.contains("The skills"), x.shown.contains("The deploy plan."))
-      ) ==> Vector(((1, 0, 1), false, true))
+        (counted(x), x.shown.contains("The skills"), x.shown.contains("The deploy plan."))
+      ) ==> Vector(((1, 1, 0), false, false), ((0, 1, 1), false, true))
     }
 
     test("a directory's card attaches when a strand links its folder") {
@@ -982,7 +929,7 @@ object TopicDreamTests extends TestSuite {
       (
         runs.asked.map(x => (x.kind, x.shown.contains("The skills"))),
         runs.referring(Ref.GitHub("o", "r", "skills"))
-      ) ==> (Vector(("attach", false), ("write", true)), Vector(key(a)))
+      ) ==> (Vector(("sort", false), ("write", true)), Vector(key(a)))
     }
 
     test(
@@ -990,6 +937,7 @@ object TopicDreamTests extends TestSuite {
     ) {
       val w = new StrandWorld
       val runs = new Runs(w)
+      runs.topic(Internal)
       runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
       runs.card("menu2", "The lunch menu.", Now.minusSeconds(60))
       runs.card("budget3", "The budget.", Now.minusSeconds(60), label = Internal)
@@ -997,7 +945,7 @@ object TopicDreamTests extends TestSuite {
       val _ = runs.run(floor = Internal, rooms = labelled(Internal, "C1"))
       val said = Seq("The deploy plan.", "The lunch menu.", "The budget.")
       runs.asked.map(x => (x.kind, said.filter(x.shown.contains))) ==>
-        Vector(("attach", Seq("The budget.")), ("write", Seq("The deploy plan.")))
+        Vector(("sort", Seq()), ("sort", Seq("The budget.")), ("write", Seq("The deploy plan.")))
     }
 
     test("a card kept below a run's label attaches by ref to a topic that refers to it") {
@@ -1011,7 +959,7 @@ object TopicDreamTests extends TestSuite {
       // The topic is written again only when the card attached to it.
       (second, runs.asked.map(x => (x.kind, x.shown.contains("The deploy plan.")))) ==> (
         "topics: 1 written (0 opened), 0 withdrawn, 1 unchanged, 0 set aside, 0 left for the next run",
-        Vector(("attach", false), ("write", false), ("write", true))
+        Vector(("sort", false), ("write", false), ("write", true))
       )
     }
 
@@ -1021,13 +969,13 @@ object TopicDreamTests extends TestSuite {
       val w = new StrandWorld
       val runs = new Runs(w)
       runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
-      val first = runs.run(attach = placing("none"))
+      val first = runs.run(sort = asideAll)
       runs.topic()
-      val second = runs.run(now = Now.plusSeconds(600), attach = placing("none"))
-      (first, second, runs.asked.map(x => (x.kind, counted(x.shown)))) ==> (
+      val second = runs.run(now = Now.plusSeconds(600), sort = asideAll)
+      (first, second, runs.asked.map(x => (x.kind, counted(x)))) ==> (
         "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 1 left for the next run",
         "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 1 set aside, 0 left for the next run",
-        Vector(("attach", (0, 1, 1)))
+        Vector(("sort", (0, 1, 1)))
       )
     }
 
@@ -1038,20 +986,17 @@ object TopicDreamTests extends TestSuite {
       (1 to TopicScan.Cards + 5).foreach(i =>
         runs.card(s"f$i", s"File number $i.", Now.minusSeconds(3000L - i))
       )
-      val first = runs.run(attach = placing("none"))
-      val second = runs.run(now = Now.plusSeconds(600), attach = placing("none"))
+      val first = runs.run(sort = asideAll)
+      val second = runs.run(now = Now.plusSeconds(600), sort = asideAll)
+      // Each sort is one card's: the first run's are its first Cards.
       val files = runs.asked.map(x => "File number \\d+\\.".r.findAllIn(x.shown).toSet)
-      val shown = files.headOption.getOrElse(Set.empty)
-      val next = files.lift(1).getOrElse(Set.empty)
-      (
-        first,
-        second,
-        runs.asked.map(x => counted(x.shown)._3),
-        (next, next.intersect(shown))
-      ) ==> (
+      val (shown, next) = files.splitAt(TopicScan.Cards) match {
+        case (a, b) => (a.flatten.toSet, b.flatten.toSet)
+      }
+      (first, second, files.size, (next, next.intersect(shown))) ==> (
         s"topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, ${TopicScan.Cards} set aside, 0 left for the next run",
         s"topics: 0 written (0 opened), 0 withdrawn, ${TopicScan.Cards} unchanged, 5 set aside, 0 left for the next run",
-        Vector(TopicScan.Cards, 5),
+        TopicScan.Cards + 5,
         ((1 to 5).map(i => s"File number $i.").toSet, Set.empty[String])
       )
     }
@@ -1061,7 +1006,7 @@ object TopicDreamTests extends TestSuite {
       val runs = new Runs(w)
       runs.topic()
       (1 to 5).foreach(i => runs.card(s"a$i", s"Aside number $i.", Now.minusSeconds(100L - i)))
-      val _ = runs.run(attach = placing("none"))
+      val _ = runs.run(sort = asideAll)
       (1 to TopicScan.Cards + 5).foreach(i =>
         runs.card(s"f$i", s"File number $i.", Now.minusSeconds(3000L - i))
       )
@@ -1069,13 +1014,14 @@ object TopicDreamTests extends TestSuite {
       (1 to TopicScan.Cards - 15).foreach(i =>
         runs.directory(s"d$i", s"Folder number $i.", Now.minusSeconds(1000L - i))
       )
-      val ran = runs.run(now = Now.plusSeconds(600), attach = placing("none"))
-      val shown = runs.asked.lift(1).map(_.shown).getOrElse("")
+      val ran = runs.run(now = Now.plusSeconds(600), sort = asideAll)
+      // The first run sorted the five cards it set aside; each sort of the second is one card's.
+      val shown = runs.asked.drop(5).map(_.shown)
       (
         ran,
-        counted(shown)._3,
-        "File number (\\d+)\\.".r.findAllMatchIn(shown).map(_.group(1).toInt).toVector,
-        shown.contains("Folder number") || shown.contains("Aside number")
+        shown.size,
+        shown.flatMap("File number (\\d+)\\.".r.findAllMatchIn(_).map(_.group(1).toInt)).sorted,
+        shown.exists(s => s.contains("Folder number") || s.contains("Aside number"))
       ) ==> (
         s"topics: 0 written (0 opened), 0 withdrawn, 5 unchanged, ${TopicScan.Cards} set aside, 0 left for the next run",
         TopicScan.Cards,
@@ -1089,8 +1035,8 @@ object TopicDreamTests extends TestSuite {
       val runs = new Runs(w)
       runs.topic()
       runs.card("old1", "An old plan.", Now.minusSeconds(30 * 86400))
-      val before = runs.run(seedUntil = Some(Day.minusDays(1)), attach = placing("none"))
-      val seeding = runs.run(seedUntil = Some(Day), attach = placing("none"))
+      val before = runs.run(seedUntil = Some(Day.minusDays(1)), sort = asideAll)
+      val seeding = runs.run(seedUntil = Some(Day), sort = asideAll)
       (before, seeding, runs.asked.map(_.shown.contains("An old plan."))) ==> (
         "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
         "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 1 set aside, 0 left for the next run",
@@ -1098,42 +1044,18 @@ object TopicDreamTests extends TestSuite {
       )
     }
 
-    test("a new entry of cards alone sets them aside and opens no topic") {
+    test("a card opens no topic, though a new discussion beside it does") {
       val w = new StrandWorld
       val a = strand(w, "C1", "deploy pipeline")
       val runs = new Runs(w)
       val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
       val reply =
-        runs.run(attach = (_, _) => placed(Seq(group("new", Seq(1)), group("new", Nil, Seq(1)))))
+        runs.run(sort = everyNew)
       (reply, runs.kept.map(_._1), runs.aside._2.size, runs.asked.map(_.kind)) ==> (
-        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 1 set aside, 0 left for the next run",
+        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 1 left for the next run",
         Vector(key(a)),
-        1,
-        Vector("attach", "write")
-      )
-    }
-
-    test(
-      "a reply that places something sets aside each card it names nowhere, and offers again each discussion it names nowhere"
-    ) {
-      val w = new StrandWorld
-      val a = strand(w, "C1", "deploy pipeline")
-      val _ = strand(w, "C2", "lunch order", 10)
-      val runs = new Runs(w)
-      val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
-      val first = runs.run(attach = (_, _) => placed(Seq(group("new", Seq(1)))))
-      val setAside = runs.aside._2.size
-      val _ = runs.run(now = Now.plusSeconds(600), attach = placing("none"))
-      (
-        first,
-        setAside,
-        runs.kept.map(_._1),
-        runs.asked.map(x => (x.kind, counted(x.shown)))
-      ) ==> (
-        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 1 set aside, 0 left for the next run; 1 unnamed, offered again",
-        1,
-        Vector(key(a)),
-        Vector(("attach", (2, 0, 1)), ("write", (1, 0, 0)), ("attach", (1, 1, 0)))
+        0,
+        Vector("sort", "write")
       )
     }
 
@@ -1183,9 +1105,9 @@ object TopicDreamTests extends TestSuite {
       runs.topic()
       runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
       val runs3 = Vector(0L, 1800L, 4000L).map(after =>
-        runs.run(now = Now.plusSeconds(after), attach = placing("none"), asideFor = 1.hour)
+        runs.run(now = Now.plusSeconds(after), sort = asideAll, asideFor = 1.hour)
       )
-      (runs3, runs.asked.map(x => counted(x.shown)._3)) ==> (
+      (runs3, runs.asked.map(x => counted(x)._3)) ==> (
         Vector(
           "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 1 set aside, 0 left for the next run",
           "topics: 0 written (0 opened), 0 withdrawn, 1 unchanged, 0 set aside, 0 left for the next run",
@@ -1195,7 +1117,7 @@ object TopicDreamTests extends TestSuite {
       )
     }
 
-    test("a card a strand links goes to the strand's topic and is not shown to the attach ask") {
+    test("a card a strand links goes to the strand's topic and is not sorted") {
       val w = new StrandWorld
       val runs = new Runs(w)
       val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
@@ -1203,11 +1125,11 @@ object TopicDreamTests extends TestSuite {
       val reply = runs.run()
       (
         reply,
-        runs.asked.map(x => (x.kind, counted(x.shown)._3, x.shown.contains("The deploy plan."))),
+        runs.asked.map(x => (x.kind, counted(x)._3, x.shown.contains("The deploy plan."))),
         runs.kept.map(_._1)
       ) ==> (
         "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
-        Vector(("attach", 0, false), ("write", 1, true)),
+        Vector(("sort", 0, false), ("write", 0, true)),
         Vector(key(a))
       )
     }
@@ -1227,7 +1149,7 @@ object TopicDreamTests extends TestSuite {
       val runs = new Runs(w)
       runs.topic()
       val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
-      val first = runs.run(attach = placing("none"))
+      val first = runs.run(sort = asideAll)
       val setAside = runs.aside._2.size
       val b = strand(w, "C2", s"the plan is at $PlanLink", 100)
       val _ = runs.run(now = Now.plusSeconds(600))
@@ -1240,7 +1162,7 @@ object TopicDreamTests extends TestSuite {
       ) ==> (
         "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 1 set aside, 0 left for the next run",
         1,
-        Vector(("attach", false), ("write", true)),
+        Vector(("sort", false), ("write", true)),
         (Vector(), Vector()),
         Vector(key(b))
       )
@@ -1257,7 +1179,7 @@ object TopicDreamTests extends TestSuite {
       val second = runs.run(now = Now.plusSeconds(600))
       (second, runs.asked.map(_.kind), runs.referring(Ref.Drive("plan1"))) ==> (
         "topics: 1 written (0 opened), 0 withdrawn, 1 unchanged, 0 set aside, 0 left for the next run",
-        Vector("attach", "write", "write"),
+        Vector("sort", "write", "write"),
         Vector(key(a))
       )
     }
@@ -1267,8 +1189,8 @@ object TopicDreamTests extends TestSuite {
       val runs = new Runs(w)
       val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
       val a = strand(w, "C1", s"the plan is at $PlanLink")
-      val reply = runs.run(attach = placing("none"))
-      (reply, runs.asked.map(x => counted(x.shown)), runs.aside._1, runs.aside._2.size) ==> (
+      val reply = runs.run(sort = asideAll)
+      (reply, runs.asked.map(x => counted(x)), runs.aside._1, runs.aside._2.size) ==> (
         "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 2 set aside, 0 left for the next run",
         Vector((1, 0, 0)),
         Vector(a.id),
@@ -1322,10 +1244,11 @@ object TopicDreamTests extends TestSuite {
       val w = new StrandWorld
       val runs = new Runs(w)
       val a = strand(w, "C1", "deploy pipeline")
-      runs.card("plan1", "The deploy plan.", Now.minusSeconds(60), Integrity.Outside)
-      val reply = runs.run(attach = (_, _) => placed(Seq(group("new", Seq(1), Seq(1)))))
+      val _ = runs.run()
+      runs.card("plan1", "The deploy plan.", Now.plusSeconds(60), Integrity.Outside)
+      val reply = runs.run(now = Now.plusSeconds(600), sort = judging("new", yes = 1.0))
       (reply, runs.topics.map(d => (DocKey.value(d.key), d.integrity))) ==> (
-        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
+        "topics: 1 written (0 opened), 0 withdrawn, 1 unchanged, 0 set aside, 0 left for the next run",
         Vector((key(a), Integrity.Outside))
       )
     }
@@ -1334,10 +1257,11 @@ object TopicDreamTests extends TestSuite {
       val w = new StrandWorld
       val runs = new Runs(w, TestLabels.Trialled, TestLabels.TrialledOwn)
       val a = strand(w, "C1", "deploy pipeline", integrity = TestLabels.Endorsed)
-      runs.card("plan1", "The deploy plan.", Now.minusSeconds(60), TestLabels.Endorsed)
-      val reply = runs.run(attach = (_, _) => placed(Seq(group("new", Seq(1), Seq(1)))))
+      val _ = runs.run()
+      runs.card("plan1", "The deploy plan.", Now.plusSeconds(60), TestLabels.Endorsed)
+      val reply = runs.run(now = Now.plusSeconds(600), sort = judging("new", yes = 1.0))
       (reply, runs.topics.map(d => (DocKey.value(d.key), d.integrity))) ==> (
-        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
+        "topics: 1 written (0 opened), 0 withdrawn, 1 unchanged, 0 set aside, 0 left for the next run",
         Vector((key(a), TestLabels.Endorsed))
       )
     }
@@ -1350,7 +1274,7 @@ object TopicDreamTests extends TestSuite {
       val _ = strand(w, "C2", "deploy rollback", 86400, Integrity.Outside)
       val day2 = Some(Day.plusDays(1))
       val later = StrandWorld.at(86400 + 3600)
-      val _ = runs.run(day = day2, now = later, attach = (_, _) => placed(Seq(group("1", Seq(1)))))
+      val _ = runs.run(day = day2, now = later, sort = judging("1", yes = 1.0))
       val joined = runs.topics.map(_.integrity)
       val moved = runs.run(day = day2, now = later, rooms = labelled(Internal, "C1"))
       (joined, moved, runs.topics.map(_.integrity)) ==> (
@@ -1364,15 +1288,16 @@ object TopicDreamTests extends TestSuite {
       val w = new StrandWorld
       val a = strand(w, "C1", "deploy pipeline", integrity = Integrity.Outside)
       val runs = new Runs(w)
+      runs.topic()
       runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
-      val _ = runs.run(attach = placing("none"))
+      val _ = runs.run(sort = asideAll)
       val first = (runs.aside._1, runs.aside._2.size, runs.asideBelieved)
       given Tx = TestTx.fake
       val card = ok(runs.documents.shelf(Knowledge).newest(1)).map(_.key)
       card.foreach(k =>
         ok(runs.documents.keeper(Knowledge, CardTerms).withdraw(k, Label.Public, Now))
       )
-      val _ = runs.run(now = Now.plusSeconds(1800), attach = placing("none"))
+      val _ = runs.run(now = Now.plusSeconds(1800), sort = asideAll)
       (first, runs.aside, runs.asideBelieved) ==> (
         (Vector(a.id), 1, Some(Integrity.Outside)),
         (Vector(a.id), Vector()),

@@ -2,9 +2,10 @@ package grit.knowledge.topic
 
 import java.time.{Instant, LocalDate, ZoneId}
 
-import grit.core.act.{Dreaming, MoveError, MoveLimits, MoveName}
+import grit.core.act.{Dreaming, MoveError, MoveLimits, MoveName, Sorting}
+import grit.core.classify.{Criterion, Decision}
 import grit.core.document.DocumentKeeper
-import grit.core.flow.Trusted
+import grit.core.flow.{Tainted, Trusted}
 import grit.core.id.{DocumentVersionId, JobName}
 import grit.core.job.{DreamingJob, JobRun}
 import grit.core.need.Exported
@@ -22,15 +23,16 @@ import grit.std.either.Proven
   * needs one that exports them. A run for its `day` ([[TopicParams]]), kept at its floor, reading
   * strands as they stood at that day's end (or now, if sooner) and the cards written by then,
   * places the strands spoken in within `recent` and the cards changed within `cardRecent` in
-  * topics, by one ask (`attach`, asked once more as `attach-again` when its reply places nothing
-  * it was shown), setting aside (`aside`) for at most `asideFor` those it puts in none; then, for
+  * topics, each by a judgment of its own (`sort-{i}`, [[grit.core.act.Dreaming.sort]]), setting
+  * aside (`aside`) for at most `asideFor` those it puts in none; then, for
   * each topic touched, at most `perRun` and at most `perRunMost`, new topics first, asks once
   * (`write-{i}`) for its new lead and the day's passage and keeps it (`keep-{i}`). It puts up at
   * most [[TopicDream.Reviewed]] of the topics it writes for review, new first. What it scans and
   * withdraws, what each ask is shown, how a reply is read and what a topic's version refers to:
   * the module's README, "A topics run". Replies [[Gathered.line]], which holds no
   * cost: its asks' cost is read from the spend ledger ([[grit.core.store.UsageLedger]]), each
-  * recorded under its run's workflow. Its `limits`: asks `2 + perRunMost`; no calls or judgments.
+  * recorded under its run's workflow. Its `limits`: asks `perRunMost`, judgments ten per ask
+  * ([[MoveLimits.JudgmentsPerAsk]]); no calls.
   */
 final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[CardShelf]])
     extends DreamingJob[TopicParams] {
@@ -38,14 +40,15 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
   val name: JobName = TopicDream.Name
 
   // 4: its asks are shown discussions and documents fenced, and told so (their digests moved).
-  val version: Int = 4
+  // 5: strands and cards are placed by sorts, a judgment each, not by one attach ask.
+  val version: Int = 5
 
   def write(params: TopicParams): ujson.Value = TopicParams.write(params)
 
   def read(params: ujson.Value): Either[String, TopicParams] = TopicParams.read(params)
 
   override val limits: MoveLimits =
-    MoveLimits.of(2 + perRunMost.max(0), 0).getOrElse(MoveLimits.Zero)
+    MoveLimits.of(perRunMost.max(0), 0).getOrElse(MoveLimits.Zero)
 
   def run(run: Trusted[JobRun[TopicParams]], moves: Dreaming^): String = {
     val params = run.extract.params
@@ -80,8 +83,6 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
           scan.left,
           0,
           0,
-          0,
-          0,
           Vector.empty,
           None
         )
@@ -114,10 +115,15 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
     }
   }
 
-  /** The attach ask over `scan`'s strands and cards: the topics they go to, those it set aside
-    * joined to the floor's [[Aside]] (`aside`), and `g` counting those set aside, those it could
-    * not place or was not shown as left, and each strand that could not open the topic it was
-    * placed in as not written.
+  /** Each of `scan`'s strands, then each of its cards, placed by a sort of its own (`sort-{i}`,
+    * numbered from 0 in that order) among the topics it shows: a strand joins the topic chosen
+    * at [[TopicDream.TopicAt]] or more, is set aside when `aside` is chosen, and otherwise opens
+    * a topic of its own (counted `unsure` when a topic was chosen below the mark); a card goes
+    * to the topic likeliest about it at [[TopicDream.CardAt]] or more, and is otherwise set
+    * aside. With no topic shown, cards are left and nothing is asked of them. Those set aside,
+    * with the cards their strands link, are joined to the floor's [[Aside]] (`aside`); `g` counts
+    * them, those left (changed since the scan, or a sort refused, named by its move), and each
+    * strand that could not open its topic as not written.
     */
   private def attach(
       run: Trusted[JobRun[TopicParams]],
@@ -125,93 +131,90 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
       scan: Scanned,
       g: Gathered
   ): (Vector[Touch], Gathered) = {
-    val n = scan.strands.size + scan.cards.size
-    if (n == 0) (Vector.empty, g)
-    // With no discussion and no topic shown, a card could only be set aside: none is asked of.
-    else if (scan.strands.isEmpty && scan.leads.isEmpty) (Vector.empty, g.copy(left = g.left + n))
-    else {
-      val system =
-        TopicDream.attachSystem(scan.strands.size, scan.leads.nonEmpty, scan.cards.nonEmpty)
-      def asked(name: MoveName, system: String) = {
-        val summary = Dreaming.Summary(
-          system,
-          TopicDream.AttachChars,
-          TopicDream.LeadChars,
-          TopicDream.attachReply(scan.strands.nonEmpty)
+    val topics = scan.leads.map((k, v) => (TopicDream.Placed.Into(k, v), v))
+    // Where each goes decides only which topics are written; each written topic is believed
+    // as its own write ask's reply is, so a sort's answer need not be checked.
+    type Sorted = (Vector[Touch], Tainted[Vector[Lineage.Tag]], Gathered)
+    def failed(s: Sorted, name: MoveName, e: Option[MoveError]): Sorted =
+      (
+        s._1,
+        s._2,
+        s._3.copy(
+          left = s._3.left + 1,
+          unwritten = s._3.unwritten ++ e.map(e => (MoveName.value(name), MoveError.said(e)))
         )
-        moves.summarise(
-          name,
-          scan.strands,
-          scan.leads.map(_._2) ++ scan.cards.map(_.version),
-          run.tainted.map(_ => summary)
-        )
-      }
-      // `s`'s reply resolved over what it was shown; read as the placing below is.
-      def placed(s: Dreaming.Summarised[Placing]) =
-        Trusted
-          .asIs(s.asked.reply)
-          .extract
-          .placed(
-            scan.strands,
-            scan.cards.filter(c => s.shown.contains(c.version)),
-            s.shown.flatMap(v => scan.leads.find(_._2 == v))
-          )
-      val (answered, again) = asked(TopicDream.Attach, system) match {
-        case Right(Some(s)) if placed(s).isEmpty =>
-          (asked(TopicDream.AttachAgain, system + " " + TopicDream.Again), 1)
-        case first => (first, 0)
-      }
-      // Where each goes decides only which topics are written; each written topic is believed
-      // as its own write ask's reply is, so the placing need not be checked.
-      answered.map(_.map(s => (s, placed(s)))) match {
-        case Left(e) =>
-          (
-            Vector.empty,
-            g.copy(left = g.left + n, unwritten = g.unwritten :+ ("attach", MoveError.said(e)))
-          )
-        case Right(None) => (Vector.empty, g.copy(left = g.left + n))
-        case Right(Some((_, None))) =>
-          (
-            Vector.empty,
-            g.copy(left = g.left + n, unwritten = g.unwritten :+ ("attach", TopicDream.Uncovered))
-          )
-        case Right(Some((s, Some(p)))) =>
-          // A new topic is keyed by its first discussion.
-          val touches = p.topics.map {
-            case Placing.Went.Into((k, v), ds, cs) => Right(Touch(k, Some(v), ds, cs))
-            case Placing.Went.Opened(first, more, cs) =>
-              TopicKey.strand(first.root).map(Touch(_, None, first +: more, cs))
-          }
-          val unopened = touches.collect { case Left(why) => ("a strand", why) }
-          // A reply that placed something and named a card nowhere judged it fits no topic shown.
-          val setAside =
-            p.asideDiscussions.map(st => Lineage.Tag.Strand(st.root, st.room, st.digest)) ++
-              (p.asideCards ++ p.omittedCards ++ scan.of(p.asideDiscussions)._2)
-                .distinctBy(_.version)
-                .map(c => Lineage.Tag.Card(c.version))
-          val kept =
-            if (setAside.isEmpty) Vector.empty
-            else
-              moves.keep(TopicDream.SetAside, s.asked.reply.map(_ => setAside))(
-                (tags, keeper, at) => Aside.setAside(keeper, tags, at)
-              ) match {
-                case Left(e) => Vector(("aside", MoveError.said(e)))
-                case Right(_) => Vector.empty
+      )
+    val discussion = run.tainted.map(_ => TopicDream.sortDiscussion)
+    val strands = scan.strands.zipWithIndex.foldLeft[Sorted](
+      (Vector.empty, run.tainted.map(_ => Vector.empty), g)
+    ) { case (s @ (ts, aside, g), (st, i)) =>
+      val name = CardMoves.numbered("sort", i)
+      moves.sort(name, Dreaming.Item.Discussion(st), topics, discussion) match {
+        case Left(e) => failed(s, name, Some(e))
+        case Right(None) => failed(s, name, None)
+        case Right(Some(sorted)) =>
+          val d = Trusted.asIs(sorted.asked.reply).extract
+          d.choice match {
+            case TopicDream.Placed.Into(k, v) if d.top >= TopicDream.TopicAt =>
+              (ts :+ Touch(k, Some(v), Vector(st), Vector.empty), aside, g)
+            case TopicDream.Placed.Aside =>
+              val tags = Lineage.Tag.Strand(st.root, st.room, st.digest) +:
+                scan.of(Vector(st))._2.map(c => Lineage.Tag.Card(c.version))
+              (ts, aside.zip(sorted.asked.reply).map((a, _) => a ++ tags), g)
+            case chosen =>
+              val unsure = chosen match {
+                case TopicDream.Placed.Into(_, _) => g.unsure + 1
+                case _ => g.unsure
               }
-          (
-            touches.collect { case Right(t) => t },
-            g.copy(
-              aside = g.aside + setAside.size,
-              // Those not shown.
-              left = g.left + scan.cards.count(c => !s.shown.contains(c.version)),
-              unnamed = g.unnamed + p.unnamedDiscussions + p.unnamedCards,
-              dropped = g.dropped + p.dropped,
-              again = g.again + again,
-              unwritten = g.unwritten ++ unopened ++ kept
-            )
-          )
+              // A new topic is keyed by its discussion.
+              TopicKey.strand(st.root) match {
+                case Left(why) =>
+                  (ts, aside, g.copy(unsure = unsure, unwritten = g.unwritten :+ ("a strand", why)))
+                case Right(k) =>
+                  (ts :+ Touch(k, None, Vector(st), Vector.empty), aside, g.copy(unsure = unsure))
+              }
+          }
       }
     }
+    val card = run.tainted.map(_ => TopicDream.sortCard)
+    val (touches, aside, sorted) =
+      if (topics.isEmpty) strands match {
+        case (ts, aside, g) => (ts, aside, g.copy(left = g.left + scan.cards.size))
+      }
+      else
+        scan.cards.zipWithIndex.foldLeft[Sorted](strands) { case (s @ (ts, aside, g), (c, j)) =>
+          val name = CardMoves.numbered("sort", scan.strands.size + j)
+          moves.sort(name, Dreaming.Item.Document(c.version), topics, card) match {
+            case Left(e) => failed(s, name, Some(e))
+            case Right(None) => failed(s, name, None)
+            case Right(Some(sorted)) =>
+              Trusted.asIs(sorted.asked.reply).extract.headOption match {
+                case Some(Decision.Weight(TopicDream.Placed.Into(k, v), p))
+                    if p >= TopicDream.CardAt =>
+                  (ts :+ Touch(k, Some(v), Vector.empty, Vector(c)), aside, g)
+                case _ =>
+                  (
+                    ts,
+                    aside.zip(sorted.asked.reply).map((a, _) => a :+ Lineage.Tag.Card(c.version)),
+                    g
+                  )
+              }
+          }
+        }
+    val tags = Trusted.asIs(aside).extract.distinct
+    val kept =
+      if (tags.isEmpty) Vector.empty
+      else
+        moves.keep(TopicDream.SetAside, aside.map(_.distinct))((tags, keeper, at) =>
+          Aside.setAside(keeper, tags, at)
+        ) match {
+          case Left(e) => Vector(("aside", MoveError.said(e)))
+          case Right(_) => Vector.empty
+        }
+    (
+      touches,
+      sorted.copy(aside = sorted.aside + tags.size, unwritten = sorted.unwritten ++ kept)
+    )
   }
 
   /** `t`'s write ask, shown besides the cards it `holds`, and keep, the `i`th; whether it was
@@ -278,12 +281,10 @@ object TopicDream {
   /** 6,000: the most characters of a strand a write ask is shown. */
   val Chars: Int = 6000
 
-  /** 1,500: the most characters of a strand the attach ask is shown. */
+  /** 1,500: the most characters of a strand a sort is shown. */
   val AttachChars: Int = 1500
 
-  /** 400: the most characters of a topic's text, its lead first, or of a card, the attach ask
-    * is shown, and the most a lead is asked to be.
-    */
+  /** 400: the most characters a lead is asked to be. */
   val LeadChars: Int = 400
 
   private val Scan: MoveName = MoveName.literal("scan")
@@ -305,6 +306,78 @@ object TopicDream {
       "or in a topic not shown"
 
   private val SetAside: MoveName = MoveName.literal("aside")
+
+  /** Where a sort may put a strand or a card: into a topic shown, by key and version; `Opened`,
+    * a topic of its own; or set `Aside`.
+    */
+  private[topic] enum Placed extends caps.Pure {
+    case Into(key: TopicKey, version: DocumentVersionId)
+    case Opened, Aside
+  }
+
+  /** 0.72: the least probability of yes at which a card goes to the topic likeliest about it;
+    * below it, the card is set aside. Provisional: it rests on agreement with the model ask it
+    * replaced, until a person marks a night's card placements.
+    */
+  private[topic] val CardAt: Double = 0.72
+
+  /** 0.86: the least probability at which a strand joins the topic chosen for it; below it, the
+    * strand opens a topic of its own, counted unsure. Provisional: measured on discussions
+    * against the topics they opened, an easier set than a real continuation.
+    */
+  private[topic] val TopicAt: Double = 0.86
+
+  /** 700: the most characters of a topic's text a sort shows, its lead (at most [[LeadChars]])
+    * and the head of its newest passage, and of a card's, its title and summary.
+    */
+  private[topic] val SortChars: Int = 700
+
+  /** How a strand is sorted: one choice among the topics shown, each as its text's head within
+    * [[SortChars]], then `new` (a topic of its own) and `aside`, the strand shown whole within
+    * [[AttachChars]].
+    */
+  private[topic] val sortDiscussion: Sorting[Placed, Decision[Placed]] = Proven.right(
+    Sorting
+      .choice(
+        // Draft wording, for Nick.
+        "Which topic is this discussion part of? A topic is one matter the team comes back " +
+          "to. Choose a topic only when the discussion is about that same matter, not only the " +
+          "same project or the same people.",
+        AttachChars,
+        SortChars,
+        Criterion(
+          Placed.Opened,
+          "new",
+          // Draft wording, for Nick.
+          Some("A matter none of these topics covers, that the team is likely to come back to.")
+        ),
+        Criterion(
+          Placed.Aside,
+          "aside",
+          // Draft wording, for Nick.
+          Some("Too slight to keep: a greeting, a test, a one-off question already answered.")
+        )
+      )
+      // `new` and `aside` are two keys, neither a number.
+      .left
+      .map(_.toString)
+  )
+
+  /** How a card is sorted: a yes/no for each of the 8 topics shown whose text its own matches
+    * best, each topic and the card as their text's head within [[SortChars]].
+    */
+  private[topic] val sortCard: Sorting[Placed, Vector[Decision.Weight[Placed]]] = Proven.right(
+    Sorting.each(
+      // Draft wording, for Nick.
+      "Is this file about this topic's matter?",
+      "It documents, specifies or holds data for the matter.",
+      "It is about something else, or shares only a project or a word with it.",
+      AttachChars,
+      SortChars,
+      // 8, within Sorting.Most.
+      8
+    )
+  )
 
   /** How many strands and cards `ts` attach. */
   private def items(ts: Vector[Touch]): Int = ts.map(t => t.strands.size + t.cards.size).sum
