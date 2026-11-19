@@ -46,7 +46,11 @@ Decision:
   (`ProjectMarkdown`, a file per artifact plus one for its key and pin; read after render keeps
   every head and link, and is a fixed point after one pass), and a method's (`MethodJson`, which
   `project_methods` gives and `project_declare` takes; equal digest and examples). The export
-  names artifacts by id and handle, never by the key a document is stored under.
+  names artifacts by id and handle, never by the key a document is stored under. Each
+  artifact's file is at its parents' numbers then its own, `12.md` with its children under
+  `12/`, so a retitle or a new handle moves no file and a new parent does; a file elsewhere
+  is refused. Carrying no store key, a project rebuilt from its export would keep each
+  artifact under its id, and an old key would then resolve only as a handle.
 - **A project lives in the plugin's ledger documents** (ADR 0028), no table of its own: one per
   artifact, under the key it was first kept under, and an index holding its pin and the next
   id, written only by the plugin's commands (ADR 0053), each
