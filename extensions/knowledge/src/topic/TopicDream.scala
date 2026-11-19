@@ -269,8 +269,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
 
 object TopicDream {
 
-  val Name: JobName =
-    JobName.of("topics-dream").fold(e => throw new IllegalStateException(e), identity)
+  val Name: JobName = JobName.literal("topics-dream")
 
   /** 8: the most topics one run puts up for review. */
   val Reviewed: Int = 8

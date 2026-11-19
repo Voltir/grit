@@ -88,9 +88,7 @@ final class Sync(sources: Vector[Source[?]]) extends KeepingJob[SyncParams] {
 object Sync {
 
   /** `knowledge-sync`. */
-  val Name: JobName =
-    // A literal of the job name's grammar: every test of the job throws here if not.
-    JobName.of("knowledge-sync").fold(why => throw new IllegalStateException(why), identity)
+  val Name: JobName = JobName.literal("knowledge-sync")
 
   /** The ask summarising `head`, told that it is `subject` ([[Step.Summarise]]): one user
     * message, `<document><source>{subject}</source><document_content>{head}

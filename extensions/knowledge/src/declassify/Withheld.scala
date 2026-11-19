@@ -18,13 +18,10 @@ import grit.knowledge.card.Believed
 object Withheld {
 
   /** `declassify:withheld`. */
-  private[declassify] val Key: DocKey =
-    // Lower case letters and one `:`: DocKey.of never refuses them.
-    DocKey.of("declassify:withheld").fold(e => throw new IllegalStateException(e), identity)
+  private[declassify] val Key: DocKey = DocKey.literal("declassify:withheld")
 
   /** A document is never blank; this one, read only by its data, holds no word. */
-  private val Text: DocText =
-    DocText.of("…").fold(e => throw new IllegalStateException(e), identity)
+  private val Text: DocText = DocText.literal("…")
 
   /** Each entry withheld at `floor`, as [[Declassified.Made.read]] reads it (`None`: one that
     * does not read, such as one with no revision); none when there is no such document, or its

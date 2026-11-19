@@ -73,7 +73,10 @@ object TopicPrompt {
       today.cards
     )
 
-  private def word(v: TopicVerdict): ReviewWord =
-    // Each is lower-case letters alone, a word ReviewWord.of takes, so it never throws.
-    ReviewWord.of(v.toString.toLowerCase).fold(why => throw new IllegalStateException(why), w => w)
+  private def word(v: TopicVerdict): ReviewWord = v match {
+    case TopicVerdict.Right => ReviewWord.literal("right")
+    case TopicVerdict.Split => ReviewWord.literal("split")
+    case TopicVerdict.Merge => ReviewWord.literal("merge")
+    case TopicVerdict.Noise => ReviewWord.literal("noise")
+  }
 }

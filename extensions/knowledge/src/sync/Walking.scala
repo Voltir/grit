@@ -281,17 +281,11 @@ private[knowledge] object Walking {
     case Dropped(count: Int)
   }
 
-  // "An empty file." is three words and not blank: CardSummary.of never refuses it.
-  private val Empty: CardSummary = CardSummary
-    .of("An empty file.", Vector.empty)
-    .fold(why => throw new IllegalStateException(why), identity)
+  private val Empty: CardSummary = CardSummary.literal("An empty file.")
 
-  // Six words, not blank: CardSummary.of never refuses it. No word of why the file is
-  // unreadable, which its read's answer gave, reaches the card: none of that answer is
-  // believed into it, whatever it was believed at.
-  private val Unreadable: CardSummary = CardSummary
-    .of("A file that could not be read.", Vector.empty)
-    .fold(why => throw new IllegalStateException(why), identity)
+  // No word of why the file is unreadable, which its read's answer gave, reaches the card:
+  // none of that answer is believed into it, whatever it was believed at.
+  private val Unreadable: CardSummary = CardSummary.literal("A file that could not be read.")
 
   /** Pops tasks until one makes a step or ends the walk, or none is left; `w` itself when it
     * already made one, or ended.

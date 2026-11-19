@@ -21,15 +21,12 @@ object Aside {
   final case class Item(tag: Lineage.Tag, at: Instant) extends caps.Pure
 
   /** `topic:aside`. */
-  private[topic] val Key: DocKey =
-    // Lower case letters and one `:`: DocKey.of never refuses them.
-    DocKey.of("topic:aside").fold(e => throw new IllegalStateException(e), identity)
+  private[topic] val Key: DocKey = DocKey.literal("topic:aside")
 
   /** What the aside's document says: a document is never blank, and this one, read only by its
     * data, holds no word, so no search matches it.
     */
-  private val Text: DocText =
-    DocText.of("…").fold(e => throw new IllegalStateException(e), identity)
+  private val Text: DocText = DocText.literal("…")
 
   /** The aside at `floor`: empty when there is none, or its data does not read. An entry kept
     * before entries were dated is dated when the aside was last written, the latest it can

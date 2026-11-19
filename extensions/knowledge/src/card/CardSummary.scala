@@ -1,12 +1,17 @@
 package grit.knowledge.card
 
+import scala.annotation.publicInBinary
+import scala.quoted.{Expr, Quotes}
+
 import grit.core.schema.{JsonSchema, Typed}
+import grit.std.literal.Literal
 
 /** A unit's summary: at most [[CardSummary.Words]] words, never blank, and at most
   * [[CardSummary.Terms]] search terms (each one to three words) for what it holds that the
   * summary leaves out.
   */
-final case class CardSummary private (summary: String, terms: Vector[String]) extends caps.Pure
+final case class CardSummary @publicInBinary private (summary: String, terms: Vector[String])
+    extends caps.Pure
 
 object CardSummary {
 
@@ -25,6 +30,18 @@ object CardSummary {
     if (summary.isBlank) Left("a summary is not blank")
     else if (kept.size > Terms) Left(s"a summary has at most $Terms terms, not ${kept.size}")
     else Right(new CardSummary(cut(summary.trim), kept))
+  }
+
+  /** [[of]]'s value for the constant `summary` and no terms. A summary [[of]] refuses does not
+    * compile, with [[of]]'s reason; nor does one that is not a constant.
+    */
+  private[knowledge] inline def literal(inline summary: String): CardSummary = ${
+    literalOf('summary)
+  }
+
+  private def literalOf(summary: Expr[String])(using Quotes): Expr[CardSummary] = {
+    val checked = Literal.checked(summary, of(_, Vector.empty).map(_.summary))
+    '{ new CardSummary($checked, Vector.empty) }
   }
 
   /** `text` up to the end of its [[Words]]th word, its spacing kept. */

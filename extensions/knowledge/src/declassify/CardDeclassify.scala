@@ -118,8 +118,7 @@ final class CardDeclassify(perRunMost: Int, cards: Exported[CardShelf])
 
 object CardDeclassify {
 
-  val Name: JobName =
-    JobName.of("cards-declassify").fold(e => throw new IllegalStateException(e), identity)
+  val Name: JobName = JobName.literal("cards-declassify")
 
   /** 1,000: the most current cards one run reads to find those a policy is applied to. */
   val Cards: Int = 1000

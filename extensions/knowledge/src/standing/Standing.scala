@@ -11,6 +11,7 @@ import grit.core.plugin.DocumentPosting
 import grit.core.store.{ClosedPeriod, StoreError, Tx}
 import grit.core.tool.ToolName
 import grit.core.visibility.Label
+import grit.std.either.Proven
 import grit.std.either.Traversal.traverse
 
 /** What each earned closing ([[grit.core.period.CloseReason.shownElsewhere]]) of a conversation
@@ -33,12 +34,15 @@ object Standing {
     * and each line it keeps by id with its ground's key.
     */
   val Terms: DocumentTerms =
-    // Literals both constructors accept, read when the object is first used: every test of
-    // the plugin throws here if not.
-    (for {
-      label <- DocLabel.of("what a conversation settled")
-      terms <- DocumentTerms.of(label, DocWeight.Unscaled, 30.days, 1000)
-    } yield terms).fold(why => throw new IllegalStateException(why), identity)
+    // 30 days is a minute or more, and 1000 at least 1: DocumentTerms.of takes them.
+    Proven.right(
+      DocumentTerms.of(
+        DocLabel.literal("what a conversation settled"),
+        DocWeight.Unscaled,
+        30.days,
+        1000
+      )
+    )
 
   /** The posting of its documents, under [[Terms]], leaving out the lines whose add names one
     * of the tools in `leftOut`.

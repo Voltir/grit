@@ -102,8 +102,7 @@ final class StrandDream(perRunMost: Int, labels: Vector[Label]) extends Dreaming
 
 object StrandDream {
 
-  val Name: JobName =
-    JobName.of("strands-dream").fold(e => throw new IllegalStateException(e), identity)
+  val Name: JobName = JobName.literal("strands-dream")
 
   /** 3: the fewest members, the root among them, a strand with a document has. */
   val Members: Int = 3
