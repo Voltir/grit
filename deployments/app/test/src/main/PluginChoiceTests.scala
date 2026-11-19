@@ -216,7 +216,10 @@ object PluginChoiceTests extends TestSuite {
                 "cardRecent" -> "PT48H",
                 "asideFor" -> "PT168H",
                 "keepFor" -> "PT2160H",
-                "merges" -> 8
+                "merges" -> 8,
+                "cut" -> ujson
+                  .Obj("gap" -> 300, "most" -> 16, "before" -> 0, "after" -> 0, "settle" -> 1800),
+                "sorts" -> 32
               ),
               Label.Public
             )
@@ -243,6 +246,9 @@ object PluginChoiceTests extends TestSuite {
               "asideFor" -> "PT168H",
               "keepFor" -> "PT2160H",
               "merges" -> 8,
+              "cut" -> ujson
+                .Obj("gap" -> 300, "most" -> 16, "before" -> 0, "after" -> 0, "settle" -> 1800),
+              "sorts" -> 32,
               "seedUntil" -> "2026-10-30"
             )
           )
