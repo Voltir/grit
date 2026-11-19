@@ -168,6 +168,19 @@ its strands link (newest first), each topic it links and the unit of each other 
 counted. A strand or card already in a topic's lineage or set aside at the same digest or
 version touches nothing.
 
+After its writes, a run sorts at most `merges` (`TopicParams.Merges` unless its schedule says)
+of the floor's topics written from fewer than two discussions, oldest written first, but those
+it wrote that night and those set aside at their version within `asideFor`
+(`TopicScan.Scanned.single`). Each is a document sorted (`merge-{i}`) by a yes or no for each
+of the 8 other topics of the floor its text matches best (`TopicDream.sortTopic`), each and the
+item shown within `TopicDream.SortChars`: about 2,100 tokens a sort. A yes at
+`TopicDream.FoldAt` or more for the likeliest proposes folding the item into it (ADR 0064): the
+reply names it, and no topic is withdrawn. A later sort of the run is not shown a topic proposed
+to fold away, and a proposed keeper is not sorted. Each sorted, and each proposed keeper, is set
+aside at its version (`merge-aside`), so it is sorted again only once it is written or
+`asideFor` has passed. A topic of two discussions or more is never sorted to merge, though it
+is shown to one that is.
+
 ## A declassify run
 
 In its scan `CardDeclassify` withdraws every one of its plugin's own documents but its
