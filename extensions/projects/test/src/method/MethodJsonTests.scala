@@ -56,14 +56,20 @@ object MethodJsonTests extends TestSuite {
       }
     }
     test(
-      "an absent field reads as its default: no states, ends, sections, checks, action or carried"
+      "an absent optional field reads as its default: no states, ends, sections, checks, action, " +
+        "carried, and anyone moves"
     ) {
       val note = ArtifactKind(kind("note"), state("open"), Vector.empty, Set.empty, Vector.empty)
+      val memo =
+        ArtifactKind(kind("memo"), state("draft"), Vector(state("shut")), Set.empty, Vector.empty)
       val json = ujson.Obj(
         "name" -> "grit",
         "version" -> 2,
-        "kinds" -> ujson.Arr(ujson.Obj("name" -> "note", "first" -> "open")),
-        "transitions" -> ujson.Arr(),
+        "kinds" -> ujson.Arr(
+          ujson.Obj("name" -> "note", "first" -> "open"),
+          ujson.Obj("name" -> "memo", "first" -> "draft", "states" -> ujson.Arr("shut"))
+        ),
+        "transitions" -> ujson.Arr(ujson.Obj("kind" -> "memo", "from" -> "draft", "to" -> "shut")),
         "views" -> ujson.Arr(
           ujson.Obj("role" -> "builder", "kinds" -> ujson.Arr("note"), "depth" -> 0)
         )
@@ -71,8 +77,10 @@ object MethodJsonTests extends TestSuite {
       val expected = Method.of(
         method,
         2,
-        Vector(note),
-        Vector.empty,
+        Vector(note, memo),
+        Vector(
+          Transition(memo.name, state("draft"), state("shut"), Vector(), TransitionAction.Nothing)
+        ),
         Vector(right(RoleView.of(role("builder"), Set(note.name), 0))),
         TransitionChecks.all
       )
