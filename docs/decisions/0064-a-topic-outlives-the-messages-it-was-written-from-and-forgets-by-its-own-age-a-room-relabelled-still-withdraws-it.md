@@ -1,4 +1,4 @@
-# 0063. A topic outlives the messages it was written from and forgets by its own age; a room relabelled still withdraws it
+# 0064. A topic outlives the messages it was written from and forgets by its own age; a room relabelled still withdraws it
 
 Status: proposed
 

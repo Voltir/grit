@@ -128,7 +128,7 @@ the cards changed within `cardRecent` (`TopicParams.SeedReach` on a night up to 
 label than its floor now, and each dated more than `keepFor` (`TopicParams.KeepFor` unless its
 schedule says) before its day, the topic itself when none is left. A passage outlives the
 messages it was written from, as a closing does: their purge withdraws nothing
-([ADR 0063](../../docs/decisions/0063-a-topic-outlives-the-messages-it-was-written-from-and-forgets-by-its-own-age-a-room-relabelled-still-withdraws-it.md)).
+([ADR 0064](../../docs/decisions/0064-a-topic-outlives-the-messages-it-was-written-from-and-forgets-by-its-own-age-a-room-relabelled-still-withdraws-it.md)).
 It attaches each strand or card a topic already refers to (a card by the unit its pointer reads,
 which a topic refers to when it was written from that card, links it, or a strand of it links
 it); pairs each card a strand it takes up links (`TopicScan.Linked`, read whatever its age or
