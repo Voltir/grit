@@ -864,8 +864,9 @@ private[plugin] final class ProjectCommands(
 
     val spec: ToolSpec[Listing] = ToolSpec(
       ToolName("project_list"),
-      s"Lists a project's artifacts, one line each, most recently changed first, at most " +
-        s"$ListMost. Leaves out ended ones ($EndedWords) unless `ended` is true or `state` " +
+      s"Lists a project's artifacts, one line each, at most $ListMost: most recently changed " +
+        "first, or, with a parent, in the order project_reorder sets among siblings, ties " +
+        "oldest first. Leaves out ended ones ($EndedWords) unless `ended` is true or `state` " +
         "names an end state. A first line counts all that match; when more than " +
         s"$ListMost match, a last line says how many more, the `skip` that shows the next " +
         s"$ListMost, and which arguments narrow the list. Refused for a parent the project " +
@@ -965,13 +966,15 @@ private[plugin] final class ProjectCommands(
         val children: Map[ArtifactKey, Vector[(Document, Artifact)]] = project.documents
           .flatMap((d: Document, a: Artifact) => a.head.parent.map(_ -> (d, a)))
           .groupMap(_._1)(_._2)
-        // What sits `levels` levels under `from`, each followed by what sits under it.
+        // What sits `levels` levels under `from`, in rank order, each followed by what sits
+        // under it.
         def walk(from: ArtifactKey, levels: Int): Vector[(Document, Artifact)] =
           if (levels < 1) Vector.empty
           else
-            newest(children.getOrElse(from, Vector.empty)).flatMap((d: Document, a: Artifact) =>
-              (d, a) +: walk(a.head.key, levels - 1)
-            )
+            children
+              .getOrElse(from, Vector.empty)
+              .sortBy(_._2.head)(using ArtifactHead.ranked)
+              .flatMap((d: Document, a: Artifact) => (d, a) +: walk(a.head.key, levels - 1))
         val depth = args.under.fold(1)(_.depth)
         val reached = parent.fold(newest(project.documents))(walk(_, depth))
         val matching = reached.filter((_, a) =>

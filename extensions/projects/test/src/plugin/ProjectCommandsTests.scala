@@ -859,9 +859,10 @@ object ProjectCommandsTests extends TestSuite {
         ),
         Vector("p/1 a: Title a · 0.1 KB · changed 2026-10-27 · 1 under it"),
         Vector("p/3 b (note): Title b · under p/1 · 0.1 KB · changed 2026-10-29"),
+        // Under a parent, in rank order: c was kept under p/1 first.
         Vector(
-          "p/3 b (note, closed): Title b · 0.1 KB · changed 2026-10-29",
-          "p/2 c (change, proposed): Title c · 0.3 KB · changed 2026-10-28"
+          "p/2 c (change, proposed): Title c · 0.3 KB · changed 2026-10-28",
+          "p/3 b (note, closed): Title b · 0.1 KB · changed 2026-10-29"
         )
       )
     }
@@ -1026,6 +1027,33 @@ object ProjectCommandsTests extends TestSuite {
         "2 match: note 2 (open 2).\n" +
         "p/2 b (note, open): Title b · 0.1 KB · changed 2026-10-27 · 1 under it\n" +
         "p/4 d (note, open): Title d · 0.1 KB · changed 2026-10-27"
+    }
+    test("project_list with parent lists in rank order, ties by number, at every level") {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "a", "note", "Top.")
+      Vector("b", "c", "d").foreach(under(projects, store, _, "p/a"))
+      Vector("e", "f").foreach(under(projects, store, _, "p/b"))
+      // d first; c tied with b, after it by number; f before e.
+      done(ask(projects, store, "project_reorder", "artifact" -> "p/d", "before" -> "p/b"))
+      rankedAt(store, "p/3", "n")
+      done(ask(projects, store, "project_reorder", "artifact" -> "p/f", "before" -> "p/e"))
+      def listed(depth: Int): Vector[String] =
+        done(
+          ask(
+            projects,
+            store,
+            "project_list",
+            "project" -> "p",
+            "parent" -> "p/a",
+            "depth" -> depth
+          )
+        ).linesIterator.drop(1).map(_.takeWhile(_ != ' ')).toVector
+      (listed(1), listed(2)) ==> (
+        Vector("p/4", "p/2", "p/3"),
+        Vector("p/4", "p/2", "p/6", "p/5", "p/3")
+      )
     }
 
     test(
