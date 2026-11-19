@@ -2,7 +2,7 @@ package grit.projects.artifact
 
 /** Where an artifact sits among its siblings, the artifacts of its parent (or, with none, those
   * with none): they are listed in rank order. The letters a–z, compared as text, never ending in
-  * `a`, so a rank always fits before any other.
+  * `a`.
   */
 opaque type Rank = String
 

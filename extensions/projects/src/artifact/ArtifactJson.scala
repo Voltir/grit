@@ -66,7 +66,7 @@ object ArtifactJson {
     * artifact's is; text naming the project and its method; its pin's method, version and
     * digest, `by`, and `next`, the number its next new artifact takes, as data; and the one ref
     * [[indexing]] gives. An index with no `next` is in the old form, before the re-key
-    * (ADR 0063), and is no longer written.
+    * (ADR 0063).
     */
   def index(
       project: ProjectKey,

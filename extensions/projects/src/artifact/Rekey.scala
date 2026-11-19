@@ -39,8 +39,7 @@ object Rekey {
     * ranked and re-cited, or every reason not. A key with a leading digit takes the handle
     * `k-<key>`.
     *
-    * Numbered by when each oldest kept version was written, ties by key (retention keeps a
-    * document's newest versions, [[grit.core.document.DocumentTerms]]). Ranked among their
+    * Numbered by when each oldest kept version was written, ties by key. Ranked among their
     * siblings: those titled `M<n>` first, by `n`, ties by number, then the rest by number. Each
     * reference, in a head or a body, names a store key of `legacy`. Refused, naming the document:
     * a key not of `project`; a name no handle may be; a reference to no document of `legacy` (one

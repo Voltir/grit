@@ -7,7 +7,7 @@ import grit.projects.name.{ArtifactKey, ArtifactNumber, Handle, ProjectKey}
 /** Where a re-key left each artifact it gave an id: the key its versions are kept under, the name
   * it had before. Kept in documents of [[PerDocument]] numbers each: numbers `256k + 1` to
   * `256k + 256` under `<project>#rekeyed-<k>`, each name as the part of its key after the
-  * project's `/`, at most [[Handle.Longest]] characters, so that a full document is under 25 KB.
+  * project's `/`, at most [[Handle.Longest]] characters.
   */
 object Rekeyed {
 
