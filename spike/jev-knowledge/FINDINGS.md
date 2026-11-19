@@ -389,3 +389,127 @@ zone is assumed to be UTC−5.
 - **Not Jev.** Neither grouping new discussions (one discussion per new topic is the safer default), nor deciding when a turn's written query can be skipped.
 - **Turns.** Keep the written query. Judging down to rank 60 is worth considering.
 - **Open.** Haiku and Jev disagree on new versus existing as a policy, not as noise: Haiku put 143 of 158 discussions in a new topic and 0 of 340 cards in an existing one. A person's adjudication of 40 disagreements decides which is right, and sets any threshold for routing to Haiku.
+
+## E13: how a room's top level is cut into units (CP5 stage 0)
+
+The question: does a dreaming run sort a channel's top level better as 5-minute runs or one
+message at a time, and does showing neighbouring messages as context help? Every arm is E12's
+incremental W2 sort: one Jev Choice per unit over every document opened so far, plus
+`new_topic`, `new_meeting` and `aside`.
+
+**The data.**
+- Sheet 1 is Nick's room sheet, as in E12: 103 messages, 71 at the top level, 6 threads with no
+  root named.
+- Sheet 2 is wisdom's: 138 legacy messages, every one in a Slack thread, in two channels. A
+  one-message thread counts as a top-level message (57 of them), and a longer thread stays whole
+  in every arm (26 threads).
+  - Stream A is the team's room: 78 messages.
+  - Stream B is a bot-test room: 60 messages, of which 52 are chatter. It precedes A in time and
+    is replayed first, at the same label.
+- The plan names 5 forward-defined messages on sheet 2 but no artifact lists them. E13 took 83
+  and 87 (defined by 88), 114 (by 115), and 129 and 130 (by 131). They are listed in
+  `e13sheet.FORWARD`.
+
+**The arms** are in `e13sheet.ARMS`.
+- R5: 5-minute runs, no context.
+- M22: each top-level message is its own unit, with 2 top-level neighbours before and 2 after.
+- R5C: 5-minute runs with 2/2 context.
+- M20: E12 has no M20, so this is per-message with 2 before and none after.
+- PR: M22, but grit's reply joins the person's message before it.
+
+Context travels in the state as `before` and `after`, each marked as context and not part of the
+conversation. The question's wording stays W2's.
+
+**Running it.** `python3 -I E13-b.py units | run SHEET ARM… | repeat SHEET ARM… | report`, then
+`python3 -I E13-c.py`. Aggregates are in `out/e13b.json` and `out/e13c.json`. Per-unit placements
+quote text, so they are in `.local/jev-spike/e13/`. E13 cost **4.32¢**: 508 paid calls and 1,027,373 input
+tokens, about 2,020 tokens a call. That includes a 0.69¢ repeat. Sheet 1's R5 is E12's own requests, so it was served from E12's cache
+and reproduces E12's 77/89.
+
+### E13b: the arms
+
+"Right" means a message sits in a document whose majority label is its own, as in E12. "Top" is
+labelled top-level messages; "short" is those under 150 chars. Occurrences counts the meetings
+with a meeting document of their own.
+
+| Sheet | Arm | Labelled right | Top right | Short right | Occurrences | Chatter aside | Docs | One-unit docs | Fwd-defined | Sorts / msg |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | **R5** | **77/89** | **55/64** | **38/43** | 3/3 | 2/14 | 18 | 7 | — | 0.43 |
+| 1 | M22 | 64/89 | 44/64 | 29/43 | 2/3 | 5/14 | 14 | 3 | — | 0.75 |
+| 1 | R5C | 61/89 | 41/64 | 26/43 | 2/3 | 2/14 | 12 | 5 | — | 0.43 |
+| 1 | M20 | 66/89 | 46/64 | 31/43 | 3/3 | 6/14 | 13 | 1 | — | 0.75 |
+| 1 | PR | 63/89 | 43/64 | 28/43 | 2/3 | 5/14 | 14 | 3 | — | 0.70 |
+| 2 | **R5** | **53/68** | 28/43 | **27/35** | 1/2 | 13/70 | 16 | 5 | 3/5 | 0.39 |
+| 2 | M22 | 52/68 | **29/43** | 23/35 | 2/2 | 15/70 | 14 | 2 | 3/5 | 0.60 |
+| 2 | R5C | 45/68 | 22/43 | 21/35 | 2/2 | 8/70 | 11 | 1 | 4/5 | 0.39 |
+| 2 | M20 | 48/68 | 25/43 | 23/35 | 2/2 | 12/70 | 12 | 1 | 4/5 | 0.60 |
+| 2 | PR | = M22 | | | | | | | | |
+
+- **PR on sheet 2 is M22.** Every grit reply there sits inside a thread, so the two arms send the
+  same requests.
+- **The bot-test stream (B)** is cut the same way in every arm: its units are all whole threads,
+  and it is replayed first.
+  - In every arm it opens 4 topic documents, all 8 of its labelled messages are right, and it
+    sets aside **8 of its 52 chatter rows**.
+  - Stream A sets aside 5/18 chatter (R5), 7/18 (M22), 0/18 (R5C) and 4/18 (M20).
+  - No unit of A joins a document B opened.
+- **Context hurts.** R5C is 16 labelled messages below R5 on sheet 1, and 8 below it on sheet 2.
+  - In the context arms, almost every join goes to a document holding one of the unit's context
+    messages: 48 of 50 under M22 on sheet 1, and 42 of 42 on sheet 2.
+  - About a third of those joins are wrong: 15 of 48 and 13 of 42.
+  - Jev places a unit with its neighbours rather than by its own text.
+- **Run-to-run variance**, measured once by repeating sheet 1's R5 and R5C past the cache (0.69¢):
+  - R5 went from 77 to 74 labelled right (55 to 52 top-level), with 2 of 44 units placed
+    differently;
+  - R5C went from 61 to 63.
+  - The rule's margin of 4 is about one repeat's noise. E12's answers may also be from an earlier
+    Jev.
+
+**The decision rule**, from the plan: "runs stand unless per-message wins by 4 or more, pooled on
+the flattened top level, is no more than 2 worse on sheet 1, and does not raise one-unit
+documents." Pooled top-level right, over both sheets (107):
+
+| Arm | Pooled top right | Against R5 | Sheet 1 labelled, against R5 | One-unit docs, both sheets |
+|---|---|---|---|---|
+| R5 | 83 (80 on the repeat) | — | — | 12 |
+| M22 | 73 | −10 | −13 | 5 |
+| M20 | 71 | −12 | −11 | 2 |
+| PR | 72 | −11 | −14 | 5 |
+| R5C | 63 | −20 | −16 | 6 |
+
+**Verdict: runs stand.** Per-message loses on the first clause by 10 (7 against the repeat),
+and on the second by 13.
+- Per-message does beat runs *with context*: M22 is 10 ahead of R5C pooled, 3 ahead on sheet 1,
+  and has 5 one-unit documents against 6.
+- Plain runs beat both. The cut should show no context.
+- What per-message does better is fewer one-unit documents (5 against 12) and meetings on
+  sheet 2 (2/2 against 1/2).
+
+### E13c: a meeting's day by code (no model)
+
+This is E12c's rule as written, with no fitted rule.
+- **Sheet 1:** 5 of 9 meeting messages get the right day, 0 wrong, covering 2 of 3 occurrences.
+  **The bar (0 wrong, at least 5 of 9) is met.**
+- **Sheet 2:** 2 of 7 get the right day, 0 wrong, covering both occurrences.
+- Non-meeting messages with a day word: 3/94 on sheet 1, 5/131 on sheet 2.
+- Haiku's head was not measured: the brief allowed Jev only.
+
+### What E13 says for CP5
+
+- **Measured.**
+  - **The cut:** 5-minute runs with no context.
+    - Every context arm is worse than the same cut without it.
+    - The largest run is 10 messages on sheet 1 and 9 on sheet 2.
+  - **No pairing:** joining grit's reply to the person's message (PR) changes nothing measurable.
+- **Not measured.**
+  - **most:** no run reached a cap. Any most of 10 or more reproduces these units.
+  - **settle:** the replay sees every message.
+  - Haiku's meeting head.
+  - Variance beyond one repeat of two arms.
+- **Inferred.** The plan's `before`/`after` parameters could default to 0. The rule's margin of 4
+  sits near the measured noise.
+
+### Parked
+
+- **Bot-test chatter is kept.** Jev keeps 44 of 52 bot-test rows in 4 topics. Whether a test room
+  should be dreamed at all is the plan's parked "a room declared not dreamed".

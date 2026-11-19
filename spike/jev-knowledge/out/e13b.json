@@ -1,0 +1,495 @@
+{
+ "s1 R5": {
+  "docs opened": 18,
+  "meeting docs": 4,
+  "one-unit docs": 7,
+  "units": 44,
+  "sorts per message": 0.427,
+  "calls": 44,
+  "tokens": 83279,
+  "all": {
+   "labelled right": "77/89",
+   "top-level labelled right": "55/64",
+   "short right": "38/43",
+   "meeting msgs in a meeting doc": "7/9",
+   "occurrences in their own meeting doc": "3/3",
+   "chatter set aside": "2/14",
+   "docs holding these msgs": 18,
+   "one-unit docs among them": 7,
+   "forward-defined right": "0/0"
+  },
+  "cut": {
+   "units": 44,
+   "runs": 38,
+   "threads": 6,
+   "largest run": 10,
+   "top-level msgs": 71,
+   "oracle labelled right": "82/89",
+   "pure labelled units": "38/43"
+  }
+ },
+ "s1 M22": {
+  "docs opened": 14,
+  "meeting docs": 4,
+  "one-unit docs": 3,
+  "units": 77,
+  "sorts per message": 0.748,
+  "calls": 77,
+  "tokens": 151728,
+  "all": {
+   "labelled right": "64/89",
+   "top-level labelled right": "44/64",
+   "short right": "29/43",
+   "meeting msgs in a meeting doc": "6/9",
+   "occurrences in their own meeting doc": "2/3",
+   "chatter set aside": "5/14",
+   "docs holding these msgs": 14,
+   "one-unit docs among them": 3,
+   "forward-defined right": "0/0"
+  },
+  "cut": {
+   "units": 77,
+   "runs": 71,
+   "threads": 6,
+   "largest run": 1,
+   "top-level msgs": 71,
+   "oracle labelled right": "88/89",
+   "pure labelled units": "69/70"
+  }
+ },
+ "s1 R5C": {
+  "docs opened": 12,
+  "meeting docs": 3,
+  "one-unit docs": 5,
+  "units": 44,
+  "sorts per message": 0.427,
+  "calls": 44,
+  "tokens": 79102,
+  "all": {
+   "labelled right": "61/89",
+   "top-level labelled right": "41/64",
+   "short right": "26/43",
+   "meeting msgs in a meeting doc": "6/9",
+   "occurrences in their own meeting doc": "2/3",
+   "chatter set aside": "2/14",
+   "docs holding these msgs": 12,
+   "one-unit docs among them": 5,
+   "forward-defined right": "0/0"
+  },
+  "cut": {
+   "units": 44,
+   "runs": 38,
+   "threads": 6,
+   "largest run": 10,
+   "top-level msgs": 71,
+   "oracle labelled right": "82/89",
+   "pure labelled units": "38/43"
+  }
+ },
+ "s1 M20": {
+  "docs opened": 13,
+  "meeting docs": 4,
+  "one-unit docs": 1,
+  "units": 77,
+  "sorts per message": 0.748,
+  "calls": 77,
+  "tokens": 137221,
+  "all": {
+   "labelled right": "66/89",
+   "top-level labelled right": "46/64",
+   "short right": "31/43",
+   "meeting msgs in a meeting doc": "8/9",
+   "occurrences in their own meeting doc": "3/3",
+   "chatter set aside": "6/14",
+   "docs holding these msgs": 13,
+   "one-unit docs among them": 1,
+   "forward-defined right": "0/0"
+  },
+  "cut": {
+   "units": 77,
+   "runs": 71,
+   "threads": 6,
+   "largest run": 1,
+   "top-level msgs": 71,
+   "oracle labelled right": "88/89",
+   "pure labelled units": "69/70"
+  }
+ },
+ "s1 PR": {
+  "docs opened": 14,
+  "meeting docs": 4,
+  "one-unit docs": 3,
+  "units": 72,
+  "sorts per message": 0.699,
+  "calls": 72,
+  "tokens": 139674,
+  "all": {
+   "labelled right": "63/89",
+   "top-level labelled right": "43/64",
+   "short right": "28/43",
+   "meeting msgs in a meeting doc": "5/9",
+   "occurrences in their own meeting doc": "2/3",
+   "chatter set aside": "5/14",
+   "docs holding these msgs": 14,
+   "one-unit docs among them": 3,
+   "forward-defined right": "0/0"
+  },
+  "cut": {
+   "units": 72,
+   "runs": 66,
+   "threads": 6,
+   "largest run": 2,
+   "top-level msgs": 71,
+   "oracle labelled right": "88/89",
+   "pure labelled units": "64/65"
+  }
+ },
+ "s2 R5": {
+  "docs opened": 16,
+  "meeting docs": 3,
+  "one-unit docs": 5,
+  "units": 54,
+  "sorts per message": 0.391,
+  "calls": 54,
+  "tokens": 99865,
+  "all": {
+   "labelled right": "53/68",
+   "top-level labelled right": "28/43",
+   "short right": "27/35",
+   "meeting msgs in a meeting doc": "7/7",
+   "occurrences in their own meeting doc": "1/2",
+   "chatter set aside": "13/70",
+   "docs holding these msgs": 16,
+   "one-unit docs among them": 5,
+   "forward-defined right": "3/5"
+  },
+  "stream A (team room)": {
+   "labelled right": "45/60",
+   "top-level labelled right": "28/43",
+   "short right": "27/35",
+   "meeting msgs in a meeting doc": "7/7",
+   "occurrences in their own meeting doc": "1/2",
+   "chatter set aside": "5/18",
+   "docs holding these msgs": 12,
+   "one-unit docs among them": 5,
+   "forward-defined right": "3/5"
+  },
+  "stream B (bot tests)": {
+   "labelled right": "8/8",
+   "top-level labelled right": "0/0",
+   "short right": "0/0",
+   "meeting msgs in a meeting doc": "0/0",
+   "occurrences in their own meeting doc": "0/0",
+   "chatter set aside": "8/52",
+   "docs holding these msgs": 4,
+   "one-unit docs among them": 0,
+   "forward-defined right": "0/0"
+  },
+  "cut": {
+   "units": 54,
+   "runs": 28,
+   "threads": 26,
+   "largest run": 9,
+   "top-level msgs": 57,
+   "oracle labelled right": "63/68",
+   "pure labelled units": "30/34"
+  }
+ },
+ "s2 M22": {
+  "docs opened": 14,
+  "meeting docs": 2,
+  "one-unit docs": 2,
+  "units": 83,
+  "sorts per message": 0.601,
+  "calls": 83,
+  "tokens": 166475,
+  "all": {
+   "labelled right": "52/68",
+   "top-level labelled right": "29/43",
+   "short right": "23/35",
+   "meeting msgs in a meeting doc": "7/7",
+   "occurrences in their own meeting doc": "2/2",
+   "chatter set aside": "15/70",
+   "docs holding these msgs": 14,
+   "one-unit docs among them": 2,
+   "forward-defined right": "3/5"
+  },
+  "stream A (team room)": {
+   "labelled right": "44/60",
+   "top-level labelled right": "29/43",
+   "short right": "23/35",
+   "meeting msgs in a meeting doc": "7/7",
+   "occurrences in their own meeting doc": "2/2",
+   "chatter set aside": "7/18",
+   "docs holding these msgs": 10,
+   "one-unit docs among them": 2,
+   "forward-defined right": "3/5"
+  },
+  "stream B (bot tests)": {
+   "labelled right": "8/8",
+   "top-level labelled right": "0/0",
+   "short right": "0/0",
+   "meeting msgs in a meeting doc": "0/0",
+   "occurrences in their own meeting doc": "0/0",
+   "chatter set aside": "8/52",
+   "docs holding these msgs": 4,
+   "one-unit docs among them": 0,
+   "forward-defined right": "0/0"
+  },
+  "cut": {
+   "units": 83,
+   "runs": 57,
+   "threads": 26,
+   "largest run": 1,
+   "top-level msgs": 57,
+   "oracle labelled right": "68/68",
+   "pure labelled units": "49/49"
+  }
+ },
+ "s2 R5C": {
+  "docs opened": 11,
+  "meeting docs": 2,
+  "one-unit docs": 1,
+  "units": 54,
+  "sorts per message": 0.391,
+  "calls": 54,
+  "tokens": 102160,
+  "all": {
+   "labelled right": "45/68",
+   "top-level labelled right": "22/43",
+   "short right": "21/35",
+   "meeting msgs in a meeting doc": "7/7",
+   "occurrences in their own meeting doc": "2/2",
+   "chatter set aside": "8/70",
+   "docs holding these msgs": 11,
+   "one-unit docs among them": 1,
+   "forward-defined right": "4/5"
+  },
+  "stream A (team room)": {
+   "labelled right": "37/60",
+   "top-level labelled right": "22/43",
+   "short right": "21/35",
+   "meeting msgs in a meeting doc": "7/7",
+   "occurrences in their own meeting doc": "2/2",
+   "chatter set aside": "0/18",
+   "docs holding these msgs": 7,
+   "one-unit docs among them": 1,
+   "forward-defined right": "4/5"
+  },
+  "stream B (bot tests)": {
+   "labelled right": "8/8",
+   "top-level labelled right": "0/0",
+   "short right": "0/0",
+   "meeting msgs in a meeting doc": "0/0",
+   "occurrences in their own meeting doc": "0/0",
+   "chatter set aside": "8/52",
+   "docs holding these msgs": 4,
+   "one-unit docs among them": 0,
+   "forward-defined right": "0/0"
+  },
+  "cut": {
+   "units": 54,
+   "runs": 28,
+   "threads": 26,
+   "largest run": 9,
+   "top-level msgs": 57,
+   "oracle labelled right": "63/68",
+   "pure labelled units": "30/34"
+  }
+ },
+ "s2 M20": {
+  "docs opened": 12,
+  "meeting docs": 2,
+  "one-unit docs": 1,
+  "units": 83,
+  "sorts per message": 0.601,
+  "calls": 83,
+  "tokens": 154780,
+  "all": {
+   "labelled right": "48/68",
+   "top-level labelled right": "25/43",
+   "short right": "23/35",
+   "meeting msgs in a meeting doc": "7/7",
+   "occurrences in their own meeting doc": "2/2",
+   "chatter set aside": "12/70",
+   "docs holding these msgs": 12,
+   "one-unit docs among them": 1,
+   "forward-defined right": "4/5"
+  },
+  "stream A (team room)": {
+   "labelled right": "40/60",
+   "top-level labelled right": "25/43",
+   "short right": "23/35",
+   "meeting msgs in a meeting doc": "7/7",
+   "occurrences in their own meeting doc": "2/2",
+   "chatter set aside": "4/18",
+   "docs holding these msgs": 8,
+   "one-unit docs among them": 1,
+   "forward-defined right": "4/5"
+  },
+  "stream B (bot tests)": {
+   "labelled right": "8/8",
+   "top-level labelled right": "0/0",
+   "short right": "0/0",
+   "meeting msgs in a meeting doc": "0/0",
+   "occurrences in their own meeting doc": "0/0",
+   "chatter set aside": "8/52",
+   "docs holding these msgs": 4,
+   "one-unit docs among them": 0,
+   "forward-defined right": "0/0"
+  },
+  "cut": {
+   "units": 83,
+   "runs": 57,
+   "threads": 26,
+   "largest run": 1,
+   "top-level msgs": 57,
+   "oracle labelled right": "68/68",
+   "pure labelled units": "49/49"
+  }
+ },
+ "s2 PR": {
+  "docs opened": 14,
+  "meeting docs": 2,
+  "one-unit docs": 2,
+  "units": 83,
+  "sorts per message": 0.601,
+  "calls": 83,
+  "tokens": 166475,
+  "all": {
+   "labelled right": "52/68",
+   "top-level labelled right": "29/43",
+   "short right": "23/35",
+   "meeting msgs in a meeting doc": "7/7",
+   "occurrences in their own meeting doc": "2/2",
+   "chatter set aside": "15/70",
+   "docs holding these msgs": 14,
+   "one-unit docs among them": 2,
+   "forward-defined right": "3/5"
+  },
+  "stream A (team room)": {
+   "labelled right": "44/60",
+   "top-level labelled right": "29/43",
+   "short right": "23/35",
+   "meeting msgs in a meeting doc": "7/7",
+   "occurrences in their own meeting doc": "2/2",
+   "chatter set aside": "7/18",
+   "docs holding these msgs": 10,
+   "one-unit docs among them": 2,
+   "forward-defined right": "3/5"
+  },
+  "stream B (bot tests)": {
+   "labelled right": "8/8",
+   "top-level labelled right": "0/0",
+   "short right": "0/0",
+   "meeting msgs in a meeting doc": "0/0",
+   "occurrences in their own meeting doc": "0/0",
+   "chatter set aside": "8/52",
+   "docs holding these msgs": 4,
+   "one-unit docs among them": 0,
+   "forward-defined right": "0/0"
+  },
+  "cut": {
+   "units": 83,
+   "runs": 57,
+   "threads": 26,
+   "largest run": 1,
+   "top-level msgs": 57,
+   "oracle labelled right": "68/68",
+   "pure labelled units": "49/49"
+  }
+ },
+ "s1 R5 repeat": {
+  "docs opened": 17,
+  "meeting docs": 4,
+  "one-unit docs": 5,
+  "units": 44,
+  "sorts per message": 0.427,
+  "calls": 44,
+  "tokens": 84357,
+  "all": {
+   "labelled right": "74/89",
+   "top-level labelled right": "52/64",
+   "short right": "35/43",
+   "meeting msgs in a meeting doc": "7/9",
+   "occurrences in their own meeting doc": "3/3",
+   "chatter set aside": "2/14",
+   "docs holding these msgs": 17,
+   "one-unit docs among them": 5,
+   "forward-defined right": "0/0"
+  },
+  "picks differing from the first run": 2
+ },
+ "s1 R5C repeat": {
+  "docs opened": 13,
+  "meeting docs": 3,
+  "one-unit docs": 5,
+  "units": 44,
+  "sorts per message": 0.427,
+  "calls": 44,
+  "tokens": 79227,
+  "all": {
+   "labelled right": "63/89",
+   "top-level labelled right": "43/64",
+   "short right": "28/43",
+   "meeting msgs in a meeting doc": "6/9",
+   "occurrences in their own meeting doc": "2/3",
+   "chatter set aside": "2/14",
+   "docs holding these msgs": 13,
+   "one-unit docs among them": 5,
+   "forward-defined right": "0/0"
+  },
+  "picks differing from the first run": 2
+ },
+ "context followed": {
+  "s1 M22": {
+   "joined": 50,
+   "joined a doc holding a context msg": 48,
+   "of those, wrong": 15,
+   "joined another doc, wrong": 1
+  },
+  "s1 R5C": {
+   "joined": 24,
+   "joined a doc holding a context msg": 22,
+   "of those, wrong": 8,
+   "joined another doc, wrong": 1
+  },
+  "s1 M20": {
+   "joined": 51,
+   "joined a doc holding a context msg": 42,
+   "of those, wrong": 9,
+   "joined another doc, wrong": 4
+  },
+  "s1 PR": {
+   "joined": 45,
+   "joined a doc holding a context msg": 43,
+   "of those, wrong": 15,
+   "joined another doc, wrong": 0
+  },
+  "s2 M22": {
+   "joined": 42,
+   "joined a doc holding a context msg": 42,
+   "of those, wrong": 13,
+   "joined another doc, wrong": 0
+  },
+  "s2 R5C": {
+   "joined": 24,
+   "joined a doc holding a context msg": 24,
+   "of those, wrong": 12,
+   "joined another doc, wrong": 0
+  },
+  "s2 M20": {
+   "joined": 47,
+   "joined a doc holding a context msg": 45,
+   "of those, wrong": 16,
+   "joined another doc, wrong": 2
+  },
+  "s2 PR": {
+   "joined": 42,
+   "joined a doc holding a context msg": 42,
+   "of those, wrong": 13,
+   "joined another doc, wrong": 0
+  }
+ },
+ "_e13 cents": 4.315
+}

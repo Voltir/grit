@@ -1,0 +1,17 @@
+{
+ "s1": {
+  "meeting messages": 9,
+  "day found, first candidate right": 5,
+  "wrong day": 0,
+  "occurrences with a right day": "2/3",
+  "non-meeting msgs with a day word": "3/94"
+ },
+ "s2": {
+  "meeting messages": 7,
+  "day found, first candidate right": 2,
+  "wrong day": 0,
+  "occurrences with a right day": "2/2",
+  "non-meeting msgs with a day word": "5/131"
+ },
+ "bar (sheet 1: 0 wrong, >= 5 of 9)": true
+}
