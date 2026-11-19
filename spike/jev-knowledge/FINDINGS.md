@@ -1,7 +1,7 @@
 # Jev placement for the knowledge plugin: findings
 
-The spike ran on a snapshot of a deployment's database, taken 2026-11-19. Jev's spend was 36.33¢ in total
-(20.52¢ through P2, E9 none, E10 11.35¢, E11 4.46¢), counted from the API's reported input tokens
+The spike ran on a snapshot of a deployment's database, taken 2026-11-19. Jev's spend was 38.80¢ in total
+(20.52¢ through P2, E9 none, E10 11.35¢, E11 4.46¢, E12 2.47¢), counted from the API's reported input tokens
 (`spend.json`). No other model was called.
 `out/` holds ids and probabilities only. The text-bearing case files and label sheets are in the
 untracked `data/`.
@@ -246,6 +246,141 @@ first, then the 8 newest, then BM25 over lead + passages to fill. Short means un
 - **The mark.** Setting aside picks under it, rather than opening a new topic, costs one right
   placement in 27. It does not protect against confident wrong picks. Those come mostly from
   near-duplicate topics, which merging duplicates would address, not a threshold.
+
+## E12: the room sheet replayed through a kind-aware sort
+
+**The data.** Nick's hand-labelled sheet of the room era: 103 messages, oldest first, in one
+room with six threads.
+- After two typos are folded into `engine sync` it holds **17 labels**. The brief counted 18.
+- It has 89 labelled messages, 14 chatter, and 3 meeting occurrences across 9 messages.
+- The sheet does not name a thread's root, so each thread is one unit.
+
+**Running it.** `python3 -I E12-a.py`, then `E12-b.py run | report`, then `E12-c.py [--fitted]`.
+Aggregates are in `out/e12a.json`, `out/e12b.json` and `out/e12c*.json`. Per-unit placements quote
+text, so they are in `.local/jev-spike/e12/`. E12 cost **2.47¢**: 323 calls and 588,607 input
+tokens, about 1,820 tokens a call.
+
+### E12a: run purity (code only)
+
+A unit is pure when its labelled messages share one label. The sheet's times have minute
+resolution, so gap 0 means the same minute.
+
+| Gap | Units | Pure / labelled units | Labelled msgs in a pure unit | Chatter-only units | Oracle: msgs under their unit's majority label |
+|---|---|---|---|---|---|
+| same minute | 62 | 57/59 | 76/89 | 3 | — |
+| 5 min | 44 | 38/43 | 62/89 | 1 | 82/89 |
+| 15 min | 37 | 30/37 | 54/89 | 0 | 80/89 |
+| 30 min | 30 | 23/30 | 48/89 | 0 | — |
+| 60 min | 22 | 15/22 | 42/89 | 0 | — |
+
+- **Labels recur.** At every gap from 5 to 60 minutes, 11 of the 17 labels span more than one
+  unit. Joining them across days is the sort's job.
+- **Where the impurity is.** At 5 minutes, 27 labelled messages sit in a mixed unit:
+  - 10 are in thread 5 (9 `engine sync` and 1 meeting message), which is mixed at every gap;
+  - 17 are in four runs where the subject changes within 5 minutes.
+- **Context from the previous two top-level messages.** Of the 64 labelled top-level messages,
+  23 have both previous messages sharing their label, and 38 have at least one.
+- **The newest-two-labels baseline** gets **28/43** short (<150 chars) labelled top-level
+  messages right. That holds whether it counts the whole channel or the top level alone. The
+  brief counted 42 such messages; no message sits near the 150-char line to explain the gap.
+
+### E12b: the incremental sort (Jev)
+
+**How it runs.**
+- Units are replayed oldest first.
+- A document's view is its kind, the days it was mentioned, its first unit (360 chars) and its
+  newest unit's head (300).
+- The item is the unit, dated, up to 1,500 chars.
+- One Choice covers every document so far, plus `new_topic`, `new_meeting` and `aside`. The control
+  offers only `new` and `aside`.
+
+**The wordings** are in `E12-b.py`:
+- W1 is plain;
+- W2 defines the two kinds;
+- W3 adds "a short reply continues what came before".
+
+A message counts as right when it sits in a document whose majority label is its own.
+
+| Arm | Docs | ARI | Purity / inverse | Labelled right | Meeting msgs in a meeting doc | Occurrences with their own meeting doc | Short top-level right |
+|---|---|---|---|---|---|---|---|
+| 5 min, W1 | 14 | 0.517 | 0.820 / 0.775 | 72/89 | 6/9 | 2/3 | 33/43 |
+| **5 min, W2** | 18 | **0.554** | 0.876 / 0.697 | **77/89** | 7/9 | **3/3** | **38/43** |
+| 5 min, W3 | 17 | 0.525 | 0.843 / 0.708 | 74/89 | 7/9 | 3/3 | 35/43 |
+| 15 min, W2 | 15 | 0.502 | 0.798 / 0.685 | 70/89 | 7/9 | 3/3 | 33/43 |
+| 5 min, W2, no kinds | 18 | 0.508 | 0.843 / 0.685 | 75/89 | 0/9 (all in topics) | 0/3 | 36/43 |
+| W2, mark 0.5, retry joined | 16 | 0.547 | 0.854 / 0.719 | 74/89 | 8/9 | 3/3 | 35/43 |
+| W2, mark 0.7, retry joined | 13 | 0.388 | 0.719 / 0.663 | 62/89 | 5/9 | 2/3 | 28/43 |
+| W2, mark 0.7, drop | 9 | 0.242 | 0.876 / 0.472 | 30/89 | 6/9 | 2/3 | 13/43 |
+
+- **Kinds work on meetings.**
+  - Under W2, each of the 3 occurrences gets a meeting document of its own.
+  - Of the 2 meeting messages it misses, 1 rides in the `engine sync` thread and 1 was set aside
+    with the chatter after it.
+  - The no-kind control puts all 9 in topic documents. One of those topics it shares with
+    `hysa widget`.
+- **Meeting documents take in other messages.** W2 opened 4 meeting documents, holding 6
+  labelled messages that are not about a meeting:
+  - `cms`'s request for ten minutes to chat (2), arguably a meeting;
+  - 3 that ride in mixed runs;
+  - 1 `engine sync` reply that follows the meeting talk.
+- **Short messages.** Under W2, 38/43 are right, against 28/43 for the newest-two-labels rule.
+  The best possible placement of 5-minute units gets 39/43, so most of the gain comes from runs
+  carrying short replies with their neighbours.
+- **The units cap the score.**
+  - W2 gets 77 labelled messages right, against the oracle's 82.
+  - Its largest loss is in inverse purity: `engine sync` is split in two. One document holds the
+    first days (13). The other (15) was opened on 11-18 by a mixed run, at p 0.34.
+- **Chatter cannot judge unit placement.** W2 sets aside 2/14. At 5 minutes the units allow at
+  most 1/14, because 13 of the 14 chatter messages ride in labelled units.
+- **The hindsight retry does not help.**
+  - At a mark of 0.5 it holds 7 units, and against no mark it loses 3 labelled messages and 3
+    short ones.
+  - At 0.7 it holds 13 units and loses 15 labelled messages.
+  - Joining the next unit welds two matters together.
+  - Dropping a unit below the mark, instead of retrying it, is far worse.
+- **The wording mattered more than the gap.** Going from W1 to W2 changed 5 labelled messages.
+  Of the two gaps, 5 minutes beat 15.
+
+### E12c: a meeting's day by code (no model)
+
+The rule reads weekday names as the next such day, and reads today, tomorrow and m/d dates. The
+zone is assumed to be UTC−5.
+
+| Rule | Meeting msgs with a day | First candidate right | Wrong | Occurrences with the right day | Non-meeting msgs with a day word |
+|---|---|---|---|---|---|
+| as written | 5/9 | 5/9 | 0 | 2/3 | 3/94 |
+| fitted to this sample ("now", "real quick" mean today) | 7/9 | 6/9 | 1 | 3/3 | 8/94 |
+
+- One message states a time ("930").
+- The rule as written is never wrong. It finds no day for the impromptu call, whose messages
+  name none.
+
+### What E12 says for `grit/note-knowledge-kinds`
+
+- **Measured.**
+  - `new_meeting` beside `new_topic` and `aside` gives each of the 3 occurrences a document of
+    its own. The control gives none of them one.
+  - It raises ARI from 0.508 to 0.554.
+  - Five-minute runs plus threads are the better unit.
+  - Short items get 38/43 right, against the baseline's 28/43.
+- **Inferred.**
+  - **Set-aside.** The note's rule (set aside, offered again joined with the room's next run)
+    should not ship as written. Here it only lost placements. Setting aside should come from
+    Jev's `aside` answer, not from a confidence mark.
+  - **The meeting opening gate.** The note opens a meeting only when a time or attendees parse.
+    With the parser as written, it would have kept 2 of the 3 occurrences. The impromptu call
+    needs "now".
+  - **The split `engine sync`** is what the topic merge is for.
+- **Not measured.**
+  - Run-to-run variance: each request ran once, and identical requests are served from the cache.
+  - Any room but this one.
+
+### Next
+
+- Measure whether merging, at the end of the night, documents of the same kind rejoins
+  `engine sync`'s two halves.
+- Score the meeting opening gate together with the sort.
+- Replay a second hand-labelled room before W2 is adopted as the wording.
 
 ## What it decides
 

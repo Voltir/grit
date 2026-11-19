@@ -1,0 +1,134 @@
+{
+ "messages": 103,
+ "labels": 17,
+ "chatter": 14,
+ "top-level": 71,
+ "short top-level labelled": 43,
+ "gaps": {
+  "0": {
+   "units": 62,
+   "runs": 56,
+   "threads": 6,
+   "chatter-only units": 3,
+   "labelled units": 59,
+   "pure units": 57,
+   "pure runs": 52,
+   "labelled runs": 53,
+   "labelled messages": 89,
+   "in a pure unit": 76,
+   "labels split": 12,
+   "labels": 17,
+   "units per label, mean": 3.59,
+   "multi-message units": 16,
+   "impure units' label counts": [
+    2,
+    2
+   ]
+  },
+  "5": {
+   "units": 44,
+   "runs": 38,
+   "threads": 6,
+   "chatter-only units": 1,
+   "labelled units": 43,
+   "pure units": 38,
+   "pure runs": 33,
+   "labelled runs": 37,
+   "labelled messages": 89,
+   "in a pure unit": 62,
+   "labels split": 11,
+   "labels": 17,
+   "units per label, mean": 2.88,
+   "multi-message units": 21,
+   "impure units' label counts": [
+    2,
+    2,
+    2,
+    2,
+    3
+   ]
+  },
+  "15": {
+   "units": 37,
+   "runs": 31,
+   "threads": 6,
+   "chatter-only units": 0,
+   "labelled units": 37,
+   "pure units": 30,
+   "pure runs": 25,
+   "labelled runs": 31,
+   "labelled messages": 89,
+   "in a pure unit": 54,
+   "labels split": 11,
+   "labels": 17,
+   "units per label, mean": 2.65,
+   "multi-message units": 21,
+   "impure units' label counts": [
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    3
+   ]
+  },
+  "30": {
+   "units": 30,
+   "runs": 24,
+   "threads": 6,
+   "chatter-only units": 0,
+   "labelled units": 30,
+   "pure units": 23,
+   "pure runs": 18,
+   "labelled runs": 24,
+   "labelled messages": 89,
+   "in a pure unit": 48,
+   "labels split": 11,
+   "labels": 17,
+   "units per label, mean": 2.47,
+   "multi-message units": 21,
+   "impure units' label counts": [
+    2,
+    2,
+    2,
+    2,
+    3,
+    4,
+    4
+   ]
+  },
+  "60": {
+   "units": 22,
+   "runs": 16,
+   "threads": 6,
+   "chatter-only units": 0,
+   "labelled units": 22,
+   "pure units": 15,
+   "pure runs": 10,
+   "labelled runs": 16,
+   "labelled messages": 89,
+   "in a pure unit": 42,
+   "labels split": 11,
+   "labels": 17,
+   "units per label, mean": 2.06,
+   "multi-message units": 19,
+   "impure units' label counts": [
+    2,
+    2,
+    2,
+    3,
+    3,
+    4,
+    4
+   ]
+  }
+ },
+ "context": {
+  "labelled top-level": 64,
+  "prev2 both share": 23,
+  "prev2 one or more share": 38,
+  "short top-level: newest two labels (channel)": "28/43",
+  "short top-level: newest two labels (top-level)": "28/43"
+ }
+}

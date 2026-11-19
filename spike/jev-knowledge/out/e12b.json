@@ -1,0 +1,232 @@
+{
+ "g5-W1": {
+  "docs opened": 14,
+  "meeting docs": 3,
+  "ARI": 0.517,
+  "purity": 0.82,
+  "inverse purity": 0.775,
+  "labelled placed under their label's majority doc": "72/89",
+  "labelled set aside": 1,
+  "meeting msgs in a meeting doc": "6/9",
+  "meeting msgs in a topic doc": 2,
+  "meeting msgs set aside": 1,
+  "meeting occurrences with a meeting doc of their own": "2/3",
+  "meeting occurrences -> meeting docs": {
+   "meeting 11-16 team": [
+    5
+   ],
+   "meeting 11-18 followup": [
+    11
+   ]
+  },
+  "non-meeting labelled msgs in meeting docs": 6,
+  "chatter set aside": "2/14",
+  "short top-level right": "33/43",
+  "calls": 44,
+  "tokens": 69095,
+  "held below mark": 0,
+  "low p picks (<0.7)": 20
+ },
+ "g5-W2": {
+  "docs opened": 18,
+  "meeting docs": 4,
+  "ARI": 0.554,
+  "purity": 0.876,
+  "inverse purity": 0.697,
+  "labelled placed under their label's majority doc": "77/89",
+  "labelled set aside": 1,
+  "meeting msgs in a meeting doc": "7/9",
+  "meeting msgs in a topic doc": 1,
+  "meeting msgs set aside": 1,
+  "meeting occurrences with a meeting doc of their own": "3/3",
+  "meeting occurrences -> meeting docs": {
+   "meeting 11-16 team": [
+    6
+   ],
+   "meeting 11-18 engine": [
+    12
+   ],
+   "meeting 11-18 followup": [
+    15
+   ]
+  },
+  "non-meeting labelled msgs in meeting docs": 6,
+  "chatter set aside": "2/14",
+  "short top-level right": "38/43",
+  "calls": 44,
+  "tokens": 83279,
+  "held below mark": 0,
+  "low p picks (<0.7)": 16
+ },
+ "g5-W3": {
+  "docs opened": 17,
+  "meeting docs": 4,
+  "ARI": 0.525,
+  "purity": 0.843,
+  "inverse purity": 0.708,
+  "labelled placed under their label's majority doc": "74/89",
+  "labelled set aside": 1,
+  "meeting msgs in a meeting doc": "7/9",
+  "meeting msgs in a topic doc": 1,
+  "meeting msgs set aside": 1,
+  "meeting occurrences with a meeting doc of their own": "3/3",
+  "meeting occurrences -> meeting docs": {
+   "meeting 11-16 team": [
+    6
+   ],
+   "meeting 11-18 engine": [
+    12
+   ],
+   "meeting 11-18 followup": [
+    15
+   ]
+  },
+  "non-meeting labelled msgs in meeting docs": 6,
+  "chatter set aside": "2/14",
+  "short top-level right": "35/43",
+  "calls": 44,
+  "tokens": 84929,
+  "held below mark": 0,
+  "low p picks (<0.7)": 17
+ },
+ "g15-W2": {
+  "docs opened": 15,
+  "meeting docs": 4,
+  "ARI": 0.502,
+  "purity": 0.798,
+  "inverse purity": 0.685,
+  "labelled placed under their label's majority doc": "70/89",
+  "labelled set aside": 1,
+  "meeting msgs in a meeting doc": "7/9",
+  "meeting msgs in a topic doc": 1,
+  "meeting msgs set aside": 1,
+  "meeting occurrences with a meeting doc of their own": "3/3",
+  "meeting occurrences -> meeting docs": {
+   "meeting 11-16 team": [
+    6
+   ],
+   "meeting 11-18 engine": [
+    11
+   ],
+   "meeting 11-18 followup": [
+    13
+   ]
+  },
+  "non-meeting labelled msgs in meeting docs": 9,
+  "chatter set aside": "1/14",
+  "short top-level right": "33/43",
+  "calls": 37,
+  "tokens": 69729,
+  "held below mark": 0,
+  "low p picks (<0.7)": 17
+ },
+ "g5-W2-nokind": {
+  "docs opened": 18,
+  "meeting docs": 0,
+  "ARI": 0.508,
+  "purity": 0.843,
+  "inverse purity": 0.685,
+  "labelled placed under their label's majority doc": "75/89",
+  "labelled set aside": 0,
+  "meeting msgs in a meeting doc": "0/9",
+  "meeting msgs in a topic doc": 9,
+  "meeting msgs set aside": 0,
+  "meeting occurrences with a meeting doc of their own": "0/3",
+  "meeting occurrences -> meeting docs": {},
+  "non-meeting labelled msgs in meeting docs": 0,
+  "chatter set aside": "1/14",
+  "short top-level right": "36/43",
+  "calls": 44,
+  "tokens": 81494,
+  "held below mark": 0,
+  "low p picks (<0.7)": 20
+ },
+ "g5-W2-m50-retry": {
+  "docs opened": 16,
+  "meeting docs": 4,
+  "ARI": 0.547,
+  "purity": 0.854,
+  "inverse purity": 0.719,
+  "labelled placed under their label's majority doc": "74/89",
+  "labelled set aside": 2,
+  "meeting msgs in a meeting doc": "8/9",
+  "meeting msgs in a topic doc": 1,
+  "meeting msgs set aside": 0,
+  "meeting occurrences with a meeting doc of their own": "3/3",
+  "meeting occurrences -> meeting docs": {
+   "meeting 11-16 team": [
+    6
+   ],
+   "meeting 11-18 engine": [
+    11
+   ],
+   "meeting 11-18 followup": [
+    14
+   ]
+  },
+  "non-meeting labelled msgs in meeting docs": 5,
+  "chatter set aside": "1/14",
+  "short top-level right": "35/43",
+  "calls": 44,
+  "tokens": 80811,
+  "held below mark": 7,
+  "low p picks (<0.7)": 12
+ },
+ "g5-W2-m70-retry": {
+  "docs opened": 13,
+  "meeting docs": 3,
+  "ARI": 0.388,
+  "purity": 0.719,
+  "inverse purity": 0.663,
+  "labelled placed under their label's majority doc": "62/89",
+  "labelled set aside": 2,
+  "meeting msgs in a meeting doc": "5/9",
+  "meeting msgs in a topic doc": 4,
+  "meeting msgs set aside": 0,
+  "meeting occurrences with a meeting doc of their own": "2/3",
+  "meeting occurrences -> meeting docs": {
+   "meeting 11-16 team": [
+    6
+   ],
+   "meeting 11-18 followup": [
+    12
+   ]
+  },
+  "non-meeting labelled msgs in meeting docs": 3,
+  "chatter set aside": "1/14",
+  "short top-level right": "28/43",
+  "calls": 44,
+  "tokens": 75854,
+  "held below mark": 13,
+  "low p picks (<0.7)": 11
+ },
+ "g5-W2-m70-drop": {
+  "docs opened": 9,
+  "meeting docs": 3,
+  "ARI": 0.242,
+  "purity": 0.876,
+  "inverse purity": 0.472,
+  "labelled placed under their label's majority doc": "30/89",
+  "labelled set aside": 48,
+  "meeting msgs in a meeting doc": "6/9",
+  "meeting msgs in a topic doc": 1,
+  "meeting msgs set aside": 2,
+  "meeting occurrences with a meeting doc of their own": "2/3",
+  "meeting occurrences -> meeting docs": {
+   "meeting 11-16 team": [
+    6
+   ],
+   "meeting 11-18 followup": [
+    8
+   ]
+  },
+  "non-meeting labelled msgs in meeting docs": 3,
+  "chatter set aside": "6/14",
+  "short top-level right": "13/43",
+  "calls": 44,
+  "tokens": 60491,
+  "held below mark": 0,
+  "low p picks (<0.7)": 24
+ },
+ "_e12 cents": 2.4721
+}

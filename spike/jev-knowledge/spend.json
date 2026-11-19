@@ -198,6 +198,12 @@
    "errors": 0,
    "tokens": 80508
   },
+  "e12b": {
+   "calls": 323,
+   "cents": 2.4721,
+   "errors": 0,
+   "tokens": 588607
+  },
   "smoke": {
    "calls": 1,
    "cents": 0.0019,
@@ -205,8 +211,8 @@
    "tokens": 444
   }
  },
- "calls": 3021,
- "cents": 36.3273,
- "tokens": 8649360,
- "usd": 0.36327312
+ "calls": 3344,
+ "cents": 38.7995,
+ "tokens": 9237967,
+ "usd": 0.387994614
 }

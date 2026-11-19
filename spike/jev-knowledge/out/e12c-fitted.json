@@ -1,0 +1,11 @@
+{
+ "meeting messages": 9,
+ "with a day word": 7,
+ "first candidate right": 6,
+ "right day among candidates": 6,
+ "wrong only": 1,
+ "with a time": 1,
+ "occurrences with the right day from some message": "3/3",
+ "occurrences whose first day-bearing message is right first": "3/3",
+ "non-meeting messages with a day word": "8/94"
+}
