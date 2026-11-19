@@ -397,7 +397,7 @@ object KeptBriefTests extends TestSuite {
       (versions(unclaimed), before.isDefined, current(lapsed)) ==> (0, true, before)
     }
     test(
-      "a keep from a room above a claim's label leaves its brief as it was, at its label alone"
+      "a create from a room above its project's label is refused naming the project, its brief left as it was"
     ) {
       val (projects, store) = claimedProject()
       // At the claim's own instant, where a claim made anew is not told from the one renewed.
@@ -413,15 +413,17 @@ object KeptBriefTests extends TestSuite {
         "cites" -> ujson.Arr("p/m")
       )
       val above = grit.dbos.sql.TestTx.fake(Clearance.of(TestLabels.Trial))
-      val keptAt = store.keeper
-        .current(right(DocKey.of("p/5")), TestLabels.Trial)(using above)
-        .fold(failed, _.fold(0L)(d => DocumentVersionId.value(d.version)))
       (
         answer,
+        store.keeper.labels(right(DocKey.of("p/5")))(using above).fold(failed, identity),
         store.keeper.labels(briefKey)(using above).fold(failed, identity),
         versions(store)
       ) ==> (
-        CommandOutcome.Done(s"Kept p/5 x (note, open). Now at version $keptAt."),
+        CommandOutcome.Refused(
+          "project p is kept labelled [level: public], below what this room writes " +
+            "([level: public, in: {trial}]): keep from a room at its label"
+        ),
+        Vector(),
         Vector(Label.Public),
         1
       )

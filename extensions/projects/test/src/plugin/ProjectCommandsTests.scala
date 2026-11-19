@@ -200,6 +200,13 @@ object ProjectCommandsTests extends TestSuite {
       ) ==> (CommandOutcome.Done("Kept p/1 idea (change, proposed)."), true, true, true)
     }
 
+    test("a create believes the project's index at no more than its version before") {
+      val projects = plugin()
+      val store = Store()
+      done(askBelieved(Integrity.Member)(projects, store, "project_new", "project" -> "p"))
+      kept(projects, store, "a", "note", "A.")
+      (believedOf(store, "p"), believedOf(store, "p/1")) ==> (Some("member"), Some("authority"))
+    }
     test("project_propose refuses a handle another artifact holds, keeping nothing") {
       val projects = proposing()
       val store = Store()
