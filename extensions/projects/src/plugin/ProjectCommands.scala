@@ -47,6 +47,7 @@ import grit.projects.name.{
   StateName
 }
 import grit.projects.render.{AnswerText, Brief, BriefRefusal, ProjectMarkdown}
+import grit.prose.words.Words
 import grit.std.either.Traversal
 
 /** The projects plugin's commands over the methods declared in its store, their checks found
@@ -2740,9 +2741,8 @@ private[plugin] object ProjectCommands {
       .map(d => s"${DocKey.value(d.key)} (kept ${Label.shown(d.label)})")
       .mkString(", ")
     val more = if (left.size > LeftOverMost) s" and ${left.size - LeftOverMost} more" else ""
-    val (them, it) =
-      if (left.size == 1) ("1 artifact", "it") else (s"${left.size} artifacts", "them")
-    s"project ${ProjectKey.value(project)} was re-keyed, but $them of the old form " +
+    val it = if (left.size == 1) "it" else "them"
+    s"project ${ProjectKey.value(project)} was re-keyed, but ${Words.counted(left.size, "artifact")} of the old form " +
       s"${if (left.size == 1) "is" else "are"} kept above its index, where the re-key could " +
       s"not read $it: $named$more. No command can number $it, since that would write the " +
       s"index from above it. Use the project from a room at its index's label " +
@@ -3453,7 +3453,7 @@ private[plugin] object ProjectCommands {
 
   /** What an answer adds when a step re-ranked `n` siblings to make room: nothing when none. */
   private def respread(n: Int): String =
-    if (n < 1) "" else s" Re-ranked ${if (n == 1) "1 sibling" else s"$n siblings"} to make room."
+    if (n < 1) "" else s" Re-ranked ${Words.counted(n, "sibling")} to make room."
 
   /** Nothing, or why what `steps` made of `project` may not be kept: a brief over its budget
     * ([[within]]), or an artifact changed, or the index when a step minted an id, kept below what
