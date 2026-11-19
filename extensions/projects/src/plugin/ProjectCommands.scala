@@ -732,6 +732,8 @@ private[plugin] final class ProjectCommands(
               (doc, label) = where
               found <- stored(own.documents.asOf(doc, label, when))
               document <- found.toRight(Stop.Refused(s"${key.value} had no version at $when"))
+              newest <- stored(own.documents.current(doc, label))
+              readable <- versionsRead(own.documents, project, (newest.toVector :+ document))
               version <- refuse(readable(document))
             } yield (document, version)
         }
@@ -823,9 +825,14 @@ private[plugin] final class ProjectCommands(
         project <- loaded(own.documents, args.key.project)
         where <- recorded(own.documents, project, args.key)
         kept <- stored(own.documents.versions(where._1, where._2, HistoryMost))
+        readable <- versionsRead(
+          own.documents,
+          project,
+          kept.collect { case DocumentVersion.Holding(d) => d }
+        )
         text <- args.diff match {
           case None =>
-            refuse(Traversal.sequence(kept.map(row)))
+            refuse(Traversal.sequence(kept.map(row(readable))))
               .map(AnswerText.versions(_, "No version is kept."))
           case Some((from, to)) =>
             // Its id, as its newest version holds it: the key it is stored under is never shown.
@@ -2412,8 +2419,8 @@ private[plugin] object ProjectCommands {
   /** 50: the most versions `project_history` lists, and reads to find the two it diffs. */
   private val HistoryMost: Int = 50
 
-  /** `version` as [[AnswerText.versions]] lists it, or why it does not read. */
-  private def row(
+  /** `version` as [[AnswerText.versions]] lists it, read by `readable`, or why it does not read. */
+  private def row(readable: Document -> Either[String, Artifact])(
       version: DocumentVersion
   ): Either[String, (version: Long, written: Instant, head: Option[ArtifactHead])] =
     version match {
@@ -3491,6 +3498,38 @@ private[plugin] object ProjectCommands {
       documents <- stored(Traversal.traverse(labels)(own.current(key, _)))
       under <- refuse(Rekeyed.storeKey(id, documents.flatten))
     } yield under
+
+  /** How `versions`, versions of one artifact of `project`, read: as [[readable]] reads them,
+    * and one kept before the project's re-key as [[grit.projects.artifact.Rekey.before]] reads
+    * it through [[Rekeyed]]'s table, at the rank of the newest version holding one; or why the
+    * table cannot be read.
+    */
+  private def versionsRead(own: DocumentShelf, project: Loaded, versions: Vector[Document])(using
+      Tx^
+  ): Either[Stop, Document -> Either[String, Artifact]] =
+    if (!versions.exists(ArtifactJson.isOldForm)) Right(readable)
+    else {
+      for {
+        keys <- refuse(Rekeyed.keys(project.key, project.next))
+        documents <- stored(Traversal.traverse(keys) { key =>
+          own.labels(key).flatMap(labels => Traversal.traverse(labels)(own.current(key, _)))
+        })
+        ids <- refuse(Rekeyed.ids(project.key, documents.flatten.flatten))
+      } yield {
+        val rank = versions.iterator
+          .filterNot(ArtifactJson.isOldForm)
+          .map(Artifact.of(_).toOption)
+          .collectFirst { case Some(a) => a.head.rank }
+          .getOrElse(Rank.Middle)
+        d =>
+          if (ArtifactJson.isOldForm(d))
+            grit.projects.artifact.Rekey
+              .before(d, ids, rank)
+              .left
+              .map(why => s"${DocKey.value(d.key)} cannot be read: $why")
+          else readable(d)
+      }
+    }
 
   /** Nothing, or a refusal naming each of `writing` kept at a label below what this room writes,
     * as `<subject> is kept <label>, below what this room writes (<clearance>): <verb> from a room

@@ -62,16 +62,11 @@ object Rekey {
       ids.get(s).toRight(s"it cites $s, which this transaction reads no artifact under")
     val read: Vector[Either[String, (Document, Artifact, Option[Handle])]] = numbered.map {
       (d, id) =>
-        val key = DocKey.value(d.key)
         (for {
-          name <-
-            if (key.startsWith(s"$p/")) Right(key.stripPrefix(s"$p/"))
-            else Left(s"it is not of project $p")
-          carried = name.headOption.exists(_.isDigit)
-          handle <- Handle.of(if (carried) s"$Carried$name" else name)
-          artifact <- ArtifactJson.oldFormOf(id, Some(handle), Rank.Middle, d.data, reference)
-        } yield (d, artifact, Option.when(carried)(handle))).left
-          .map(why => s"$key cannot be re-keyed: $why")
+          named <- handleOf(project, d.key)
+          artifact <- ArtifactJson.oldFormOf(id, Some(named.handle), Rank.Middle, d.data, reference)
+        } yield (d, artifact, Option.when(named.carried)(named.handle))).left
+          .map(why => s"${DocKey.value(d.key)} cannot be re-keyed: $why")
     }
     val (refused, artifacts) = read.partitionMap(identity)
     if (refused.nonEmpty) Left(refused)
@@ -92,6 +87,43 @@ object Rekey {
         artifacts.collect { case (d, _, Some(h)) => (was = d.key, handle = h) }
       )
     }
+  }
+
+  /** `document`, a version kept before its project's re-key, read as the re-key wrote its
+    * artifact, at `rank`: its id, parent and cites the ids `ids` gives the keys they name, its
+    * handle its name (`k-<name>` for one led by a digit); or why not: a key `ids` holds no id
+    * of, or data that is not an old-form artifact's.
+    */
+  private[projects] def before(
+      document: Document,
+      ids: Map[DocKey, ArtifactKey],
+      rank: Rank
+  ): Either[String, Artifact] = {
+    val reference: String -> Either[String, ArtifactKey] = s =>
+      DocKey.of(s).toOption.flatMap(ids.get).toRight(s"it cites $s, which the re-key gave no id")
+    for {
+      id <- ids.get(document.key).toRight("the re-key gave it no id")
+      named <- handleOf(id.project, document.key)
+      artifact <- ArtifactJson.oldFormOf(id, Some(named.handle), rank, document.data, reference)
+    } yield artifact
+  }
+
+  /** The handle the re-key gives the artifact kept under `key`, and whether it is carried as
+    * `k-<name>`; or why not: a key not of `project`, or a name no handle may be.
+    */
+  private def handleOf(
+      project: ProjectKey,
+      key: DocKey
+  ): Either[String, (handle: Handle, carried: Boolean)] = {
+    val p = ProjectKey.value(project)
+    val whole = DocKey.value(key)
+    for {
+      name <-
+        if (whole.startsWith(s"$p/")) Right(whole.stripPrefix(s"$p/"))
+        else Left(s"it is not of project $p")
+      carried = name.headOption.exists(_.isDigit)
+      handle <- Handle.of(if (carried) s"$Carried$name" else name)
+    } yield (handle = handle, carried = carried)
   }
 
   /** A title's leading `M<n>`, as a milestone is titled. */

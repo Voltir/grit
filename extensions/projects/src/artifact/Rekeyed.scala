@@ -20,6 +20,14 @@ object Rekeyed {
       s"${ProjectKey.value(id.project)}#rekeyed-${(ArtifactNumber.value(id.number) - 1) / PerDocument}"
     )
 
+  /** The key of each document that may hold where an artifact of `project` numbered below `next`
+    * is kept, in order.
+    */
+  def keys(project: ProjectKey, next: ArtifactNumber): Either[String, Vector[DocKey]] =
+    grit.std.either.Traversal.traverse(
+      Vector.range(0, (ArtifactNumber.value(next) - 2) / PerDocument + 1)
+    )(k => ArtifactNumber.of(k * PerDocument + 1).flatMap(n => key(ArtifactKey.of(project, n))))
+
   /** `kept`, each number with the key its artifact is kept under, as one document's data, or why
     * not: a key of another project than `project`'s, or whose name is over [[Handle.Longest]]
     * characters. Its caller gives numbers of one document ([[key]]).
@@ -48,29 +56,40 @@ object Rekeyed {
   /** The key `id` is kept under as `documents` hold it, each a version of [[key]]'s document at a
     * label, merged: `None` when none names it, or why one cannot be read.
     */
-  def storeKey(id: ArtifactKey, documents: Vector[Document]): Either[String, Option[DocKey]] = {
-    val number = ArtifactNumber.value(id.number).toString
-    documents
-      .foldLeft[Either[String, Option[String]]](Right(None)) { (so, d) =>
-        so.flatMap(found =>
-          d.data.objOpt.flatMap(_.get(KeysField)).flatMap(_.objOpt) match {
-            case None => Left(s"${DocKey.value(d.key)} holds no $KeysField")
-            case Some(keys) =>
-              keys.get(number) match {
-                case None => Right(found)
-                case Some(ujson.Str(name)) => Right(found.orElse(Some(name)))
-                case Some(other) =>
-                  Left(s"${DocKey.value(d.key)} names $number as ${other.render()}, not a name")
-              }
-          }
-        )
+  def storeKey(id: ArtifactKey, documents: Vector[Document]): Either[String, Option[DocKey]] =
+    mapped(id.project, documents).map(_.collectFirst { case (k, i) if i == id => k })
+
+  /** The table backwards: each key `documents` name an artifact kept under, with its id, each
+    * document a version of a [[key]] document of `project` at a label; or why one cannot be read.
+    */
+  def ids(
+      project: ProjectKey,
+      documents: Vector[Document]
+  ): Either[String, Map[DocKey, ArtifactKey]] =
+    mapped(project, documents).map(_.toMap)
+
+  /** Each key `documents` map, with its id, in their order, or why one cannot be read. */
+  private def mapped(
+      project: ProjectKey,
+      documents: Vector[Document]
+  ): Either[String, Vector[(DocKey, ArtifactKey)]] =
+    grit.std.either.Traversal
+      .traverse(documents) { d =>
+        d.data.objOpt.flatMap(_.get(KeysField)).flatMap(_.objOpt) match {
+          case None => Left(s"${DocKey.value(d.key)} holds no $KeysField")
+          case Some(keys) =>
+            grit.std.either.Traversal.traverse(keys.toVector) {
+              case (number, ujson.Str(name)) =>
+                for {
+                  n <- ArtifactNumber.read(number)
+                  k <- DocKey.of(s"${ProjectKey.value(project)}/$name")
+                } yield k -> ArtifactKey.of(project, n)
+              case (number, other) =>
+                Left(s"${DocKey.value(d.key)} names $number as ${other.render()}, not a name")
+            }
+        }
       }
-      .flatMap(
-        _.fold(Right(None))(name =>
-          DocKey.of(s"${ProjectKey.value(id.project)}/$name").map(Some(_))
-        )
-      )
-  }
+      .map(_.flatten)
 
   private val KeysField: String = "keys"
 }

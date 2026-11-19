@@ -136,6 +136,30 @@ object OldFormTests extends TestSuite {
         "Kept p/3 (note, open)."
       )
     }
+    test("a re-keyed artifact's history and show-at read its versions from before the re-key") {
+      val (projects, store) = oldProject()
+      val later = at.plusSeconds(60)
+      val asked = (name: String, args: Seq[(String, ujson.Value)]) =>
+        done(askAt(later)(projects, store, name, args*))
+      asked("project_rekey", Seq("project" -> "p"))
+      (
+        asked("project_history", Seq("key" -> "p/1")),
+        asked("project_show", Seq("key" -> "p/a", "at" -> at.toString)),
+        // The re-key changed nothing its export shows: no line only one version holds.
+        asked(
+          "project_history",
+          Seq("key" -> "p/a", "from_version" -> 4, "to_version" -> 6)
+        ).linesIterator
+          .filter(l => !l.startsWith("  "))
+          .mkString("\n")
+      ) ==> (
+        "6 2026-10-27T12:01:00Z by nick (open): A title\n" +
+          "4 2026-10-27T12:00:00Z by nick (open): A title",
+        "---\nid: p/1\nhandle: a\nkind: note\nstate: open\ntitle: \"A title\"\nparent: p/2\n" +
+          "rank: n\ncites: [p/2]\nby: \"nick\"\nversion: 4\n---\n\nSee [b](artifact:p/2).\n",
+        "--- p/1 version 4\n+++ p/1 version 6"
+      )
+    }
     test(
       "an old-form artifact above a re-keyed project's index refuses it, and no re-key numbers it"
     ) {
