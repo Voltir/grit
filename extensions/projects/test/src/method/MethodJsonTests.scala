@@ -2,7 +2,7 @@ package grit.projects.method
 
 import grit.projects.artifact.{Artifact, ArtifactHead}
 import grit.projects.method.MethodFixtures.*
-import grit.projects.name.CheckName
+import grit.projects.name.{CheckName, KindName}
 import grit.projects.render.ProjectGen
 
 import utest.*
@@ -131,6 +131,48 @@ object MethodJsonTests extends TestSuite {
       )
     }
 
+    test(
+      "a kind's nesting is written only when not anywhere, and read back under an equal digest"
+    ) {
+      val m = right(
+        MethodJson.read(declared(), TransitionChecks.all).left.map(_.mkString("; "))
+      ).method
+      def nested(nesting: Nesting) = right(
+        Method
+          .of(
+            m.name,
+            m.version,
+            m.kinds.map(_.copy(nesting = nesting)),
+            m.transitions,
+            m.views,
+            TransitionChecks.all
+          )
+          .left
+          .map(_.mkString("; "))
+      )
+      def round(method: Method) = {
+        val json = MethodJson.written(method, Vector.empty)
+        val back = MethodJson.read(json, TransitionChecks.all).map(_.method.digest)
+        (json("kinds")(0).obj.get("nesting"), back == Right(method.digest))
+      }
+      val under = right(Nesting.under(m.kinds.map(_.name).toSet))
+      (round(m), round(nested(Nesting.Root)), round(nested(under))) ==> (
+        (None, true),
+        (Some(ujson.Str("root")), true),
+        (
+          Some(
+            ujson.Obj("under" -> ujson.Arr.from(m.kinds.map(k => KindName.value(k.name)).sorted))
+          ),
+          true
+        )
+      )
+    }
+    test("a nesting neither anywhere, root nor under kinds is refused, naming the kind") {
+      val json = declared()
+      json("kinds")(0)("nesting") = "inside"
+      MethodJson.read(json, TransitionChecks.all).left.map(_.exists(_.contains("nesting"))) ==>
+        Left(true)
+    }
     test("movers and a move's mover are written only when not their default") {
       val m = right(
         MethodJson.read(declared(), TransitionChecks.all).left.map(_.mkString("; "))

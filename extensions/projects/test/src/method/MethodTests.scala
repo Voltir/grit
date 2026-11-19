@@ -45,6 +45,14 @@ object MethodTests extends TestSuite {
         Method.of(method, 1, kinds, transitions.updated(1, merging), views, TransitionChecks.all)
       assert(made == Left(Vector(UndeclaredKind(kind("spec")))))
     }
+    test(
+      "a nesting under an undeclared kind is refused, naming it, and one under no kind is none"
+    ) {
+      val nested = note.copy(nesting = right(Nesting.under(Set(kind("spec")))))
+      Method.of(method, 1, Vector(change, nested), transitions, views, TransitionChecks.all) ==>
+        Left(Vector(UndeclaredKind(kind("spec"))))
+      Nesting.under(Set.empty) ==> Left("a nesting under kinds names no kind")
+    }
     test("an unreachable state is refused") {
       val made = Method.of(method, 1, kinds, transitions.drop(1), views, TransitionChecks.all)
       assert(
@@ -137,6 +145,28 @@ object MethodTests extends TestSuite {
       )
     }
 
+    test("a kind's nesting changes the digest, and the order of the kinds it names does not") {
+      def digest(nesting: Nesting) =
+        Method
+          .of(
+            method,
+            1,
+            Vector(change, note.copy(nesting = nesting)),
+            transitions,
+            views,
+            TransitionChecks.all
+          )
+          .map(_.digest)
+      val both = Set(change.name, note.name)
+      val digests = Vector(
+        digest(Nesting.Anywhere),
+        digest(Nesting.Root),
+        digest(right(Nesting.under(Set(change.name)))),
+        digest(right(Nesting.under(both)))
+      )
+      (digests.distinct.size, digest(right(Nesting.under(both.toVector.reverse.toSet)))) ==>
+        ((4, digests(3)))
+    }
     test("a transition only people make changes the digest") {
       // That one anyone makes adds nothing is pinned by "a method's digest is pinned".
       def digest(ts: Vector[Transition]) =

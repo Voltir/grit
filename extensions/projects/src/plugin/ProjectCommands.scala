@@ -2770,7 +2770,11 @@ private[plugin] object ProjectCommands {
           next =
             if (named.isDefined) changed
             else changed.copy(next = ArtifactNumber.after(key.number))
-          _ <- refuse(Project.of(project.key, project.pin, next.artifacts))
+          whole <- refuse(Project.of(project.key, project.pin, next.artifacts))
+          // Only a placing is judged: an artifact a restore left out of place can still be kept.
+          _ <- (if (staying.isDefined) None else method.misplaced(whole, artifact))
+            .map(Stop.Refused(_))
+            .toLeft(())
         } yield (next, s"Kept ${AnswerText.named(artifact.head)}." + respread(ranked.size - 1))
       case Step.Edit(args) =>
         for {
