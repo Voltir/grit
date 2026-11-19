@@ -34,7 +34,7 @@ object Leaves {
         .map(t =>
           d.key -> t.passages
             .flatMap(_.from.tags)
-            .collect { case Lineage.Tag.Strand(root, _, _) => root }
+            .collect { case Lineage.Tag.Strand(root, _, _, _) => root }
             .distinct
         )
     )

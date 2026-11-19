@@ -1,6 +1,6 @@
 package grit.knowledge.topic
 
-import grit.core.id.{ConversationId, DocumentVersionId}
+import grit.core.id.{ConversationId, DocumentVersionId, EntryId}
 import grit.core.place.Place
 import grit.core.stitch.StrandDigest
 
@@ -12,8 +12,15 @@ object Lineage {
   /** One thing a passage or a claim was written from. */
   enum Tag extends caps.Pure {
 
-    /** A strand of `room` as its digest was when written. */
-    case Strand(root: ConversationId, room: Place, digest: StrandDigest)
+    /** A strand of `room` as its digest was when written, a run named by its `first` message
+      * too ([[grit.core.stitch.Strand.Id]]).
+      */
+    case Strand(
+        root: ConversationId,
+        room: Place,
+        digest: StrandDigest,
+        first: Option[EntryId] = None
+    )
 
     /** A card's version. */
     case Card(version: DocumentVersionId)

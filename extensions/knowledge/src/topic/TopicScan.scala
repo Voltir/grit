@@ -4,7 +4,7 @@ import java.time.{Instant, LocalDate}
 
 import grit.core.document.{DocRef, Document, DocumentKeeper}
 import grit.core.durable.Journaled
-import grit.core.id.{ConversationId, DocKey, DocumentVersionId}
+import grit.core.id.{ConversationId, DocKey, DocumentVersionId, EntryId}
 import grit.core.need.{Exported, Needs}
 import grit.core.stitch.{Strand, StrandShelf}
 import grit.core.store.{StoreError, Tx}
@@ -29,7 +29,7 @@ private[topic] object TopicScan {
 
   /** What a scan came to: the topics `attached` to by ref; the `strands` and `cards` the
     * run's sorts place; every topic kept at the floor (`topics`, by key and version, newest
-    * first); for each strand to place, by its root, the topics it shares something with
+    * first); for each strand to place, by its id, the topics it shares something with
     * (`near`, at most [[TopicDream.Structural]]: those whose passages were written from the
     * same strand, then those holding a card its messages link, then those written from a strand
     * of its room, each newest first); how many passages it `withdrew`, and how many strands and
@@ -37,33 +37,48 @@ private[topic] object TopicScan {
     * topics it withdrew for data this reader refuses (`unreadable`), not passages, and how many
     * it left as they are for data of a later reader's version (`later`); and the topics a run
     * sorts against the others to merge (`single`, [[TopicScan.single]] of the floor's topics
-    * after its withdrawals, at most `merges`).
+    * after its withdrawals, at most `merges`); and the floor's `meetings`, newest first.
     */
   final case class Scanned(
       attached: Vector[Touch],
       strands: Vector[Strand.Digested],
       cards: Vector[CardShelf.Seen],
       topics: Vector[(TopicKey, DocumentVersionId)],
-      near: Vector[(ConversationId, Vector[TopicKey])],
+      near: Vector[(Strand.Id, Vector[TopicKey])],
       withdrew: Int,
       unchanged: Int,
       left: Int,
       linked: Vector[Linked],
       unreadable: Int,
       later: Int,
-      single: Vector[(TopicKey, DocumentVersionId)]
+      single: Vector[(TopicKey, DocumentVersionId)],
+      meetings: Vector[Live] = Vector.empty
   ) extends caps.Pure {
 
     /** The card units `strands` link, and the cards paired with them, each once. */
     def of(strands: Vector[Strand.Digested]): (Vector[Ref], Vector[CardShelf.Seen]) = {
-      val roots = strands.map(_.root).toSet
-      val mine = linked.filter(l => roots.contains(l.root))
+      val ids = strands.map(_.id).toSet
+      val mine = linked.filter(l => ids.contains(l.strand))
       (mine.flatMap(_.units).distinct, mine.flatMap(_.cards).distinctBy(_.version))
     }
 
-    /** The topics the strand at `root` shares something with ([[near]]), in that order. */
-    def nearOf(root: ConversationId): Vector[TopicKey] =
-      near.collectFirst { case (r, ks) if r == root => ks }.getOrElse(Vector.empty)
+    /** The topics the strand `id` shares something with ([[near]]), in that order. */
+    def nearOf(id: Strand.Id): Vector[TopicKey] =
+      near.collectFirst { case (r, ks) if r == id => ks }.getOrElse(Vector.empty)
+
+    /** The meetings a strand said on `day` is pinned, at most [[Meetings]], newest first: those
+      * whose day is from 2 days before it to 14 after, and those with no day whose newest
+      * passage is within 14 days before it.
+      */
+    def meetingsNear(day: LocalDate): Vector[TopicKey] =
+      meetings
+        .filter(m =>
+          m.day.fold(m.newest.exists(n => !n.isBefore(day.minusDays(14))))(d =>
+            !d.isBefore(day.minusDays(2)) && !d.isAfter(day.plusDays(14))
+          )
+        )
+        .map(_.key)
+        .take(Meetings)
   }
 
   /** Of each topic of `topics`, the current versions of at most [[Holds]] of the cards of the
@@ -78,13 +93,27 @@ private[topic] object TopicScan {
       topics.collectFirst { case (k, vs) if k == topic => vs }.getOrElse(Vector.empty)
   }
 
-  /** A strand in play that links a card's unit: its `root`, the card `units` its messages link
+  /** A strand in play that links a card's unit: its `strand`, the card `units` its messages link
     * (at most [[Links]]), and the `cards` paired with it, each a card of one of those units no
     * strand before it in the run links, whatever its age or whether it was set aside: it goes
     * where the strand goes, never sorted.
     */
-  final case class Linked(root: ConversationId, units: Vector[Ref], cards: Vector[CardShelf.Seen])
+  final case class Linked(strand: Strand.Id, units: Vector[Ref], cards: Vector[CardShelf.Seen])
       extends caps.Pure
+
+  /** A meeting kept at the floor, as a sort may be pinned it: its `key` and `version`, the
+    * `day` it is proposed, planned or held for when it has one, and the day of its `newest`
+    * passage when it has one.
+    */
+  final case class Live(
+      key: TopicKey,
+      version: DocumentVersionId,
+      day: Option[LocalDate],
+      newest: Option[LocalDate]
+  ) extends caps.Pure
+
+  /** 8: the most meetings a strand's sort is pinned ([[Scanned.meetingsNear]]). */
+  val Meetings: Int = 8
 
   /** 20: the most cards one run sorts. */
   val Cards: Int = 20
@@ -129,7 +158,7 @@ private[topic] object TopicScan {
       pruned(keeper, read._1, floor, day.minusDays(params.keepFor.toDays), at).flatMap(
         (kept: Vector[Pruned]) =>
           strands
-            .atFloor(until.minusSeconds(params.recent.toSeconds), until)
+            .units(until.minusSeconds(params.recent.toSeconds), until, params.cut)
             .flatMap((recent: Vector[Strand.Digested]) =>
               Aside
                 .read(keeper, floor)
@@ -146,48 +175,71 @@ private[topic] object TopicScan {
                     keys,
                     read._3,
                     recent.filterNot(s => lineage.exists(isStrand(s)))
-                  )(s => Some(Ref.Strand(s.root))).flatMap(
-                    (ss: Vector[(Strand.Digested, Option[TopicKey])]) =>
-                      linking(strands, shelf, inPlay(most, ss), until).flatMap {
-                        (linked: Vector[Linked]) =>
-                          val paired = linked.flatMap(_.cards.map(_.version)).toSet
-                          // Read back until Cards could be offered, so successive runs page through
-                          // them: a directory's card, one kept at another label, or one placed, set
-                          // aside or paired, is not.
-                          changed(
-                            shelf,
-                            until.minusSeconds(params.cardRecent.toSeconds),
-                            until,
-                            Cards,
-                            c => offered(c, floor) && unplaced(c) && !paired.contains(c.version)
-                          ).flatMap((seen: Vector[CardShelf.Seen]) =>
-                            referrers(keeper, keys, read._3, seen.filter(unplaced))(_.unit)
-                              .flatMap((cs: Vector[(CardShelf.Seen, Option[TopicKey])]) => {
-                                val p = Placed(ss, cs)
-                                val versions = topics.map(_._2).toSet
-                                aside(keeper, floor, all, held, recent, seen, linked, versions, at)
-                                  .flatMap { (now: Vector[Aside.Item]) =>
-                                    Right(
-                                      gathered(most, floor, kept, recent, seen, p, linked).copy(
-                                        unreadable = read._2,
-                                        later = read._3.size,
-                                        single = single(
-                                          topics.map((k, v, h) => (k, v, h.topic)),
-                                          now,
-                                          params.merges
-                                        )
-                                      )
+                  )(s =>
+                    // A run has no ref: settled, it never grows, so none attaches by one.
+                    Option.when(s.span == Strand.Span.Whole)(Ref.Strand(s.root))
+                  ).flatMap((ss: Vector[(Strand.Digested, Option[TopicKey])]) =>
+                    linking(strands, shelf, inPlay(most, ss), until).flatMap {
+                      (linked: Vector[Linked]) =>
+                        val paired = linked.flatMap(_.cards.map(_.version)).toSet
+                        // Read back until Cards could be offered, so successive runs page through
+                        // them: a directory's card, one kept at another label, or one placed, set
+                        // aside or paired, is not.
+                        changed(
+                          shelf,
+                          until.minusSeconds(params.cardRecent.toSeconds),
+                          until,
+                          Cards,
+                          c => offered(c, floor) && unplaced(c) && !paired.contains(c.version)
+                        ).flatMap((seen: Vector[CardShelf.Seen]) =>
+                          referrers(keeper, keys, read._3, seen.filter(unplaced))(_.unit)
+                            .flatMap((cs: Vector[(CardShelf.Seen, Option[TopicKey])]) => {
+                              val p = Placed(ss, cs)
+                              val versions = topics.map(_._2).toSet
+                              aside(keeper, floor, all, held, recent, seen, linked, versions, at)
+                                .flatMap { (now: Vector[Aside.Item]) =>
+                                  Right(
+                                    gathered(most, floor, kept, recent, seen, p, linked).copy(
+                                      unreadable = read._2,
+                                      later = read._3.size,
+                                      single = single(
+                                        topics.map((k, v, h) => (k, v, h.topic)),
+                                        now,
+                                        params.merges
+                                      ),
+                                      meetings = live(topics)
                                     )
-                                  }
-                              })
-                          )
-                      }
+                                  )
+                                }
+                            })
+                        )
+                    }
                   )
                 }
             )
       )
     )
   }
+
+  /** The meetings among `topics`, newest written first. */
+  private def live(
+      topics: Vector[(TopicKey, DocumentVersionId, TopicWrite.Held)]
+  ): Vector[Live] =
+    topics
+      .sortBy((_, v, _) => -DocumentVersionId.value(v))
+      .collect { case (k, v, h) =>
+        h.topic.kind match {
+          case Topic.Kind.Meeting(m) =>
+            val day = m.state match {
+              case Meeting.State.Proposed(w) => w.map(_.day)
+              case Meeting.State.Planned(w) => Some(w.day)
+              case Meeting.State.Held(d) => Some(d)
+            }
+            Some(Live(k, v, day, h.topic.passages.lastOption.map(_.day)))
+          case Topic.Kind.Subject => None
+        }
+      }
+      .flatten
 
   /** Of `strands`, those a run takes up: those attached by ref, then at most `most` to place. */
   private def inPlay(
@@ -211,8 +263,8 @@ private[topic] object TopicScan {
       each(in)((s: Strand.Digested) =>
         strands
           .links(s)
-          .map(ls => s.root -> ls.map(Ref.of).filter(isUnit).distinct.take(Links))
-      ).flatMap { (units: Vector[(ConversationId, Vector[Ref])]) =>
+          .map(ls => s.id -> ls.map(Ref.of).filter(isUnit).distinct.take(Links))
+      ).flatMap { (units: Vector[(Strand.Id, Vector[Ref])]) =>
         val named = units.filter(_._2.nonEmpty)
         cards.linked(named.flatMap(_._2).toSet, until, Cards).map {
           (found: Vector[CardShelf.Seen]) =>
@@ -330,7 +382,7 @@ private[topic] object TopicScan {
       val passages = f.held.topic.passages
       val gone = passages.filter(p =>
         p.day.isBefore(since) || p.from.tags.exists {
-          case Lineage.Tag.Strand(_, room, _) => Tx.roomLabel(room) != floor
+          case Lineage.Tag.Strand(_, room, _, _) => Tx.roomLabel(room) != floor
           case _ => false
         }
       )
@@ -377,7 +429,7 @@ private[topic] object TopicScan {
   )(using Tx^): Either[StoreError, Vector[Aside.Item]] = {
     val paired = linked.flatMap(_.cards.map(_.version)).toSet
     val now = held.filter(_.tag match {
-      case t @ Lineage.Tag.Strand(_, _, _) => recent.exists(s => isStrand(s)(t))
+      case t @ Lineage.Tag.Strand(_, _, _, _) => recent.exists(s => isStrand(s)(t))
       case Lineage.Tag.Card(v) =>
         seen.exists(c => c.version == v && offered(c, floor)) && !paired.contains(v)
       case Lineage.Tag.Topic(v) => topics.contains(v)
@@ -430,7 +482,7 @@ private[topic] object TopicScan {
       inPlay,
       cards.take(Cards),
       newest.map((k, v, _) => (k, v)),
-      inPlay.map(s => s.root -> sharing(s, newest, linked)),
+      inPlay.map(s => s.id -> sharing(s, newest, linked)),
       kept.map(_.withdrew).sum,
       (recent.size - p.strands.size) +
         seen.count(c => !p.cards.exists(_._1.version == c.version) && !paired.contains(c.version)),
@@ -457,7 +509,7 @@ private[topic] object TopicScan {
         !set.contains(v) &&
           t.passages
             .flatMap(_.from.tags)
-            .collect { case Lineage.Tag.Strand(root, _, _) => root }
+            .collect { case Lineage.Tag.Strand(root, _, _, first) => (root, first) }
             .distinct
             .size < 2
       )
@@ -475,8 +527,8 @@ private[topic] object TopicScan {
     def from(h: TopicWrite.Held) = h.topic.passages.flatMap(_.from.tags).collect {
       case t: Lineage.Tag.Strand => t
     }
-    val units = linked.filter(_.root == s.root).flatMap(_.units).toSet
-    (newest.filter((_, _, h) => from(h).exists(_.root == s.root)) ++
+    val units = linked.filter(_.strand == s.id).flatMap(_.units).toSet
+    (newest.filter((_, _, h) => from(h).exists(t => Strand.Id(t.root, t.first) == s.id)) ++
       newest.filter((_, _, h) => h.units.exists(units.contains)) ++
       newest.filter((_, _, h) => from(h).exists(_.room == s.room)))
       .map(_._1)
@@ -492,7 +544,8 @@ private[topic] object TopicScan {
     c.kind == UnitKind.File && c.label == floor
 
   private def isStrand(s: Strand.Digested)(t: Lineage.Tag): Boolean = t match {
-    case Lineage.Tag.Strand(root, _, digest) => root == s.root && digest == s.digest
+    case Lineage.Tag.Strand(root, _, digest, first) =>
+      Strand.Id(root, first) == s.id && digest == s.digest
     case _ => false
   }
 
@@ -539,6 +592,7 @@ private[topic] object TopicScan {
         "single" -> ujson.Arr.from(s.single.map((k, v) => lead(k, v)))
       )
       // Written only when some were, so a scan with none records as it did before the count.
+      if (s.meetings.nonEmpty) record("meetings") = ujson.Arr.from(s.meetings.map(liveJson))
       if (s.unreadable > 0) record("unreadable") = ujson.Num(s.unreadable.toDouble)
       if (s.later > 0) record("later") = ujson.Num(s.later.toDouble)
       record
@@ -562,6 +616,8 @@ private[topic] object TopicScan {
         later <- count(o.get("later").orElse(Some(ujson.Num(0))), "later")
         // A scan recorded before topics were merged offers none.
         single <- list(o.get("single").orElse(Some(ujson.Arr())), "single")(readLead)
+        // A scan recorded before meetings were pinned pins none.
+        meetings <- list(o.get("meetings").orElse(Some(ujson.Arr())), "meetings")(readLive)
       } yield Scanned(
         attached,
         strands,
@@ -574,7 +630,8 @@ private[topic] object TopicScan {
         linked,
         unreadable,
         later,
-        single
+        single,
+        meetings
       )
   )
 
@@ -584,17 +641,56 @@ private[topic] object TopicScan {
     v => list(Some(v), "holds")(readHolds).map(Holding(_))
   )
 
-  private def nearJson(n: (ConversationId, Vector[TopicKey])): ujson.Value = ujson.Obj(
-    "root" -> ConversationId.value(n._1),
-    "topics" -> ujson.Arr.from(n._2.map(k => ujson.Str(TopicKey.value(k))))
-  )
+  private def nearJson(n: (Strand.Id, Vector[TopicKey])): ujson.Value =
+    idJson(n._1, "topics" -> ujson.Arr.from(n._2.map(k => ujson.Str(TopicKey.value(k)))))
 
-  private def readNear(v: ujson.Value): Either[String, (ConversationId, Vector[TopicKey])] =
+  private def readNear(v: ujson.Value): Either[String, (Strand.Id, Vector[TopicKey])] =
     for {
       o <- v.objOpt.toRight("a strand's near topics are an object")
-      root <- o.get("root").flatMap(_.strOpt).toRight("near topics with no root")
+      id <- readId(o, "near topics")
       topics <- list(o.get("topics"), "a strand's near topics")(t => topicKey(Some(t)))
-    } yield (ConversationId(root), topics)
+    } yield (id, topics)
+
+  /** A strand's id as `"root"`, and `"first"` for a run alone, so a whole strand's records
+    * read as before; then `rest`.
+    */
+  private def idJson(id: Strand.Id, rest: (String, ujson.Value)*): ujson.Obj =
+    ujson.Obj.from(
+      (("root" -> ujson.Str(ConversationId.value(id.root))) +:
+        id.first.toVector.map(f => "first" -> ujson.Str(EntryId.value(f)))) ++ rest
+    )
+
+  private def readId(o: collection.Map[String, ujson.Value], what: String) =
+    for {
+      root <- o.get("root").flatMap(_.strOpt).toRight(s"$what with no root")
+      first <- o.get("first") match {
+        case None => Right(None)
+        case Some(f) => f.strOpt.map(t => Some(EntryId(t))).toRight(s"$what with a bad first")
+      }
+    } yield Strand.Id(ConversationId(root), first)
+
+  private def liveJson(m: Live): ujson.Value = {
+    val o = lead(m.key, m.version)
+    m.day.foreach(d => o("day") = d.toString)
+    m.newest.foreach(d => o("newest") = d.toString)
+    o
+  }
+
+  private def readLive(v: ujson.Value): Either[String, Live] = {
+    def day(key: String) = v.objOpt.flatMap(_.get(key)) match {
+      case None => Right(None)
+      case Some(d) =>
+        d.strOpt
+          .flatMap(t => scala.util.Try(LocalDate.parse(t)).toOption)
+          .map(Some(_))
+          .toRight(s"a live meeting's $key is no date")
+    }
+    for {
+      kv <- readLead(v)
+      d <- day("day")
+      n <- day("newest")
+    } yield Live(kv._1, kv._2, d, n)
+  }
 
   private def holdsJson(h: (TopicKey, Vector[DocumentVersionId])): ujson.Value = ujson.Obj(
     "key" -> TopicKey.value(h._1),
@@ -608,8 +704,8 @@ private[topic] object TopicScan {
       cards <- list(o.get("cards"), "a topic's cards held")(version)
     } yield (key, cards)
 
-  private def linkedJson(l: Linked): ujson.Value = ujson.Obj(
-    "root" -> ConversationId.value(l.root),
+  private def linkedJson(l: Linked): ujson.Value = idJson(
+    l.strand,
     "units" -> ujson.Arr.from(l.units.flatMap(u => Ref.written(u).toOption).map(refJson)),
     "cards" -> ujson.Arr.from(l.cards.map(card))
   )
@@ -617,11 +713,7 @@ private[topic] object TopicScan {
   private def readLinked(v: ujson.Value): Either[String, Linked] =
     for {
       o <- v.objOpt.toRight("a linked strand is an object")
-      root <- o
-        .get("root")
-        .flatMap(_.strOpt)
-        .map(ConversationId(_))
-        .toRight("a linked strand with no root")
+      root <- readId(o, "a linked strand")
       units <- list(o.get("units"), "a linked strand's units")(u =>
         readRef(u).toRight(s"no unit: ${ujson.write(u)}")
       )

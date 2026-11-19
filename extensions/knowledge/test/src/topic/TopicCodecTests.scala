@@ -79,6 +79,22 @@ object TopicCodecTests extends TestSuite {
       Topic.read(key, Topic.write(topic)) ==> Right(topic)
     }
 
+    test("recent under a day plus settle is refused") {
+      import scala.concurrent.duration.*
+      val p = TopicParams(3, 2.days, 4.days, None, None, sorts = 5)
+      def recent(d: FiniteDuration) = {
+        val v = TopicParams.write(p)
+        v("recent") = java.time.Duration.ofSeconds(d.toSeconds).toString
+        TopicParams.read(v).map(_.recent)
+      }
+      (
+        TopicParams.read(TopicParams.write(p)),
+        recent(1.day + 29.minutes).isLeft,
+        recent(1.day + 30.minutes)
+      ) ==>
+        (Right(p), true, Right(1.day + 30.minutes))
+    }
+
     test("v2 reads as a subject") {
       val v2 = Topic.write(topic)
       v2("v") = 2
@@ -322,7 +338,7 @@ object TopicCodecTests extends TestSuite {
         Vector.empty,
         Vector.empty,
         Vector.empty,
-        Vector(grit.core.id.ConversationId("c1") -> Vector.empty),
+        Vector(grit.core.stitch.Strand.Id(grit.core.id.ConversationId("c1"), None) -> Vector.empty),
         0,
         0,
         0,

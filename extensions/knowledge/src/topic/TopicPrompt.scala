@@ -68,7 +68,7 @@ object TopicPrompt {
       held.topic.passages
         .filter(_.day == today.day)
         .flatMap(_.from.tags)
-        .collect { case Lineage.Tag.Strand(root, _, _) => root }
+        .collect { case Lineage.Tag.Strand(root, _, _, _) => root }
         .distinct,
       today.cards
     )

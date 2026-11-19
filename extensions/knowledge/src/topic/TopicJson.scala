@@ -5,7 +5,7 @@ import java.time.{Instant, LocalDate}
 import scala.util.Try
 
 import grit.core.document.DocText
-import grit.core.id.{ConversationId, DocKey, DocumentVersionId}
+import grit.core.id.{ConversationId, DocKey, DocumentVersionId, EntryId}
 import grit.core.place.Place
 import grit.core.stitch.StrandDigest
 import grit.knowledge.ref.TopicKey
@@ -162,12 +162,15 @@ private object TopicJson {
   private def lineage(l: Lineage): ujson.Value = ujson.Arr.from(l.tags.map(tag))
 
   private def tag(t: Lineage.Tag): ujson.Obj = t match {
-    case Lineage.Tag.Strand(root, room, digest) =>
-      ujson.Obj(
+    case Lineage.Tag.Strand(root, room, digest, first) =>
+      val o = ujson.Obj(
         "strand" -> ConversationId.value(root),
         "room" -> room.written,
         "digest" -> StrandDigest.value(digest)
       )
+      // A run's first message alone, so a whole strand's tag is written as before.
+      first.foreach(f => o("first") = EntryId.value(f))
+      o
     case Lineage.Tag.Card(version) => ujson.Obj("card" -> DocumentVersionId.value(version).toDouble)
     case Lineage.Tag.Topic(version) =>
       ujson.Obj("topic" -> DocumentVersionId.value(version).toDouble)
@@ -185,7 +188,11 @@ private object TopicJson {
             room <- string(o.get("room"), "a strand tag's room").flatMap(Place.read)
             digest <- string(o.get("digest"), "a strand tag's digest")
               .flatMap(StrandDigest.read)
-          } yield Lineage.Tag.Strand(ConversationId(r), room, digest)
+            first <- o.get("first") match {
+              case None => Right(None)
+              case f => string(f, "a strand tag's first").map(t => Some(EntryId(t)))
+            }
+          } yield Lineage.Tag.Strand(ConversationId(r), room, digest, first)
         case (_, Some(n), _) => version(n).map(Lineage.Tag.Card(_))
         case (_, _, Some(n)) => version(n).map(Lineage.Tag.Topic(_))
         case _ => Left(s"a lineage's tag of no kind: ${ujson.write(t)}")

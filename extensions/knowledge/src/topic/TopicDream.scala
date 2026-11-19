@@ -67,7 +67,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
     moves.scan(TopicDream.Scan, run.tainted.map(_.params))((p, keeper, strands, needs, at) =>
       TopicScan.scanned(
         if (seeding) p.copy(cardRecent = TopicParams.SeedReach) else p,
-        most,
+        p.sorts,
         if (end.isBefore(at)) end else at,
         day,
         shelf,
@@ -169,7 +169,8 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
     def among(st: Strand.Digested): Sorting.Among[TopicDream.Placed] = {
       val short = st.chars < TopicDream.ShortChars
       val newest = if (short) Vector.empty else scan.topics.take(TopicDream.Newest).map(_._1)
-      val pinned = (byRef ++ scan.nearOf(st.root) ++ newest).distinct.flatMap(k =>
+      val meetings = scan.meetingsNear(LocalDate.ofInstant(st.touched, zone))
+      val pinned = (byRef ++ meetings ++ scan.nearOf(st.id) ++ newest).distinct.flatMap(k =>
         versions.get(k).map(v => (TopicDream.Placed.Into(k, v), v))
       )
       Sorting.Among(
@@ -207,13 +208,13 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
               (ts :+ Touch(k, Some(v), Vector(st), Vector.empty), aside, g)
             case TopicDream.Placed.Opened =>
               // A new topic is keyed by its discussion.
-              TopicKey.strand(st.root) match {
+              TopicKey.of(st) match {
                 case Left(why) => (ts, aside, g.copy(unwritten = g.unwritten :+ ("a strand", why)))
                 case Right(k) => (ts :+ Touch(k, None, Vector(st), Vector.empty), aside, g)
               }
             case chosen =>
               // Set aside at its digest, so it is offered again once its thread grows.
-              val tags = Lineage.Tag.Strand(st.root, st.room, st.digest) +:
+              val tags = Lineage.Tag.Strand(st.root, st.room, st.digest, st.id.first) +:
                 scan.of(Vector(st))._2.map(c => Lineage.Tag.Card(c.version))
               val unsure = chosen match {
                 case TopicDream.Placed.Into(_, _) => g.unsure + 1
@@ -543,7 +544,7 @@ object TopicDream {
             Touch(
               k,
               a.version.orElse(b.version),
-              (a.strands ++ b.strands).distinctBy(_.root),
+              (a.strands ++ b.strands).distinctBy(_.id),
               (a.cards ++ b.cards).distinctBy(_.version)
             )
           )
@@ -622,7 +623,7 @@ object TopicDream {
         }
       }
       .flatMap { old =>
-        val tags = t.strands.map(s => Lineage.Tag.Strand(s.root, s.room, s.digest)) ++
+        val tags = t.strands.map(s => Lineage.Tag.Strand(s.root, s.room, s.digest, s.id.first)) ++
           t.cards.map(c => Lineage.Tag.Card(c.version))
         val passages = old.fold(Vector.empty[Passage])(_.topic.passages)
         // The day's passage replaces one the topic holds for that day, its lineage joined.

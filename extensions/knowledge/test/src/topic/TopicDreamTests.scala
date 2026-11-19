@@ -128,7 +128,8 @@ object TopicDreamTests extends TestSuite {
         unread: Document -> Boolean = _ => false,
         floor: Label = Label.Public,
         asideFor: FiniteDuration = TopicParams.AsideFor,
-        merges: Int = 0
+        merges: Int = 0,
+        sorts: Int = TopicParams.Sorts
     ): String = {
       val dream = new TopicDream(most, ZoneOffset.UTC, Some(Cards))
       heard.run()
@@ -172,7 +173,8 @@ object TopicDreamTests extends TestSuite {
               seedUntil,
               asideFor,
               TopicParams.KeepFor,
-              merges
+              merges,
+              sorts = sorts
             ),
             now,
             now
@@ -220,7 +222,7 @@ object TopicDreamTests extends TestSuite {
     def aside: (Vector[ConversationId], Vector[DocumentVersionId]) = {
       val tags = ok(Aside.read(documents.keeper(Plugin, Terms), Label.Public)).map(_.tag)
       (
-        tags.collect { case Lineage.Tag.Strand(root, _, _) => root },
+        tags.collect { case Lineage.Tag.Strand(root, _, _, _) => root },
         tags.collect { case Lineage.Tag.Card(v) => v }
       )
     }
@@ -921,6 +923,95 @@ object TopicDreamTests extends TestSuite {
         "topics: 0 written (0 opened), 0 withdrawn, 1 unchanged, 0 set aside, 0 left for the next run, 1 of a later version left",
         Vector("sort", "write"),
         Vector(4.0)
+      )
+    }
+
+    test("a run in a lineage is not offered again") {
+      val w = new StrandWorld
+      val room = w.room("C1")
+      w.say(room, "standup notes are in the doc", 0)
+      w.say(room, "thanks", 60)
+      val runs = new Runs(w)
+      val first = runs.run()
+      val again = runs.run(now = Now.plusSeconds(600))
+      (first, again, runs.asked.map(_.kind), runs.kept.map(_._1)) ==> (
+        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
+        "topics: 0 written (0 opened), 0 withdrawn, 1 unchanged, 0 set aside, 0 left for the next run",
+        Vector("sort", "write"),
+        Vector(s"topic:run-${ConversationId.value(room.id)}:0")
+      )
+    }
+
+    test("a run attaches to no topic by ref") {
+      val w = new StrandWorld
+      val room = w.room("C1")
+      w.say(room, "standup notes are in the doc", 0)
+      val runs = new Runs(w)
+      val _ = runs.run()
+      (runs.kept.size, runs.referring(Ref.Strand(room.id))) ==> (1, Vector.empty)
+    }
+
+    test("a grown thread attaches to its topic") {
+      val w = new StrandWorld
+      val room = w.room("C1")
+      w.say(room, "who reviews the deploy script?", 0, source = Some("1.0"))
+      val thread = w.under("C1", "1.0")
+      w.say(thread, "I can", 30)
+      val runs = new Runs(w)
+      val _ = runs.run()
+      w.say(thread, "done, it is merged", 900)
+      val again = runs.run(now = Now.plusSeconds(600))
+      // The first run sorted the top-level run and the thread, and wrote each.
+      (again, runs.asked.map(_.kind).drop(4)) ==> (
+        "topics: 1 written (0 opened), 0 withdrawn, 1 unchanged, 0 set aside, 0 left for the next run",
+        Vector("write")
+      )
+    }
+
+    test(
+      "a dated meeting −2 to +14 days, or an undated one with a passage within 14 days, is pinned"
+    ) {
+      def live(name: String, day: Option[String], newest: Option[String]) = TopicScan.Live(
+        right(TopicKey.strand(ConversationId(name))),
+        DocumentVersionId.of(1).getOrElse(throw new java.lang.AssertionError("version")),
+        day.map(LocalDate.parse),
+        newest.map(LocalDate.parse)
+      )
+      val scan = TopicScan.Scanned(
+        Vector.empty,
+        Vector.empty,
+        Vector.empty,
+        Vector.empty,
+        Vector.empty,
+        0,
+        0,
+        0,
+        Vector.empty,
+        0,
+        0,
+        Vector.empty,
+        Vector(
+          live("back2", Some("2026-11-17"), None),
+          live("back3", Some("2026-11-16"), None),
+          live("ahead14", Some("2026-12-03"), None),
+          live("ahead15", Some("2026-12-04"), None),
+          live("undated", None, Some("2026-11-05")),
+          live("stale", None, Some("2026-11-04")),
+          live("bare", None, None)
+        )
+      )
+      scan.meetingsNear(LocalDate.parse("2026-11-19")).map(TopicKey.value) ==>
+        Vector("back2", "ahead14", "undated").map(n => s"topic:strand-$n")
+    }
+
+    test("at most sorts units") {
+      val w = new StrandWorld
+      (1 to 3).foreach(i => strand(w, s"C$i", s"subject $i", i * 100L))
+      val runs = new Runs(w)
+      val reply = runs.run(sorts = 2)
+      (reply, runs.asked.count(_.kind == "sort")) ==> (
+        "topics: 2 written (2 opened), 0 withdrawn, 0 unchanged, 0 set aside, 1 left for the next run",
+        2
       )
     }
 

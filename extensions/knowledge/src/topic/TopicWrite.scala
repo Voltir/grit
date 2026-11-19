@@ -78,7 +78,7 @@ private[topic] object TopicWrite {
         )
     }
 
-  /** What `t` refers to: each strand its passages and claims were written from, `units` newest
+  /** What `t` refers to: each strand but a run its passages and claims were written from, `units` newest
     * first, each topic it links, and the unit each other link in it names ([[Ref.ofLink]]), each
     * once.
     */
@@ -86,7 +86,8 @@ private[topic] object TopicWrite {
     val docs = t.lead +: t.passages.map(_.body)
     val notes = docs.flatMap(_.notes)
     val lineages = t.passages.map(_.from) ++ notes.collect { case TopicNote.Claimed(c) => c.from }
-    val strands = lineages.flatMap(_.tags).collect { case Lineage.Tag.Strand(root, _, _) =>
+    // A run has no ref: settled, it never grows, so nothing attaches to it by reference.
+    val strands = lineages.flatMap(_.tags).collect { case Lineage.Tag.Strand(root, _, _, None) =>
       Ref.Strand(root)
     }
     val topics = notes.collect { case TopicNote.Link(to) => Ref.Topic(to) }
