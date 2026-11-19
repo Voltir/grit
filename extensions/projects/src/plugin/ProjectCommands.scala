@@ -502,6 +502,8 @@ private[plugin] final class ProjectCommands(
           case (Left(failed), _) => Left(failed)
         }
         lines = answers.mkString("\n")
+        wouldRefuse =
+          s"Dry run, nothing kept; the batch would be refused. Each step would answer:\n$lines"
         refused = said.zipWithIndex.collectFirst { case (Left(Stop.Refused(why)), i) => (i, why) }
         done <- (refused, args.dry) match {
           case (Some((i, why)), false) =>
@@ -511,13 +513,7 @@ private[plugin] final class ProjectCommands(
                   s"refused: $why"
               )
             )
-          case (Some(_), true) =>
-            Left(
-              Stop.Refused(
-                "Dry run, nothing kept; the batch would be refused. Each step would answer:\n" +
-                  lines
-              )
-            )
+          case (Some(_), true) => Left(Stop.Refused(wouldRefuse))
           case (None, false) =>
             settled(claims, project, method, args.project, steps, at, "change it").left
               .map {
@@ -531,10 +527,7 @@ private[plugin] final class ProjectCommands(
             settled(claims, project, method, args.project, steps, at, "change it").left
               .map {
                 case Stop.Refused(why) =>
-                  Stop.Refused(
-                    "Dry run, nothing kept; the batch would be refused. Each step would " +
-                      s"answer:\n$lines\nOnce every step is done, refused: $why"
-                  )
+                  Stop.Refused(s"$wouldRefuse\nOnce every step is done, refused: $why")
                 case failed => failed
               }
               .map(_ => s"Dry run, nothing kept. Each step would answer:\n$lines")
