@@ -2631,8 +2631,8 @@ private[plugin] object ProjectCommands {
   }
 
   /** Nothing, or why what `steps` made of `project` may not be kept: a brief over its budget
-    * ([[within]]), or an artifact changed that is kept below what this room writes
-    * ([[atTheirLabels]], saying `verb`).
+    * ([[within]]), or an artifact changed, or the index when a step minted an id, kept below what
+    * this room writes ([[atTheirLabels]], saying `verb`).
     */
   private def settled(
       claims: Claims,
@@ -2653,9 +2653,12 @@ private[plugin] object ProjectCommands {
         steps.changed.flatMap(k => steps.artifacts.find(_.head.key == k)).map(_.head)
       )
       _ <- atTheirLabels(
-        project.documents
-          .filter((_, a) => steps.changed.contains(a.head.key))
-          .map((d, a) => d -> a.head.key.value),
+        Option
+          .when(steps.next != project.next)(project.index -> s"project ${ProjectKey.value(key)}")
+          .toVector ++
+          project.documents
+            .filter((_, a) => steps.changed.contains(a.head.key))
+            .map((d, a) => d -> a.head.key.value),
         verb
       )
     } yield ()
@@ -2663,7 +2666,7 @@ private[plugin] object ProjectCommands {
   /** Keeps each artifact `steps` changed through `own`, once, as they left it ([[kept]]): wholly
     * its caller's when a step wrote every word of it, else carrying its document's; and the
     * project's index, when a step minted an id, its `next` moved on and who started it kept
-    * (`by`, when it names no one).
+    * (`by`, when it names no one), believed at no more than its version before.
     */
   private def wrote(
       own: DocumentKeeper,
@@ -2698,7 +2701,16 @@ private[plugin] object ProjectCommands {
               )
             )
             (key, text, data, refs) = index
-            _ <- keptEverywhere(own, key, project.index.label, Tx.top, text, data, refs, at)
+            _ <- keptEverywhere(
+              own,
+              key,
+              project.index.label,
+              DocumentKeeper.replacing(Some(project.index)),
+              text,
+              data,
+              refs,
+              at
+            )
           } yield ()
     } yield versions.toMap
 
