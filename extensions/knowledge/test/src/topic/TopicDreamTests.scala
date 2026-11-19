@@ -493,7 +493,7 @@ object TopicDreamTests extends TestSuite {
 
     test("a strand's sort is shown a topic of its room, though newer topics fill the newest") {
       val w = new StrandWorld
-      val a = strand(w, "C1", "deploy pipeline")
+      val _ = strand(w, "C1", "deploy pipeline")
       val runs = new Runs(w)
       val _ = runs.run()
       val newer = TopicDream.Newest + 2
