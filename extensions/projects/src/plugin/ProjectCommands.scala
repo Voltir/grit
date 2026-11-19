@@ -3168,6 +3168,10 @@ private[plugin] object ProjectCommands {
       )
     }
     val resolve = resolver(project, now.artifacts)
+    def found(key: ArtifactKey): Either[Stop, Artifact] =
+      now.artifacts
+        .find(_.head.key == key)
+        .toRight(Stop.Refused(s"project ${ProjectKey.value(project.key)} has no ${key.value}"))
     step match {
       case Step.Keep(args, whose) =>
         for {
@@ -3256,9 +3260,7 @@ private[plugin] object ProjectCommands {
       case Step.Edit(args) =>
         for {
           key <- refuse(resolve(args.key))
-          current <- now.artifacts
-            .find(_.head.key == key)
-            .toRight(Stop.Refused(s"project ${ProjectKey.value(project.key)} has no ${key.value}"))
+          current <- found(key)
           _ <- unchanged(key, Some(args.version), project.documents.find(_._2.head.key == key))
           body <- Body
             .edited(current.body, args.edit, resolve)
@@ -3274,10 +3276,6 @@ private[plugin] object ProjectCommands {
           )
         } yield kept
       case Step.Reorder(args) =>
-        def found(key: ArtifactKey): Either[Stop, Artifact] =
-          now.artifacts
-            .find(_.head.key == key)
-            .toRight(Stop.Refused(s"project ${ProjectKey.value(project.key)} has no ${key.value}"))
         def under(h: ArtifactHead): String =
           h.parent.fold("under no parent")(p => s"under ${p.value}")
         for {
@@ -3322,9 +3320,7 @@ private[plugin] object ProjectCommands {
       case Step.Split(args) =>
         for {
           key <- refuse(resolve(args.artifact))
-          current <- now.artifacts
-            .find(_.head.key == key)
-            .toRight(Stop.Refused(s"project ${ProjectKey.value(project.key)} has no ${key.value}"))
+          current <- found(key)
           // The version is checked where the artifact is kept, after its parts.
           cannot = (why: String) => Stop.Refused(s"${current.head.called} cannot be split: $why")
           into = method.transitions.collectFirst {
