@@ -1,5 +1,6 @@
 package grit.projects.method
 
+import grit.projects.artifact.Pin
 import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project, Rank}
 import grit.projects.name.{
   ArtifactKey,
@@ -9,7 +10,6 @@ import grit.projects.name.{
   Handle,
   KindName,
   MethodName,
-  Pin,
   ProjectKey,
   RoleName,
   StateName

@@ -3,7 +3,7 @@ package grit.projects.artifact
 import scala.annotation.tailrec
 
 import grit.core.id.ClaimHolder
-import grit.projects.name.{ArtifactKey, ArtifactNumber, ArtifactRef, Handle, Pin, ProjectKey}
+import grit.projects.name.{ArtifactKey, ArtifactNumber, ArtifactRef, Handle, ProjectKey}
 
 final case class Project private (key: ProjectKey, pin: Pin, artifacts: Vector[Artifact])
     extends caps.Pure {

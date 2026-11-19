@@ -3,6 +3,7 @@ package grit.projects.render
 import scala.util.Try
 
 import grit.core.id.DocumentVersionId
+import grit.projects.artifact.Pin
 import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project, Rank}
 import grit.projects.name.{
   ArtifactKey,
@@ -11,7 +12,6 @@ import grit.projects.name.{
   Handle,
   KindName,
   MethodName,
-  Pin,
   ProjectKey,
   StateName
 }

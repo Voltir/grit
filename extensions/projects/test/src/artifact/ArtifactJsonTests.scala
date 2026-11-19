@@ -20,7 +20,7 @@ import grit.core.store.Tx
 import grit.core.visibility.{Integrity, Label}
 import grit.dbos.sql.TestTx
 import grit.projects.method.MethodFixtures
-import grit.projects.name.{ArtifactKey, KindName, MethodName, Pin, ProjectKey, StateName}
+import grit.projects.name.{ArtifactKey, KindName, MethodName, ProjectKey, StateName}
 import grit.projects.plugin.Projects
 import grit.projects.render.ProjectGen
 import grit.prose.form.{Block, Doc, Span, Text}

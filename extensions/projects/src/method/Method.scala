@@ -3,6 +3,7 @@ package grit.projects.method
 import scala.annotation.tailrec
 
 import grit.core.id.Sha256
+import grit.projects.artifact.Pin
 import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
 import grit.projects.name.{
   ArtifactKey,
@@ -10,7 +11,6 @@ import grit.projects.name.{
   Handle,
   KindName,
   MethodName,
-  Pin,
   ProjectKey,
   RoleName,
   StateName
