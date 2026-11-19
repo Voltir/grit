@@ -1,6 +1,7 @@
 # 0042. A strand's document is summarised from its members' raw messages by a dreaming job, one per root at its room's label
 
-Status: accepted (2026-10-18); revised (2026-11-06)
+Status: accepted (2026-10-18); revised (2026-11-06); revised (2026-11-19: core sorts for a
+dreaming job too; proposed, for Nick)
 
 Context: a room's topic is scattered over the threads stitched into a strand (ADR 0060), and a
 turn's window ranks those threads one by one. A document per strand, a short summary with
@@ -30,6 +31,16 @@ Decision:
   job's plugin's own or a need's and the transaction reads it (one that is not is left out,
   and the job told which were shown), and the reply is believed at the meet of everything
   read. One strand and no documents is digested as a strand's summary always was.
+- **Core sorts for it, too.** Where a job must place a discussion or a document among its
+  plugin's documents (a topic for a strand, say), `Dreaming.sort` is a judgment whose step
+  reads the item and each candidate itself, as a summary's does, and asks the deployment's
+  classifier: one choice over the candidates and the job's fixed criteria (`Sorting.choice`),
+  or a yes/no for each of the nearest by their words (`Sorting.each`, at most 40). The job
+  names the candidates by version and is handed back its own values for them, each with a
+  probability; the text stays in the step. Its record holds ids, a digest and the answers, and
+  its answer is believed at the meet of everything read. A judgment costs a fraction of a
+  model's ask and reads no prompt a model could be steered by, so placing moves off the
+  summary model; the job's model asks only write.
 - **One document per strand root, at its room's label.** A run is kept at one label (its
   schedule's clearance), writes only for rooms whose label in force is its floor, and
   withdraws a document whose room has moved to another; a deployment declares one schedule per
@@ -47,13 +58,17 @@ Consequences:
 - A plugin's code never holds a message's text, only the links in it as `Href`s
   (`StrandShelf.links`); ADR 0027's rule holds for it, and ADR 0034's moves gain a read inside a
   keep and an ask core frames. A planted link can place a card the plugin already reads into a
-  write already capped by the guest's strand, which is the influence the attach ask's placing has.
+  write already capped by the guest's strand, which is the influence a sort's placing has.
+- A sort's classifier reads the guest's words as its state, and they can move a probability:
+  a job sets the marks a probability must pass, and a placement only decides
+  which document is written, never what it is believed at.
 - A document's integrity is never above its least-believed message's, and its label never
   below its room's: the keeper joins with the floor, and the run reads no room above it.
 - A strand that goes quiet past the stitch's horizon keeps its document until its members age
   out, and is found by search, not by the stitch.
 - No strand forms in a channel's top level or a thread under it (ADR 0060): a strand's
   document is withdrawn as its members, threads recorded before rooms, age out.
-- Enforced by the types (only `Dreaming` offers `scan` and `summarise`; `Strand.Digested` has no
-  text) and capture probes (`ActCaptureTests`), and by `MovesContract` against the moves and
-  their fake.
+- Enforced by the types (only `Dreaming` offers `scan`, `summarise` and `sort`;
+  `Strand.Digested` has no text; a sort's candidates are pure values) and capture probes
+  (`ActCaptureTests`, `SortCaptureTests`), and by `MovesContract` against the moves and their
+  fake.
