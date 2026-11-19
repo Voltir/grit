@@ -34,40 +34,17 @@ object OldFormTests extends TestSuite {
     val projects = plugin()
     val store = Store()
     started(projects, store)
-    val written = inTx {
-      for {
-        index <- store.keeper.current(right(DocKey.of("p")), Label.Public)
-        d <- index.toRight(grit.core.store.StoreError.Invalid("no index"))
-        _ <- store.keeper.write(
-          d.key,
-          d.label,
-          d.integrity,
-          d.place,
-          d.text,
-          ujson.Obj.from(d.data.obj.toSeq.filterNot(_._1 == "next")),
-          None,
-          at,
-          Set(right(DocRef.of("pinned", "p")))
-        )
-      } yield ()
-    }
-    written.fold(e => throw new java.lang.AssertionError(e.toString), identity)
-    (stored ++ more).foreach { (key, data) =>
-      inTx(
-        store.keeper.write(
-          right(DocKey.of(key)),
-          Label.Public,
+    oldForm(
+      store,
+      (stored ++ more).map((key, data) =>
+        (
+          key = key,
+          data = ujson.read(data),
           // p/b as a turn kept it, believed lower than a person's own word.
-          if (key == "p/b") Integrity.Member else Integrity.Authority,
-          Place.Everywhere,
-          right(DocText.of("Old.")),
-          ujson.read(data),
-          None,
-          at,
-          Set(right(DocRef.of("project", "p")))
+          believed = if (key == "p/b") Integrity.Member else Integrity.Authority
         )
-      ).fold(e => throw new java.lang.AssertionError(e.toString), _ => ())
-    }
+      )*
+    )
     (projects, store)
   }
 
@@ -283,8 +260,9 @@ object OldFormTests extends TestSuite {
       )
       (
         done(ask(projects, store, "project_rekey", "project" -> "p")),
-        done(ask(projects, store, "project_show", "key" -> "p/k-0042-x", "head" -> true))
-          .linesIterator
+        done(
+          ask(projects, store, "project_show", "key" -> "p/k-0042-x", "head" -> true)
+        ).linesIterator
           .take(3)
           .toVector,
         refusedArgs(projects, "project_show", "key" -> "p/0042-x")

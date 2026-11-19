@@ -8,7 +8,7 @@ import grit.core.identity.Principal
 import grit.core.plugin.{CommandBy, CommandOutcome}
 import grit.core.tool.{ArgsError, ToolName}
 import grit.core.visibility.Integrity
-import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project, Rank}
+import grit.projects.artifact.{Artifact, ArtifactHead, Body, OldFormFixtures, Project, Rank}
 import grit.projects.method.MethodFixtures
 import grit.projects.name.{ArtifactKey, ArtifactNumber, Handle, Pin, ProjectKey}
 import grit.projects.render.{Brief, ProjectMarkdown}
@@ -580,10 +580,13 @@ object ProjectCommandsTests extends TestSuite {
       val projects = plugin()
       val store = Store()
       started(projects, store)
-      kept(projects, store, "a", "note", "A.")
-      kept(projects, store, "b", "note", "B.")
-      storedUnder(store, "p/1", "p/old")
-      storedUnder(store, "p/2", "p/other")
+      rekeyed(
+        projects,
+        store,
+        (key = "p/old", data = OldFormFixtures.data("A"), believed = Integrity.Authority),
+        (key = "p/other", data = OldFormFixtures.data("B"), believed = Integrity.Authority)
+      )
+      // Where no re-key leaves an id: its table rewritten by hand.
       def plant(names: (Int, String)*): Unit = inTx(
         store.keeper.write(
           right(grit.core.id.DocKey.of("p#rekeyed-0")),
@@ -604,11 +607,11 @@ object ProjectCommandsTests extends TestSuite {
           Set.empty
         )
       ).fold(e => throw new java.lang.AssertionError(e.toString), _ => ())
-      done(ask(projects, store, "project_withdraw", "key" -> "p/a"))
+      done(ask(projects, store, "project_withdraw", "key" -> "p/old"))
+      val history = ask(projects, store, "project_history", "key" -> "p/1")
       // p/1 named where p/2 is kept: its newest version's id is not the one asked for.
       plant(1 -> "p/other")
       val misnamed = ask(projects, store, "project_history", "key" -> "p/1")
-      plant(1 -> "p/old")
       val atOld = inTx(
         store.keeper.versions(
           right(grit.core.id.DocKey.of("p/old")),
@@ -624,13 +627,13 @@ object ProjectCommandsTests extends TestSuite {
       )
       (
         misnamed,
-        ask(projects, store, "project_history", "key" -> "p/1") match {
+        history match {
           case CommandOutcome.Done(text) =>
             text.linesIterator.map(_.takeWhile(_ != ' ').toLong).toVector
           case other => other
         },
         atOld.size
-      ) ==> (CommandOutcome.Refused("project p has no artifact p/1 (its highest is p/2)"), atOld, 2)
+      ) ==> (CommandOutcome.Refused("project p has no artifact p/1 (its highest is p/2)"), atOld, 3)
     }
     test("history lists versions newest first with who wrote each") {
       val projects = plugin()
@@ -1209,11 +1212,18 @@ object ProjectCommandsTests extends TestSuite {
       val projects = plugin()
       val store = Store()
       started(projects, store)
-      kept(projects, store, "a", "note", "The cache is cold.")
-      storedUnder(store, "p/1", "p/cache-notes")
+      rekeyed(
+        projects,
+        store,
+        (
+          key = "p/cache-notes",
+          data = OldFormFixtures.data("Notes", says = "The cache is cold"),
+          believed = Integrity.Authority
+        )
+      )
       done(
         askAt(at.plusSeconds(1))(projects, store, "project_find", "query" -> "cache")
-      ) ==> "p/1 a (note, open): Title a"
+      ) ==> "p/1 cache-notes (note, open): Notes"
     }
 
     test("project_find leaves out ended artifacts unless asked for them") {

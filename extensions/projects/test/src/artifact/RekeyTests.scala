@@ -15,6 +15,7 @@ import utest.*
 
 /** [[Rekey.plan]]'s laws, over documents of the old form as the store held them before ids. */
 object RekeyTests extends TestSuite {
+  import OldFormFixtures.data
 
   private def right[A](e: Either[String, A]): A =
     e.fold(why => throw new java.lang.AssertionError(why), identity)
@@ -22,38 +23,6 @@ object RekeyTests extends TestSuite {
   private val p: ProjectKey = right(ProjectKey.of("p"))
   private val pin: Pin = right(Pin.read(right(MethodName.of("m")), 1, "0f" * 32))
   private val t0 = Instant.parse("2026-10-01T12:00:00Z")
-
-  /** The old form's data of an artifact titled `title`, under `parent`, citing `cites` in its
-    * head and linking each in its body.
-    */
-  private def data(title: String, parent: Option[String], cites: Vector[String]): ujson.Value = {
-    val spans = ujson.Str("See ") +: cites.zipWithIndex.map { (c, i) =>
-      ujson.Obj("t" -> c.stripPrefix("p/"), "n" -> ujson.Arr(i))
-    } :+ ujson.Obj("t" -> ".")
-    ujson.Obj(
-      "head" -> ujson.Obj(
-        "kind" -> "note",
-        "state" -> "open",
-        "title" -> title,
-        "parent" -> parent.fold[ujson.Value](ujson.Null)(ujson.Str(_)),
-        "cites" -> ujson.Arr.from(cites.map(ujson.Str(_))),
-        "by" -> "nick"
-      ),
-      "body" -> ujson.Obj(
-        "v" -> 1,
-        "notes" -> ujson.Arr.from(cites.map(ujson.Str(_))),
-        "blocks" -> ujson.Arr(
-          ujson.Obj(
-            "type" -> "para",
-            "text" -> ujson.Arr.from(spans.map {
-              case ujson.Str(s) => ujson.Obj("t" -> s)
-              case other => other
-            })
-          )
-        )
-      )
-    )
-  }
 
   /** An old-form document under `key` at `label`, first kept `minutes` after `t0`. */
   private def old(
