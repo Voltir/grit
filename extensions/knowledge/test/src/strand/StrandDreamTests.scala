@@ -15,7 +15,7 @@ import grit.core.need.Needs
 import grit.core.place.Place
 import grit.core.stitch.StrandWorld
 import grit.core.store.Conversation
-import grit.core.visibility.{Clearance, Integrity, Label, Level, Recorded}
+import grit.core.visibility.{Clearance, Integrity, Label, Level, Recorded, TestLabels, Visibility}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -45,20 +45,34 @@ object StrandDreamTests extends TestSuite {
   private def long(word: String): String = (word + " ") * 60
 
   /** A world of one room, `C1`, and the strand there: `members` threads, the root first, each
-    * after the root saying one long message, the root saying `rootSays`. Its root.
+    * after the root saying one long message, the root saying `rootSays`, every message believed
+    * at `integrity`. Its root.
     */
-  private def strand(w: StrandWorld, channel: String, members: Int, rootSays: Int): Conversation = {
+  private def strand(
+      w: StrandWorld,
+      channel: String,
+      members: Int,
+      rootSays: Int,
+      integrity: Integrity = Integrity.Member
+  ): Conversation = {
     val root = w.thread(channel, "1.0")
-    (0 until rootSays).foreach(i => w.say(root, long(s"deploy$i"), i.toLong))
+    (0 until rootSays).foreach(i => w.say(root, long(s"deploy$i"), i.toLong, integrity))
     (1 until members).foreach { m =>
       val t = w.thread(channel, s"${m + 1}.0")
-      w.follow(w.say(t, long(s"reply$m"), (10 * m).toLong), root)
+      w.follow(w.say(t, long(s"reply$m"), (10 * m).toLong, integrity), root)
     }
     root
   }
 
-  /** The asks a run's summaries made, and the documents it left, in order. */
-  private final class Runs(w: StrandWorld, floor: Label = Label.Public) {
+  /** The asks a run's summaries made, and the documents it left, in order: each run believed at
+    * `believed` under `visibility`, as a schedule's run is believed at grit's own.
+    */
+  private final class Runs(
+      w: StrandWorld,
+      floor: Label = Label.Public,
+      visibility: Visibility = Visibility.Shipped,
+      believed: Integrity = Integrity.Authority
+  ) {
     val documents = new InMemoryDocuments
     private val heard = new Heard
 
@@ -93,10 +107,23 @@ object StrandDreamTests extends TestSuite {
             .map(v => Asked(TestTainted.at(v, Integrity.Member), floor)),
         documents = documents,
         at = Now,
-        rooms = rooms
+        integrity = believed,
+        rooms = rooms,
+        visibility = visibility
       )
-      dream.run(TestTainted.trusted(JobRun(DreamParams(perRun, 2.days), Now, Now)), moves)
+      dream.run(
+        TestTainted.trusted(JobRun(DreamParams(perRun, 2.days), Now, Now), believed),
+        moves
+      )
     }
+
+    /** What each current document a run at `floor` reads is believed at. */
+    def integrities: Vector[Integrity] =
+      documents
+        .keeper(Plugin, Terms)
+        .newest(Int.MaxValue)(using TestTx.fake(Clearance.of(floor)))
+        .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
+        .map(_.integrity)
 
     /** The current documents a run at `floor` reads: each key, label and text. */
     def kept: Vector[(String, String, String)] =
@@ -247,6 +274,16 @@ object StrandDreamTests extends TestSuite {
         Vector("internal"),
         "strands: 0 written, 1 withdrawn, 0 unchanged, 0 left for the next run",
         Vector()
+      )
+    }
+
+    test("a summary of a strand whose messages are believed in a compartment is believed in it") {
+      val w = new StrandWorld
+      val _ = strand(w, "C1", members = 3, rootSays = 3, integrity = TestLabels.Endorsed)
+      val runs = new Runs(w, visibility = TestLabels.Trialled, believed = TestLabels.TrialledOwn)
+      (runs.run(), runs.integrities) ==> (
+        "strands: 1 written, 0 withdrawn, 0 unchanged, 0 left for the next run",
+        Vector(TestLabels.Endorsed)
       )
     }
 

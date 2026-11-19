@@ -41,7 +41,8 @@ import grit.core.visibility.{
   Label,
   Level,
   Recorded,
-  TestLabels
+  TestLabels,
+  Visibility
 }
 import grit.dbos.sql.TestTx
 import grit.knowledge.card.{Card, CardShelf, CardSummary, UnitVersion}
@@ -98,13 +99,15 @@ object CardDeclassifyTests extends TestSuite {
     def asked: (Int, Int) = (counts.rewrites, counts.checks)
 
     /** The card of the Drive file `id` at `revision`, holding `says` at [[Floor]], its file
-      * [[pieced]] at that revision unless not `withPieces`: its version.
+      * [[pieced]] at that revision unless not `withPieces`, both believed at `integrity`: its
+      * version.
       */
     def card(
         id: String,
         says: String = "The offsite is at the lake house.",
         revision: String = First,
-        withPieces: Boolean = true
+        withPieces: Boolean = true,
+        integrity: Integrity = Integrity.Member
     ): DocumentVersionId = {
       val c = Card.file(
         Corpus,
@@ -114,13 +117,13 @@ object CardDeclassifyTests extends TestSuite {
         pointer(id),
         Some(id)
       )
-      if (withPieces) pieced(id, revision)
+      if (withPieces) pieced(id, revision, integrity)
       documents
         .keeper(Knowledge, CardTerms)
         .write(
           c.docKey,
           Floor,
-          Integrity.Member,
+          integrity,
           Place.Everywhere,
           c.text,
           c.data,
@@ -134,8 +137,10 @@ object CardDeclassifyTests extends TestSuite {
       }
     }
 
-    /** The Drive file `id` at `revision`, kept as the knowledge plugin's pieces at [[Floor]]. */
-    def pieced(id: String, revision: String): Unit = {
+    /** The Drive file `id` at `revision`, kept as the knowledge plugin's pieces at [[Floor]],
+      * believed at `integrity`.
+      */
+    def pieced(id: String, revision: String, integrity: Integrity = Integrity.Member): Unit = {
       val kept = pieces
         .keeper(Knowledge, PieceKeeper.Bound)
         .keep(
@@ -150,7 +155,7 @@ object CardDeclassifyTests extends TestSuite {
             Pieces.Target
           ),
           Place.Everywhere,
-          Integrity.Member,
+          integrity,
           TestPieces.paragraphs(Vector("Offsite"), Vector("The offsite is at the lake house.")),
           0,
           Now
@@ -206,12 +211,15 @@ object CardDeclassifyTests extends TestSuite {
 
     /** One run with `perRun`, its rewrites answered "The team meets offsite." and every question
       * of each screen, a rewrite's or a source's, `leak`; or, given `screens`, the `i`th screen
-      * across runs answering `screens(i)` in order, cycling: its reply.
+      * across runs answering `screens(i)` in order, cycling; the run believed at `believed` under
+      * `visibility`, as a schedule's run is believed at grit's own: its reply.
       */
     def run(
         perRun: Int = 5,
         leak: Double = 0.0,
-        screens: Vector[Vector[Double]] = Vector()
+        screens: Vector[Vector[Double]] = Vector(),
+        visibility: Visibility = Visibility.Shipped,
+        believed: Integrity = Integrity.Authority
     ): String = {
       val job = new CardDeclassify(5, Cards)
       val world = new StrandWorld
@@ -240,7 +248,7 @@ object CardDeclassifyTests extends TestSuite {
         // Positional: a named argument lifts the capturing script into a val it cannot flow into.
         documents,
         Now,
-        Integrity.Authority,
+        believed,
         Recorded.Empty,
         _ => {
           counts.rewrite()
@@ -253,9 +261,22 @@ object CardDeclassifyTests extends TestSuite {
             if (screens.isEmpty) Vector.fill(request.questions.size)(Answer.YesNo(leak))
             else screens(at % screens.size).map(Answer.YesNo(_))
           Right(Asked(TestTainted.at(answers, Integrity.Member), Floor))
-        }
+        },
+        visibility
       )
-      job.run(TestTainted.trusted(JobRun(DeclassifyParams(perRun), Now, Now)), moves)
+      job.run(TestTainted.trusted(JobRun(DeclassifyParams(perRun), Now, Now), believed), moves)
+    }
+
+    /** What the plugin's current rewrites at [[Floor]] and its withholding there are believed at. */
+    def integrities: (Vector[Integrity], Option[Integrity]) = {
+      val own = documents
+        .keeper(Plugin, Terms)
+        .newest(Int.MaxValue)(using TestTx.fake(Clearance.of(Floor)))
+        .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
+      (
+        own.filterNot(_.key == Withheld.Key).map(_.integrity),
+        own.find(_.key == Withheld.Key).map(_.integrity)
+      )
     }
 
     /** The plugin's current documents a run at [[Floor]] reads: each label and text. */
@@ -318,6 +339,20 @@ object CardDeclassifyTests extends TestSuite {
         "declassified cards: 1 written, 0 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 0 withdrawn, 0 left for the next run",
         Vector(("internal", "The team meets offsite.")),
         (1, 1)
+      )
+    }
+
+    test("a rewrite of a card believed in a compartment is believed in it") {
+      val runs = new Runs
+      val _ = runs.card("c1", integrity = TestLabels.Endorsed)
+      runs.policy(1)
+      runs.apply("c1", 1)
+      (
+        runs.run(visibility = TestLabels.Trialled, believed = TestLabels.TrialledOwn),
+        runs.integrities
+      ) ==> (
+        "declassified cards: 1 written, 0 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 0 withdrawn, 0 left for the next run",
+        (Vector(TestLabels.Endorsed), None)
       )
     }
 

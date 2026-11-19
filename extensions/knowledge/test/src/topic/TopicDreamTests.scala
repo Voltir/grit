@@ -27,7 +27,7 @@ import grit.core.place.Place
 import grit.core.stitch.StrandWorld
 import grit.core.store.{Conversation, StoreError, Tx}
 import grit.core.tool.ToolName
-import grit.core.visibility.{Clearance, Integrity, Label, Level, Recorded}
+import grit.core.visibility.{Clearance, Integrity, Label, Level, Recorded, TestLabels, Visibility}
 import grit.dbos.sql.TestTx
 import grit.knowledge.card.{Card, CardShelf, CardSummary, Scope, UnitVersion}
 import grit.knowledge.ref.{Ref, TopicKey}
@@ -75,18 +75,32 @@ object TopicDreamTests extends TestSuite {
   /** A link to the Drive file `plan1`, as a person pastes it. */
   private val PlanLink = "https://docs.google.com/document/d/plan1/edit."
 
-  /** A strand of two threads in `channel`: the root saying `says`, a follower `reply`. */
-  private def strand(w: StrandWorld, channel: String, says: String, at: Long = 0): Conversation = {
+  /** A strand of two threads in `channel`: the root saying `says`, a follower `reply`, each
+    * believed at `integrity`.
+    */
+  private def strand(
+      w: StrandWorld,
+      channel: String,
+      says: String,
+      at: Long = 0,
+      integrity: Integrity = Integrity.Member
+  ): Conversation = {
     val root = w.thread(channel, "1.0")
-    w.say(root, says, at)
-    w.follow(w.say(w.thread(channel, "2.0"), s"reply on $says", at + 10), root)
+    w.say(root, says, at, integrity)
+    w.follow(w.say(w.thread(channel, "2.0"), s"reply on $says", at + 10, integrity), root)
     root
   }
 
   private def key(root: Conversation): String = s"topic:strand-${ConversationId.value(root.id)}"
 
-  /** The asks a run made, and the documents it left. */
-  private final class Runs(w: StrandWorld) {
+  /** The asks a run made, and the documents it left: each run believed at `believed` under
+    * `visibility`, as a schedule's run is believed at grit's own.
+    */
+  private final class Runs(
+      w: StrandWorld,
+      visibility: Visibility = Visibility.Shipped,
+      believed: Integrity = Integrity.Authority
+  ) {
     val documents = new InMemoryDocuments
     private val heard = new Heard
     ok(documents.declare(Vector(Plugin -> Terms, Knowledge -> CardTerms))(using TestTx.fake))
@@ -135,11 +149,14 @@ object TopicDreamTests extends TestSuite {
         answer,
         documents = documents,
         at = now,
-        rooms = rooms
+        integrity = believed,
+        rooms = rooms,
+        visibility = visibility
       )
       dream.run(
         TestTainted.trusted(
-          JobRun(TopicParams(perRun, 2.days, 2.days, day, seedUntil, asideFor), now, now)
+          JobRun(TopicParams(perRun, 2.days, 2.days, day, seedUntil, asideFor), now, now),
+          believed
         ),
         moves
       )
@@ -182,6 +199,10 @@ object TopicDreamTests extends TestSuite {
         tags.collect { case Lineage.Tag.Card(v) => v }
       )
     }
+
+    /** What the aside at the public label is believed at, when there is one. */
+    def asideBelieved: Option[Integrity] =
+      ok(documents.keeper(Plugin, Terms).current(Aside.Key, Label.Public)).map(_.integrity)
 
     /** The keys of the topics that refer to `r`. */
     def referring(r: Ref): Vector[String] =
@@ -1305,6 +1326,18 @@ object TopicDreamTests extends TestSuite {
       (reply, runs.topics.map(d => (DocKey.value(d.key), d.integrity))) ==> (
         "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
         Vector((key(a), Integrity.Outside))
+      )
+    }
+
+    test("a topic written from a strand and a card believed in a compartment is believed in it") {
+      val w = new StrandWorld
+      val runs = new Runs(w, TestLabels.Trialled, TestLabels.TrialledOwn)
+      val a = strand(w, "C1", "deploy pipeline", integrity = TestLabels.Endorsed)
+      runs.card("plan1", "The deploy plan.", Now.minusSeconds(60), TestLabels.Endorsed)
+      val reply = runs.run(attach = (_, _) => placed(Seq(group("new", Seq(1), Seq(1)))))
+      (reply, runs.topics.map(d => (DocKey.value(d.key), d.integrity))) ==> (
+        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
+        Vector((key(a), TestLabels.Endorsed))
       )
     }
   }

@@ -10,8 +10,8 @@ import grit.core.id.{DocumentVersionId, JobName}
 import grit.core.job.{DreamingJob, JobRun}
 import grit.core.need.Exported
 import grit.core.store.{StoreError, Tx}
-import grit.core.visibility.{DeclassificationPolicy, Integrity}
-import grit.knowledge.card.{CardMoves, CardShelf, NotWritten, UnitVersion}
+import grit.core.visibility.DeclassificationPolicy
+import grit.knowledge.card.{Believed, CardMoves, CardShelf, NotWritten, UnitVersion}
 import grit.std.either.Traversal.traverse
 
 /** What a declassify run is told: at most how many cards it rewrites. */
@@ -104,7 +104,7 @@ final class CardDeclassify(perRunMost: Int, cards: Exported[CardShelf])
                 }
               case Right(Declassifying.Outcome.Made(rewrite)) =>
                 moves.keep(CardMoves.numbered("keep", i), rewrite)((d, keeper, at) =>
-                  keeper.declassified(d, Integrity.Authority, at).map(_ => Kept)
+                  keeper.declassified(d, Believed.input, at).map(_ => Kept)
                 ) match {
                   case Left(e) => done.unwritten(source, MoveError.said(e))
                   case Right(_) => done.wrote

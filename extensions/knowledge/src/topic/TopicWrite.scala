@@ -7,7 +7,8 @@ import grit.core.durable.Journaled
 import grit.core.id.{DocKey, DocumentVersionId}
 import grit.core.place.Place
 import grit.core.store.{StoreError, Tx}
-import grit.core.visibility.{Integrity, Label}
+import grit.core.visibility.Label
+import grit.knowledge.card.Believed
 import grit.knowledge.ref.{Ref, TopicKey}
 import grit.prose.form.{Doc, Mark, Span}
 import grit.prose.markdown.Markdown
@@ -133,8 +134,8 @@ private[topic] object TopicWrite {
   /** `held` as the current document under `key` at `label` ([[DocumentKeeper.write]]), not in
     * any one room ([[Place.Everywhere]]), written `at`, holding a ref to each of [[refs]] that
     * makes one: one [[Ref.written]] refuses, or one past [[DocRef.Most]], is left out and
-    * counted, its link still in the text. `Left` when the store refuses, or the topic's text is
-    * blank.
+    * counted, its link still in the text; believed at no more than the topic it replaces there
+    * ([[Believed.replacing]]). `Left` when the store refuses, or the topic's text is blank.
     */
   def kept(keeper: DocumentKeeper, key: TopicKey, label: Label, held: Held, at: Instant)(using
       Tx^
@@ -144,10 +145,11 @@ private[topic] object TopicWrite {
     val skipped = written.count(_.isLeft) + (made.size - DocRef.Most).max(0)
     for {
       text <- Topic.text(held.topic).left.map(why => StoreError.Invalid(s"a topic's text: $why"))
+      integrity <- Believed.replacing(keeper, TopicKey.doc(key), label)
       w <- keeper.write(
         TopicKey.doc(key),
         label,
-        Integrity.Authority,
+        integrity,
         Place.Everywhere,
         text,
         data(held),

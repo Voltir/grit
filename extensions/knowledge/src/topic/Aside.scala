@@ -6,7 +6,8 @@ import grit.core.document.{DocText, DocumentKeeper, Written}
 import grit.core.id.DocKey
 import grit.core.place.Place
 import grit.core.store.{StoreError, Tx}
-import grit.core.visibility.{Integrity, Label}
+import grit.core.visibility.Label
+import grit.knowledge.card.Believed
 import grit.knowledge.topic.TopicWrite.Kept
 
 /** What a label's topics runs set aside: each strand and card their attach ask placed in no
@@ -53,7 +54,7 @@ object Aside {
 
   /** `aside` as the aside at `floor`, written `at`, not in any one room ([[Place.Everywhere]]):
     * withdrawn when it holds nothing; `Kept(None, 0)` when nothing was written, it being so
-    * already.
+    * already. Believed at no more than the aside it replaces ([[Believed.replacing]]).
     */
   private[topic] def kept(keeper: DocumentKeeper, floor: Label, aside: Vector[Item], at: Instant)(
       using Tx^
@@ -64,16 +65,10 @@ object Aside {
         case Some(_) => keeper.withdraw(Key, floor, at).map(Kept(_, 0))
       }
     else
-      keeper
-        .write(
-          Key,
-          floor,
-          Integrity.Authority,
-          Place.Everywhere,
-          Text,
-          TopicJson.aside(aside),
-          None,
-          at
+      Believed
+        .replacing(keeper, Key, floor)
+        .flatMap(
+          keeper.write(Key, floor, _, Place.Everywhere, Text, TopicJson.aside(aside), None, at)
         )
         .map {
           case Written.Versioned(v, _, _) => Kept(Some(v), 0)
