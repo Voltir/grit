@@ -538,8 +538,8 @@ private[plugin] final class ProjectCommands(
       locked(claims, args.project).flatMap { lock =>
         given Locked = lock
         for {
-          held <- if (args.dry) Right(Vector.empty) else holding(claims, args.project, at)
           project <- loaded(own, args.project)
+          held <- if (args.dry) Right(Vector.empty) else holding(claims, project, at)
           method <- declared(own, project.pin)
           plan = planned(project, method, args.steps, author(by), moverOf(by), onward = args.dry)
           (said, steps) = plan
@@ -1110,7 +1110,7 @@ private[plugin] final class ProjectCommands(
           }
           whole <- refuse(Project.of(args.key.project, project.pin, project.artifacts))
           // The role has a view and the artifact is the project's, so the claim has its brief.
-          unkept <- rendered(method, whole, Vector(made)).headOption
+          unkept <- rendered(method, whole, ids(project), Vector(made)).headOption
             .toRight(Stop.Refused(s"${a.head.called} has no brief as ${RoleName.value(args.role)}"))
             .flatMap(briefed(own, _, document.place, project, at))
         } yield AnswerText.claimed(
@@ -1148,7 +1148,7 @@ private[plugin] final class ProjectCommands(
           (document, _) = found
           freed <- stored(claims.release(document.key, document.label))
           // The brief goes even when its claim is gone, as a swept lapsed claim is.
-          briefFor <- unbriefed(own, key, at)
+          briefFor <- unbriefed(own, document.key, at)
           holder <- freed
             .map(_.holder)
             .orElse(briefFor)
@@ -1240,8 +1240,8 @@ private[plugin] final class ProjectCommands(
       locked(claims, args.key.project).flatMap { lock =>
         given Locked = lock
         for {
-          held <- holding(claims, args.key.project, at)
           project <- loaded(own, args.key.project)
+          held <- holding(claims, project, at)
           whole <- refuse(Project.of(args.key.project, project.pin, project.artifacts))
           ended <-
             if (args.cascade) ending(own, project.pin)
@@ -1346,8 +1346,8 @@ private[plugin] final class ProjectCommands(
             if (args.before.isAfter(today))
               Left(Stop.Refused(s"before is ${args.before}, later than today, $today (UTC)"))
             else Right(())
-          held <- if (args.dry) Right(Vector.empty) else holding(claims, args.project, at)
           project <- loaded(own, args.project)
+          held <- if (args.dry) Right(Vector.empty) else holding(claims, project, at)
           method <- declared(own, project.pin)
           _ <- args.kinds.filterNot(k => method.kinds.exists(_.name == k)).toVector match {
             case Vector() => Right(())
@@ -1562,16 +1562,19 @@ private[plugin] final class ProjectCommands(
         claims: Claims,
         at: Instant
     )(using Tx^): Either[StoreError, CommandOutcome] = answered {
-      stored(claims.live(at)).map { live =>
-        val held = live.flatMap(c =>
-          ArtifactKey
-            .read(DocKey.value(c.subject))
-            .toOption
+      for {
+        live <- stored(claims.live(at))
+        // A claim's subject is the key its artifact is kept under; its id is in the head.
+        documents <- stored(Traversal.traverse(live)(c => own.current(c.subject, c.label)))
+      } yield AnswerText.claims(
+        live.zip(documents).flatMap { (c, d) =>
+          d.flatMap(Artifact.of(_).toOption)
+            .map(_.head.key)
+            .orElse(ArtifactKey.read(DocKey.value(c.subject)).toOption)
             .filter(k => args.project.forall(_ == k.project))
             .map(k => (k, c, accounts(c.by)))
-        )
-        AnswerText.claims(held)
-      }
+        }
+      )
     }
   }
 
@@ -1640,8 +1643,8 @@ private[plugin] final class ProjectCommands(
     locked(claims, key).flatMap { lock =>
       given Locked = lock
       for {
-        held <- holding(claims, key, at)
         project <- loaded(own, key)
+        held <- holding(claims, project, at)
         step <- stepping(project)
         method <- declared(own, project.pin)
         plan = planned(project, method, Vector(step), author(by), moverOf(by), onward = false)
@@ -1653,22 +1656,20 @@ private[plugin] final class ProjectCommands(
       } yield (said = answer, versions = versions)
     }
 
-  /** Each claim live at `at` on an artifact of project `key` and kept at this transaction's
-    * floor, as held ([[Claims.held]]) until it ends, in the order [[Claims.live]] gives, so that
+  /** Each claim live at `at` on an artifact of `project`, matched by the key its document is
+    * kept under, and kept at this transaction's floor, as held ([[Claims.held]]) until it ends, in the order [[Claims.live]] gives, so that
     * the session sweep, which takes no project's lock, waits for this transaction before it
     * deletes one. A claim gone or made anew since it was read is left out. A claim kept below
     * the floor is passed over: a command changes only artifacts kept at its floor
     * ([[atTheirLabels]]), so nothing that brief shows changes.
     */
-  private def holding(claims: Claims, key: ProjectKey, at: Instant)(using
+  private def holding(claims: Claims, project: Loaded, at: Instant)(using
       tx: Tx^
   )(using Locked): Either[Stop, Vector[Claim]] =
     for {
       live <- stored(claims.live(at))
-      here = live.filter(c =>
-        c.label == Tx.floor(tx) &&
-          ArtifactKey.read(DocKey.value(c.subject)).exists(_.project == key)
-      )
+      keys = ids(project)
+      here = live.filter(c => c.label == Tx.floor(tx) && keys.contains(c.subject))
       held <- Traversal.traverse(here)(c => stored(claims.held(c)))
     } yield held.flatten
 
@@ -1690,7 +1691,7 @@ private[plugin] final class ProjectCommands(
         p <- project
         m <- method
         whole <- Project.of(key, p.pin, p.artifacts).toOption
-      } yield rendered(m, whole, held).flatMap(r =>
+      } yield rendered(m, whole, ids(p), held).flatMap(r =>
         p.documents.find(_._2.head.key == r.key).map(d => (r, d._1.place, p))
       )).getOrElse(Vector.empty)
       _ <- Traversal
@@ -2409,12 +2410,17 @@ private[plugin] object ProjectCommands {
   )
 
   /** Each claim of `live` on an artifact of `project` whose role `method` shows a view of, in the
-    * order given, with its brief.
+    * order given, with its brief: its artifact the one `keys` gives its subject.
     */
-  private def rendered(method: Method, project: Project, live: Vector[Claim]): Vector[Rendered] =
+  private def rendered(
+      method: Method,
+      project: Project,
+      keys: Map[DocKey, ArtifactKey],
+      live: Vector[Claim]
+  ): Vector[Rendered] =
     live.flatMap { c =>
       for {
-        key <- ArtifactKey.read(DocKey.value(c.subject)).toOption
+        key <- keys.get(c.subject)
         if key.project == project.key
         view <- method.views.find(_.role == c.role)
         brief <- Brief.of(project, key, view, DocRef.BriefChars) match {
@@ -2426,17 +2432,19 @@ private[plugin] object ProjectCommands {
     }
 
   /** Nothing, or a refusal naming each of `after` over its budget when, rendered over `before`
-    * under `method`, it was not or was shorter (`before` none: as if it was not), and the
+    * under `method`, each claim's artifact the one `keys` gives its subject, it was not or was shorter (`before` none: as if it was not), and the
     * characters to cut from those of `changed` the brief holds whole (the claimed artifact, or one
     * its role carries).
     */
   private def within(
       method: Method,
       before: Option[Project],
+      keys: Map[DocKey, ArtifactKey],
       after: Vector[Rendered],
       changed: Vector[ArtifactHead]
   ): Either[Stop, Unit] = {
-    lazy val was = before.fold(Vector.empty[Rendered])(rendered(method, _, after.map(_.claim)))
+    lazy val was =
+      before.fold(Vector.empty[Rendered])(rendered(method, _, keys, after.map(_.claim)))
     after.flatMap { r =>
       for {
         size <- r.brief.left.toOption.map(_.size)
@@ -2649,7 +2657,8 @@ private[plugin] object ProjectCommands {
       _ <- within(
         method,
         Project.of(key, project.pin, project.artifacts).toOption,
-        rendered(method, after, live),
+        ids(project),
+        rendered(method, after, ids(project), live),
         steps.changed.flatMap(k => steps.artifacts.find(_.head.key == k)).map(_.head)
       )
       _ <- atTheirLabels(
@@ -2861,9 +2870,13 @@ private[plugin] object ProjectCommands {
         )
     }
 
-  /** The key `artifact`'s brief is kept under: its own key and `#brief`. */
-  private def briefKey(artifact: ArtifactKey): Either[String, DocKey] =
-    DocKey.of(s"${artifact.value}#brief")
+  /** The key the brief of the artifact kept under `stored` is kept under: that key and `#brief`. */
+  private def briefKey(stored: DocKey): Either[String, DocKey] =
+    DocKey.of(s"${DocKey.value(stored)}#brief")
+
+  /** The id of each artifact of `project`, by the key its document is kept under. */
+  private def ids(project: Loaded): Map[DocKey, ArtifactKey] =
+    project.documents.map((d, a) => d.key -> a.head.key).toMap
 
   /** Keeps `r`'s brief through `own`, at its claim's label and at `place`, as the brief of the
     * claim's holder ([[DocRef.brief]]), its data naming the holder, believed at no more than the
@@ -2897,7 +2910,7 @@ private[plugin] object ProjectCommands {
     // What a write through `own` would believe it at: no rewrite only lowers it to its caller.
     val target = own.believing(believed)
     def raises(was: Integrity): Boolean = target.dominates(was) && target != was
-    briefKey(r.key).fold(
+    briefKey(r.claim.subject).fold(
       _ => Right(Some(s"No brief was kept: $over.")),
       key =>
         stored(own.current(key, label)).flatMap { was =>
@@ -2939,7 +2952,7 @@ private[plugin] object ProjectCommands {
   /** Withdraws `artifact`'s brief at every label it is current at that the transaction reads:
     * the holder the newest of them was for, `None` when there was none.
     */
-  private def unbriefed(own: DocumentKeeper, artifact: ArtifactKey, at: Instant)(using
+  private def unbriefed(own: DocumentKeeper, artifact: DocKey, at: Instant)(using
       Tx^
   )(using Locked): Either[Stop, Option[ClaimHolder]] =
     briefKey(artifact).fold(

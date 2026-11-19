@@ -181,6 +181,47 @@ object KeptBriefTests extends TestSuite {
       (briefText(store), now.contains("The note, rewritten.")) ==> (Some(now), true)
     }
     test(
+      "a claim on an artifact a re-key left under its name is briefed again by a keep, under that name"
+    ) {
+      val projects = plugin()
+      val store = Store(declared = Vector(managing))
+      started(projects, store)
+      kept(projects, store, "c", "note", "Cited.")
+      done(keep(projects, store, "m", "The manager's note.", "cites" -> ujson.Arr("p/c")))
+      // As a re-key leaves it: p/2 kept under the key it had before it had an id.
+      inTx {
+        for {
+          was <- store.keeper.current(right(DocKey.of("p/2")), Label.Public)
+          d <- was.toRight(StoreError.Invalid("no p/2"))
+          written <- grit.projects.artifact.Artifact
+            .of(d)
+            .flatMap(grit.projects.artifact.ArtifactJson.write)
+            .left
+            .map(StoreError.Invalid(_))
+          (text, data, refs) = written
+          _ <- store.keeper.write(
+            right(DocKey.of("p/m")),
+            Label.Public,
+            d.integrity,
+            d.place,
+            text,
+            data,
+            None,
+            at,
+            refs
+          )
+          _ <- store.keeper.withdraw(d.key, Label.Public, at)
+        } yield ()
+      }.fold(failed, identity)
+      claim(projects, store, "p/m")
+      done(keep(projects, store, "m", "The note, rewritten.", "cites" -> ujson.Arr("p/c")))
+      val now = rendered(projects, store)
+      (
+        briefOf(store, holder).map(d => (DocKey.value(d.key), DocText.value(d.text))),
+        now.contains("The note, rewritten.")
+      ) ==> (Some(("p/m#brief", now)), true)
+    }
+    test(
       "an edit of a claimed artifact's body keeps its brief again, as project_brief renders it"
     ) {
       val (projects, store) = claimedProject()
