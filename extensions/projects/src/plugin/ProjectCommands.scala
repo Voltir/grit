@@ -3131,7 +3131,18 @@ private[plugin] object ProjectCommands {
           cites <- args.cites.fold(Right(existing.fold(Vector.empty)(_.head.cites)))(cs =>
             refuse(Traversal.traverse(cs)(resolve))
           )
-          body <- refuse(Body.read(args.body, resolve))
+          body <- Body.reading(args.body, resolve).left.map { why =>
+            // Only what is kept already can be split.
+            Stop.Refused(why match {
+              case Body.Unread.Over(_) =>
+                existing.fold(why.words)(a =>
+                  s"${why.words}. Split ${a.head.called} with project_split, which makes each " +
+                    "of its `##` sections an artifact of its own under it, then keep the part " +
+                    "that grew."
+                )
+              case Body.Unread.Other(_) => why.words
+            })
+          }
           handle <- handled(method, now, key, existing, args.handle)
           // An artifact keeps its rank among the siblings it keeps; under a new parent, or new,
           // it ranks last.

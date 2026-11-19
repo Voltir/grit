@@ -35,9 +35,34 @@ object Body {
   def read(
       markdown: String,
       resolve: ArtifactRef -> Either[String, ArtifactKey]
-  ): Either[String, Body] =
-    if (markdown.isBlank) Left("a body is blank")
-    else parsed(markdown, href => ArtifactRef.read(href).flatMap(resolve)).flatMap(checked)
+  ): Either[String, Body] = reading(markdown, resolve).left.map(_.words)
+
+  /** As [[read]], with why not told apart: [[Unread.Over]] for a stored form over
+    * [[StoredMost]], [[Unread.Other]] for each other reason.
+    */
+  def reading(
+      markdown: String,
+      resolve: ArtifactRef -> Either[String, ArtifactKey]
+  ): Either[Unread, Body] =
+    if (markdown.isBlank) Left(Unread.Other("a body is blank"))
+    else
+      parsed(markdown, href => ArtifactRef.read(href).flatMap(resolve)).left
+        .map(Unread.Other(_))
+        .flatMap(sized)
+
+  /** Why markdown is no body ([[reading]]). */
+  enum Unread extends caps.Pure {
+
+    /** Its stored form is `bytes` bytes, over [[StoredMost]]. */
+    case Over(bytes: Int)
+    case Other(why: String)
+
+    /** As [[read]] says it. */
+    def words: String = this match {
+      case Over(bytes) => s"a body's stored form is $bytes bytes, over $StoredMost"
+      case Other(why) => why
+    }
+  }
 
   /** `markdown` read as [[read]] reads it, each link's target by `reference`, unchecked for size
     * or emptiness, or why not: a target `reference` refuses.
@@ -59,12 +84,14 @@ object Body {
   }
 
   /** `doc` as a body, or why not: it holds no block, or its stored form is over [[StoredMost]]. */
-  private def checked(doc: Doc[ArtifactKey]): Either[String, Body] =
-    if (doc.blocks.isEmpty) Left("a body is empty")
+  private def checked(doc: Doc[ArtifactKey]): Either[String, Body] = sized(doc).left.map(_.words)
+
+  /** As [[checked]], with why not told apart ([[Unread]]). */
+  private def sized(doc: Doc[ArtifactKey]): Either[Unread, Body] =
+    if (doc.blocks.isEmpty) Left(Unread.Other("a body is empty"))
     else {
       val size = ujson.write(stored(doc)).getBytes(StandardCharsets.UTF_8).length
-      if (size > StoredMost) Left(s"a body's stored form is $size bytes, over $StoredMost")
-      else Right(doc)
+      if (size > StoredMost) Left(Unread.Over(size)) else Right(doc)
     }
 
   /** As markdown, each reference a link to `artifact:<key>`, which [[read]] reads back as `b`. */
