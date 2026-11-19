@@ -164,7 +164,7 @@ object ArtifactJsonTests extends TestSuite {
             Artifact(head("a").copy(state = review), right(Body.read("x", MethodFixtures.ids)))
           )
         )
-      val watch = right(Projects.reaching(key("a"), Set(review, merged)))
+      val watch = right(Projects.reaching(right(DocKey.of("p/1")), Set(review, merged)))
       val met = watch.refs.intersect(refs)
       val version = DocumentVersionId.of(1L).getOrElse(throw new java.lang.AssertionError("id"))
       assert(
