@@ -74,7 +74,7 @@ object ProjectMarkdownTests extends TestSuite {
       }
       assert(
         ProjectMarkdown.read(files) == Left(
-          Vector("p/1.md" -> "p/1's parent p/7 is no artifact of it")
+          Vector("1.md" -> "p/1's parent p/7 is no artifact of it")
         )
       )
     }
@@ -122,10 +122,10 @@ object ProjectMarkdownTests extends TestSuite {
     }
 
     test("an exported file, which holds no version, is not read as shown") {
-      val (_, text) = ProjectMarkdown.file(artifact("a", "A", "Body."))
+      val text = ProjectMarkdown.text(artifact("a", "A", "Body."))
       ProjectMarkdown.readShown(text) ==> Left(
-        "front matter names key, handle, kind, state, title, parent, rank, cites, by, " +
-          "not key, handle, kind, state, title, parent, rank, cites, by, version"
+        "front matter names id, handle, kind, state, title, parent, rank, cites, by, " +
+          "not id, handle, kind, state, title, parent, rank, cites, by, version"
       )
     }
 
@@ -150,6 +150,41 @@ object ProjectMarkdownTests extends TestSuite {
         artifact("b", "B", "y", parent = Some("a"))
       )
       assert(Project.of(p, pin, cycle) == Left("p/1 is its own ancestor; p/2 is its own ancestor"))
+    }
+    test("each artifact's file is at its parents' numbers, the root's first") {
+      val nested = right(
+        Project.of(
+          p,
+          pin,
+          Vector(
+            artifact("a", "A", "x", parent = Some("c")),
+            artifact("b", "B", "y", parent = Some("a")),
+            artifact("c", "C", "z")
+          )
+        )
+      )
+      ProjectMarkdown.render(nested).map(_._1) ==> Vector(
+        "project.md",
+        "3/1.md",
+        "3/1/2.md",
+        "3.md"
+      )
+    }
+    test("a file not at its parents' numbers is refused, naming it") {
+      val nested = right(
+        Project.of(
+          p,
+          pin,
+          Vector(artifact("a", "A", "x", parent = Some("b")), artifact("b", "B", "y"))
+        )
+      )
+      val moved = ProjectMarkdown.render(nested).map {
+        case (_, text) if text.contains("title: \"A\"") => "1.md" -> text
+        case file => file
+      }
+      ProjectMarkdown.read(moved) ==> Left(
+        Vector("1.md" -> "p/1 belongs at 2/1.md, its parents' numbers then its own")
+      )
     }
   }
 }

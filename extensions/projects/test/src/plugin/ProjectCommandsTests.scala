@@ -541,7 +541,7 @@ object ProjectCommandsTests extends TestSuite {
       kept(projects, store, "a", "note", "Text.")
       val text = shown(projects, store, "p/a")
       assert(
-        text.startsWith("---\nkey: p/1\nhandle: a\nkind: note\nstate: open\n"),
+        text.startsWith("---\nid: p/1\nhandle: a\nkind: note\nstate: open\n"),
         text.endsWith("Text.\n")
       )
       assert(
@@ -720,7 +720,7 @@ object ProjectCommandsTests extends TestSuite {
       )
       val headed = done(ask(projects, store, "project_show", "key" -> "p/a", "head" -> true))
       headed ==>
-        "---\nkey: p/1\nhandle: a\nkind: note\nstate: open\ntitle: \"Title a\"\nparent: null\nrank: n\ncites: []\n" +
+        "---\nid: p/1\nhandle: a\nkind: note\nstate: open\ntitle: \"Title a\"\nparent: null\nrank: n\ncites: []\n" +
         s"by: ${shown(projects, store, "p/a").linesIterator.find(_.startsWith("by: ")).fold("")(_.drop(4))}\n" +
         s"version: ${versionOf(projects, store, "p/a")}\n---\n\n" +
         "Opening words, all of them.\n\nSections: Goal; Reads (0.1 KB in all)\n"
