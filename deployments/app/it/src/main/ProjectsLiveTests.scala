@@ -120,20 +120,25 @@ object ProjectsLiveTests extends TestSuite {
       local: String,
       body: String,
       more: (String, ujson.Value)*
-  ) =
+  ) = {
+    // A new version of the one of that handle when it is kept, else a new artifact.
+    val naming: Vector[(String, ujson.Value)] =
+      ran(commands, ann, room, ToolName("project_show"), "key" -> s"p/$local") match {
+        case Right(CommandOutcome.Done(_)) => Vector("key" -> s"p/$local")
+        case _ => Vector("project" -> "p", "handle" -> local)
+      }
     ran(
       commands,
       ann,
       room,
       ToolName("project_keep"),
-      (Vector[(String, ujson.Value)](
-        "project" -> "p",
-        "handle" -> local,
+      (naming ++ Vector[(String, ujson.Value)](
         "kind" -> "note",
         "title" -> s"Title $local",
         "body" -> body
       ) ++ more)*
     ).map(_.getClass)
+  }
 
   val tests: Tests = Tests {
 
@@ -187,7 +192,8 @@ object ProjectsLiveTests extends TestSuite {
               ann,
               desk,
               ToolName("project_keep"),
-              "key" -> "p/a",
+              "project" -> "p",
+              "handle" -> "a",
               "kind" -> "change",
               "title" -> "A",
               "body" -> "## Why\n\nBecause."
@@ -231,7 +237,8 @@ object ProjectsLiveTests extends TestSuite {
             ann,
             desk,
             ToolName("project_keep"),
-            "key" -> "p/a",
+            "project" -> "p",
+            "handle" -> "a",
             "kind" -> "change",
             "title" -> "A",
             "body" -> "## Why\n\nBecause."
@@ -281,7 +288,8 @@ object ProjectsLiveTests extends TestSuite {
             ann,
             desk,
             ToolName("project_keep"),
-            "key" -> "p/a",
+            "project" -> "p",
+            "handle" -> "a",
             "kind" -> "change",
             "title" -> "A",
             "body" -> "## Why\n\nBecause."
@@ -341,7 +349,7 @@ object ProjectsLiveTests extends TestSuite {
     }
 
     test(
-      "a projects command keeps at the room's label, believed at no more than the edge gave"
+      "a projects command keeps at the room's label, believed at no more than the edge gave, and a create lowers the index so"
     ) {
       CommandRooms.commanding("projects_keeps", _ => Vector(atInternal)) {
         (config, engine, commands) =>
@@ -355,10 +363,17 @@ object ProjectsLiveTests extends TestSuite {
             Right(classOf[CommandOutcome.Done]),
             Right(classOf[CommandOutcome.Done])
           ))
-          artifactsKept(config, engine) ==> Vector(
-            ("p", "internal", "member"),
-            ("p/1", "internal", "member"),
-            ("p/2", "internal", "outside")
+          // A create from the team moves the index's `next`, so the index is believed no higher
+          // than the team; a member's create after it does not raise it back.
+          val lowered = artifactsKept(config, engine)
+          keep(commands, desk, "c", "In the desk again.")
+          (lowered, artifactsKept(config, engine).take(1)) ==> (
+            Vector(
+              ("p", "internal", "outside"),
+              ("p/1", "internal", "member"),
+              ("p/2", "internal", "outside")
+            ),
+            Vector(("p", "internal", "outside"))
           )
       }
     }
