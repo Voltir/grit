@@ -213,45 +213,18 @@ private[plugin] final class ProjectCommands(
         .of(
           (
             key = Field.text("The artifact's key, `<project>/<artifact>`."),
-            version = Field.integer(
-              "The version project_show gave; refused when it has been kept since.",
-              1,
-              Long.MaxValue
-            ),
-            old = Field
-              .text("The exact text to replace, as project_show gives it, held once.")
-              .optional,
-            `new` = Field.text("What replaces old.").optional,
-            section = Field
-              .text("The `##` heading whose section to replace, as written after the `## `.")
-              .optional,
-            body = Field
-              .text(
-                "The section's new text as markdown, under its heading, which is kept; it may " +
-                  "hold no `#` or `##` heading. Blank leaves the heading alone."
-              )
-              .optional
+            version = Field.integer(EditMeaning.version, 1, Long.MaxValue),
+            old = Field.text(EditMeaning.old).optional,
+            `new` = Field.text(EditMeaning.replaced).optional,
+            section = Field.text(EditMeaning.section).optional,
+            body = Field.text(EditMeaning.body).optional
           )
         )
         .refine(a =>
           for {
             key <- parsed("key", a.key, ArtifactKey.read)
-            version <- DocumentVersionId
-              .of(a.version)
-              .toRight(ArgsError.Refused("version", "A version is at least 1."))
-            edit <- (a.old, a.`new`, a.section, a.body) match {
-              case (Some(o), Some(n), None, None) => Right(Body.Edit.Text(o, n))
-              case (None, None, Some(s), Some(b)) => Right(Body.Edit.Section(s, b))
-              case (None, None, None, None) =>
-                Left(ArgsError.Missing("old", "old and new, or section and body"))
-              case _ =>
-                Left(
-                  ArgsError.Refused(
-                    "old",
-                    "Give old and new together, or section and body together, not both."
-                  )
-                )
-            }
+            version <- versionOf(a.version)
+            edit <- editOf(a.old, a.`new`, a.section, a.body)
           } yield Editing(key, version, edit)
         )
     )
@@ -264,19 +237,7 @@ private[plugin] final class ProjectCommands(
     )(using Tx^): Either[StoreError, CommandOutcome] = answered {
       val key = args.key
       for {
-        done <- alone(own, claims, key.project, by, at, "edit") { project =>
-          for {
-            current <- artifact(project, key)
-            _ <- unchanged(key, Some(args.version), Some(current), project.artifacts)
-            body <- Body
-              .edited(current._2.body, args.edit)
-              .left
-              .map(why => Stop.Refused(s"${key.value} cannot be edited: $why"))
-          } yield Step.Keep(
-            Keeping(key, None, current._2.head.title, body, None, None, Some(args.version)),
-            Whose.Prior
-          )
-        }
+        done <- alone(own, claims, key.project, by, at, "edit")(_ => Right(Step.Edit(args)))
         // An edit that changes nothing writes nothing, and the version given is current.
         now = done.versions.getOrElse(key, args.version)
       } yield AnswerText.nowAt(done.said, now)
@@ -398,10 +359,11 @@ private[plugin] final class ProjectCommands(
 
     val spec: ToolSpec[Batching] = ToolSpec(
       ToolName("project_batch"),
-      "Keeps and moves artifacts of one project, in the order given, each step as " +
-        "project_keep or project_move would and seeing what the steps before it did; all of " +
-        "them are kept, or none when any is refused. A keep's version is checked against the " +
-        "artifact as it was before the batch, and each artifact changed is kept once, as the " +
+      "Keeps, edits and moves artifacts of one project, in the order given, each step as " +
+        "project_keep, project_edit or project_move would and seeing what the steps before it " +
+        "did; all of them are kept, or none when any is refused. A keep's or an edit's version " +
+        "is checked against the artifact as it was before the batch, an edit changes the body " +
+        "the steps before it left, and each artifact changed is kept once, as the " +
         "last step left it. With dry, keeps nothing and answers what each step would do. " +
         "Refused, naming the step and why, as its command would refuse it; and when a claimed " +
         f"artifact's brief would pass ${DocRef.BriefChars}%,d characters once every step is done.",
@@ -410,7 +372,7 @@ private[plugin] final class ProjectCommands(
           (
             project = Field.text("The project's key; every step's key is in it."),
             steps = Field.each(
-              s"The steps, 1 to $BatchMost, in order: each a keep or a move.",
+              s"The steps, 1 to $BatchMost, in order: each a keep, an edit or a move.",
               BatchStep
             ),
             dry = Field.flag("Answer what each step would do, keeping nothing.").optional
@@ -422,16 +384,23 @@ private[plugin] final class ProjectCommands(
             steps <- Traversal.traverse(a.steps.toVector.zipWithIndex)((s, i) =>
               for {
                 key <- parsed("key", s.key, ArtifactKey.read)
+                gives = Vector(
+                  "state" -> s.state.isDefined,
+                  "kind" -> s.kind.isDefined,
+                  "title" -> s.title.isDefined,
+                  "body" -> s.body.isDefined,
+                  "parent" -> s.parent.isDefined,
+                  "cites" -> s.cites.isDefined,
+                  "version" -> s.version.isDefined,
+                  "old" -> s.old.isDefined,
+                  "new" -> s.`new`.isDefined,
+                  "section" -> s.section.isDefined
+                )
+                beyond = (takes: Set[String]) =>
+                  gives.collect { case (name, true) if !takes(name) => name }
                 step <- s.command match {
                   case "move" =>
-                    val keeps = Vector(
-                      "kind" -> s.kind.isDefined,
-                      "title" -> s.title.isDefined,
-                      "body" -> s.body.isDefined,
-                      "parent" -> s.parent.isDefined,
-                      "cites" -> s.cites.isDefined,
-                      "version" -> s.version.isDefined
-                    ).collect { case (name, true) => name }
+                    val keeps = beyond(Set("state"))
                     if (keeps.nonEmpty)
                       Left(
                         ArgsError.Refused(
@@ -448,8 +417,41 @@ private[plugin] final class ProjectCommands(
                         )
                         .flatMap(st => parsed("state", st, StateName.of))
                         .map(to => Step.Move(Moving(key, to)))
+                  case "edit" =>
+                    val keeps = beyond(Set("version", "old", "new", "section", "body"))
+                    if (keeps.nonEmpty)
+                      Left(
+                        ArgsError.Refused(
+                          "steps",
+                          "An edit takes key, version, and old and new or section and body; " +
+                            s"step ${i + 1} gives ${keeps.mkString(", ")}."
+                        )
+                      )
+                    else
+                      for {
+                        read <- s.version.toRight(
+                          ArgsError
+                            .Refused(
+                              "steps",
+                              s"An edit needs its version; step ${i + 1} gives none."
+                            )
+                        )
+                        version <- versionOf(read)
+                        edit <- editOf(s.old, s.`new`, s.section, s.body).left
+                          .map(e => ArgsError.Refused("steps", s"Step ${i + 1}: ${e.message}"))
+                      } yield Step.Edit(Editing(key, version, edit))
                   case _ =>
+                    val edits =
+                      beyond(Set("state", "kind", "title", "body", "parent", "cites", "version"))
                     (s.state, s.title, s.body) match {
+                      case _ if edits.nonEmpty =>
+                        Left(
+                          ArgsError.Refused(
+                            "steps",
+                            s"A keep takes no old, new or section; step ${i + 1} gives " +
+                              s"${edits.mkString(", ")}: make it an edit step."
+                          )
+                        )
                       case (Some(_), _, _) =>
                         Left(
                           ArgsError.Refused(
@@ -541,10 +543,12 @@ private[plugin] final class ProjectCommands(
       }
     }
 
-    /** Step `i` of `steps` in a few words: `keep <key>`, or `move <key> to <state>`. */
+    /** Step `i` of `steps` in a few words: `keep <key>`, `edit <key>`, or `move <key> to <state>`.
+      */
     private def described(steps: Vector[Step], i: Int): String =
       steps.lift(i).fold("") {
         case Step.Keep(k, _) => s"keep ${k.key.value}"
+        case Step.Edit(e) => s"edit ${e.key.value}"
         case Step.Move(m) => s"move ${m.key.value} to ${StateName.value(m.to)}"
       }
   }
@@ -1713,14 +1717,13 @@ private[plugin] object ProjectCommands {
           .fold(Right(None))(cs =>
             Traversal.traverse(cs.toVector)(parsed("cites", _, ArtifactKey.read)).map(Some(_))
           )
-        version <- version.fold(Right(None))(v =>
-          DocumentVersionId
-            .of(v)
-            .map(Some(_))
-            .toRight(ArgsError.Refused("version", "A version is at least 1."))
-        )
+        version <- version.fold(Right(None))(v => versionOf(v).map(Some(_)))
       } yield Keeping(key, kind, title, body, parent, cites, version)
   }
+
+  /** `version` as a version a keep or an edit was read at, or why not: it is below 1. */
+  private def versionOf(version: Long): Either[ArgsError, DocumentVersionId] =
+    DocumentVersionId.of(version).toRight(ArgsError.Refused("version", "A version is at least 1."))
 
   /** `project_edit`'s arguments: `edit` made to `key`'s body, read at `version`. */
   final case class Editing(key: ArtifactKey, version: DocumentVersionId, edit: Body.Edit)
@@ -1739,6 +1742,7 @@ private[plugin] object ProjectCommands {
       val outside = steps.zipWithIndex
         .map {
           case (Step.Keep(k, _), i) => (k.key, i)
+          case (Step.Edit(e), i) => (e.key, i)
           case (Step.Move(m), i) => (m.key, i)
         }
         .filterNot(_._1.project == project)
@@ -1760,28 +1764,58 @@ private[plugin] object ProjectCommands {
     */
   val BatchMost: Int = 50
 
+  // Its type spelled out: inferred, twelve fields fail Batch's Args.of (docs/capture-checking.md).
   /** A step of `project_batch`, as sent. */
-  private val BatchStep = Args.of(
+  private val BatchStep: Args[
+    (
+        command: String,
+        key: String,
+        state: Option[String],
+        kind: Option[String],
+        title: Option[String],
+        body: Option[String],
+        parent: Option[String],
+        cites: Option[List[String]],
+        version: Option[Long],
+        old: Option[String],
+        `new`: Option[String],
+        section: Option[String]
+    )
+  ] = Args.of(
     (
       command = Field.oneOf(
-        "What the step does: keep, as project_keep, or move, as project_move.",
+        "What the step does: keep, as project_keep; edit, as project_edit; or move, as " +
+          "project_move.",
         "keep",
+        "edit",
         "move"
       ),
       key = Field.text("The artifact's key, `<project>/<artifact>`."),
       state = Field.text("For a move, the state to move it to.").optional,
       kind = Field.text(s"For a keep: ${KeepMeaning.kind}").optional,
       title = Field.text(s"For a keep: ${KeepMeaning.title}").optional,
-      body = Field.text(s"For a keep: ${KeepMeaning.body}").optional,
+      body = Field
+        .text(s"For a keep: ${KeepMeaning.body} For an edit of a section: ${EditMeaning.body}")
+        .optional,
       parent = Field.text(s"For a keep: ${KeepMeaning.parent}").optional,
       cites = Field.texts(s"For a keep: ${KeepMeaning.cites}", 0, DocRef.Most).optional,
-      version = Field.integer(s"For a keep: ${KeepMeaning.version}", 1, Long.MaxValue).optional
+      version = Field
+        .integer(
+          s"For a keep: ${KeepMeaning.version} For an edit, needed: ${EditMeaning.version}",
+          1,
+          Long.MaxValue
+        )
+        .optional,
+      old = Field.text(s"For an edit: ${EditMeaning.old}").optional,
+      `new` = Field.text(s"For an edit: ${EditMeaning.replaced}").optional,
+      section = Field.text(s"For an edit: ${EditMeaning.section}").optional
     )
   )
 
   /** One step of `project_batch`, read as its command reads its arguments. */
   enum Step extends caps.Pure {
     case Keep(args: Keeping, whose: Whose = Whose.Caller)
+    case Edit(args: Editing)
     case Move(args: Moving)
   }
 
@@ -1808,6 +1842,39 @@ private[plugin] object ProjectCommands {
     val version: String =
       "The version it was read at, as project_show or project_history shows it; refused " +
         "when the artifact has been kept since. Left out, it is kept whatever its version."
+  }
+
+  /** What `project_edit`'s fields mean, said once for it and for a batch's edits. */
+  private object EditMeaning {
+    val version: String = "The version project_show gave; refused when it has been kept since."
+    val old: String = "The exact text to replace, as project_show gives it, held once."
+    val replaced: String = "What replaces old."
+    val section: String = "The `##` heading whose section to replace, as written after the `## `."
+    val body: String =
+      "The section's new text as markdown, under its heading, which is kept; it may hold no " +
+        "`#` or `##` heading. Blank leaves the heading alone."
+  }
+
+  /** The change `project_edit`'s `old` and `new`, or `section` and `body`, ask for, or why they
+    * ask for none: neither pair, or parts of both.
+    */
+  private def editOf(
+      old: Option[String],
+      replaced: Option[String],
+      section: Option[String],
+      body: Option[String]
+  ): Either[ArgsError, Body.Edit] = (old, replaced, section, body) match {
+    case (Some(o), Some(n), None, None) => Right(Body.Edit.Text(o, n))
+    case (None, None, Some(s), Some(b)) => Right(Body.Edit.Section(s, b))
+    case (None, None, None, None) =>
+      Left(ArgsError.Missing("old", "old and new, or section and body"))
+    case _ =>
+      Left(
+        ArgsError.Refused(
+          "old",
+          "Give old and new together, or section and body together, not both."
+        )
+      )
   }
 
   /** Nothing, or the argument error for `field` when `project` is not `key`'s project. */
@@ -2257,7 +2324,7 @@ private[plugin] object ProjectCommands {
 
   /** `step` taken over `now`, from `project` as loaded, written as `writer`, `mover` as
     * [[planned]] takes it: what it makes of `now` and its answer, or why it is refused, as
-    * `project_keep` or `project_move` refuses.
+    * `project_keep`, `project_edit` or `project_move` refuses.
     */
   private def stepped(
       project: Loaded,
@@ -2335,6 +2402,33 @@ private[plugin] object ProjectCommands {
           )
           _ <- refuse(Project.of(args.key.project, project.pin, next.artifacts))
         } yield (next, s"Kept ${AnswerText.named(artifact.head)}.")
+      case Step.Edit(args) =>
+        for {
+          current <- now.artifacts
+            .find(_.head.key == args.key)
+            .toRight(lacking(args.key, now.artifacts))
+          _ <- unchanged(
+            args.key,
+            Some(args.version),
+            project.documents.find(_._2.head.key == args.key),
+            now.artifacts
+          )
+          body <- Body
+            .edited(current.body, args.edit)
+            .left
+            .map(why => Stop.Refused(s"${args.key.value} cannot be edited: $why"))
+          kept <- stepped(
+            project,
+            method,
+            now,
+            Step.Keep(
+              Keeping(args.key, None, current.head.title, body, None, None, Some(args.version)),
+              Whose.Prior
+            ),
+            writer,
+            mover
+          )
+        } yield kept
       case Step.Move(args) =>
         for {
           _ <- Either.cond(
