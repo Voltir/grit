@@ -96,7 +96,7 @@ final case class Method private (
     */
   def migrated(project: Project, remap: Remap): Either[String, Migrated] = {
     val held = project.artifacts.map(_.head.key).toSet
-    val renamed = project.artifacts.map { a =>
+    val remapped = project.artifacts.map { a =>
       val h = a.head
       Artifact(
         h.copy(
@@ -122,7 +122,7 @@ final case class Method private (
         remap.artifacts.keys.filterNot(held).toVector.sorted.map(_.value).map { k =>
           s"project ${ProjectKey.value(project.key)} has no artifact $k"
         } ++
-        renamed
+        remapped
           .filterNot(a => kinds.exists(_.name == a.head.kind))
           .groupBy(_.head.kind)
           .toVector
@@ -130,7 +130,7 @@ final case class Method private (
           .map((k: KindName, as: Vector[Artifact]) =>
             s"${keys(as)} would be of kind ${KindName.value(k)}, which $ours does not declare"
           ) ++
-        renamed
+        remapped
           .filter(a => kinds.exists(k => k.name == a.head.kind && !k.all.contains(a.head.state)))
           .groupBy(a => (a.head.kind, a.head.state))
           .toVector
@@ -142,12 +142,12 @@ final case class Method private (
     for {
       _ <- Either.cond(reasons.isEmpty, (), reasons.mkString("; "))
       pin <- Pin.of(name, version, digest)
-      done <- Project.of(project.key, pin, renamed)
+      done <- Project.of(project.key, pin, remapped)
       _ <- nested(done)
     } yield Migrated(
       done,
       project.artifacts
-        .zip(renamed)
+        .zip(remapped)
         .collect {
           case (was, now) if was.head != now.head => now.head.key
         }

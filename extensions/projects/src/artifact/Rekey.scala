@@ -22,7 +22,7 @@ object Rekey {
       artifacts: Vector[(before: Document, after: Artifact)],
       table: Vector[(key: DocKey, label: Label, data: ujson.Value)],
       next: ArtifactNumber,
-      renamed: Vector[(was: DocKey, handle: Handle)]
+      prefixed: Vector[(was: DocKey, handle: Handle)]
   ) extends caps.Pure {
 
     /** The references in their bodies, each body's distinct ones counted once. */
@@ -33,7 +33,7 @@ object Rekey {
   }
 
   /** `k-`: what a handle is led by in place of a name led by a digit, which no handle may be. */
-  val Carried: String = "k-"
+  val HandlePrefix: String = "k-"
 
   /** The old-form documents of `project` this transaction reads, numbered from 1, handled,
     * ranked and re-cited, or every reason not. A key with a leading digit takes the handle
@@ -65,7 +65,7 @@ object Rekey {
         (for {
           named <- handleOf(project, d.key)
           artifact <- ArtifactJson.oldFormOf(id, Some(named.handle), Rank.Middle, d.data, reference)
-        } yield (d, artifact, Option.when(named.carried)(named.handle))).left
+        } yield (d, artifact, Option.when(named.prefixed)(named.handle))).left
           .map(why => s"${DocKey.value(d.key)} cannot be re-keyed: $why")
     }
     val (refused, artifacts) = read.partitionMap(identity)
@@ -108,22 +108,22 @@ object Rekey {
     } yield artifact
   }
 
-  /** The handle the re-key gives the artifact kept under `key`, and whether it is carried as
-    * `k-<name>`; or why not: a key not of `project`, or a name no handle may be.
+  /** The handle the re-key gives the artifact kept under `key`, and whether it is led by
+    * [[HandlePrefix]]; or why not: a key not of `project`, or a name no handle may be.
     */
   private def handleOf(
       project: ProjectKey,
       key: DocKey
-  ): Either[String, (handle: Handle, carried: Boolean)] = {
+  ): Either[String, (handle: Handle, prefixed: Boolean)] = {
     val p = ProjectKey.value(project)
     val whole = DocKey.value(key)
     for {
       name <-
         if (whole.startsWith(s"$p/")) Right(whole.stripPrefix(s"$p/"))
         else Left(s"it is not of project $p")
-      carried = name.headOption.exists(_.isDigit)
-      handle <- Handle.of(if (carried) s"$Carried$name" else name)
-    } yield (handle = handle, carried = carried)
+      prefixed = name.headOption.exists(_.isDigit)
+      handle <- Handle.of(if (prefixed) s"$HandlePrefix$name" else name)
+    } yield (handle = handle, prefixed = prefixed)
   }
 
   /** A title's leading `M<n>`, as a milestone is titled. */

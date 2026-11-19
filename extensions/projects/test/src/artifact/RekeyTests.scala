@@ -125,7 +125,7 @@ object RekeyTests extends TestSuite {
       val got = planned(old("p/0042-x", "Digits", 0))
       (
         got.artifacts.map(_.after.head.called),
-        got.renamed.map(r => (DocKey.value(r.was), Handle.value(r.handle)))
+        got.prefixed.map(r => (DocKey.value(r.was), Handle.value(r.handle)))
       ) ==>
         (Vector("p/1 k-0042-x"), Vector(("p/0042-x", "k-0042-x")))
     }
