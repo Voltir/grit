@@ -22,8 +22,7 @@ object WithdrawTests extends TestSuite {
         projects,
         store,
         "project_keep",
-        (Vector[(String, ujson.Value)](
-          "key" -> s"p/$local",
+        (naming(projects, store, local) ++ Vector[(String, ujson.Value)](
           "kind" -> "note",
           "title" -> s"Title $local",
           "body" -> body
@@ -87,7 +86,7 @@ object WithdrawTests extends TestSuite {
       started(projects, store)
       keptAt(projects, store, 1, "a", "One.")
       val answer = done(withdrawnAt(2)(projects, store, "key" -> "p/a"))
-      val history = ask(projects, store, "project_history", "key" -> "p/a") match {
+      val history = ask(projects, store, "project_history", "key" -> "p/1") match {
         case CommandOutcome.Done(text) =>
           text.linesIterator.map(_.split(" ", 2).toVector.drop(1).mkString).toVector
         case CommandOutcome.Refused(why) => Vector(s"refused: $why")
@@ -95,14 +94,14 @@ object WithdrawTests extends TestSuite {
       (
         answer,
         lastShown(projects, store, "p/a", None),
-        lastShown(projects, store, "p/a", Some(1)),
+        lastShown(projects, store, "p/1", Some(1)),
         history,
         done(ask(projects, store, "project_list", "project" -> "p"))
       ) ==> (
         (
-          "Withdrawn: p/a\nTheir history stays readable for 180 days: project_show with an `at` " +
+          "Withdrawn: p/1\nTheir history stays readable for 180 days: project_show with an `at` " +
             "before now, and project_history.",
-          "refused: project p has no artifact p/a",
+          "refused: project p has no artifact named a",
           "One.",
           Vector(
             "2026-10-27T12:02:00Z withdrawn",
@@ -128,7 +127,7 @@ object WithdrawTests extends TestSuite {
       ) ==> (
         (
           CommandOutcome.Refused(
-            "p/a is named by p/b, p/c: withdraw them first, or withdraw it with cascade"
+            "p/1 is named by p/2, p/3: withdraw them first, or withdraw it with cascade"
           ),
           "One."
         )
@@ -161,13 +160,13 @@ object WithdrawTests extends TestSuite {
       ) ==> (
         (
           CommandOutcome.Done(
-            "Withdrawn: p/a, p/b, p/c\nCitations of them dropped from: p/d\nTheir history " +
+            "Withdrawn: p/1, p/2, p/3\nCitations of them dropped from: p/4\nTheir history " +
               "stays readable for 180 days: project_show with an `at` before now, and " +
               "project_history."
           ),
           Vector("cites: []", s"by: \"$otherBy\""),
           Some("See c and a."),
-          Vector("p/d", "p/e"),
+          Vector("p/4", "p/5"),
           classOf[CommandOutcome.Done]
         )
       )
@@ -188,10 +187,10 @@ object WithdrawTests extends TestSuite {
       (cascade(open), cascade(citing), (seen(projects, open), seen(projects, citing))) ==> (
         (
           CommandOutcome.Refused(
-            "p/a has artifacts under it not ended: p/f: end or withdraw them first"
+            "p/1 has artifacts under it not ended: p/6: end or withdraw them first"
           ),
           CommandOutcome.Refused(
-            "artifacts not ended cite what would be withdrawn: p/f: end them, or drop their " +
+            "artifacts not ended cite what would be withdrawn: p/6: end them, or drop their " +
               "citations, first"
           ),
           before
@@ -199,7 +198,7 @@ object WithdrawTests extends TestSuite {
       )
       before._2 ==> Seen(
         8,
-        Vector("One.", "Under a.", "See [c](artifact:p/c) and [a](artifact:p/a).")
+        Vector("One.", "Under a.", "See [c](artifact:p/3) and [a](artifact:p/1).")
       )
     }
 
@@ -214,7 +213,8 @@ object WithdrawTests extends TestSuite {
           projects,
           store,
           "project_keep",
-          "key" -> "p/h",
+          "project" -> "p",
+          "handle" -> "h",
           "kind" -> "change",
           "title" -> "Title h",
           "body" -> "## Why\n\nSee [b](artifact:p/b)."
@@ -239,13 +239,13 @@ object WithdrawTests extends TestSuite {
         lastShown(projects, store, "p/h", None)
       ) ==> (
         (
-          CommandOutcome.Refused("p/h is claimed for slot: release it first"),
+          CommandOutcome.Refused("p/6 h is claimed for slot: release it first"),
           before,
-          "See [b](artifact:p/b)."
+          "See [b](artifact:p/2)."
         )
       )
       // Seven artifacts' documents, p/h's brief kept at its claim, and the method's document.
-      before ==> Seen(9, Vector("One.", "Under a.", "See [c](artifact:p/c) and [a](artifact:p/a)."))
+      before ==> Seen(9, Vector("One.", "Under a.", "See [c](artifact:p/3) and [a](artifact:p/1)."))
     }
 
     test("a claimed artifact's withdrawal is refused, withdrawing nothing") {
@@ -266,7 +266,7 @@ object WithdrawTests extends TestSuite {
       (
         withdrawnAt(2)(projects, store, "key" -> "p/a"),
         lastShown(projects, store, "p/a", None)
-      ) ==> ((CommandOutcome.Refused("p/a is claimed for slot: release it first"), "One."))
+      ) ==> ((CommandOutcome.Refused("p/1 a is claimed for slot: release it first"), "One."))
     }
   }
 }

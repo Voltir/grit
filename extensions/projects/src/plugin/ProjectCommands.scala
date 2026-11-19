@@ -32,9 +32,11 @@ import grit.projects.method.{
 }
 import grit.projects.name.{
   ArtifactKey,
+  ArtifactNumber,
+  ArtifactRef,
   CheckName,
+  Handle,
   KindName,
-  LocalKey,
   MethodName,
   Pin,
   ProjectKey,
@@ -134,7 +136,9 @@ private[plugin] final class ProjectCommands(
           was <- indexOf(own, args.project)
           _ <- Either.cond(was.isEmpty, (), Stop.Refused(s"project $p exists already"))
           pin <- refuse(Pin.of(method.name, method.version, method.digest))
-          index <- refuse(ArtifactJson.index(args.project, pin, author(by)))
+          index <- refuse(
+            ArtifactJson.index(args.project, pin, author(by), Some(ArtifactNumber.First))
+          )
           (key, text, data, refs) = index
           _ <- keptEverywhere(own, key, Label.Public, Tx.top, text, data, refs, at)
         } yield s"Started project $p under method ${MethodName.value(method.name)} version ${method.version}."
@@ -145,26 +149,31 @@ private[plugin] final class ProjectCommands(
   /** `project_keep`. */
   object Keep extends KeepingCommand[Keeping] {
     override def offeredToTurns: Boolean = shipped
-    override def shown(args: Keeping): String = args.key.value
+    override def shown(args: Keeping): String = Keeping.shown(args)
 
     val spec: ToolSpec[Keeping] = ToolSpec(
       ToolName("project_keep"),
-      "Keeps an artifact of a project: a new one, of the kind given, in its kind's first " +
-        "state; or a new version of one kept already, its kind and state unchanged (only " +
-        "project_move changes a state). Its body is markdown; a link to `artifact:<key>` cites " +
-        "that artifact. Keeping one that exists, leave out parent or cites to keep them as " +
-        "they are; give cites as [] to clear them, or parent as \"\" to remove it; give " +
-        "version, as project_show shows it, to keep it only if no one has kept it since. " +
-        "Answers with the version it is kept at. Refused, keeping nothing: for a parent or a " +
-        "cite the project lacks, naming the nearest keys it has; for a version that is not the artifact's current one; and when " +
-        f"the brief of an artifact claimed in the project would pass ${DocRef.BriefChars}%,d " +
+      "Keeps an artifact of a project: with no key, a new one of the kind given, in its kind's " +
+        "first state, numbered by the project (`<project>/<n>`); with a key, a new version of " +
+        "that one, its kind and state unchanged (only project_move changes a state). Its body " +
+        "is markdown; a link to `artifact:<key>` cites that artifact. Keeping one that exists, " +
+        "leave out handle, parent or cites to keep them as they are; give cites as [] to clear " +
+        "them, or handle or parent as \"\" to remove it; give version, as project_show shows " +
+        "it, to keep it only if no one has kept it since. Answers with the artifact's key and " +
+        "the version it is kept at. Refused, keeping nothing: for a key, parent or cite the " +
+        "project lacks, naming the nearest it has; for a version that is not the artifact's " +
+        f"current one; and when the brief of an artifact claimed in the project would pass ${DocRef.BriefChars}%,d " +
         "characters, naming the characters to cut.",
       Args
         .of(
           (
-            key = Field.text("The artifact's key, `<project>/<artifact>`."),
-            project =
-              Field.text("The project's key; refused when it is not the key's own.").optional,
+            key = Field.text(KeepMeaning.key).optional,
+            project = Field
+              .text(
+                "The project's key, needed for a new artifact; refused when it is not the key's own."
+              )
+              .optional,
+            handle = Field.text(KeepMeaning.handle).optional,
             kind = Field.text(KeepMeaning.kind).optional,
             title = Field.text(KeepMeaning.title),
             body = Field.text(KeepMeaning.body),
@@ -175,9 +184,23 @@ private[plugin] final class ProjectCommands(
         )
         .refine(a =>
           for {
-            key <- parsed("key", a.key, ArtifactKey.read)
-            _ <- a.project.fold(Right(()))(p => inProject("project", key, p))
-            keeping <- Keeping.read(key, a.kind, a.title, a.body, a.parent, a.cites, a.version)
+            project <- (a.key, a.project) match {
+              case (_, Some(p)) => parsed("project", p, ProjectKey.of)
+              case (Some(k), None) => parsed("key", k, ArtifactRef.read).map(_.project)
+              case (None, None) =>
+                Left(ArgsError.Refused("project", "A new artifact needs its project's key."))
+            }
+            keeping <- Keeping.read(
+              project,
+              a.key,
+              a.handle,
+              a.kind,
+              a.title,
+              a.body,
+              a.parent,
+              a.cites,
+              a.version
+            )
           } yield keeping
         )
     )
@@ -189,8 +212,11 @@ private[plugin] final class ProjectCommands(
         at: Instant
     )(using Tx^): Either[StoreError, CommandOutcome] =
       answered(
-        alone(own, claims, args.key.project, by, at, "keep")(_ => Right(Step.Keep(args)))
-          .map(done => done.versions.get(args.key).fold(done.said)(AnswerText.nowAt(done.said, _)))
+        alone(own, claims, args.project, by, at, "keep")(_ => Right(Step.Keep(args)))
+          // A keep changes one artifact, or none when it changes nothing.
+          .map(done =>
+            done.versions.values.headOption.fold(done.said)(AnswerText.nowAt(done.said, _))
+          )
       )
   }
 
@@ -222,7 +248,7 @@ private[plugin] final class ProjectCommands(
         )
         .refine(a =>
           for {
-            key <- parsed("key", a.key, ArtifactKey.read)
+            key <- parsed("key", a.key, ArtifactRef.read)
             version <- versionOf(a.version)
             edit <- editOf(a.old, a.`new`, a.section, a.body)
           } yield Editing(key, version, edit)
@@ -239,7 +265,7 @@ private[plugin] final class ProjectCommands(
       for {
         done <- alone(own, claims, key.project, by, at, "edit")(_ => Right(Step.Edit(args)))
         // An edit that changes nothing writes nothing, and the version given is current.
-        now = done.versions.getOrElse(key, args.version)
+        now = done.versions.values.headOption.getOrElse(args.version)
       } yield AnswerText.nowAt(done.said, now)
     }
   }
@@ -263,7 +289,7 @@ private[plugin] final class ProjectCommands(
         )
         .refine(a =>
           for {
-            key <- parsed("key", a.key, ArtifactKey.read)
+            key <- parsed("key", a.key, ArtifactRef.read)
             to <- parsed("state", a.state, StateName.of)
           } yield Moving(key, to)
         )
@@ -284,22 +310,20 @@ private[plugin] final class ProjectCommands(
   /** `project_propose`: a new artifact of `kind`, kept as `project_keep` keeps one. */
   final class Propose(kind: KindName) extends KeepingCommand[Keeping] {
     override def offeredToTurns: Boolean = true
-    override def shown(args: Keeping): String = args.key.value
+    override def shown(args: Keeping): String = Keeping.shown(args)
 
     val spec: ToolSpec[Keeping] = ToolSpec(
       ToolName("project_propose"),
-      s"Proposes a new ${KindName.value(kind)}: keeps it in its project in its first state, for " +
-        "a person to judge. It never changes anything kept already. Its body is markdown; a " +
-        "link to `artifact:<key>` cites that artifact. Refused, keeping nothing: for a key the " +
-        "project already has; and for a parent or a cite the project lacks, naming the nearest " +
-        "keys it has.",
+      s"Proposes a new ${KindName.value(kind)}: keeps it in its project in its first state, " +
+        "numbered by the project, for a person to judge. It never changes anything kept " +
+        "already. Its body is markdown; a link to `artifact:<key>` cites that artifact. " +
+        "Answers with its key. Refused, keeping nothing: for a handle another artifact of the " +
+        "project has; and for a parent or a cite the project lacks, naming the nearest it has.",
       Args
         .of(
           (
-            key = Field.text(
-              "Its key, `<project>/<name>`: a name no artifact of the project has, in lower " +
-                "case, words joined by `-`."
-            ),
+            project = Field.text("The project's key."),
+            handle = Field.text(KeepMeaning.handle).optional,
             title = Field.text(KeepMeaning.title),
             body = Field.text(KeepMeaning.body),
             parent = Field.text("The key of its parent artifact; none if omitted.").optional,
@@ -310,9 +334,11 @@ private[plugin] final class ProjectCommands(
         )
         .refine(a =>
           for {
-            key <- parsed("key", a.key, ArtifactKey.read)
+            project <- parsed("project", a.project, ProjectKey.of)
             keeping <- Keeping.read(
-              key,
+              project,
+              None,
+              a.handle,
               Some(KindName.value(kind)),
               a.title,
               a.body,
@@ -331,23 +357,9 @@ private[plugin] final class ProjectCommands(
         at: Instant
     )(using Tx^): Either[StoreError, CommandOutcome] =
       answered(
-        alone(own, claims, args.key.project, by, at, "propose")(p =>
-          fresh(args)(p).map(_ => Step.Keep(args))
-        ).map(_.said)
+        alone(own, claims, args.project, by, at, "propose")(_ => Right(Step.Keep(args)))
+          .map(_.said)
       )
-
-    /** Nothing, or a refusal when the project holds `args.key` already. */
-    private def fresh(args: Keeping): Loaded -> Either[Stop, Unit] = project =>
-      project.artifacts.find(_.head.key == args.key) match {
-        case Some(a) =>
-          Left(
-            Stop.Refused(
-              s"${AnswerText.named(a.head)} is kept already; a proposal is a new artifact: give a key the " +
-                "project does not have"
-            )
-          )
-        case None => Right(())
-      }
   }
 
   /** `project_batch`. */
@@ -383,8 +395,14 @@ private[plugin] final class ProjectCommands(
             project <- parsed("project", a.project, ProjectKey.of)
             steps <- Traversal.traverse(a.steps.toVector.zipWithIndex)((s, i) =>
               for {
-                key <- parsed("key", s.key, ArtifactKey.read)
+                named = (what: String) =>
+                  s.key
+                    .toRight(
+                      ArgsError.Refused("steps", s"$what needs its key; step ${i + 1} gives none.")
+                    )
+                    .flatMap(referred("key", _, project))
                 gives = Vector(
+                  "handle" -> s.handle.isDefined,
                   "state" -> s.state.isDefined,
                   "kind" -> s.kind.isDefined,
                   "title" -> s.title.isDefined,
@@ -416,7 +434,7 @@ private[plugin] final class ProjectCommands(
                             .Refused("steps", s"A move needs its state; step ${i + 1} gives none.")
                         )
                         .flatMap(st => parsed("state", st, StateName.of))
-                        .map(to => Step.Move(Moving(key, to)))
+                        .flatMap(to => named("A move").map(key => Step.Move(Moving(key, to))))
                   case "edit" =>
                     val keeps = beyond(Set("version", "old", "new", "section", "body"))
                     if (keeps.nonEmpty)
@@ -439,10 +457,22 @@ private[plugin] final class ProjectCommands(
                         version <- versionOf(read)
                         edit <- editOf(s.old, s.`new`, s.section, s.body).left
                           .map(e => ArgsError.Refused("steps", s"Step ${i + 1}: ${e.message}"))
+                        key <- named("An edit")
                       } yield Step.Edit(Editing(key, version, edit))
                   case _ =>
                     val edits =
-                      beyond(Set("state", "kind", "title", "body", "parent", "cites", "version"))
+                      beyond(
+                        Set(
+                          "handle",
+                          "state",
+                          "kind",
+                          "title",
+                          "body",
+                          "parent",
+                          "cites",
+                          "version"
+                        )
+                      )
                     (s.state, s.title, s.body) match {
                       case _ if edits.nonEmpty =>
                         Left(
@@ -462,7 +492,17 @@ private[plugin] final class ProjectCommands(
                         )
                       case (None, Some(title), Some(body)) =>
                         Keeping
-                          .read(key, s.kind, title, body, s.parent, s.cites, s.version)
+                          .read(
+                            project,
+                            s.key,
+                            s.handle,
+                            s.kind,
+                            title,
+                            body,
+                            s.parent,
+                            s.cites,
+                            s.version
+                          )
                           .map(Step.Keep(_))
                       case (None, _, _) =>
                         Left(
@@ -527,7 +567,7 @@ private[plugin] final class ProjectCommands(
                   case Stop.Refused(why) => Stop.Refused(s"Nothing was kept: $why")
                   case failed => failed
                 }
-                .flatMap(_ => wrote(own, project, steps, at))
+                .flatMap(_ => wrote(own, project, steps, author(by), at))
                 .flatMap(_ => rebriefed(own, held, args.project, at))
                 .map(_ => s"Every step is done:\n$lines")
             case (None, true) =>
@@ -547,7 +587,7 @@ private[plugin] final class ProjectCommands(
       */
     private def described(steps: Vector[Step], i: Int): String =
       steps.lift(i).fold("") {
-        case Step.Keep(k, _) => s"keep ${k.key.value}"
+        case Step.Keep(k, _) => s"keep ${Keeping.shown(k)}"
         case Step.Edit(e) => s"edit ${e.key.value}"
         case Step.Move(m) => s"move ${m.key.value} to ${StateName.value(m.to)}"
       }
@@ -599,10 +639,10 @@ private[plugin] final class ProjectCommands(
         .refine(a =>
           for {
             keys <- (a.key, a.keys) match {
-              case (Some(k), None) => parsed("key", k, ArtifactKey.read).map(ShowKeys.One(_))
+              case (Some(k), None) => parsed("key", k, ArtifactRef.read).map(ShowKeys.One(_))
               case (None, Some(ks)) =>
                 Traversal
-                  .traverse(ks.toVector)(parsed("keys", _, ArtifactKey.read))
+                  .traverse(ks.toVector)(parsed("keys", _, ArtifactRef.read))
                   .map(ShowKeys.Several(_))
               case (Some(_), Some(_)) =>
                 Left(ArgsError.Refused("keys", "Give key or keys, not both."))
@@ -622,9 +662,9 @@ private[plugin] final class ProjectCommands(
     def run(args: Showing, by: CommandBy, own: PluginReads, at: Instant)(using
         Tx^
     ): Either[StoreError, CommandOutcome] = answered {
-      def version(project: Loaded, key: ArtifactKey): Either[Stop, (Document, Artifact)] =
+      def version(project: Loaded, key: ArtifactRef): Either[Stop, (Document, Artifact)] =
         args.at match {
-          case None => artifact(project, key)
+          case None => resolved(project, key).flatMap(artifact(project, _))
           case Some(when) =>
             for {
               where <- recorded(own.documents, project, key)
@@ -634,7 +674,7 @@ private[plugin] final class ProjectCommands(
               version <- refuse(readable(document))
             } yield (document, version)
         }
-      def rendered(key: ArtifactKey)(kept: (Document, Artifact)): Either[Stop, String] =
+      def rendered(key: ArtifactRef)(kept: (Document, Artifact)): Either[Stop, String] =
         args.part match {
           case ShowPart.Whole => Right(ProjectMarkdown.shown(kept._2, kept._1.version))
           case ShowPart.Head => Right(ProjectMarkdown.head(kept._2, kept._1.version))
@@ -693,7 +733,7 @@ private[plugin] final class ProjectCommands(
         )
         .refine(a =>
           for {
-            key <- parsed("key", a.key, ArtifactKey.read)
+            key <- parsed("key", a.key, ArtifactRef.read)
             pair <- (a.from_version, a.to_version) match {
               case (Some(f), Some(t)) => Right(Some((f, t)))
               case (None, None) => Right(None)
@@ -727,6 +767,11 @@ private[plugin] final class ProjectCommands(
             refuse(Traversal.sequence(kept.map(row)))
               .map(AnswerText.versions(_, "No version is kept."))
           case Some((from, to)) =>
+            // Its id, as its newest version holds it: the key it is stored under is never shown.
+            val id = kept
+              .collectFirst { case DocumentVersion.Holding(d) => readable(d).toOption }
+              .flatten
+              .fold(args.key.value)(_.head.key.value)
             def file(n: Long): Either[Stop, String] =
               kept
                 .collectFirst {
@@ -734,7 +779,7 @@ private[plugin] final class ProjectCommands(
                 }
                 .toRight(
                   Stop.Refused(
-                    s"${args.key.value} has no version $n among its $HistoryMost newest kept"
+                    s"$id has no version $n among its $HistoryMost newest kept"
                   )
                 )
                 .flatMap(d => refuse(readable(d)))
@@ -743,9 +788,9 @@ private[plugin] final class ProjectCommands(
               older <- file(from)
               newer <- file(to)
             } yield AnswerText.diff(
-              s"${args.key.value} version $from",
+              s"$id version $from",
               older,
-              s"${args.key.value} version $to",
+              s"$id version $to",
               newer
             )
         }
@@ -804,10 +849,10 @@ private[plugin] final class ProjectCommands(
             kind <- a.kind.fold(Right(None))(k => parsed("kind", k, KindName.of).map(Some(_)))
             state <- a.state.fold(Right(None))(s => parsed("state", s, StateName.of).map(Some(_)))
             parent <- a.parent.fold(Right(None)) { k =>
-              parsed("parent", k, ArtifactKey.read).flatMap(key =>
+              parsed("parent", k, ArtifactRef.read).flatMap(key =>
                 Either.cond(
                   key.project == p,
-                  Some(key.local),
+                  Some(key),
                   ArgsError.Refused(
                     "parent",
                     s"The parent ${key.value} is not in project ${ProjectKey.value(p)}."
@@ -846,10 +891,7 @@ private[plugin] final class ProjectCommands(
       for {
         project <- loaded(own.documents, args.project)
         parent <- args.under.fold(Right(None)) { u =>
-          val local = u.parent
-          refuse(ArtifactKey.of(args.project, LocalKey.value(local)))
-            .flatMap(artifact(project, _))
-            .map(found => Some(found._2.head.key))
+          resolved(project, u.parent).map(Some(_))
         }
         ended <- endedOf(own.documents, project.pin)
       } yield {
@@ -860,7 +902,7 @@ private[plugin] final class ProjectCommands(
           .flatMap(a => a.head.parent.filter(_ => counted(a.head)))
           .groupMapReduce(identity)(_ => 1)(_ + _)
         def newest(among: Vector[(Document, Artifact)]): Vector[(Document, Artifact)] =
-          among.sortBy((d: Document, a: Artifact) => (-d.written.toEpochMilli, a.head.key.value))
+          among.sortBy((d: Document, a: Artifact) => (-d.written.toEpochMilli, a.head.key.number))
         val children: Map[ArtifactKey, Vector[(Document, Artifact)]] = project.documents
           .flatMap((d: Document, a: Artifact) => a.head.parent.map(_ -> (d, a)))
           .groupMap(_._1)(_._2)
@@ -1017,7 +1059,7 @@ private[plugin] final class ProjectCommands(
         )
         .refine(a =>
           for {
-            key <- parsed("key", a.key, ArtifactKey.read)
+            key <- parsed("key", a.key, ArtifactRef.read)
             role <- parsed("role", a.role, RoleName.of)
             holder <- parsed("holder", a.holder, ClaimHolder.of)
           } yield Claiming(key, role, holder)
@@ -1031,14 +1073,14 @@ private[plugin] final class ProjectCommands(
         at: Instant
     )(using Tx^): Either[StoreError, CommandOutcome] = answered {
       val holder = ClaimHolder.value(args.holder)
-      val key = args.key.value
       locked(claims, args.key.project).flatMap { lock =>
         given Locked = lock
         for {
           project <- loaded(own, args.key.project)
           method <- declared(own, project.pin)
           _ <- viewOf(method, args.role)
-          found <- artifact(project, args.key)
+          key <- resolved(project, args.key)
+          found <- artifact(project, key)
           (document, a) = found
           claimed <- claimedFor(claims, document, args, by.person, at)
           made <- claimed match {
@@ -1046,8 +1088,8 @@ private[plugin] final class ProjectCommands(
             case Claimed.Taken(first) =>
               Left(
                 Stop.Refused(
-                  first.fold(s"$key is claimed already; project_release frees it")(c =>
-                    s"$key is claimed already, as ${ClaimRole.value(c.role)} for " +
+                  first.fold(s"${a.head.called} is claimed already; project_release frees it")(c =>
+                    s"${a.head.called} is claimed already, as ${ClaimRole.value(c.role)} for " +
                       s"${ClaimHolder.value(c.holder)} by ${accounts(c.by)} since ${c.made}; " +
                       s"it lapses at ${c.lapses} unless they keep working; project_release frees it"
                   )
@@ -1059,7 +1101,7 @@ private[plugin] final class ProjectCommands(
                   other.fold(
                     s"$holder works another artifact already; release it with project_release first"
                   )(c =>
-                    s"$holder works ${DocKey.value(c.subject)} already, claimed since ${c.made}; " +
+                    s"$holder works ${subjectOf(project, c)} already, claimed since ${c.made}; " +
                       s"it lapses at ${c.lapses} unless they keep working; " +
                       "release it with project_release first"
                   )
@@ -1069,7 +1111,7 @@ private[plugin] final class ProjectCommands(
           whole <- refuse(Project.of(args.key.project, project.pin, project.artifacts))
           // The role has a view and the artifact is the project's, so the claim has its brief.
           unkept <- rendered(method, whole, Vector(made)).headOption
-            .toRight(Stop.Refused(s"$key has no brief as ${RoleName.value(args.role)}"))
+            .toRight(Stop.Refused(s"${a.head.called} has no brief as ${RoleName.value(args.role)}"))
             .flatMap(briefed(own, _, document.place, project, at))
         } yield AnswerText.claimed(
           s"Claimed ${AnswerText.named(a.head)} as ${RoleName.value(args.role)} for $holder.",
@@ -1088,7 +1130,7 @@ private[plugin] final class ProjectCommands(
         "claimed for. Refused when it is not claimed and has no brief.",
       Args
         .of((key = Field.text("The artifact's key, `<project>/<artifact>`.")))
-        .refine(a => parsed("key", a.key, ArtifactKey.read).map(Releasing(_)))
+        .refine(a => parsed("key", a.key, ArtifactRef.read).map(Releasing(_)))
     )
     def run(
         args: Releasing,
@@ -1101,16 +1143,17 @@ private[plugin] final class ProjectCommands(
         given Locked = lock
         for {
           project <- loaded(own, args.key.project)
-          found <- artifact(project, args.key)
+          key <- resolved(project, args.key)
+          found <- artifact(project, key)
           (document, _) = found
           freed <- stored(claims.release(document.key, document.label))
           // The brief goes even when its claim is gone, as a swept lapsed claim is.
-          briefFor <- unbriefed(own, args.key, at)
+          briefFor <- unbriefed(own, key, at)
           holder <- freed
             .map(_.holder)
             .orElse(briefFor)
             .toRight(Stop.Refused(s"${args.key.value} is not claimed"))
-        } yield AnswerText.released(args.key, holder)
+        } yield AnswerText.released(key, holder)
       }
     }
   }
@@ -1153,7 +1196,7 @@ private[plugin] final class ProjectCommands(
         before = at.minus(java.time.Duration.ofDays(7L * args.weeks))
         stale = open
           .filter((d, a) => d.written.isBefore(before) && !named(a.head.key))
-          .sortBy((d, a) => (d.written.toEpochMilli, a.head.key.value))
+          .sortBy((d, a) => (d.written.toEpochMilli, a.head.key.number))
       } yield AnswerText.heads(stale.map(_._2.head), "Nothing is stale.")
     }
   }
@@ -1183,7 +1226,7 @@ private[plugin] final class ProjectCommands(
           )
         )
         .refine(a =>
-          parsed("key", a.key, ArtifactKey.read).map(Withdrawing(_, a.cascade.getOrElse(false)))
+          parsed("key", a.key, ArtifactRef.read).map(Withdrawing(_, a.cascade.getOrElse(false)))
         )
     )
 
@@ -1204,7 +1247,8 @@ private[plugin] final class ProjectCommands(
             if (args.cascade) ending(own, project.pin)
             else Right[Stop, ArtifactHead -> Boolean](_ => false)
           // What is left is a Project, so its export reads back (ADR 0049).
-          done <- refuse(Project.withdrawn(whole, args.key, args.cascade, ended))
+          key <- resolved(project, args.key)
+          done <- refuse(Project.withdrawn(whole, key, args.cascade, ended))
           docs = documented(project, done)
           _ <- unclaimed(claims, docs.gone ++ docs.uncited, at)
           _ <- atTheirLabels(citing(docs), "withdraw")
@@ -1421,7 +1465,7 @@ private[plugin] final class ProjectCommands(
             )
             artifactPairs <- Traversal.traverse(a.artifacts.getOrElse(Nil).toVector)(x =>
               for {
-                key <- parsed("artifacts", x.key, ArtifactKey.read)
+                key <- parsed("artifacts", x.key, ArtifactRef.read)
                 kind <- parsed("artifacts", x.kind, KindName.of)
               } yield key -> kind
             )
@@ -1431,8 +1475,8 @@ private[plugin] final class ProjectCommands(
               statePairs,
               (ks: (KindName, StateName)) => s"${KindName.value(ks._1)} ${StateName.value(ks._2)}"
             )
-            artifacts <- once("artifacts", artifactPairs, (k: ArtifactKey) => k.value)
-          } yield Migrating(p, a.version.toInt, Remap(kinds, states, artifacts))
+            artifacts <- once("artifacts", artifactPairs, (k: ArtifactRef) => k.value)
+          } yield Migrating(p, a.version.toInt, kinds, states, artifacts)
         )
     )
 
@@ -1450,7 +1494,12 @@ private[plugin] final class ProjectCommands(
           project <- loaded(own, args.project)
           whole <- refuse(Project.of(args.project, project.pin, project.artifacts))
           target <- declaring.version(own, project.pin.method, args.version)
-          done <- refuse(target.migrated(whole, args.remap))
+          artifacts <- Traversal.traverse(args.artifacts.toVector)((r, k) =>
+            resolved(project, r).map(_ -> k)
+          )
+          done <- refuse(
+            target.migrated(whole, Remap(args.kinds, args.states, artifacts.toMap))
+          )
           index <- indexed(own, args.project)
           _ <- unclaimed(claims, project.documents, at)
           renamed = done.renamed.toSet
@@ -1475,7 +1524,9 @@ private[plugin] final class ProjectCommands(
                 ).map(_ => ())
               )
             }
-          rewritten <- refuse(ArtifactJson.index(args.project, done.project.pin, author(by)))
+          rewritten <- refuse(
+            ArtifactJson.index(args.project, done.project.pin, author(by), project.next)
+          )
           (key, text, data, refs) = rewritten
           _ <- keptEverywhere(own, key, index._1.label, Tx.top, text, data, refs, at)
         } yield AnswerText.migrated(args.project, done.project.pin, done.renamed, ListMost)
@@ -1546,7 +1597,7 @@ private[plugin] final class ProjectCommands(
         )
         .refine(a =>
           for {
-            key <- parsed("key", a.key, ArtifactKey.read)
+            key <- parsed("key", a.key, ArtifactRef.read)
             role <- parsed("role", a.role, RoleName.of)
           } yield Briefing(key, role, a.chars)
         )
@@ -1559,8 +1610,9 @@ private[plugin] final class ProjectCommands(
         method <- declared(own.documents, project.pin)
         view <- viewOf(method, args.role)
         whole <- refuse(Project.of(args.key.project, project.pin, project.artifacts))
-        brief <- Brief.of(whole, args.key, view, args.chars).left.map {
-          case BriefRefusal.Unknown(k) => lacking(k, project.artifacts)
+        key <- resolved(project, args.key)
+        brief <- Brief.of(whole, key, view, args.chars).left.map {
+          case BriefRefusal.Unknown(k) => lacking(k)
           case BriefRefusal.Over(size) =>
             Stop.Refused(
               s"${args.key.value} with what its role always carries is $size characters, " +
@@ -1596,7 +1648,7 @@ private[plugin] final class ProjectCommands(
         (said, steps) = plan
         answer <- said.headOption.toRight(Stop.Refused("nothing was asked")).flatten
         _ <- settled(claims, project, method, key, steps, at, verb)
-        versions <- wrote(own, project, steps, at)
+        versions <- wrote(own, project, steps, author(by), at)
         _ <- rebriefed(own, held, key, at)
       } yield (said = answer, versions = versions)
     }
@@ -1679,27 +1731,54 @@ private[plugin] object ProjectCommands {
   /** `project_new`'s arguments. */
   final case class Starting(project: ProjectKey, method: Option[MethodName]) extends caps.Pure
 
-  /** `project_keep`'s arguments; a `parent` or `cites` of `None` leaves an existing artifact's
-    * as it was (a new one's, none); `version`, when given, is the one its writer read, and the
-    * keep is refused unless it is the artifact's current one.
+  /** `project_keep`'s arguments: with no `key`, a new artifact of `project`, its id minted; else a
+    * new version of the artifact `key` names, of `project`. A `parent` or `cites` of `None`
+    * leaves an existing artifact's as it was (a new one's, none); `version`, given only with a
+    * `key`, is the one its writer read, and the keep is refused unless it is the artifact's
+    * current one.
     */
-  final case class Keeping(
-      key: ArtifactKey,
+  final case class Keeping private (
+      project: ProjectKey,
+      key: Option[ArtifactRef],
+      handle: HandleChange,
       kind: Option[KindName],
       title: String,
       body: String,
-      parent: Option[Option[ArtifactKey]],
-      cites: Option[Vector[ArtifactKey]],
+      parent: Option[Option[ArtifactRef]],
+      cites: Option[Vector[ArtifactRef]],
       version: Option[DocumentVersionId]
   ) extends caps.Pure
 
   object Keeping {
 
-    /** `project_keep`'s arguments for `key` as sent, or the argument error naming the field
-      * that does not read.
+    /** How a command line shows it: its key, or the project a new one is of. */
+    def shown(k: Keeping): String =
+      k.key.fold(s"a new artifact of ${ProjectKey.value(k.project)}")(_.value)
+
+    /** A new version of artifact `key`, its title, body and version as given and the rest as
+      * they are.
+      */
+    def again(key: ArtifactKey, title: String, body: String, version: DocumentVersionId): Keeping =
+      new Keeping(
+        key.project,
+        Some(ArtifactRef.Id(key)),
+        HandleChange.Unchanged,
+        None,
+        title,
+        body,
+        None,
+        None,
+        Some(version)
+      )
+
+    /** `project_keep`'s arguments as sent, of `project`, or the argument error naming the field
+      * that does not read: a key, parent or cite that is no reference ([[ArtifactRef.read]]) or
+      * one of another project, a handle [[Handle.of]] refuses, or a version with no key.
       */
     def read(
-        key: ArtifactKey,
+        project: ProjectKey,
+        key: Option[String],
+        handle: Option[String],
         kind: Option[String],
         title: String,
         body: String,
@@ -1708,25 +1787,68 @@ private[plugin] object ProjectCommands {
         version: Option[Long]
     ): Either[ArgsError, Keeping] =
       for {
+        key <- key.fold(Right(None))(k => referred("key", k, project).map(Some(_)))
+        handle <- handle match {
+          case None => Right(HandleChange.Unchanged)
+          case Some("") => Right(HandleChange.Removed)
+          case Some(h) => parsed("handle", h, Handle.of).map(HandleChange.To(_))
+        }
         kind <- kind.fold(Right(None))(k => parsed("kind", k, KindName.of).map(Some(_)))
         parent <- parent.fold(Right(None)) { p =>
           if (p.isEmpty) Right(Some(None))
-          else parsed("parent", p, ArtifactKey.read).map(k => Some(Some(k)))
+          else referred("parent", p, project).map(k => Some(Some(k)))
         }
         cites <- cites
           .fold(Right(None))(cs =>
-            Traversal.traverse(cs.toVector)(parsed("cites", _, ArtifactKey.read)).map(Some(_))
+            Traversal.traverse(cs.toVector)(referred("cites", _, project)).map(Some(_))
           )
-        version <- version.fold(Right(None))(v => versionOf(v).map(Some(_)))
-      } yield Keeping(key, kind, title, body, parent, cites, version)
+        version <- (version, key) match {
+          case (None, _) => Right(None)
+          case (Some(_), None) =>
+            Left(
+              ArgsError.Refused(
+                "version",
+                "A new artifact has no version; give it only with the key of one kept already."
+              )
+            )
+          case (Some(v), Some(_)) => versionOf(v).map(Some(_))
+        }
+      } yield new Keeping(project, key, handle, kind, title, body, parent, cites, version)
   }
+
+  /** What a keep does to an artifact's handle: leaves it, removes it, or sets it. */
+  enum HandleChange extends caps.Pure {
+    case Unchanged
+    case Removed
+    case To(handle: Handle)
+  }
+
+  /** `value` as a reference to an artifact of `project`, or the argument error for `field`: no
+    * reference ([[ArtifactRef.read]]), or one of another project.
+    */
+  private def referred(
+      field: String,
+      value: String,
+      project: ProjectKey
+  ): Either[ArgsError, ArtifactRef] =
+    parsed(field, value, ArtifactRef.read).flatMap(r =>
+      Either.cond(
+        r.project == project,
+        r,
+        ArgsError.Refused(
+          field,
+          s"The $field ${r.value} is in project ${ProjectKey.value(r.project)}, " +
+            s"not ${ProjectKey.value(project)}."
+        )
+      )
+    )
 
   /** `version` as a version a keep or an edit was read at, or why not: it is below 1. */
   private def versionOf(version: Long): Either[ArgsError, DocumentVersionId] =
     DocumentVersionId.of(version).toRight(ArgsError.Refused("version", "A version is at least 1."))
 
   /** `project_edit`'s arguments: `edit` made to `key`'s body, read at `version`. */
-  final case class Editing(key: ArtifactKey, version: DocumentVersionId, edit: Body.Edit)
+  final case class Editing(key: ArtifactRef, version: DocumentVersionId, edit: Body.Edit)
       extends caps.Pure
 
   /** `project_batch`'s arguments. */
@@ -1741,18 +1863,18 @@ private[plugin] object ProjectCommands {
     def of(project: ProjectKey, steps: Vector[Step], dry: Boolean): Either[String, Batching] = {
       val outside = steps.zipWithIndex
         .map {
-          case (Step.Keep(k, _), i) => (k.key, i)
-          case (Step.Edit(e), i) => (e.key, i)
-          case (Step.Move(m), i) => (m.key, i)
+          case (Step.Keep(k, _), i) => (k.project, Keeping.shown(k), i)
+          case (Step.Edit(e), i) => (e.key.project, e.key.value, i)
+          case (Step.Move(m), i) => (m.key.project, m.key.value, i)
         }
-        .filterNot(_._1.project == project)
+        .filterNot(_._1 == project)
       if (steps.isEmpty) Left("A batch takes at least one step.")
       else if (steps.size > BatchMost)
         Left(s"At most $BatchMost steps; ${steps.size} were given.")
       else
-        outside.headOption.fold(Right(new Batching(project, steps, dry))) { (k, i) =>
+        outside.headOption.fold(Right(new Batching(project, steps, dry))) { (p, k, i) =>
           Left(
-            s"Step ${i + 1}'s key ${k.value} is in project ${ProjectKey.value(k.project)}, " +
+            s"Step ${i + 1}'s key $k is in project ${ProjectKey.value(p)}, " +
               s"not ${ProjectKey.value(project)}."
           )
         }
@@ -1769,7 +1891,8 @@ private[plugin] object ProjectCommands {
   private val BatchStep: Args[
     (
         command: String,
-        key: String,
+        key: Option[String],
+        handle: Option[String],
         state: Option[String],
         kind: Option[String],
         title: Option[String],
@@ -1790,7 +1913,10 @@ private[plugin] object ProjectCommands {
         "edit",
         "move"
       ),
-      key = Field.text("The artifact's key, `<project>/<artifact>`."),
+      key = Field
+        .text(s"For an edit or a move, needed: the artifact's key. For a keep: ${KeepMeaning.key}")
+        .optional,
+      handle = Field.text(s"For a keep: ${KeepMeaning.handle}").optional,
       state = Field.text("For a move, the state to move it to.").optional,
       kind = Field.text(s"For a keep: ${KeepMeaning.kind}").optional,
       title = Field.text(s"For a keep: ${KeepMeaning.title}").optional,
@@ -1828,6 +1954,13 @@ private[plugin] object ProjectCommands {
 
   /** What `project_keep`'s fields mean, said once for it and for a batch's keeps. */
   private object KeepMeaning {
+    val key: String =
+      "The key of the artifact to keep a new version of: `<project>/<n>`, or `<project>/<handle>`. " +
+        "Leave it out to keep a new artifact."
+    val handle: String =
+      "A name for it, unique in its project, beside its number: lower case, led by a letter, " +
+        "words joined by `-`. A batch's later steps may name a new artifact by it. Left as it is " +
+        "if omitted."
     val kind: String = "Its kind, for a new artifact."
     val title: String = "Its title."
     val body: String = s"Its body, as markdown. $size"
@@ -1877,19 +2010,8 @@ private[plugin] object ProjectCommands {
       )
   }
 
-  /** Nothing, or the argument error for `field` when `project` is not `key`'s project. */
-  private def inProject(field: String, key: ArtifactKey, project: String): Either[ArgsError, Unit] =
-    Either.cond(
-      ProjectKey.value(key.project) == project,
-      (),
-      ArgsError.Refused(
-        field,
-        s"The key ${key.value} is in project ${ProjectKey.value(key.project)}, not $project."
-      )
-    )
-
   /** `project_move`'s arguments. */
-  final case class Moving(key: ArtifactKey, to: StateName) extends caps.Pure
+  final case class Moving(key: ArtifactRef, to: StateName) extends caps.Pure
 
   /** `project_show`'s arguments: one key, refused when not kept, or several, each not kept or
     * refused its part said in its place; as of `at`, or current.
@@ -1906,15 +2028,15 @@ private[plugin] object ProjectCommands {
 
   /** Which artifacts `project_show` shows. */
   enum ShowKeys extends caps.Pure {
-    case One(key: ArtifactKey)
-    case Several(keys: Vector[ArtifactKey])
+    case One(key: ArtifactRef)
+    case Several(keys: Vector[ArtifactRef])
   }
 
   /** 20: the most keys one `project_show` names. */
   val ShowMost: Int = 20
 
   /** `project_history`'s arguments: the two version numbers to diff, from and to, if any. */
-  final case class Recalling(key: ArtifactKey, diff: Option[(Long, Long)]) extends caps.Pure
+  final case class Recalling(key: ArtifactRef, diff: Option[(Long, Long)]) extends caps.Pure
 
   /** 50: the most versions `project_history` lists, and reads to find the two it diffs. */
   private val HistoryMost: Int = 50
@@ -1965,13 +2087,13 @@ private[plugin] object ProjectCommands {
       )
       .optional
 
-  /** An artifact `parent`, by its local key, and the levels below it to list. */
-  final case class Under private (parent: LocalKey, depth: Int) extends caps.Pure
+  /** An artifact `parent`, as named, and the levels below it to list. */
+  final case class Under private (parent: ArtifactRef, depth: Int) extends caps.Pure
 
   object Under {
 
     /** `parent` listed `depth` levels down, or why not: `depth` outside 1 to [[DepthMost]]. */
-    def of(parent: LocalKey, depth: Int): Either[String, Under] =
+    def of(parent: ArtifactRef, depth: Int): Either[String, Under] =
       if (depth < 1 || depth > DepthMost) Left(s"depth is $depth, outside 1 to $DepthMost")
       else Right(new Under(parent, depth))
   }
@@ -2003,13 +2125,13 @@ private[plugin] object ProjectCommands {
   final case class Exporting(project: ProjectKey, after: Option[String]) extends caps.Pure
 
   /** `project_claim`'s arguments. */
-  final case class Claiming(key: ArtifactKey, role: RoleName, holder: ClaimHolder) extends caps.Pure
+  final case class Claiming(key: ArtifactRef, role: RoleName, holder: ClaimHolder) extends caps.Pure
 
   /** `project_release`'s arguments. */
-  final case class Releasing(key: ArtifactKey) extends caps.Pure
+  final case class Releasing(key: ArtifactRef) extends caps.Pure
 
   /** `project_withdraw`'s arguments. */
-  final case class Withdrawing(key: ArtifactKey, cascade: Boolean) extends caps.Pure
+  final case class Withdrawing(key: ArtifactRef, cascade: Boolean) extends caps.Pure
 
   /** `project_sweep`'s arguments: withdraw what is of `kinds`, ended, and last kept or moved
     * before `before` began, UTC; when `dry`, answer only, changing nothing; list the lines of
@@ -2053,7 +2175,13 @@ private[plugin] object ProjectCommands {
       .toRight(s"`$text` is not a day such as 2026-10-27")
 
   /** `project_migrate`'s arguments: the version of its method to move `project` to. */
-  final case class Migrating(project: ProjectKey, version: Int, remap: Remap) extends caps.Pure
+  final case class Migrating(
+      project: ProjectKey,
+      version: Int,
+      kinds: Map[KindName, KindName],
+      states: Map[(KindName, StateName), StateName],
+      artifacts: Map[ArtifactRef, KindName]
+  ) extends caps.Pure
 
   /** `pairs` as a map, or a refusal of `field` naming a key given twice. */
   private def once[K, V](
@@ -2080,10 +2208,15 @@ private[plugin] object ProjectCommands {
   final case class Surveying(project: Option[ProjectKey]) extends caps.Pure
 
   /** `project_brief`'s arguments. */
-  final case class Briefing(key: ArtifactKey, role: RoleName, chars: Int) extends caps.Pure
+  final case class Briefing(key: ArtifactRef, role: RoleName, chars: Int) extends caps.Pure
 
   /** 100,000: the most characters `project_brief` is asked to give. */
   private val BriefMost: Int = 100_000
+
+  /** Why project `project`, in the old form (ADR 0063), is refused a command. */
+  private def OldForm(project: ProjectKey): String =
+    s"project ${ProjectKey.value(project)} is in the old form, its artifacts keyed by name: " +
+      "re-key it with project_rekey first"
 
   /** Why a command stopped: its store failed, or it refused, in words its asker reads. */
   private[plugin] enum Stop extends caps.Pure {
@@ -2091,8 +2224,16 @@ private[plugin] object ProjectCommands {
     case Refused(why: String)
   }
 
-  /** A project as its documents hold it: its pin, and each artifact with its document. */
-  private final case class Loaded(pin: Pin, documents: Vector[(Document, Artifact)]) {
+  /** A project as its documents hold it: its key, its index, its pin, the number its next new
+    * artifact takes (none in the old form), and each artifact with its document.
+    */
+  private final case class Loaded(
+      key: ProjectKey,
+      index: Document,
+      pin: Pin,
+      next: Option[ArtifactNumber],
+      documents: Vector[(Document, Artifact)]
+  ) {
     def artifacts: Vector[Artifact] = documents.map(_._2)
   }
 
@@ -2157,11 +2298,18 @@ private[plugin] object ProjectCommands {
       Tx^
   ): Either[Stop, Loaded] = {
     for {
-      pin <- pinned(own, project)
+      found <- indexed(own, project)
+      (index, pin) = found
+      next <- refuse(
+        ArtifactJson
+          .nextOf(index)
+          .left
+          .map(why => s"project ${ProjectKey.value(project)} cannot be read: $why")
+      )
       holding <- refuse(ArtifactJson.holding(project))
       documents <- stored(own.referring(holding, Projects.Terms.bound))
       artifacts <- refuse(Traversal.sequence(documents.map(d => readable(d).map(d -> _))))
-    } yield Loaded(pin, artifacts)
+    } yield Loaded(project, index, pin, next, artifacts)
   }
 
   /** What `role` is shown under `method`, or a refusal naming the roles it declares. */
@@ -2226,7 +2374,29 @@ private[plugin] object ProjectCommands {
   private def artifact(project: Loaded, key: ArtifactKey): Either[Stop, (Document, Artifact)] =
     project.documents
       .find(_._2.head.key == key)
-      .toRight(lacking(key, project.artifacts))
+      .toRight(lacking(key))
+
+  /** `ref`'s id among `artifacts`, `project`'s as steps have left them: by id or current handle
+    * ([[Project.resolve]]), else as the store key of one of `project`'s documents whose artifact
+    * is among them; or why not, as [[Project.resolve]] refuses.
+    */
+  private def resolver(
+      project: Loaded,
+      artifacts: Vector[Artifact]
+  ): ArtifactRef -> Either[String, ArtifactKey] = ref =>
+    Project.resolving(project.key, artifacts, ref).left.flatMap { why =>
+      project.documents
+        .collectFirst {
+          case (d, a)
+              if DocKey.value(d.key) == ref.value && artifacts.exists(_.head.key == a.head.key) =>
+            a.head.key
+        }
+        .toRight(why)
+    }
+
+  /** [[resolver]] of `ref` over `project` as loaded. */
+  private def resolved(project: Loaded, ref: ArtifactRef): Either[Stop, ArtifactKey] =
+    refuse(resolver(project, project.artifacts)(ref))
 
   /** A live claim on artifact `key` of a project, and the brief [[Brief.of]] gives it within
     * [[DocRef.BriefChars]] under the view its role is shown, or how long it would be.
@@ -2264,7 +2434,7 @@ private[plugin] object ProjectCommands {
       method: Method,
       before: Option[Project],
       after: Vector[Rendered],
-      changed: Vector[ArtifactKey]
+      changed: Vector[ArtifactHead]
   ): Either[Stop, Unit] = {
     lazy val was = before.fold(Vector.empty[Rendered])(rendered(method, _, after.map(_.claim)))
     after.flatMap { r =>
@@ -2273,13 +2443,13 @@ private[plugin] object ProjectCommands {
         if was.find(_.claim == r.claim).flatMap(_.brief.left.toOption).forall(_.size < size)
       } yield {
         val (c, key, view) = (r.claim, r.key, r.view)
-        val held = changed.filter(k => k == key || view.carried.contains(k.local))
+        val held = changed.filter(h => h.key == key || h.handle.exists(view.carried.contains))
         val cut = size - DocRef.BriefChars
         f"the brief of ${key.value}, claimed as ${ClaimRole.value(c.role)} for " +
           f"${ClaimHolder.value(c.holder)}, would be $size%,d characters, $cut%,d over the " +
           f"${DocRef.BriefChars}%,d a brief holds (the artifact with what its role always " +
           f"carries): cut at least $cut%,d character${if (cut == 1) "" else "s"} from " +
-          (if (held.isEmpty) changed else held).map(_.value).mkString(", ")
+          (if (held.isEmpty) changed else held).map(_.key.value).mkString(", ")
       }
     } match {
       case Vector() => Right(())
@@ -2294,7 +2464,8 @@ private[plugin] object ProjectCommands {
   private final case class Stepping(
       artifacts: Vector[Artifact],
       changed: Vector[ArtifactKey],
-      callers: Set[ArtifactKey]
+      callers: Set[ArtifactKey],
+      next: Option[ArtifactNumber]
   ) extends caps.Pure
 
   /** `steps` over `project`, each as its command would take it and seeing what those before it
@@ -2311,7 +2482,10 @@ private[plugin] object ProjectCommands {
       onward: Boolean
   ): (Vector[Either[Stop, String]], Stepping) =
     steps.foldLeft(
-      (Vector.empty[Either[Stop, String]], Stepping(project.artifacts, Vector.empty, Set.empty))
+      (
+        Vector.empty[Either[Stop, String]],
+        Stepping(project.artifacts, Vector.empty, Set.empty, project.next)
+      )
     ) { (sofar: (Vector[Either[Stop, String]], Stepping), step: Step) =>
       val (said, now) = sofar
       if (!onward && said.exists(_.isLeft)) sofar
@@ -2340,19 +2514,22 @@ private[plugin] object ProjectCommands {
         now.artifacts.map(a => changed.find(_.head.key == a.head.key).getOrElse(a)) ++
           changed.filterNot(c => now.artifacts.exists(_.head.key == c.head.key)),
         now.changed ++ keys.filterNot(now.changed.contains),
-        now.callers ++ wrote
+        now.callers ++ wrote,
+        now.next
       )
     }
+    val resolve = resolver(project, now.artifacts)
     step match {
       case Step.Keep(args, whose) =>
-        val existing = now.artifacts.find(_.head.key == args.key)
         for {
-          _ <- unchanged(
-            args.key,
-            args.version,
-            project.documents.find(_._2.head.key == args.key),
-            now.artifacts
-          )
+          named <- args.key.fold(Right(None))(r => refuse(resolve(r)).map(Some(_)))
+          existing = named.flatMap(k => now.artifacts.find(_.head.key == k))
+          key <- named.fold(
+            now.next
+              .map(ArtifactKey.of(project.key, _))
+              .toRight(Stop.Refused(OldForm(project.key)))
+          )(Right(_))
+          _ <- unchanged(key, args.version, project.documents.find(_._2.head.key == key))
           placed <- (existing, args.kind) match {
             case (Some(a), Some(k)) if k != a.head.kind =>
               Left(
@@ -2372,59 +2549,61 @@ private[plugin] object ProjectCommands {
                   )
                 )
             case (None, None) =>
-              Left(
-                Stop.Refused(
-                  s"${args.key.value} is new, so give its kind" +
-                    ArtifactKey.near(args.key, now.artifacts.map(_.head.key))
-                )
-              )
+              Left(Stop.Refused("a new artifact needs its kind"))
           }
           (kind, state) = placed
-          body <- refuse(Body.read(args.body))
+          parent <- args.parent.fold(Right(existing.flatMap(_.head.parent)))(
+            _.fold(Right(None))(r => refuse(resolve(r)).map(Some(_)))
+          )
+          cites <- args.cites.fold(Right(existing.fold(Vector.empty)(_.head.cites)))(cs =>
+            refuse(Traversal.traverse(cs)(resolve))
+          )
+          body <- refuse(Body.read(args.body, resolve))
           artifact = Artifact(
             ArtifactHead(
-              args.key,
+              key,
+              args.handle match {
+                case HandleChange.Unchanged => existing.flatMap(_.head.handle)
+                case HandleChange.Removed => None
+                case HandleChange.To(h) => Some(h)
+              },
               kind,
               state,
               args.title,
-              args.parent.getOrElse(existing.flatMap(_.head.parent)),
-              args.cites.getOrElse(existing.fold(Vector.empty)(_.head.cites)),
+              parent,
+              cites,
               Some(writer)
             ),
             body
           )
-          next = changing(
+          changed = changing(
             Vector(artifact),
             whose match {
-              case Whose.Caller => Set(args.key)
+              case Whose.Caller => Set(key)
               case Whose.Prior => Set.empty
             }
           )
-          _ <- refuse(Project.of(args.key.project, project.pin, next.artifacts))
+          next =
+            if (named.isDefined) changed
+            else changed.copy(next = Some(ArtifactNumber.after(key.number)))
+          _ <- refuse(Project.of(project.key, project.pin, next.artifacts))
         } yield (next, s"Kept ${AnswerText.named(artifact.head)}.")
       case Step.Edit(args) =>
         for {
+          key <- refuse(resolve(args.key))
           current <- now.artifacts
-            .find(_.head.key == args.key)
-            .toRight(lacking(args.key, now.artifacts))
-          _ <- unchanged(
-            args.key,
-            Some(args.version),
-            project.documents.find(_._2.head.key == args.key),
-            now.artifacts
-          )
+            .find(_.head.key == key)
+            .toRight(Stop.Refused(s"project ${ProjectKey.value(project.key)} has no ${key.value}"))
+          _ <- unchanged(key, Some(args.version), project.documents.find(_._2.head.key == key))
           body <- Body
-            .edited(current.body, args.edit)
+            .edited(current.body, args.edit, resolve)
             .left
-            .map(why => Stop.Refused(s"${args.key.value} cannot be edited: $why"))
+            .map(why => Stop.Refused(s"${current.head.called} cannot be edited: $why"))
           kept <- stepped(
             project,
             method,
             now,
-            Step.Keep(
-              Keeping(args.key, None, current.head.title, body, None, None, Some(args.version)),
-              Whose.Prior
-            ),
+            Step.Keep(Keeping.again(key, current.head.title, body, args.version), Whose.Prior),
             writer,
             mover
           )
@@ -2434,13 +2613,11 @@ private[plugin] object ProjectCommands {
           _ <- Either.cond(
             method.digest == project.pin.digest,
             (),
-            Stop.Refused(Method.changed(args.key.project, method))
+            Stop.Refused(Method.changed(project.key, method))
           )
-          _ <- now.artifacts
-            .find(_.head.key == args.key)
-            .toRight(lacking(args.key, now.artifacts))
+          key <- refuse(resolve(args.key))
           done <- method
-            .move(now.artifacts, args.key, args.to, mover)
+            .move(now.artifacts, key, args.to, mover)
             .left
             .map(r => Stop.Refused(refusal(r)))
           moved = Artifact(done.artifact.head.copy(by = Some(writer)), done.artifact.body)
@@ -2473,7 +2650,7 @@ private[plugin] object ProjectCommands {
         method,
         Project.of(key, project.pin, project.artifacts).toOption,
         rendered(method, after, live),
-        steps.changed
+        steps.changed.flatMap(k => steps.artifacts.find(_.head.key == k)).map(_.head)
       )
       _ <- atTheirLabels(
         project.documents
@@ -2484,46 +2661,64 @@ private[plugin] object ProjectCommands {
     } yield ()
 
   /** Keeps each artifact `steps` changed through `own`, once, as they left it ([[kept]]): wholly
-    * its caller's when a step wrote every word of it, else carrying its document's.
+    * its caller's when a step wrote every word of it, else carrying its document's; and the
+    * project's index, when a step minted an id, its `next` moved on and who started it kept
+    * (`by`, when it names no one).
     */
-  private def wrote(own: DocumentKeeper, project: Loaded, steps: Stepping, at: Instant)(using
+  private def wrote(
+      own: DocumentKeeper,
+      project: Loaded,
+      steps: Stepping,
+      by: String,
+      at: Instant
+  )(using
       Tx^
   )(using Locked): Either[Stop, Map[ArtifactKey, DocumentVersionId]] =
-    Traversal
-      .traverse(steps.changed.flatMap(k => steps.artifacts.find(_.head.key == k)))(a =>
-        kept(
-          own,
-          a,
-          project.documents.find(_._2.head.key == a.head.key).map(_._1),
-          if (steps.callers(a.head.key)) Whose.Caller else Whose.Prior,
-          at
-        ).map(a.head.key -> _)
-      )
-      .map(_.toMap)
+    for {
+      versions <- Traversal
+        .traverse(steps.changed.flatMap(k => steps.artifacts.find(_.head.key == k)))(a =>
+          kept(
+            own,
+            a,
+            project.documents.find(_._2.head.key == a.head.key).map(_._1),
+            if (steps.callers(a.head.key)) Whose.Caller else Whose.Prior,
+            at
+          ).map(a.head.key -> _)
+        )
+      _ <-
+        if (steps.next == project.next) Right(())
+        else
+          for {
+            index <- refuse(
+              ArtifactJson.index(
+                project.key,
+                project.pin,
+                ArtifactJson.startedBy(project.index).getOrElse(by),
+                steps.next
+              )
+            )
+            (key, text, data, refs) = index
+            _ <- keptEverywhere(own, key, project.index.label, Tx.top, text, data, refs, at)
+          } yield ()
+    } yield versions.toMap
 
   /** Nothing, or a refusal when `read`, the version a keep of `key` was read at, is not that of
-    * `current`, its document: the version it is at, and who kept it when; or when `key` is new,
-    * naming the nearest of `among`.
+    * `current`, its document: the version it is at, and who kept it when; or when `key` has no
+    * document, made by a step before it.
     */
   private def unchanged(
       key: ArtifactKey,
       read: Option[DocumentVersionId],
-      current: Option[(Document, Artifact)],
-      among: Vector[Artifact]
+      current: Option[(Document, Artifact)]
   ): Either[Stop, Unit] = (read, current) match {
     case (None, _) => Right(())
     case (Some(_), None) =>
-      Left(
-        Stop.Refused(
-          s"${key.value} is new, so it has no version to give; leave out version" +
-            ArtifactKey.near(key, among.map(_.head.key))
-        )
-      )
+      Left(Stop.Refused(s"${key.value} is new in this batch, so it has no version to give"))
     case (Some(v), Some((d, _))) if d.version == v => Right(())
     case (Some(v), Some((d, a))) =>
       Left(
         Stop.Refused(
-          s"${key.value} is at version ${DocumentVersionId.value(d.version)}, not " +
+          s"${a.head.called} is at version ${DocumentVersionId.value(d.version)}, not " +
             s"${DocumentVersionId.value(v)} as given: kept since" +
             a.head.by.fold("")(b => s" by $b") +
             s" at ${d.written}. Show it again and keep from what it holds now."
@@ -2531,12 +2726,17 @@ private[plugin] object ProjectCommands {
       )
   }
 
-  /** That `key`'s project has no artifact `key`, naming the nearest of `among`. */
-  private def lacking(key: ArtifactKey, among: Vector[Artifact]): Stop =
-    Stop.Refused(
-      s"project ${ProjectKey.value(key.project)} has no artifact ${key.value}" +
-        ArtifactKey.near(key, among.map(_.head.key))
-    )
+  /** What claim `c` holds, named as [[ArtifactHead.called]] names it when it is an artifact of
+    * `project`, matched by its document's key; else its subject as stored.
+    */
+  private def subjectOf(project: Loaded, c: Claim): String =
+    project.documents
+      .collectFirst { case (d, a) if d.key == c.subject => a.head.called }
+      .getOrElse(DocKey.value(c.subject))
+
+  /** That `key`'s project has no artifact `key`. */
+  private def lacking(key: ArtifactKey): Stop =
+    Stop.Refused(s"project ${ProjectKey.value(key.project)} has no artifact ${key.value}")
 
   /** Nothing, or a refusal naming each of `changed` that a claim live at `at` holds, at any
     * label, and the holder it is claimed for.
@@ -2546,7 +2746,7 @@ private[plugin] object ProjectCommands {
   ): Either[Stop, Unit] =
     stored(claims.live(at)).flatMap { live =>
       claimedOf(live, changed).map((artifact, holder) =>
-        s"${artifact.head.key.value} is claimed for ${ClaimHolder.value(holder)}"
+        s"${artifact.head.called} is claimed for ${ClaimHolder.value(holder)}"
       ) match {
         case Vector() => Right(())
         case Vector(one) => Left(Stop.Refused(s"$one: release it first"))
@@ -2608,14 +2808,15 @@ private[plugin] object ProjectCommands {
     } yield ()
   }
 
-  /** The key and label `key`'s versions are kept under: its current document's, or for an
-    * artifact of `project` no longer current, the label its newest version `own` reads is at; or
-    * why not, as [[artifact]] refuses, when `own` reads no version of it.
+  /** The key and label the versions of the artifact `key` names are kept under: its current
+    * document's, as [[resolved]] finds it; or, for an artifact of `project` no longer current,
+    * the store key `key` writes and the label its newest version `own` reads is at; or why not,
+    * as [[resolved]] refuses, when `own` reads no version of it.
     */
-  private def recorded(own: DocumentShelf, project: Loaded, key: ArtifactKey)(using
+  private def recorded(own: DocumentShelf, project: Loaded, key: ArtifactRef)(using
       Tx^
   ): Either[Stop, (DocKey, Label)] =
-    artifact(project, key) match {
+    resolved(project, key).flatMap(artifact(project, _)) match {
       case Right((document, _)) => Right((document.key, document.label))
       case Left(missing) =>
         for {
@@ -2749,8 +2950,8 @@ private[plugin] object ProjectCommands {
   /** `holder`: the key a brief's data names its holder under. */
   private val BriefHolder: String = "holder"
 
-  /** Keeps `artifact` through `own` at the label of `before`, its document, or at public when new:
-    * the version it is now at. Believed at what `own` believes its caller at, met with what
+  /** Keeps `artifact` through `own` under the key and at the label of `before`, its document, or
+    * when new under its id and at public: the version it is now at. Believed at what `own` believes its caller at, met with what
     * `before` was believed at when `whose` is [[Whose.Prior]] and there is one.
     */
   private def kept(
@@ -2765,10 +2966,10 @@ private[plugin] object ProjectCommands {
         ArtifactJson
           .write(artifact)
           .left
-          .map(why => s"${artifact.head.key.value} cannot be kept: $why")
+          .map(why => s"${artifact.head.called} cannot be kept: $why")
       )
       (text, data, refs) = document
-      key <- refuse(DocKey.of(artifact.head.key.value))
+      key <- before.fold(refuse(DocKey.of(artifact.head.key.value)))(d => Right(d.key))
       write <- keptEverywhere(
         own,
         key,
@@ -2825,20 +3026,20 @@ private[plugin] object ProjectCommands {
         (if (may.isEmpty) "nothing moves it on"
          else s"it may move to ${may.map(StateName.value).mkString(", ")}")
     case MoveRefusal.Unheld(head, to, failed) =>
-      s"${head.key.value} cannot move to ${StateName.value(to)}: " +
+      s"${head.called} cannot move to ${StateName.value(to)}: " +
         failed.map((name, why) => s"${CheckName.value(name)}: $why").mkString("; ")
     case MoveRefusal.NoInto(head, to, wanted) =>
-      s"${head.key.value} cannot move to ${StateName.value(to)}: that merges its deltas into the " +
+      s"${head.called} cannot move to ${StateName.value(to)}: that merges its deltas into the " +
         s"one ${KindName.value(wanted)} it cites, and it cites none; cite the one to merge them into"
     case MoveRefusal.IntoSeveral(head, to, wanted, cited) =>
-      s"${head.key.value} cannot move to ${StateName.value(to)}: that merges its deltas into the " +
+      s"${head.called} cannot move to ${StateName.value(to)}: that merges its deltas into the " +
         s"one ${KindName.value(wanted)} it cites, and it cites ${cited.map(_.value).mkString(", ")}; " +
         "cite only the one to merge them into"
     case MoveRefusal.Unmerged(head, to, into, why) =>
-      s"${head.key.value} cannot move to ${StateName.value(to)}: its deltas merged into " +
+      s"${head.called} cannot move to ${StateName.value(to)}: its deltas merged into " +
         s"${into.key.value} would be too long ($why)"
     case MoveRefusal.PersonOnly(head, to) =>
-      s"${head.key.value} cannot move to ${StateName.value(to)} here: that move is made only by " +
+      s"${head.called} cannot move to ${StateName.value(to)} here: that move is made only by " +
         s"$PersonOnlyBy; ask the person to make it"
   }
 

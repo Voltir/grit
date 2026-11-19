@@ -4,7 +4,16 @@ import scala.util.Try
 
 import grit.core.id.DocumentVersionId
 import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
-import grit.projects.name.{ArtifactKey, KindName, MethodName, Pin, ProjectKey, StateName}
+import grit.projects.name.{
+  ArtifactKey,
+  ArtifactRef,
+  Handle,
+  KindName,
+  MethodName,
+  Pin,
+  ProjectKey,
+  StateName
+}
 
 /** A project as files, one per artifact, and back. */
 object ProjectMarkdown {
@@ -12,8 +21,9 @@ object ProjectMarkdown {
   /** `project.md`: the file holding a project's key and pin. */
   val Index: String = "project.md"
 
-  /** `project` as files: `<key>.md` each, YAML front matter (`key`, `kind`, `state`, `title`,
-    * `parent`, `cites`, `by`; a title and a `by` as quoted strings, an absent one as `null`,
+  /** `project` as files: `<key>.md` each, YAML front matter (`key`, its id, `handle`, `kind`,
+    * `state`, `title`, `parent`, `cites`, `by`; a title and a `by` as quoted strings, an absent
+    * one as `null`, references by id,
     * cites as a flow list) then its body as markdown; and one [[Index]] holding its `key`, and
     * its pin's `method`, `version` and `digest`. [[read]] of them is a project with the same
     * heads and links; read again after a second render, the same project: markdown is written
@@ -88,6 +98,7 @@ object ProjectMarkdown {
     front(
       Vector(
         "key" -> h.key.value,
+        "handle" -> h.handle.fold("null")(Handle.value),
         "kind" -> KindName.value(h.kind),
         "state" -> StateName.value(h.state),
         "title" -> quoted(h.title),
@@ -124,7 +135,7 @@ object ProjectMarkdown {
 
   private val IndexFields: Vector[String] = Vector("key", "method", "version", "digest")
   private val HeadFields: Vector[String] =
-    Vector("key", "kind", "state", "title", "parent", "cites", "by")
+    Vector("key", "handle", "kind", "state", "title", "parent", "cites", "by")
 
   private def front(fields: Vector[(String, String)]): String =
     fields.map((k, v) => s"$k: $v").mkString("---\n", "\n", "\n---\n")
@@ -158,14 +169,21 @@ object ProjectMarkdown {
   private def headed(fields: Fields, body: String): Either[String, Artifact] =
     for {
       key <- ArtifactKey.read(fields("key"))
+      handle <- nullable(fields("handle"))(Handle.of)
       kind <- KindName.of(fields("kind"))
       state <- StateName.of(fields("state"))
       title <- unquoted("title", fields("title"))
       parent <- nullable(fields("parent"))(ArtifactKey.read)
       cites <- list(fields("cites"))
       by <- nullable(fields("by"))(unquoted("by", _))
-      read <- Body.read(body)
-    } yield Artifact(ArtifactHead(key, kind, state, title, parent, cites, by), read)
+      read <- Body.read(body, byId)
+    } yield Artifact(ArtifactHead(key, handle, kind, state, title, parent, cites, by), read)
+
+  /** A reference as an export writes it: an id alone. */
+  private val byId: ArtifactRef -> Either[String, ArtifactKey] = {
+    case ArtifactRef.Id(k) => Right(k)
+    case named => Left(s"an export names artifacts by id, not ${named.value}")
+  }
 
   /** `text`'s front matter, holding exactly `names`, each once, as each name's value (empty
     * for any other name), and what follows it.

@@ -1,11 +1,15 @@
 package grit.projects.artifact
 
+import grit.projects.method.MethodFixtures
+
 import utest.*
 
 object BodyTests extends TestSuite {
 
   private def body(markdown: String): Body =
-    Body.read(markdown).fold(why => throw new IllegalArgumentException(why), identity)
+    Body
+      .read(markdown, MethodFixtures.ids)
+      .fold(why => throw new IllegalArgumentException(why), identity)
 
   val tests: Tests = Tests {
 
@@ -34,45 +38,49 @@ object BodyTests extends TestSuite {
         "it has 2 sections titled \"Reads\": its sections 2 and 4 of 4"
       (
         Body.section(b, "Reads"),
-        Body.edited(b, Body.Edit.Section("Reads", "D."))
+        Body.edited(b, Body.Edit.Section("Reads", "D."), MethodFixtures.ids)
       ) ==> (Left(refusal), Left(refusal))
     }
 
     test("an edit replaces an exact text held once, refused when held twice or not at all") {
-      val b = body("One [two](artifact:p/b) three.\n\n## Goal\n\nThree.")
+      val b = body("One [two](artifact:p/2) three.\n\n## Goal\n\nThree.")
       (
-        Body.edited(b, Body.Edit.Text("[two](artifact:p/b) three", "four")),
-        Body.edited(b, Body.Edit.Text("Three", "Four")),
-        Body.edited(b, Body.Edit.Text("hree", "x")),
-        Body.edited(b, Body.Edit.Text("five", "x"))
+        Body.edited(b, Body.Edit.Text("[two](artifact:p/2) three", "four"), MethodFixtures.ids),
+        Body.edited(b, Body.Edit.Text("Three", "Four"), MethodFixtures.ids),
+        Body.edited(b, Body.Edit.Text("hree", "x"), MethodFixtures.ids),
+        Body.edited(b, Body.Edit.Text("five", "x"), MethodFixtures.ids)
       ) ==> (
         Right("One four.\n\n## Goal\n\nThree."),
-        Right("One [two](artifact:p/b) three.\n\n## Goal\n\nFour."),
+        Right("One [two](artifact:p/2) three.\n\n## Goal\n\nFour."),
         Left("it holds the old text 2 times; give more of the text around it, so it is held once"),
         Left("it does not hold the old text; show it again and copy the text exactly")
       )
     }
 
     test("an edit of no old text is refused as not held") {
-      Body.edited(body("One."), Body.Edit.Text("", "x")) ==>
+      Body.edited(body("One."), Body.Edit.Text("", "x"), MethodFixtures.ids) ==>
         Left("it does not hold the old text; show it again and copy the text exactly")
     }
 
     test("an edit replaces a section's blocks whole, its heading kept, its neighbours untouched") {
       val b = body("Lead.\n\n## Goal\n\nOld.\n\n### Detail\n\nGone.\n\n## Reads\n\nKept.")
       (
-        Body.edited(b, Body.Edit.Section("Goal", "New, citing [b](artifact:p/b).")),
-        Body.edited(b, Body.Edit.Section("Goal", "")),
-        Body.edited(b, Body.Edit.Section("Goal", "New.\n\n## Smuggled\n\nX.")),
-        Body.edited(b, Body.Edit.Section("Goal", "[b](artifact:nokey)"))
+        Body.edited(
+          b,
+          Body.Edit.Section("Goal", "New, citing [b](artifact:p/2)."),
+          MethodFixtures.ids
+        ),
+        Body.edited(b, Body.Edit.Section("Goal", ""), MethodFixtures.ids),
+        Body.edited(b, Body.Edit.Section("Goal", "New.\n\n## Smuggled\n\nX."), MethodFixtures.ids),
+        Body.edited(b, Body.Edit.Section("Goal", "[b](artifact:nokey)"), MethodFixtures.ids)
       ) ==> (
-        Right("Lead.\n\n## Goal\n\nNew, citing [b](artifact:p/b).\n\n## Reads\n\nKept."),
+        Right("Lead.\n\n## Goal\n\nNew, citing [b](artifact:p/2).\n\n## Reads\n\nKept."),
         Right("Lead.\n\n## Goal\n\n## Reads\n\nKept."),
         Left(
           "a section's new body holds a heading of rank 2 or less, which would start another " +
             "section: \"Smuggled\""
         ),
-        Left("a reference is no artifact's key: nokey")
+        Left("a link names no artifact: artifact:nokey (an artifact's key has no '/': nokey)")
       )
     }
 

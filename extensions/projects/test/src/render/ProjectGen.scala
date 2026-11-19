@@ -17,8 +17,9 @@ import grit.projects.method.{
 }
 import grit.projects.name.{
   ArtifactKey,
+  ArtifactNumber,
+  Handle,
   KindName,
-  LocalKey,
   MethodName,
   Pin,
   ProjectKey,
@@ -49,11 +50,12 @@ object ProjectGen {
     val r = new Random(seed)
     val key = right(ProjectKey.of(s"p${r.nextInt(100)}"))
     val n = 1 + r.nextInt(6)
-    val keys = Vector.tabulate(n)(i => right(ArtifactKey.of(key, s"a$i")))
+    val keys = Vector.tabulate(n)(i => ArtifactKey.of(key, right(ArtifactNumber.of(i + 1))))
     val artifacts = keys.zipWithIndex.map { (k, i) =>
       val others = keys.filterNot(_ == k)
       val head = ArtifactHead(
         k,
+        Option.when(r.nextBoolean())(right(Handle.of(s"a$i"))),
         right(KindName.of(pick(r, Vector("change", "note")))),
         right(StateName.of(pick(r, Vector("open", "building", "done")))),
         line(r),
@@ -116,7 +118,7 @@ object ProjectGen {
           right(RoleName.of(s"r$i")),
           kinds.filter(_ => r.nextBoolean()).map(_.name).toSet + kinds(i % kinds.size).name,
           r.nextInt(RoleView.Deepest + 1),
-          Set.fill(r.nextInt(3))(right(LocalKey.of(s"a${r.nextInt(6)}")))
+          Set.fill(r.nextInt(3))(right(Handle.of(s"a${r.nextInt(6)}")))
         )
       )
     }

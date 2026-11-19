@@ -3,7 +3,7 @@ package grit.projects.method
 import grit.projects.artifact.{Artifact, ArtifactHead}
 import grit.projects.method.MethodFixtures.*
 import grit.projects.method.MethodRefusal.*
-import grit.projects.name.{CheckName, LocalKey}
+import grit.projects.name.{CheckName, Handle}
 
 import utest.*
 
@@ -97,7 +97,7 @@ object MethodTests extends TestSuite {
         Method.of(method, 1, kinds, transitions, vs, TransitionChecks.all).map(_.digest)
       val deeper = right(RoleView.of(role("reviewer"), Set(note.name), 3))
       val carrying =
-        right(RoleView.of(role("reviewer"), Set(note.name), 2, Set(right(LocalKey.of("rules")))))
+        right(RoleView.of(role("reviewer"), Set(note.name), 2, Set(right(Handle.of("rules")))))
       assert(
         digest(views :+ reviewer) == digest(reviewer +: views),
         digest(views :+ reviewer).isRight,

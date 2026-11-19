@@ -4,7 +4,7 @@ import scala.annotation.tailrec
 
 import grit.projects.artifact.{Artifact, Body, Project}
 import grit.projects.method.RoleView
-import grit.projects.name.{ArtifactKey, KindName, MethodName, StateName}
+import grit.projects.name.{ArtifactKey, Handle, KindName, MethodName, StateName}
 
 /** Why a brief could not be given. */
 enum BriefRefusal extends caps.Pure {
@@ -65,8 +65,8 @@ object Brief {
       case None => Left(BriefRefusal.Unknown(judged))
       case Some(own) =>
         val carried = project.artifacts
-          .filter(a => a.head.key != judged && view.carried.contains(a.head.key.local))
-          .sortBy(_.head.key.value)
+          .filter(a => a.head.key != judged && a.head.handle.exists(view.carried.contains))
+          .sortBy(_.head.handle.fold("")(Handle.value))
         val ownText = headerLine(project, own) + "\n\n" + Body.markdown(own.body) +
           (if (carried.isEmpty) ""
            else "\n\n## Carried\n\n" + carried.map(section).mkString("\n\n"))
@@ -85,7 +85,7 @@ object Brief {
     }
 
   private def headerLine(project: Project, a: Artifact): String =
-    s"${a.head.key.value} | ${KindName.value(a.head.kind)} | ${StateName.value(a.head.state)} | " +
+    s"${a.head.called} | ${KindName.value(a.head.kind)} | ${StateName.value(a.head.state)} | " +
       s"${a.head.title} | ${MethodName.value(project.pin.method)} v${project.pin.version} | " +
       s"pin ${project.pin.digest.hex.take(PinDigits)}"
 
@@ -118,14 +118,14 @@ object Brief {
       }
     reached
       .filter { case (a, _) => view.kinds.contains(a.head.kind) }
-      .sortBy { case (a, d) => (d, a.head.key.value) }
+      .sortBy { case (a, d) => (d, a.head.key.number) }
   }
 
   private def section(a: Artifact): String =
-    s"### ${a.head.key.value} — ${a.head.title}\n\n${Body.markdown(a.body)}"
+    s"### ${a.head.called} — ${a.head.title}\n\n${Body.markdown(a.body)}"
 
   private def pointer(a: Artifact): String =
-    s"- ${a.head.key.value} (${KindName.value(a.head.kind)}, ${a.head.title}, " +
+    s"- ${a.head.called} (${KindName.value(a.head.kind)}, ${a.head.title}, " +
       s"${Body.markdown(a.body).length} chars)"
 
   /** The brief text with `items`, each whole or a pointer, in order. */

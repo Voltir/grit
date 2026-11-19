@@ -103,9 +103,9 @@ object MigrationTests extends TestSuite {
         project(a, b, closed),
         Remap(artifacts = Map(key("p/x") -> task.name))
       ) ==> Left(
-        "project p has no artifact p/x; " +
-          "p/a, p/b would be of kind change, which grit version 2 does not declare; " +
-          "p/c would be in state closed, which kind note of grit version 2 does not declare"
+        "project p has no artifact p/14; " +
+          "p/1 a, p/2 b would be of kind change, which grit version 2 does not declare; " +
+          "p/3 c would be in state closed, which kind note of grit version 2 does not declare"
       )
     }
 

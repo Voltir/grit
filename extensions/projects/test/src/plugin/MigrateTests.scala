@@ -114,8 +114,8 @@ object MigrateTests extends TestSuite {
       val after = artifacts(store)
       (
         answer,
-        after.get("p/c") == before.get("p/c"),
-        Vector("p/a", "p/b").map(k =>
+        after.get("p/3") == before.get("p/3"),
+        Vector("p/1", "p/2").map(k =>
           after
             .get(k)
             .map((v, written, data) =>
@@ -125,7 +125,7 @@ object MigrateTests extends TestSuite {
       ) ==> (
         (
           CommandOutcome.Done(
-            "Moved project p to method grit version 2; 2 artifacts renamed and kept again: p/a, p/b."
+            "Moved project p to method grit version 2; 2 artifacts renamed and kept again: p/1, p/2."
           ),
           true,
           Vector.fill(2)(Some((true, later, Some(otherBy))))
@@ -147,7 +147,7 @@ object MigrateTests extends TestSuite {
         )
       )
       done(migrated(store, noteToMemo))
-      (believedOf(store, "p/a"), believedOf(store, "p/b")) ==> (Some("member"), Some("authority"))
+      (believedOf(store, "p/1"), believedOf(store, "p/2")) ==> (Some("member"), Some("authority"))
     }
 
     test("what a migration leaves exports and reads back under the new version, renamed") {
@@ -155,7 +155,7 @@ object MigrateTests extends TestSuite {
       holding(store)
       done(migrated(store, noteToMemo))
       exported(store) ==> Right(
-        (2, Vector("p/a" -> "memo", "p/b" -> "memo", "p/c" -> "change"))
+        (2, Vector("p/1" -> "memo", "p/2" -> "memo", "p/3" -> "change"))
       )
     }
 
@@ -165,7 +165,7 @@ object MigrateTests extends TestSuite {
       done(ask(both, store, "project_declare", declaring(version2)))
       migrated(store, noteToMemo) ==> CommandOutcome.Done(
         "Moved project p to method grit version 2; 42 artifacts renamed and kept again: " +
-          (1 to 40).map(i => f"p/n$i%02d").mkString(", ") + "; 2 more not shown."
+          (1 to 40).map(i => s"p/$i").mkString(", ") + "; 2 more not shown."
       )
     }
 
@@ -181,7 +181,7 @@ object MigrateTests extends TestSuite {
       ) ==> (
         (
           CommandOutcome.Refused(
-            Vector("project p", "p/b", "p/a")
+            Vector("project p", "p/2", "p/1")
               .map(subject =>
                 s"$subject is kept labelled [level: public], below what this room writes " +
                   "([level: public, in: {trial}]): migrate from a room at its label"

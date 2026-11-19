@@ -19,6 +19,18 @@ object BatchTests extends TestSuite {
       ) ++ more
     )
 
+  /** A keep step of a new note taking `handle`. */
+  private def made(handle: String, body: String, more: (String, ujson.Value)*): ujson.Obj =
+    ujson.Obj.from(
+      Vector(
+        "command" -> ujson.Str("keep"),
+        "handle" -> ujson.Str(handle),
+        "kind" -> ujson.Str("note"),
+        "title" -> ujson.Str("T"),
+        "body" -> ujson.Str(body)
+      ) ++ more
+    )
+
   private def move(key: String, state: String): ujson.Obj =
     ujson.Obj("command" -> "move", "key" -> key, "state" -> state)
 
@@ -75,19 +87,19 @@ object BatchTests extends TestSuite {
       val answer = batch(
         projects,
         store,
-        keep("p/a", "First.", "kind" -> "note"),
+        made("a", "First."),
         move("p/a", "closed"),
-        keep("p/b", "Under it.", "kind" -> "note", "parent" -> "p/a")
+        made("b", "Under it.", "parent" -> "p/a")
       )
       (
         answer,
         versions(projects, store, "p/a"),
         shown(projects, store, "p/a").contains("\nstate: closed\n"),
-        shown(projects, store, "p/b").contains("\nparent: p/a\n")
+        shown(projects, store, "p/b").contains("\nparent: p/1\n")
       ) ==> (
         CommandOutcome.Done(
-          "Every step is done:\n1. Kept p/a (note, open).\n2. Moved p/a (note, closed).\n" +
-            "3. Kept p/b (note, open)."
+          "Every step is done:\n1. Kept p/1 a (note, open).\n2. Moved p/1 a (note, closed).\n" +
+            "3. Kept p/2 b (note, open)."
         ),
         1,
         true,
@@ -103,12 +115,12 @@ object BatchTests extends TestSuite {
       val answer = batch(
         projects,
         store,
-        keep("p/a", "First.", "kind" -> "note"),
+        made("a", "First."),
         move("p/a", "nowhere")
       )
       (answer, store.count) ==> (
         CommandOutcome.Refused(
-          "Nothing was kept: step 2 of 2 (move p/a to nowhere) was refused: p/a (note, open) " +
+          "Nothing was kept: step 2 of 2 (move p/a to nowhere) was refused: p/1 a (note, open) " +
             "cannot move to nowhere; it may move to closed"
         ),
         before
@@ -131,11 +143,11 @@ object BatchTests extends TestSuite {
       ) ==> (
         CommandOutcome.Refused(
           "Dry run, nothing kept; the batch would be refused. Each step would answer:\n" +
-            "1. Moved p/a (note, closed).\n2. Refused: p/zz is new, so give its kind\n" +
-            "3. Kept p/a (note, closed)."
+            "1. Moved p/1 a (note, closed).\n2. Refused: project p has no artifact named zz\n" +
+            "3. Kept p/1 a (note, closed)."
         ),
         CommandOutcome.Done(
-          "Dry run, nothing kept. Each step would answer:\n1. Moved p/a (note, closed)."
+          "Dry run, nothing kept. Each step would answer:\n1. Moved p/1 a (note, closed)."
         ),
         1,
         true
@@ -155,7 +167,7 @@ object BatchTests extends TestSuite {
         keep("p/a", "Second.", "version" -> read.toLong)
       ) ==>
         CommandOutcome.Done(
-          "Every step is done:\n1. Moved p/a (note, closed).\n2. Kept p/a (note, closed)."
+          "Every step is done:\n1. Moved p/1 a (note, closed).\n2. Kept p/1 a (note, closed)."
         )
     }
 
@@ -177,7 +189,7 @@ object BatchTests extends TestSuite {
       )
       (unread(projects, many), unread(projects, outside), unread(projects, mixed)) ==> (
         Some(ArgsError.Refused("steps", "At most 50 steps; 51 were given.").message),
-        Some(ArgsError.Refused("steps", "Step 2's key q/b is in project q, not p.").message),
+        Some(ArgsError.Refused("steps", "The key q/b is in project q, not p.").message),
         Some(
           ArgsError
             .Refused("steps", "A move takes key and state alone; step 1 gives title.")
@@ -207,7 +219,7 @@ object BatchTests extends TestSuite {
       ) ==>
         (
           CommandOutcome.Done(
-            "Every step is done:\n1. Kept p/a (note, open).\n2. Kept p/a (note, open)."
+            "Every step is done:\n1. Kept p/1 a (note, open).\n2. Kept p/1 a (note, open)."
           ),
           true,
           2

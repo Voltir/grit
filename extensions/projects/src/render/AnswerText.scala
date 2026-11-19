@@ -140,17 +140,19 @@ object AnswerText {
     s"${tenths / 10}.${tenths % 10} KB"
   }
 
-  /** `<key> (<kind>, <state>)`: an artifact named in a sentence about it. */
+  /** `<id> <handle> (<kind>, <state>)` ([[ArtifactHead.called]]): an artifact named in a sentence
+    * about it.
+    */
   def named(h: ArtifactHead): String =
-    s"${h.key.value} (${KindName.value(h.kind)}, ${StateName.value(h.state)})"
+    s"${h.called} (${KindName.value(h.kind)}, ${StateName.value(h.state)})"
 
-  /** `<key> (<kind>, <state>): <title>`, the kind and the state each only when asked for, the
-    * parentheses only when either is.
+  /** `<id> <handle> (<kind>, <state>): <title>` ([[ArtifactHead.called]]), the kind and the state each only
+    * when asked for, the parentheses only when either is.
     */
   private def head(h: ArtifactHead, kind: Boolean, state: Boolean): String = {
     val named =
       Option.when(kind)(KindName.value(h.kind)) ++ Option.when(state)(StateName.value(h.state))
-    s"${h.key.value}${if (named.isEmpty) "" else named.mkString(" (", ", ", ")")}: ${h.title}"
+    s"${h.called}${if (named.isEmpty) "" else named.mkString(" (", ", ", ")")}: ${h.title}"
   }
 
   /** `said`, the answer to a keep or an edit of one artifact, then the version it is now at. */
@@ -308,7 +310,7 @@ object AnswerText {
           )
         )
       case SweptGroup.Withdrawn =>
-        gone.sortBy(_.head.key.value).map(line(_, if (dry) "would be withdrawn" else "withdrawn"))
+        gone.sortBy(_.head.key.number).map(line(_, if (dry) "would be withdrawn" else "withdrawn"))
     }
     val lines = show.fold(SweptGroup.values.toVector.flatMap(group))(group)
     val after = (next: Int) =>

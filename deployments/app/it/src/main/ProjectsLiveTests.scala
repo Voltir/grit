@@ -98,7 +98,7 @@ object ProjectsLiveTests extends TestSuite {
     )
 
   /** The text of each current version of `key`'s brief, as the database holds it. */
-  private def currentBrief(config: grit.dbos.sql.DbConfig, key: String = "p/m"): Vector[String] =
+  private def currentBrief(config: grit.dbos.sql.DbConfig, key: String = "p/3"): Vector[String] =
     LiveDb.transaction(config) { (tx: Tx^) ?=>
       val conn: java.sql.Connection^{tx} = Tx.connection(tx)
       Using.resource(
@@ -127,7 +127,8 @@ object ProjectsLiveTests extends TestSuite {
       room,
       ToolName("project_keep"),
       (Vector[(String, ujson.Value)](
-        "key" -> s"p/$local",
+        "project" -> "p",
+        "handle" -> local,
         "kind" -> "note",
         "title" -> s"Title $local",
         "body" -> body
@@ -156,7 +157,7 @@ object ProjectsLiveTests extends TestSuite {
         assertMatch(claims) {
           case Right(CommandOutcome.Done(said))
               if ujson.read(said)("claims").arr.map(c => (c("key").str, c("holder").str)) ==
-                Vector(("p/a", "coder/abc")) =>
+                Vector(("p/1", "coder/abc")) =>
         }
       }
     }
@@ -202,7 +203,7 @@ object ProjectsLiveTests extends TestSuite {
           ) ==> (
             Right(classOf[CommandOutcome.Done]),
             Right(classOf[CommandOutcome.Done]),
-            Right(CommandOutcome.Done("Moved p/a (change, building)."))
+            Right(CommandOutcome.Done("Moved p/1 a (change, building)."))
           )
           kept(config, engine, Projects.Name).take(1) ==> Vector(
             ("grit@1", "internal", "authority")
@@ -241,9 +242,9 @@ object ProjectsLiveTests extends TestSuite {
           move(Integrity.Member, "done"),
           move(Integrity.Authority, "done")
         ) ==> (
-          Right(CommandOutcome.Done("Moved p/a (change, building).")),
+          Right(CommandOutcome.Done("Moved p/1 a (change, building).")),
           Right(CommandOutcome.Refused(CommandFixtures.personOnlyMove)),
-          Right(CommandOutcome.Done("Moved p/a (change, done)."))
+          Right(CommandOutcome.Done("Moved p/1 a (change, done)."))
         )
       }
     }
@@ -290,7 +291,7 @@ object ProjectsLiveTests extends TestSuite {
           .map(_.getClass) ==> Right(classOf[CommandOutcome.Done])
         (move(team), move(desk)) ==> (
           Right(moveRefused),
-          Right(CommandOutcome.Done("Moved p/a (change, done)."))
+          Right(CommandOutcome.Done("Moved p/1 a (change, done)."))
         )
       }
     }
@@ -326,13 +327,13 @@ object ProjectsLiveTests extends TestSuite {
           (
             moved,
             artifactsKept(config, engine),
-            currentBrief(config, "p/a").map(_.contains("| closed |"))
+            currentBrief(config, "p/1").map(_.contains("| closed |"))
           ) ==> (
-            Right(CommandOutcome.Done("Moved p/a (note, closed).")),
+            Right(CommandOutcome.Done("Moved p/1 a (note, closed).")),
             Vector(
               ("p", "internal", "member"),
-              ("p/a", "internal", "member"),
-              ("p/a#brief", "internal", "member")
+              ("p/1", "internal", "member"),
+              ("p/1#brief", "internal", "member")
             ),
             Vector(true)
           )
@@ -356,8 +357,8 @@ object ProjectsLiveTests extends TestSuite {
           ))
           artifactsKept(config, engine) ==> Vector(
             ("p", "internal", "member"),
-            ("p/a", "internal", "member"),
-            ("p/b", "internal", "outside")
+            ("p/1", "internal", "member"),
+            ("p/2", "internal", "outside")
           )
       }
     }
@@ -391,7 +392,7 @@ object ProjectsLiveTests extends TestSuite {
         (answer, after.endsWith("\n## Goal\n\nTwo.\n"), version(after) != Some(read)) ==> (
           Right(
             CommandOutcome.Done(
-              s"Kept p/a (note, open). Now at version ${version(after).getOrElse("")}."
+              s"Kept p/1 a (note, open). Now at version ${version(after).getOrElse("")}."
             )
           ),
           true,
@@ -418,13 +419,13 @@ object ProjectsLiveTests extends TestSuite {
             ran(commands, by, room, ToolName("project_withdraw"), "key" -> "p/a", "cascade" -> true)
           cascade(bea, board) ==> Right(
             CommandOutcome.Refused(
-              "p/c cites what would be withdrawn, but is kept labelled [level: internal], below " +
+              "p/2 cites what would be withdrawn, but is kept labelled [level: internal], below " +
                 "what this room writes ([level: confidential]): withdraw from a room at its label"
             )
           )
-          artifactsKept(config, engine).map(_._1) ==> Vector("p", "p/a", "p/c")
+          artifactsKept(config, engine).map(_._1) ==> Vector("p", "p/1", "p/2")
           cascade(ann, desk).map(_.getClass) ==> Right(classOf[CommandOutcome.Done])
-          artifactsKept(config, engine).map(_._1) ==> Vector("p", "p/c")
+          artifactsKept(config, engine).map(_._1) ==> Vector("p", "p/2")
       }
     }
 
@@ -441,13 +442,13 @@ object ProjectsLiveTests extends TestSuite {
             .map(_.getClass) ==> Right(classOf[CommandOutcome.Done])
           val refused = Right(
             CommandOutcome.Refused(
-              "p/a would be withdrawn, but is kept labelled [level: internal], below what this " +
+              "p/1 would be withdrawn, but is kept labelled [level: internal], below what this " +
                 "room writes ([level: confidential]): withdraw from a room at its label"
             )
           )
           (sweep(commands, bea, board, dry = true), sweep(commands, bea, board, dry = false)) ==>
             (refused, refused)
-          artifactsKept(config, engine).map(_._1) ==> Vector("p", "p/a")
+          artifactsKept(config, engine).map(_._1) ==> Vector("p", "p/1")
           sweep(commands, ann, desk, dry = false).map(_.getClass) ==>
             Right(classOf[CommandOutcome.Done])
           artifactsKept(config, engine).map(_._1) ==> Vector("p")
@@ -465,7 +466,7 @@ object ProjectsLiveTests extends TestSuite {
           keep(commands, desk, "a", "In the desk.") ==> Right(classOf[CommandOutcome.Done])
           def below(verb: String) = Right(
             CommandOutcome.Refused(
-              "p/a is kept labelled [level: internal], below what this room writes " +
+              "p/1 is kept labelled [level: internal], below what this room writes " +
                 s"([level: confidential]): $verb from a room at its label"
             )
           )
@@ -489,7 +490,7 @@ object ProjectsLiveTests extends TestSuite {
             below("move")
           artifactsKept(config, engine) ==> Vector(
             ("p", "internal", "member"),
-            ("p/a", "internal", "member")
+            ("p/1", "internal", "member")
           )
       }
     }
@@ -534,7 +535,7 @@ object ProjectsLiveTests extends TestSuite {
             )
           migrate(bea, board) ==> Right(
             CommandOutcome.Refused(
-              Vector("project p", "p/a")
+              Vector("project p", "p/1")
                 .map(subject =>
                   s"$subject is kept labelled [level: internal], below what this room writes " +
                     "([level: confidential]): migrate from a room at its label"
@@ -544,11 +545,11 @@ object ProjectsLiveTests extends TestSuite {
           )
           artifactsKept(config, engine) ==> Vector(
             ("p", "internal", "member"),
-            ("p/a", "internal", "member")
+            ("p/1", "internal", "member")
           )
           migrate(ann, desk) ==> Right(
             CommandOutcome.Done(
-              "Moved project p to method grit version 1; 1 artifact renamed and kept again: p/a."
+              "Moved project p to method grit version 1; 1 artifact renamed and kept again: p/1."
             )
           )
           ran(commands, ann, desk, ToolName("project_show"), "key" -> "p/a").map {
@@ -557,7 +558,7 @@ object ProjectsLiveTests extends TestSuite {
           } ==> Right(Some("kind: memo"))
           artifactsKept(config, engine) ==> Vector(
             ("p", "internal", "member"),
-            ("p/a", "internal", "member")
+            ("p/1", "internal", "member")
           )
       }
     }
@@ -595,7 +596,7 @@ object ProjectsLiveTests extends TestSuite {
               Using.resource(
                 conn.prepareStatement(
                   "SELECT version FROM grit.documents WHERE plugin = 'projects' " +
-                    "AND key = 'p/m#brief' AND superseded_at IS NULL FOR UPDATE"
+                    "AND key = 'p/3#brief' AND superseded_at IS NULL FOR UPDATE"
                 )
               )(ps => Using.resource(ps.executeQuery())(rs => rs.next()))
               holding.countDown()
@@ -695,7 +696,7 @@ object ProjectsLiveTests extends TestSuite {
                 live <- claims.live(at)
                 claim <- live.headOption.toRight(StoreError.Invalid("no live claim"))
                 held <- claims.held(claim).flatMap(_.toRight(StoreError.Invalid("not held")))
-                key <- DocKey.of("p/m#brief").left.map(StoreError.Invalid(_))
+                key <- DocKey.of("p/3#brief").left.map(StoreError.Invalid(_))
                 was <- keeper
                   .current(key, held.label)
                   .flatMap(_.toRight(StoreError.Invalid("no brief")))
@@ -762,7 +763,7 @@ object ProjectsLiveTests extends TestSuite {
               for {
                 lock <- DocKey.of("p#lock").left.map(StoreError.Invalid(_))
                 _ <- claims.lock(lock)
-                key <- DocKey.of("p/m").left.map(StoreError.Invalid(_))
+                key <- DocKey.of("p/2").left.map(StoreError.Invalid(_))
                 was <- keeper
                   .current(key, internal)
                   .flatMap(_.toRight(StoreError.Invalid("no p/m")))
@@ -808,7 +809,7 @@ object ProjectsLiveTests extends TestSuite {
           go.countDown()
           val (ended, claimed) =
             (Await.result(batch, 30.seconds), Await.result(claiming, 30.seconds))
-          (waited, ended, claimed, currentBrief(config).map(_.contains("rewritten"))) ==>
+          (waited, ended, claimed, currentBrief(config, "p/2").map(_.contains("rewritten"))) ==>
             (true, Right(()), Right(classOf[CommandOutcome.Done]), Vector(true))
         } finally pool.shutdownNow()
       }

@@ -4,7 +4,7 @@ import java.nio.charset.StandardCharsets
 
 import grit.core.document.Document
 import grit.core.message.Cut
-import grit.projects.name.ArtifactKey
+import grit.projects.name.{ArtifactKey, ArtifactRef}
 import grit.prose.form.{Block, Doc, Level, Mark, Span, Text}
 import grit.prose.index.IndexText
 import grit.prose.json.ProseJson
@@ -28,24 +28,32 @@ object Body {
   val StoredMost: Int = Document.DataMost - 4096
 
   /** `markdown` as a body, its wrapped lines joined ([[Markdown.Newline.Space]]), a link to
-    * `artifact:<key>` its reference to that artifact, or why not: blank or holding no block, a
-    * reference that is no artifact's key, or a stored form over [[StoredMost]].
+    * `artifact:<ref>` its reference to the artifact `resolve` gives for that [[ArtifactRef]], or
+    * why not: blank or holding no block, a link that is no reference or that `resolve` refuses
+    * (naming each, with why), or a stored form over [[StoredMost]].
     */
-  def read(markdown: String): Either[String, Body] =
-    if (markdown.isBlank) Left("a body is blank") else parsed(markdown).flatMap(checked)
+  def read(
+      markdown: String,
+      resolve: ArtifactRef -> Either[String, ArtifactKey]
+  ): Either[String, Body] =
+    if (markdown.isBlank) Left("a body is blank")
+    else parsed(markdown, href => ArtifactRef.read(href).flatMap(resolve)).flatMap(checked)
 
-  /** `markdown` read as [[read]] reads it, unchecked for size or emptiness, or why not: a
-    * reference that is no artifact's key.
+  /** `markdown` read as [[read]] reads it, each link's target by `reference`, unchecked for size
+    * or emptiness, or why not: a target `reference` refuses.
     */
-  private def parsed(markdown: String): Either[String, Doc[ArtifactKey]] = {
+  private def parsed(
+      markdown: String,
+      reference: String -> Either[String, ArtifactKey]
+  ): Either[String, Doc[ArtifactKey]] = {
     val doc = Markdown.parse(markdown, Markdown.Newline.Space)
-    val bad = doc.mapSpans(s => Span(s.text, s.marks, referred(s))).notes.collect {
-      case Referred(href) if ArtifactKey.read(href).isLeft => href
+    val bad = doc.mapSpans(s => Span(s.text, s.marks, referred(s))).notes.distinct.flatMap { r =>
+      reference(r.href).left.toOption.map(why => s"artifact:${r.href} ($why)")
     }
-    if (bad.nonEmpty) Left(s"a reference is no artifact's key: ${bad.mkString(", ")}")
+    if (bad.nonEmpty) Left(s"a link names no artifact: ${bad.mkString(", ")}")
     else
       Right(doc.mapSpans { s =>
-        val keys = referred(s).flatMap(r => ArtifactKey.read(r.href).toOption)
+        val keys = referred(s).flatMap(r => reference(r.href).toOption)
         Span(s.text, s.marks.filter(m => !isReference(m)), keys)
       })
   }
@@ -110,10 +118,14 @@ object Body {
 
   /** Its markdown with `edit` made, for [[read]] to read, which bounds its size; or why not: the
     * old text held other than once, the section refused as [[section]] refuses it, or a
-    * section's new markdown holding a reference that is no artifact's key or a heading of rank 2
-    * or less.
+    * section's new markdown holding a link [[read]] would refuse under `resolve` or a heading of
+    * rank 2 or less.
     */
-  def edited(b: Body, edit: Edit): Either[String, String] = edit match {
+  def edited(
+      b: Body,
+      edit: Edit,
+      resolve: ArtifactRef -> Either[String, ArtifactKey]
+  ): Either[String, String] = edit match {
     case Edit.Text(old, now) =>
       val text = markdown(b)
       Collect.positions(text, old) match {
@@ -128,7 +140,9 @@ object Body {
     case Edit.Section(title, under) =>
       for {
         found <- addressed(sectionsOf(b.blocks), title)
-        blocks <- if (under.isBlank) Right(Vector.empty) else parsed(under).map(_.blocks)
+        blocks <-
+          if (under.isBlank) Right(Vector.empty)
+          else parsed(under, href => ArtifactRef.read(href).flatMap(resolve)).map(_.blocks)
         _ <- blocks.collect {
           case Block.Heading(level, text) if level.value <= 2 => text.plain.trim
         } match {
@@ -243,16 +257,20 @@ object Body {
   /** As stored: prose's stored form ([[ProseJson]]), each reference by its key. */
   def stored(b: Body): ujson.Value = ProseJson.write(b, k => ujson.Str(k.value))
 
-  /** What [[stored]] wrote, as the body, or why not: a stored form [[ProseJson.read]] refuses
-    * (another version among them), a reference that is no artifact's key, no block, or a
-    * stored form over [[StoredMost]].
+  /** What [[stored]] wrote, as the body, each reference read by `reference` (stored bodies hold
+    * ids, [[ArtifactKey.read]]), or why not: a stored form [[ProseJson.read]] refuses (another
+    * version among them), a reference `reference` refuses, no block, or a stored form over
+    * [[StoredMost]].
     */
-  def fromStored(json: ujson.Value): Either[String, Body] =
+  def fromStored(
+      json: ujson.Value,
+      reference: String -> Either[String, ArtifactKey] = ArtifactKey.read
+  ): Either[String, Body] =
     ProseJson
       .read(
         json,
         {
-          case ujson.Str(s) => ArtifactKey.read(s)
+          case ujson.Str(s) => reference(s)
           case other => Left(s"a reference is not a key: $other")
         }
       )

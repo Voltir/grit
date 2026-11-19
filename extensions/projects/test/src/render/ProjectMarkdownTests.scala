@@ -2,6 +2,7 @@ package grit.projects.render
 
 import grit.core.id.DocumentVersionId
 import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
+import grit.projects.method.MethodFixtures
 import grit.projects.name.{ArtifactKey, KindName, MethodName, Pin, ProjectKey, StateName}
 
 import utest.*
@@ -14,7 +15,7 @@ object ProjectMarkdownTests extends TestSuite {
   private val p: ProjectKey = right(ProjectKey.of("p"))
   private val pin: Pin = right(Pin.read(right(MethodName.of("m")), 1, "0f" * 32))
 
-  private def key(local: String): ArtifactKey = right(ArtifactKey.of(p, local))
+  private def key(local: String): ArtifactKey = MethodFixtures.key(s"p/$local")
 
   private def artifact(
       local: String,
@@ -25,6 +26,7 @@ object ProjectMarkdownTests extends TestSuite {
     Artifact(
       ArtifactHead(
         key(local),
+        MethodFixtures.handleOf(key(local)),
         right(KindName.of("note")),
         right(StateName.of("open")),
         title,
@@ -32,7 +34,7 @@ object ProjectMarkdownTests extends TestSuite {
         Vector.empty,
         None
       ),
-      right(Body.read(body))
+      right(Body.read(body, MethodFixtures.ids))
     )
 
   private def heads(project: Project): Vector[ArtifactHead] = project.artifacts.map(_.head)
@@ -67,11 +69,11 @@ object ProjectMarkdownTests extends TestSuite {
     test("a file whose front matter names an unknown parent is reported, with the file") {
       val project = right(Project.of(p, pin, Vector(artifact("a", "A", "Some text."))))
       val files = ProjectMarkdown.render(project).map { (path, text) =>
-        path -> text.replace("parent: null", "parent: p/ghost")
+        path -> text.replace("parent: null", "parent: p/7")
       }
       assert(
         ProjectMarkdown.read(files) == Left(
-          Vector("p/a.md" -> "p/a's parent p/ghost is no artifact of it")
+          Vector("p/1.md" -> "p/1's parent p/7 is no artifact of it")
         )
       )
     }
@@ -85,7 +87,7 @@ object ProjectMarkdownTests extends TestSuite {
       val body =
         read.map(_.artifacts.filter(_.head.key == key("a")).map(a => Body.markdown(a.body)))
       assert(
-        body == Right(Vector("Built as [the design](artifact:p/b) says.")),
+        body == Right(Vector("Built as [the design](artifact:p/2) says.")),
         read.map(_.artifacts.flatMap(a => Body.cites(a.body))) == Right(Vector(key("b")))
       )
     }
@@ -93,13 +95,17 @@ object ProjectMarkdownTests extends TestSuite {
       "a body with brackets and asterisks in plain text shows them bare, and reads back the same"
     ) {
       val text = "Tagged [edges, projects]: 2 * 3 is six, snake_case [x] done."
-      val body = right(Body.read(text))
-      assert(Body.markdown(body) == text, Body.read(Body.markdown(body)) == Right(body))
+      val body = right(Body.read(text, MethodFixtures.ids))
+      assert(
+        Body.markdown(body) == text,
+        Body.read(Body.markdown(body), MethodFixtures.ids) == Right(body)
+      )
     }
 
     test("an artifact as project_show gives it reads back whole, with its version") {
       // Its body as read does once: markdown normalises in one pass.
-      def normal(a: Artifact): Artifact = Artifact(a.head, right(Body.read(Body.markdown(a.body))))
+      def normal(a: Artifact): Artifact =
+        Artifact(a.head, right(Body.read(Body.markdown(a.body), MethodFixtures.ids)))
       val failing = (0 until 200).iterator
         .flatMap(seed => ProjectGen.project(seed).artifacts.map(a => seed -> normal(a)))
         .zipWithIndex
@@ -117,8 +123,8 @@ object ProjectMarkdownTests extends TestSuite {
     test("an exported file, which holds no version, is not read as shown") {
       val (_, text) = ProjectMarkdown.file(artifact("a", "A", "Body."))
       ProjectMarkdown.readShown(text) ==> Left(
-        "front matter names key, kind, state, title, parent, cites, by, " +
-          "not key, kind, state, title, parent, cites, by, version"
+        "front matter names key, handle, kind, state, title, parent, cites, by, " +
+          "not key, handle, kind, state, title, parent, cites, by, version"
       )
     }
 
@@ -132,7 +138,9 @@ object ProjectMarkdownTests extends TestSuite {
       at("x") ==> Left("version x is no version: a whole number, 1 or more")
     }
     test("a hard-wrapped paragraph is kept as one paragraph with no breaks") {
-      val body = right(Body.read("A plan wrapped\nat its source's width,\nas files are."))
+      val body = right(
+        Body.read("A plan wrapped\nat its source's width,\nas files are.", MethodFixtures.ids)
+      )
       assert(Body.markdown(body) == "A plan wrapped at its source's width, as files are.")
     }
     test("a parent cycle is refused, naming each artifact in it") {
@@ -140,7 +148,7 @@ object ProjectMarkdownTests extends TestSuite {
         artifact("a", "A", "x", parent = Some("b")),
         artifact("b", "B", "y", parent = Some("a"))
       )
-      assert(Project.of(p, pin, cycle) == Left("p/a is its own ancestor; p/b is its own ancestor"))
+      assert(Project.of(p, pin, cycle) == Left("p/1 is its own ancestor; p/2 is its own ancestor"))
     }
   }
 }

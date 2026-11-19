@@ -14,7 +14,7 @@ import grit.projects.method.{
   TransitionCheck,
   TransitionChecks
 }
-import grit.projects.name.{CheckName, Pin, ProjectKey}
+import grit.projects.name.{ArtifactNumber, CheckName, Pin, ProjectKey}
 
 import utest.*
 
@@ -54,7 +54,12 @@ object DeclareTests extends TestSuite {
   /** `p`'s index rewritten to pin [[methodName]] at `version` under `digest`. */
   private def repinned(store: Store, version: Int, digest: Sha256): Unit = {
     val (key, text, data, refs) = right(
-      ArtifactJson.index(right(ProjectKey.of("p")), right(Pin.of(methodName, version, digest)), by)
+      ArtifactJson.index(
+        right(ProjectKey.of("p")),
+        right(Pin.of(methodName, version, digest)),
+        by,
+        Some(ArtifactNumber.First)
+      )
     )
     inTx(
       store.keeper
@@ -71,8 +76,8 @@ object DeclareTests extends TestSuite {
       ) ==> (
         CommandOutcome.Refused(
           "The method grit version 1 is refused: its worked examples come out otherwise than " +
-            "they say: example \"a bare change is done\", move 2 (p/a to done) expected allowed; " +
-            "but p/a cannot move to done: sections-present: its body lacks ## Why."
+            "they say: example \"a bare change is done\", move 2 (p/1 to done) expected allowed; " +
+            "but p/1 a cannot move to done: sections-present: its body lacks ## Why."
         ),
         0
       )
@@ -138,7 +143,7 @@ object DeclareTests extends TestSuite {
       kept(plugin(), store, "a", "note", "Kept at its first version.")
       done(
         askAt(at.plusSeconds(1))(plugin(), store, "project_find", "query" -> "version")
-      ) ==> "p/a (note, open): Title a"
+      ) ==> "p/1 a (note, open): Title a"
     }
     test(
       "a move is refused when its pinned version is not declared, or its digest is not the pin's"
@@ -243,7 +248,7 @@ object DeclareTests extends TestSuite {
         CommandOutcome.Refused(unreadable),
         CommandOutcome.Done(
           "1 match: change 1 (proposed 1).\n" +
-            "p/a (change, proposed): Title a · 0.1 KB · changed 2026-10-27"
+            "p/1 a (change, proposed): Title a · 0.1 KB · changed 2026-10-27"
         )
       )
     }

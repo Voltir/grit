@@ -3,8 +3,8 @@ package grit.projects.name
 import utest.*
 
 object NameTests extends TestSuite {
-  private def local(s: String): LocalKey =
-    LocalKey.of(s).fold(why => throw new java.lang.AssertionError(why), identity)
+  private def local(s: String): Handle =
+    Handle.of(s).fold(why => throw new java.lang.AssertionError(why), identity)
 
   val tests = Tests {
     test(
@@ -21,19 +21,36 @@ object NameTests extends TestSuite {
       ).map(local)
       // plan-c5b extends it by one, plan-c5-runs-turns by eleven; plan-c4 and plan-c7 are one
       // edit away and tie, by key, so the cut at three leaves plan-c7.
-      val nearest = LocalKey.nearest(local("plan-c5"), among)
+      val nearest = Handle.nearest(local("plan-c5"), among)
       // plan-c47 is two edits from plan-c5, within 7 / 3 = 2; note-c5 is four.
-      val within = LocalKey.nearest(local("plan-c5"), Vector("note-c5", "plan-c47").map(local))
-      (nearest, within, LocalKey.nearest(local("z"), Vector("a", "b").map(local))) ==> (
+      val within = Handle.nearest(local("plan-c5"), Vector("note-c5", "plan-c47").map(local))
+      (nearest, within, Handle.nearest(local("z"), Vector("a", "b").map(local))) ==> (
         Vector("plan-c5b", "plan-c5-runs-turns", "plan-c4").map(local),
         Vector(local("plan-c47")),
         Vector.empty
       )
     }
-    test("an artifact key reads back as written, naming its project") {
-      val read = ArtifactKey.read("grit/add-search")
-      assert(read.map(_.value) == Right("grit/add-search"))
-      assert(read.map(k => ProjectKey.value(k.project)) == Right("grit"))
+    test("an id reads back as written, naming its project and its number") {
+      val read = ArtifactKey.read("grit/412")
+      assert(
+        read.map(_.value) == Right("grit/412"),
+        read.map(k => (ProjectKey.value(k.project), ArtifactNumber.value(k.number))) ==
+          Right(("grit", 412))
+      )
+    }
+    test("a reference led by a digit is an id, any other a handle, and either refused says why") {
+      val grit = ProjectKey.of("grit").fold(sys.error, identity)
+      assert(
+        ArtifactRef.read("grit/412") ==
+          Right(
+            ArtifactRef.Id(ArtifactKey.of(grit, ArtifactNumber.of(412).fold(sys.error, identity)))
+          ),
+        ArtifactRef.read("grit/release-notes") ==
+          Right(ArtifactRef.Named(grit, local("release-notes"))),
+        ArtifactRef.read("grit/4x") == Left("an artifact's number is digits alone: 4x"),
+        ArtifactRef.read("grit/0") == Left("an artifact's number is below 1: 0"),
+        ArtifactRef.read("grit") == Left("an artifact's key has no '/': grit")
+      )
     }
     test("a name holding an uppercase letter is refused, naming the letter") {
       assert(
@@ -43,13 +60,13 @@ object NameTests extends TestSuite {
       )
     }
     test(
-      "a key part may start with a digit; empty, too long or from '-' is refused, saying which"
+      "a handle is led by a letter; empty, too long, or from '-' or a digit is refused, saying which"
     ) {
-      def key(local: String) = ProjectKey.of("p").flatMap(ArtifactKey.of(_, local)).map(_.value)
       assert(
-        key("2nd-try") == Right("p/2nd-try"),
-        key("") == Left("an artifact's part of its key is empty"),
-        key("-a") == Left("an artifact's part of its key starts with '-': -a"),
+        Handle.of("2nd-try") == Left("a handle starts with a digit: 2nd-try"),
+        Handle.of("") == Left("a handle is empty"),
+        Handle.of("-a") == Left("a handle starts with '-': -a"),
+        Handle.of("a" * 81) == Left(s"a handle is over 80 characters: ${"a" * 81}"),
         ProjectKey.of("a" * 41) ==
           Left(s"a project's key is over 40 characters: ${"a" * 41}")
       )

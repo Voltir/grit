@@ -29,7 +29,8 @@ object KeepVersionTests extends TestSuite {
           projects,
           store,
           "project_keep",
-          "key" -> "p/a",
+          "project" -> "p",
+          "handle" -> "a",
           "kind" -> "note",
           "title" -> "A",
           "body" -> "One."
@@ -92,10 +93,10 @@ object KeepVersionTests extends TestSuite {
         .fold("")(_.drop(5).dropRight(1))
       (first, keep("Three."), shown(projects, store, "p/a").endsWith("\nTwo.\n")) ==> (
         CommandOutcome.Done(
-          s"Kept p/a (note, open). Now at version ${versionOf(projects, store, "p/a")}."
+          s"Kept p/1 a (note, open). Now at version ${versionOf(projects, store, "p/a")}."
         ),
         CommandOutcome.Refused(
-          s"p/a is at version $current, not $read as given: kept since by $by at " +
+          s"p/1 a is at version $current, not $read as given: kept since by $by at " +
             s"${at.plusSeconds(60)}. Show it again and keep from what it holds now."
         ),
         true
@@ -112,13 +113,10 @@ object KeepVersionTests extends TestSuite {
         store,
         "project_keep",
         "key" -> "p/plans",
-        "kind" -> "note",
         "title" -> "A",
         "body" -> "Two.",
         "version" -> 7
-      ) ==> CommandOutcome.Refused(
-        "p/plans is new, so it has no version to give; leave out version (nearest: p/plan)"
-      )
+      ) ==> CommandOutcome.Refused("project p has no artifact named plans (nearest: plan)")
     }
 
     test("a keep given a project not its key's is refused, its own accepted") {

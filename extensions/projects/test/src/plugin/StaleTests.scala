@@ -26,8 +26,7 @@ object StaleTests extends TestSuite {
         projects,
         store,
         "project_keep",
-        (Vector[(String, ujson.Value)](
-          "key" -> s"p/$local",
+        (naming(projects, store, local) ++ Vector[(String, ujson.Value)](
           "kind" -> kind,
           "title" -> s"Title $local",
           "body" -> body
@@ -72,7 +71,7 @@ object StaleTests extends TestSuite {
       movedOn(projects, store, 1, "d", "closed")
       keptOn(projects, store, 2, "a", "note", "Alone.")
       keptOn(projects, store, 30, "c", "note", "See [b](artifact:p/b).")
-      staleOn(projects, store, 35, 2) ==> "p/e (note, open): Title e\np/a (note, open): Title a"
+      staleOn(projects, store, 35, 2) ==> "p/1 e (note, open): Title e\np/4 a (note, open): Title a"
     }
 
     test(
@@ -105,7 +104,7 @@ object StaleTests extends TestSuite {
         (stale, withdrawn)
       }
       answers ==> under.map((_, kind, first, _) =>
-        (s"p/x ($kind, $first): Title x", Some("Withdrawn: p/x, p/y"))
+        (s"p/1 x ($kind, $first): Title x", Some("Withdrawn: p/1, p/2"))
       )
     }
   }

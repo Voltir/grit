@@ -128,9 +128,9 @@ object ElephantGoldfishTests extends TestSuite {
       val big = shown(elephant)
       assert(
         fish.contains("We should do it."),
-        fish.contains("### p/near"),
+        fish.contains("### p/24 near"),
         !fish.contains("p/far"),
-        big.contains("### p/far")
+        big.contains("### p/22 far")
       )
     }
   }
