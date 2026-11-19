@@ -7,6 +7,7 @@ import scala.util.Using
 import scala.util.control.NonFatal
 
 import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnRef, TurnSeq}
+import grit.core.place.Place
 import grit.core.store.{Entry, EntryStore, PayloadJson, StoreError, Tx}
 import grit.core.visibility.Integrity
 
@@ -30,7 +31,10 @@ final class SqlEntryStore extends EntryStore {
     val savepoint = conn.setSavepoint()
     try {
       // Met here with the room's cap, so no writer can forget it (ADR 0036).
-      val believed = capOf(entry.conversationId).fold(entry.integrity)(entry.integrity.meet(_))
+      val believed =
+        roomOf(entry.conversationId).fold(entry.integrity)(
+          Tx.visibility(tx).believedIn(_, entry.integrity)
+        )
       Using.resource(conn.prepareStatement(sql)) { ps =>
         ps.setString(1, EntryId.value(entry.id))
         ps.setString(2, ConversationId.value(entry.conversationId))
@@ -200,11 +204,10 @@ private[dbos] object SqlEntryStore {
   private[dbos] def databaseError(e: Throwable): StoreError.DatabaseError =
     StoreError.DatabaseError(Option(e.getMessage).getOrElse(e.toString))
 
-  /** The cap on what is said in `conversation`'s room ([[grit.core.visibility.Visibility.capOf]]);
-    * `None` when none covers it, its author's level then standing, or there is no such
-    * conversation (whose insert then fails). Throws as the driver does.
+  /** `conversation`'s room; `None` when there is no such conversation (whose insert then fails).
+    * Throws as the driver does.
     */
-  private def capOf(conversation: ConversationId)(using tx: Tx^): Option[Integrity] = {
+  private def roomOf(conversation: ConversationId)(using tx: Tx^): Option[Place] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
     val path = Using.resource(
       conn.prepareStatement(
@@ -216,9 +219,9 @@ private[dbos] object SqlEntryStore {
       ps.setString(1, ConversationId.value(conversation))
       Using.resource(ps.executeQuery())(rs => Option.when(rs.next())(rs.getString(1)))
     }
-    path.flatMap { p =>
+    path.map { p =>
       SqlPlaces.read(p) match {
-        case Right(room) => Tx.visibility(tx).capOf(room)
+        case Right(room) => room
         case Left(why) => throw new IllegalStateException(s"unreadable room: $why")
       }
     }
