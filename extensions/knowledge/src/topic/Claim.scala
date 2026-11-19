@@ -51,6 +51,15 @@ object ClaimId {
 
   def value(id: ClaimId): String = id
 
+  /** Its number: 1 for `c1`. */
+  private[topic] def number(id: ClaimId): BigInt = BigInt(id.drop(1))
+
+  /** The id numbered `by` past `id`'s: `c5` for `c2` by 3; `id` itself when `by` is not
+    * positive.
+    */
+  private[topic] def past(id: ClaimId, by: BigInt): ClaimId =
+    if (by <= 0) id else s"c${number(id) + by}"
+
   private val Form = "c[1-9][0-9]*".r
 }
 

@@ -3,6 +3,7 @@ package grit.knowledge.topic
 import java.time.LocalDate
 
 import grit.core.document.DocText
+import grit.core.id.DocumentVersionId
 import grit.knowledge.ref.TopicKey
 import grit.prose.form.Doc
 
@@ -34,6 +35,77 @@ object Topic {
     * them.
     */
   def read(key: TopicKey, v: ujson.Value): Either[Unread, Topic] = TopicJson.read(key, v)
+
+  /** `passages` with `p` joined in for its day: one passage of that day, whose lineage is the
+    * day's passages' then `p`'s, and whose body is `body` of each of theirs, oldest first, and
+    * `p`'s, folded from the right.
+    */
+  private[topic] def joined(passages: Vector[Passage], p: Passage)(
+      body: (Doc[TopicNote], Doc[TopicNote]) => Doc[TopicNote]
+  ): Vector[Passage] = {
+    val (same, rest) = passages.partition(_.day == p.day)
+    rest :+ Passage(
+      p.day,
+      Lineage.of(same.flatMap(_.from.tags) ++ p.from.tags),
+      same.map(_.body).foldRight(p.body)(body)
+    )
+  }
+
+  /** `from`, the topic of `fromKey` at version `was`, folded into `into`, the topic of `key`:
+    * `into`'s lead, and every passage of both under its own day, each of `from`'s naming `was`
+    * in its lineage, after `into`'s body on a day both hold; `from`'s claims numbered past
+    * every claim `into` holds, each relation to one of them, in either topic, following it; a
+    * relation to a claim of `key` the result does not hold (one only `from`'s lead held, or a
+    * dropped passage's) dropped; and the oldest passages past [[Passages]] dropped, so the
+    * result reads back under `key` ([[read]]).
+    */
+  private[topic] def folded(
+      key: TopicKey,
+      into: Topic,
+      fromKey: TopicKey,
+      from: Topic,
+      was: DocumentVersionId
+  ): Topic = {
+    val by = claims(into).map(c => ClaimId.number(c.id)).maxOption.getOrElse(BigInt(0))
+    def moved(rs: Vector[Relation]): Vector[Relation] = rs.map(r =>
+      if (r.to.topic == fromKey) r.copy(to = ClaimRef(key, ClaimId.past(r.to.claim, by))) else r
+    )
+    def followed(own: Boolean)(n: TopicNote): TopicNote = n match {
+      case TopicNote.Claimed(c) =>
+        TopicNote.Claimed(
+          c.copy(id = if (own) c.id else ClaimId.past(c.id, by), relations = moved(c.relations))
+        )
+      case link => link
+    }
+    val passages =
+      from.passages.foldLeft(into.passages.map(p => p.copy(body = p.body.map(followed(true))))) {
+        (all, p) =>
+          joined(
+            all,
+            Passage(
+              p.day,
+              Lineage.of(p.from.tags :+ Lineage.Tag.Topic(was)),
+              p.body.map(followed(false))
+            )
+          )((a, b) => Doc(a.blocks ++ b.blocks))
+      }
+    val t = of(into.lead.map(followed(true)), passages)
+    val held = claims(t).map(_.id).toSet
+    def kept(n: TopicNote): TopicNote = n match {
+      case TopicNote.Claimed(c) =>
+        TopicNote.Claimed(
+          c.copy(relations = c.relations.filterNot(r => r.to.topic == key && !held(r.to.claim)))
+        )
+      case link => link
+    }
+    new Topic(t.lead.map(kept), t.passages.map(p => p.copy(body = p.body.map(kept))))
+  }
+
+  /** Every claim `t` holds, each once. */
+  private def claims(t: Topic): Vector[Claim] =
+    (t.lead.notes ++ t.passages.flatMap(_.body.notes)).collect { case TopicNote.Claimed(c) =>
+      c
+    }.distinct
 
   /** Why data does not read as a topic: it is a later reader's, of `version`, so this one leaves
     * it be; or it is refused, for `reason`, so a run withdraws it.

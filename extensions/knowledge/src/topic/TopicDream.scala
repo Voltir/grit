@@ -522,15 +522,11 @@ object TopicDream {
         val tags = t.strands.map(s => Lineage.Tag.Strand(s.root, s.room, s.digest)) ++
           t.cards.map(c => Lineage.Tag.Card(c.version))
         val passages = old.fold(Vector.empty[Passage])(_.topic.passages)
-        val same = passages.filter(_.day == day)
-        val passage = Passage(
-          day,
-          Lineage.of(same.flatMap(_.from.tags) ++ tags),
-          TopicWrite.prose(w.passage)
-        )
+        // The day's passage replaces one the topic holds for that day, its lineage joined.
+        val passage = Passage(day, Lineage.of(tags), TopicWrite.prose(w.passage))
         val before = old.flatMap(_.today).filter(_.day == day)
         val held = Held(
-          Topic.of(TopicWrite.prose(w.lead), passages.filterNot(_.day == day) :+ passage),
+          Topic.of(TopicWrite.prose(w.lead), Topic.joined(passages, passage)((_, now) => now)),
           (old.fold(Vector.empty[Ref])(_.units) ++ t.cards.flatMap(_.unit) ++ units).distinct,
           Some(
             Today(
