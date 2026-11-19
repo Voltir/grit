@@ -89,20 +89,7 @@ object ClaimsLiveTests extends TestSuite {
     }
 
   /** Whether, within 10 seconds, some session waits on a lock another holds. */
-  private def waiting(): Boolean = {
-    val deadline = System.nanoTime() + 10_000_000_000L
-    def blocked: Boolean = LiveDb.transaction(config) { (tx: Tx^) ?=>
-      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-      Using.resource(conn.createStatement()) { st =>
-        Using.resource(st.executeQuery("SELECT count(*) FROM pg_locks WHERE NOT granted")) { rs =>
-          rs.next()
-          rs.getLong(1) > 0
-        }
-      }
-    }
-    while (!blocked && System.nanoTime() < deadline) Thread.sleep(10)
-    blocked
-  }
+  private def waiting(): Boolean = LiveDb.waiting(config)
 
   val tests = Tests {
     test("claim, release and claim again write no document version and no tombstone") {
