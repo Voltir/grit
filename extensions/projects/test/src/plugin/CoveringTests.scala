@@ -109,7 +109,7 @@ object CoveringTests extends TestSuite {
       done(claimed(projects, store, "p/b", "manager", "h2"))
       under(projects, store, "b", Some("a")) ==> CommandOutcome.Refused(
         "p/2 b would sit under p/1 a, and their covering claims, as manager for h2 and " +
-          "as manager for h1, would overlap; release one first with project_release"
+          "as manager for h1, would overlap; release one with project_release first"
       )
     }
     test("a keep in a project already holding an overlap elsewhere is kept") {
