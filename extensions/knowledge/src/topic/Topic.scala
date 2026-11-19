@@ -89,7 +89,15 @@ object Topic {
             )
           )((a, b) => Doc(a.blocks ++ b.blocks))
       }
-    val t = of(into.lead.map(followed(true)), passages)
+    of(key, into.lead.map(followed(true)), passages)
+  }
+
+  /** The topic of `key` from `lead` and `passages`, as [[of]] makes it, each relation to a
+    * claim of `key` it does not hold dropped (one of a passage past [[Passages]], say), so it
+    * reads back under `key` ([[read]]) unless two different claims share an id.
+    */
+  private[topic] def of(key: TopicKey, lead: Doc[TopicNote], passages: Vector[Passage]): Topic = {
+    val t = of(lead, passages)
     val held = claims(t).map(_.id).toSet
     def kept(n: TopicNote): TopicNote = n match {
       case TopicNote.Claimed(c) =>

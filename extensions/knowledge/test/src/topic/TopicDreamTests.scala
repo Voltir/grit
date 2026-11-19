@@ -33,6 +33,7 @@ import grit.core.visibility.{Clearance, Integrity, Label, Level, Recorded, TestL
 import grit.dbos.sql.TestTx
 import grit.knowledge.card.{Card, CardShelf, CardSummary, Scope, UnitVersion}
 import grit.knowledge.ref.{Ref, TopicKey}
+import grit.prose.form.{Block, Doc, Span, Text}
 
 import utest.*
 
@@ -233,14 +234,15 @@ object TopicDreamTests extends TestSuite {
       ok(documents.shelf(Plugin).referring(right(Ref.written(r)), 10)).map(d => DocKey.value(d.key))
 
     /** A topic of `lead` keyed by the strand `name`, not opened by any strand here, kept at
-      * `floor` with one passage of [[Day]] written from strands of the roots `from` (none by
-      * default), so a run at `floor` sorts among it.
+      * `floor` with `passages`, or when none, one passage of [[Day]] written from strands of the
+      * roots `from` (none by default), so a run at `floor` sorts among it.
       */
     def topic(
         floor: Label = Label.Public,
         name: String = "held",
         lead: String = Lead,
-        from: Vector[String] = Vector.empty
+        from: Vector[String] = Vector.empty,
+        passages: Vector[grit.knowledge.topic.Passage] = Vector.empty
     ): Unit = {
       val tags = from.map(r =>
         Lineage.Tag.Strand(
@@ -252,7 +254,9 @@ object TopicDreamTests extends TestSuite {
       val held = TopicWrite.Held(
         Topic.of(
           TopicWrite.prose(lead),
-          Vector(grit.knowledge.topic.Passage(Day, Lineage.of(tags), TopicWrite.prose(Passage)))
+          if (passages.nonEmpty) passages
+          else
+            Vector(grit.knowledge.topic.Passage(Day, Lineage.of(tags), TopicWrite.prose(Passage)))
         ),
         Vector.empty,
         None
@@ -1511,6 +1515,59 @@ object TopicDreamTests extends TestSuite {
           "; would fold topic:strand-one into topic:strand-two (0.95)",
         Vector(("sort", (0, 1, 1))),
         Vector("The deploy pipeline, once.")
+      )
+    }
+
+    test(
+      "a keep that pushes out the oldest passage, a newer claim bearing on a claim in it, still reads back"
+    ) {
+      val w = new StrandWorld
+      val _ = strand(w, "C1", "deploy pipeline")
+      val runs = new Runs(w)
+      val held = right(TopicKey.strand(ConversationId("held")))
+      def claimed(n: Int, bears: Vector[ClaimRef]): Doc[TopicNote] = Doc(
+        Vector(
+          Block.Paragraph(
+            Text(
+              Vector(
+                Span(
+                  s"claim $n",
+                  Set.empty,
+                  Vector(
+                    TopicNote.Claimed(
+                      Claim(
+                        right(ClaimId.of(s"c$n")),
+                        None,
+                        Certainty.Firm,
+                        bears.map(Relation(Relation.Kind.Supersedes, _)),
+                        Lineage.of(Vector.empty)
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+      // Topic.Passages days before the run's, the oldest holding c1, the next c2 bearing on it.
+      val passages = (1 to Topic.Passages).toVector.map(i =>
+        grit.knowledge.topic.Passage(
+          Day.minusDays((Topic.Passages + 1 - i).toLong),
+          Lineage.of(Vector.empty),
+          i match {
+            case 1 => claimed(1, Vector.empty)
+            case 2 => claimed(2, Vector(ClaimRef(held, right(ClaimId.of("c1")))))
+            case _ => TopicWrite.prose(Passage)
+          }
+        )
+      )
+      runs.topic(passages = passages)
+      val _ = runs.run(sort = judging("1"))
+      val again = runs.run(now = Now.plusSeconds(600))
+      (again, runs.topics.map(d => TopicWrite.read(held, d.data).map(_.topic.passages.size))) ==> (
+        "topics: 0 written (0 opened), 0 withdrawn, 1 unchanged, 0 set aside, 0 left for the next run",
+        Vector(Right(Topic.Passages))
       )
     }
 

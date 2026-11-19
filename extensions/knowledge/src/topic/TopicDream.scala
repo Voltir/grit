@@ -629,7 +629,11 @@ object TopicDream {
         val passage = Passage(day, Lineage.of(tags), TopicWrite.prose(w.passage))
         val before = old.flatMap(_.today).filter(_.day == day)
         val held = Held(
-          Topic.of(TopicWrite.prose(w.lead), Topic.joined(passages, passage)((_, now) => now)),
+          Topic.of(
+            t.key,
+            TopicWrite.prose(w.lead),
+            Topic.joined(passages, passage)((_, now) => now)
+          ),
           (old.fold(Vector.empty[Ref])(_.units) ++ t.cards.flatMap(_.unit) ++ units).distinct,
           Some(
             Today(
