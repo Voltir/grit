@@ -1051,6 +1051,19 @@ object TopicDreamTests extends TestSuite {
       )
     }
 
+    test("a meeting's second write keeps its head line once, though its lead repeats it") {
+      val w = new StrandWorld
+      val a = strand(w, "C1", "a call on the budget, monday or tuesday?")
+      val runs = new Runs(w)
+      val _ = runs.run(sort = judging("new_meeting"))
+      w.say(a, "monday suits me", 900)
+      val head = "Meeting: proposed, day not yet known."
+      // As a write ask shown the topic's text answers: its lead opens with the head it saw.
+      val _ = runs.run(now = Now.plusSeconds(600), write = _ => wrote(s"$head\n\n$Lead", Passage))
+      runs.kept.filter(_._1 == key(a)).lastOption.map(_._2.linesIterator.count(_ == head)) ==>
+        Some(1)
+    }
+
     test("a topic opened tonight is a candidate for the next unit") {
       val w = new StrandWorld
       val a = strand(w, "C1", "deploy pipeline")

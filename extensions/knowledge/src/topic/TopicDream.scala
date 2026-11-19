@@ -51,7 +51,8 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
   // `sorts`, its scan `meetings`); a sort chooses new_topic, new_meeting or aside with no mark,
   // and a topic it opens is written at once (`open-{i}`, `keep-open-{i}`).
   // 9: a legacy Slack conversation no stitched strand holds is offered whole, as a thread is.
-  val version: Int = 9
+  // 10: a meeting's lead drops a line repeating its head.
+  val version: Int = 10
 
   def write(params: TopicParams): ujson.Value = TopicParams.write(params)
 
@@ -735,17 +736,22 @@ object TopicDream {
         // The day's passage replaces one the topic holds for that day, its lineage joined.
         val passage = Passage(day, Lineage.of(tags), TopicWrite.prose(w.passage))
         val before = old.flatMap(_.today).filter(_.day == day)
+        // Fixed when it opens; a meeting's head refined by the reply, a subject's left be.
+        val (kind, heads) = old.fold(t.kind)(_.topic.kind) match {
+          case Topic.Kind.Meeting(m) =>
+            val now = Meeting.refined(m, w.meeting, day, ahead)
+            (Topic.Kind.Meeting(now), Set(Meeting.head(m), Meeting.head(now)))
+          case Topic.Kind.Subject => (Topic.Kind.Subject, Set.empty[String])
+        }
+        // A write ask is shown the topic's text, head first, and may echo the head in its lead:
+        // the text puts the head atop the lead itself.
+        val lead = w.lead.linesIterator.filterNot(l => heads.contains(l.trim)).mkString("\n").trim
         val held = Held(
           Topic.of(
             t.key,
-            TopicWrite.prose(w.lead),
+            TopicWrite.prose(lead),
             Topic.joined(passages, passage)((_, now) => now),
-            // Fixed when it opens; a meeting's head refined by the reply, a subject's left be.
-            old.fold(t.kind)(_.topic.kind) match {
-              case Topic.Kind.Meeting(m) =>
-                Topic.Kind.Meeting(Meeting.refined(m, w.meeting, day, ahead))
-              case Topic.Kind.Subject => Topic.Kind.Subject
-            }
+            kind
           ),
           (old.fold(Vector.empty[Ref])(_.units) ++ t.cards.flatMap(_.unit) ++ units).distinct,
           Some(
