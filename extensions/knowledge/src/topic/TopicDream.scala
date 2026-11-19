@@ -16,7 +16,6 @@ import grit.knowledge.card.{CardMoves, CardShelf}
 import grit.knowledge.ref.{Ref, TopicKey}
 import grit.knowledge.topic.TopicScan.{Scanned, Touch}
 import grit.knowledge.topic.TopicWrite.{Held, Kept, Today}
-import grit.prose.words.Words
 import grit.std.either.Proven
 
 /** The job `topics-dream`, its days reckoned in `zone`, its cards through `cards` when its plugin
@@ -289,22 +288,6 @@ object TopicDream {
 
   private val Scan: MoveName = MoveName.literal("scan")
 
-  private val Attach: MoveName = MoveName.literal("attach")
-
-  /** The attach ask again, made only when its reply placed nothing it was shown. */
-  private val AttachAgain: MoveName = MoveName.literal("attach-again")
-
-  /** What the attach ask asked again is told besides. */
-  private val Again: String =
-    "Your previous reply placed nothing shown: each discussion or card it named was named more " +
-      "than once across `topics` and `aside`, or was a number not shown, or went to a topic not " +
-      "shown. Name each exactly once, from those shown."
-
-  /** Why a run left all its attach ask was shown. */
-  private val Uncovered: String =
-    "its reply placed nothing shown: each it named was named twice, or not shown, " +
-      "or in a topic not shown"
-
   private val SetAside: MoveName = MoveName.literal("aside")
 
   /** Where a sort may put a strand or a card: into a topic shown, by key and version; `Opened`,
@@ -398,50 +381,6 @@ object TopicDream {
           )
       )
 
-  /** What the attach ask is told, before what it is shown: how many discussions, all of which
-    * it is shown or it asks nothing; that it is shown no topic or no card when the scan holds
-    * none (`topics`, `cards`), and otherwise no count of them, since one it cannot read is not
-    * shown. Shown no discussion, it is told only of the topics and cards, and that a card goes to
-    * a topic shown or `aside`.
-    */
-  private[topic] def attachSystem(strands: Int, topics: Boolean, cards: Boolean): String = {
-    val topicsShown =
-      s"the topics, each a `<$Document label=\"topic\">` holding how its text begins, numbered " +
-        "from 1 in the order shown"
-    val cardsShown =
-      s"the cards, each a `<$Document>` describing a file, its label in `label`, numbered from 1 " +
-        "in the order shown"
-    if (strands == 0)
-      "You sort a team's recent documents into topics: what the team comes back to across " +
-        "rooms and days. You are shown, in this order, " +
-        (if (topics) s"$topicsShown; then " else "") + s"$cardsShown. " +
-        (if (topics) "" else "No topic is shown yet: `topics` is an empty list. ") +
-        "Reply by calling `reply` with `topics`, one entry per topic shown that cards go to: " +
-        "its `topic`, the number of the topic, and the `cards` that go to it, by number. A " +
-        "card goes to the topic shown it is about, and to `aside` when none is. Give `aside` " +
-        "the cards too slight to keep. Name each card shown exactly once."
-    else
-      "You sort a team's recent discussions and documents into topics: what the team comes " +
-        s"back to across rooms and days. You are shown, in this order, ${Words.counted(strands, "discussion")}, " +
-        s"each a `<$Discussion>` of messages under their speakers' names, oldest first, numbered " +
-        "from 1 in " +
-        "the order shown" +
-        (if (topics) s"; then $topicsShown" else "") +
-        (if (cards) s"; then $cardsShown. " else ". ") +
-        (if (topics) "" else "No topic is shown yet, so none has a number. ") +
-        (if (cards) "" else "No card is shown: every `cards` is an empty list. ") +
-        "Reply by calling `reply` with `topics`, one entry per topic discussions or cards go to: " +
-        "its `topic`, the number of a topic shown, or `new` for a new topic, one no topic shown " +
-        "covers that the team is likely to come back to; and the `discussions` and `cards` that " +
-        "go to it, by number. Each entry is one topic, about one matter: a discussion of a " +
-        "matter no other shown is about gets a `new` entry of its own, however short. Put two " +
-        "discussions in one `new` entry only when they are about the same matter; never two " +
-        "different matters, even related ones. A `new` entry holds at least one discussion: a " +
-        "card goes to the topic shown or the discussion it is about, and to `aside` when none " +
-        "is. Give `aside` the discussions and cards too slight to keep. Name each discussion " +
-        "and card shown exactly once."
-  }
-
   // The tags the prompts name, as Dreaming.shown fences what an ask is shown.
   private val Discussion = Tag.Discussion.name
   private val Document = Tag.Document.name
@@ -466,48 +405,6 @@ object TopicDream {
       "something unverified, unknown or unconfirmed that a card shown states. When the topic " +
       s"holds a passage for $day already, yours replaces it, so keep what it says. Keep links " +
       "to other topics (`topic:…`) and to files as written."
-
-  /** The attach ask's reply: with no `discussions` and no `new` topic when it was shown no
-    * discussion (`discussions`).
-    */
-  private[topic] def attachReply(discussions: Boolean): Typed[Placing] = {
-    def numbers(what: String) = ujson.Obj(
-      "type" -> "array",
-      "items" -> ujson.Obj("type" -> "integer", "minimum" -> 1),
-      "description" -> s"The numbers of the ${what}s, from 1 in the order shown."
-    )
-    def items(description: Option[String])(properties: (String, ujson.Value)*) = ujson.Obj.from(
-      Vector[(String, ujson.Value)](
-        "type" -> "object",
-        "properties" -> ujson.Obj.from(properties),
-        "required" -> ujson.Arr.from(properties.map(_._1)),
-        "additionalProperties" -> false
-      ) ++ description.map(d => "description" -> ujson.Str(d))
-    )
-    val placed = Option.when(discussions)("discussions" -> numbers("discussion")).toVector :+
-      ("cards" -> numbers("card"))
-    val what = if (discussions) "discussions and cards" else "cards"
-    typed(
-      items(None)(
-        "topics" -> ujson.Obj(
-          "type" -> "array",
-          "items" -> items(None)(
-            ("topic" -> ujson.Obj(
-              "type" -> "string",
-              "description" -> (
-                if (discussions)
-                  "The number of the topic shown these go to, or `new` for a new one."
-                else "The number of the topic shown these go to."
-              )
-            )) +: placed*
-          ),
-          "description" -> s"One entry per topic its $what go to."
-        ),
-        "aside" -> items(Some(s"The $what too slight to keep, in no topic."))(placed*)
-      ),
-      Placing.read(discussions)
-    )
-  }
 
   private val WriteReply: Typed[Wrote] = typed(
     ujson.Obj(
@@ -584,183 +481,6 @@ object TopicDream {
         }
       }
   }
-}
-
-/** The attach ask's reply as it gave it: the `topics` it put discussions and cards in, and those
-  * it set `aside`, each item by its number in the order shown, from 1.
-  */
-private[topic] final case class Placing(topics: Vector[Placing.Group], aside: Placing.Items)
-    extends caps.Pure {
-
-  /** Where each of `discussions`, `cards` and `topics`, as numbered in their order, went: the
-    * groups holding any, each into a topic shown or opening one from its discussions, then those
-    * set aside, the cards of a new group holding no discussion among them; the cards it named in
-    * no group and not in the aside (`omittedCards`); how many discussions it placed nowhere, and
-    * how many cards it named but placed nowhere; and how many names it `dropped`: each number not
-    * shown, each topic not among `topics` (its group with it), and each discussion or card named
-    * in more than one group or the aside, dropped from all of them and so placed nowhere. `None`
-    * when nothing is left to place.
-    */
-  def placed[S, C, T](
-      discussions: Vector[S],
-      cards: Vector[C],
-      topics: Vector[T]
-  ): Option[Placing.Placed[S, C, T]] = {
-    val lists = this.topics.map(_.items) :+ aside
-    // How many of the lists name each number.
-    def places(of: Placing.Items => Vector[Int]) =
-      lists.flatMap(l => of(l).distinct).groupMapReduce(identity)(_ => 1)(_ + _)
-    val dPlaces = places(_.discussions)
-    val cPlaces = places(_.cards)
-    def unclear(named: Map[Int, Int], n: Int) = named.count((i, k) => i < 1 || i > n || k > 1)
-    def of[A](as: Vector[A], named: Map[Int, Int], is: Vector[Int]) =
-      is.distinct.filter(i => named.get(i).contains(1)).flatMap(i => as.lift(i - 1))
-    def ds(is: Vector[Int]) = of(discussions, dPlaces, is)
-    def cs(is: Vector[Int]) = of(cards, cPlaces, is)
-    val groups = this.topics.flatMap(g =>
-      (g.to match {
-        case Placing.To.In(k) => topics.lift(k - 1).map(Some(_))
-        case Placing.To.New => Some(None)
-      }).map(t => (t, ds(g.items.discussions), cs(g.items.cards)))
-    )
-    val unshown = this.topics.collect {
-      case Placing.Group(Placing.To.In(k), _) if !topics.isDefinedAt(k - 1) => k
-    }.distinct
-    val went = groups.flatMap {
-      case (Some(t), d, c) if d.nonEmpty || c.nonEmpty => Some(Placing.Went.Into(t, d, c))
-      case (None, first +: more, c) => Some(Placing.Went.Opened(first, more, c))
-      case _ => None
-    }
-    val asideDiscussions = ds(aside.discussions)
-    val asideCards = cs(aside.cards) ++ groups.collect {
-      case (None, d, c) if d.isEmpty => c
-    }.flatten
-    val placedDiscussions = went.map {
-      case Placing.Went.Into(_, d, _) => d.size
-      case Placing.Went.Opened(_, more, _) => 1 + more.size
-    }.sum + asideDiscussions.size
-    val placedCards = went.map {
-      case Placing.Went.Into(_, _, c) => c.size
-      case Placing.Went.Opened(_, _, c) => c.size
-    }.sum + asideCards.size
-    // Named in no list at all, as against named in two and dropped.
-    val omittedCards = cards.zipWithIndex.collect {
-      case (c, i) if !cPlaces.contains(i + 1) => c
-    }
-    Option.when(placedDiscussions + placedCards > 0)(
-      Placing.Placed(
-        went,
-        asideDiscussions,
-        asideCards,
-        omittedCards,
-        discussions.size - placedDiscussions,
-        cards.size - placedCards - omittedCards.size,
-        unclear(dPlaces, discussions.size) + unclear(cPlaces, cards.size) + unshown.size
-      )
-    )
-  }
-}
-
-private[topic] object Placing {
-
-  /** Discussions and cards, by number. */
-  final case class Items(discussions: Vector[Int], cards: Vector[Int]) extends caps.Pure
-
-  /** The items a reply puts in one topic. */
-  final case class Group(to: To, items: Items) extends caps.Pure
-
-  /** The topic a group goes to. */
-  enum To extends caps.Pure {
-
-    /** The `n`th topic shown, from 1. */
-    case In(n: Int)
-
-    /** A new topic of its own. */
-    case New
-  }
-
-  /** What [[Placing.placed]] resolves a reply to. */
-  final case class Placed[S, C, T](
-      topics: Vector[Went[S, C, T]],
-      asideDiscussions: Vector[S],
-      asideCards: Vector[C],
-      omittedCards: Vector[C],
-      unnamedDiscussions: Int,
-      unnamedCards: Int,
-      dropped: Int
-  )
-
-  /** Where a group's discussions and cards went. */
-  enum Went[S, C, T] {
-
-    /** Into the topic `to`, shown. */
-    case Into(to: T, discussions: Vector[S], cards: Vector[C])
-
-    /** Into a new topic, opened by its `first` discussion: a new topic always holds one. */
-    case Opened(first: S, more: Vector[S], cards: Vector[C])
-  }
-
-  /** `v` as an attach reply, its `discussions` read only when it was offered them. */
-  def read(discussions: Boolean)(v: ujson.Value): Either[String, Placing] = {
-    def numbers(o: ujson.Value, key: String, where: String): Either[String, Vector[Int]] =
-      o.objOpt
-        .flatMap(_.get(key))
-        .flatMap(_.arrOpt)
-        .toRight(s"$where `$key` is a list")
-        .flatMap(
-          _.toVector.foldLeft[Either[String, Vector[Int]]](Right(Vector.empty))((acc, e) =>
-            acc.flatMap(done =>
-              number(e)
-                .map(done :+ _)
-                .toRight(s"each of $where `$key` is a number: ${ujson.write(e)}")
-            )
-          )
-        )
-    def items(o: ujson.Value, where: String): Either[String, Items] =
-      for {
-        ds <- if (discussions) numbers(o, "discussions", where) else Right(Vector.empty)
-        cs <- numbers(o, "cards", where)
-      } yield Items(ds, cs)
-    def group(o: ujson.Value): Either[String, Group] =
-      for {
-        to <- o.objOpt
-          .flatMap(_.get("topic"))
-          .flatMap(t =>
-            if (t.strOpt.exists(_.trim.toLowerCase == "new")) Some(To.New)
-            else number(t).map(To.In(_))
-          )
-          .toRight("each of `topics` holds `topic`, a topic's number or `new`")
-        is <- items(o, "a topic's")
-      } yield Group(to, is)
-    for {
-      groups <- v.objOpt
-        .flatMap(_.get("topics"))
-        .flatMap(_.arrOpt)
-        .toRight("`topics` is a list")
-        .flatMap(
-          _.toVector.foldLeft[Either[String, Vector[Group]]](Right(Vector.empty))((acc, g) =>
-            acc.flatMap(done => group(g).map(done :+ _))
-          )
-        )
-      aside <- v.objOpt
-        .flatMap(_.get("aside"))
-        .toRight("`aside` is an object")
-        .flatMap(items(_, "the aside's"))
-    } yield Placing(groups, aside)
-  }
-
-  /** A whole number from 1, or a string of its digits. */
-  private def number(v: ujson.Value): Option[Int] =
-    v.numOpt
-      .filter(n => n.isWhole && n >= 1 && n < 100000)
-      .map(_.toInt)
-      .orElse(
-        v.strOpt
-          .map(_.trim)
-          .filter(n => n.nonEmpty && n.forall(_.isDigit) && n.length < 6)
-          .map(_.toInt)
-          .filter(_ >= 1)
-      )
 }
 
 /** A write ask's reply: the topic's new `lead` and the day's `passage`, in markdown. */

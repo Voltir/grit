@@ -114,8 +114,9 @@ object TopicDocuments {
   /** 45: the most days one `grit backfill topics` reaches back. */
   val BackfillMost: Int = 45
 
-  /** 0.15¢ (in USD): the most one topic a backfilled day writes costs, the run's attach ask
-    * shared among its topics. Measured on the dream model (Haiku 5.5, $0.10 / $0.50 per million
+  /** 0.15¢ (in USD): the most one topic a backfilled day writes costs, its write ask and its
+    * share of the run's sorts. Measured, when a model ask placed what a sort now does, on the
+    * dream model (Haiku 5.5, $0.10 / $0.50 per million
     * tokens in / out): a ten-topic night is about 100k tokens in and 10k out, about 1.5¢.
     */
   val TopicCost: BigDecimal = BigDecimal("0.0015")

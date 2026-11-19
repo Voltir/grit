@@ -130,24 +130,21 @@ It attaches each strand or card a topic already refers to (a card by the unit it
 which a topic refers to when it was written from that card, links it, or a strand of it links
 it); pairs each card a strand it takes up links (`TopicScan.Linked`, read whatever its age or
 whether it was set aside) with that strand, to go wherever the strand goes, the aside included,
-never shown to the attach ask; and asks (`attach`) where the others go but a directory's cards
-and those kept below its floor, which attach only by ref or a strand's link, at most `perRun`
-strands and `TopicScan.Cards` cards past those already placed, each numbered in the order shown,
-as are the topics shown (those attached to, and at most `TopicScan.Leads` more, newest first,
-each by its lead, its text's head within `TopicDream.LeadChars`).
+never sorted; and sorts the others (`Dreaming.sort`, `sort-{i}`, a classifier's judgment each,
+no model ask), but a directory's cards and those kept below its floor, which attach only by ref
+or a strand's link: at most `perRun` strands, then `TopicScan.Cards` cards, past those already
+placed, among the topics shown (those attached to, and at most `TopicScan.Leads` more, newest
+first, each by its text's head within `TopicDream.SortChars`).
 
-Its reply groups them by the topic they go to: one shown, or a new one, keyed by the group's
-first strand; groups naming one topic are one. A new group holding no strand is set aside, so no
-card alone opens a topic; shown no strand, the ask is offered neither discussions nor a new topic
-to name, and with no topic to show either it is not made, its cards left for a later run. Those
-it puts in none are set aside (`aside`), in a document of its floor under `topic:aside` holding
-no topic, while within `recent` or `cardRecent` at the digest or version set aside, and for at
-most `asideFor`. A card a reply placing anything names nowhere is set aside too; a discussion it
-names nowhere is counted unnamed and offered again. A number or topic not shown is dropped from
-the reply, its topic's group with it, and a strand or card it names in two groups, or in a group
-and the aside, is dropped from both, so unnamed; each counted dropped. A reply that places
-nothing it was shown is asked once more (`attach-again`), and when that one does not either, all
-are left.
+A strand is one choice over every topic shown, a new one, or none (`TopicDream.sortDiscussion`).
+It joins the topic chosen at `TopicDream.TopicAt` or more; a new one, or a topic chosen below
+that mark, opens a topic keyed by the strand alone (the latter counted unsure). A card is a yes
+or no for each of the topics its words match best (`TopicDream.sortCard`); it joins the likeliest
+at `TopicDream.CardAt` or more, and no card alone opens a topic; with no topic to sort among, its
+cards are left for a later run. Those placed in none are set aside (`aside`), in a document of its
+floor under `topic:aside` holding no topic, while within `recent` or `cardRecent` at the digest or
+version set aside, and for at most `asideFor`. A sort that cannot read what it was named (changed
+since the scan, or read by no candidate), or that fails, leaves its item for the next run.
 
 Each topic touched is written (`write-{i}`) from the strands and cards attached, the current
 cards of at most `TopicScan.Holds` more units it refers to, and its current text, and kept

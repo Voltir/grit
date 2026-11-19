@@ -8,7 +8,7 @@ import grit.core.store.{StoreError, Tx}
 import grit.knowledge.card.FloorList
 import grit.knowledge.topic.TopicWrite.Kept
 
-/** What a label's topics runs set aside: each strand and card their attach ask placed in no
+/** What a label's topics runs set aside: each strand and card their sorts placed in no
   * topic, at the digest or version it was shown at, and when, so no later run asks of it again
   * until it changes or its run's [[TopicParams.asideFor]] has passed. Kept under `topic:aside`,
   * which is no topic's key ([[TopicKey.read]]), as [[TopicJson.aside]] writes it; an entry kept

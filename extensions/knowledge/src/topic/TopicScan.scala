@@ -28,7 +28,7 @@ private[topic] object TopicScan {
   }
 
   /** What a scan came to: the topics `attached` to by ref; the `strands` and `cards` the
-    * attach ask places, and the topics it shows (`leads`, by key and version: those attached to,
+    * run's sorts place, and the topics they show (`leads`, by key and version: those attached to,
     * then at most [[Leads]] others, newest first); how
     * many passages it `withdrew`, and how many strands and cards it found `unchanged` or `left`
     * past the run's most; and, of each topic shown that holds cards, the current versions of
@@ -65,7 +65,7 @@ private[topic] object TopicScan {
   /** A strand in play that links a card's unit: its `root`, the card `units` its messages link
     * (at most [[Links]]), and the `cards` paired with it, each a card of one of those units no
     * strand before it in the run links, whatever its age or whether it was set aside: it goes
-    * where the strand goes, never shown to the attach ask.
+    * where the strand goes, never sorted.
     */
   final case class Linked(root: ConversationId, units: Vector[Ref], cards: Vector[CardShelf.Seen])
       extends caps.Pure
@@ -75,7 +75,7 @@ private[topic] object TopicScan {
     */
   val Leads: Int = 64
 
-  /** 20: the most cards one run's attach ask is shown. */
+  /** 20: the most cards one run sorts. */
   val Cards: Int = 20
 
   /** 10: the most card units a scan keeps of one strand's links. */
@@ -329,7 +329,7 @@ private[topic] object TopicScan {
     shelf.fold(Right(Vector.empty))(_.changed(since, until, n, counts))
 
   /** The floor's aside, `all` of it, kept to those `held` (not expired) that are strands of
-    * `recent` and cards of `seen` the attach ask may be shown ([[offered]]), at the digest or
+    * `recent` and cards of `seen` a sort may be shown ([[offered]]), at the digest or
     * version they are now, less the cards `linked` pairs: the aside after. A card kept at
     * another label or a directory's leaves it, since no run at `floor` asks of it again.
     */
@@ -413,7 +413,7 @@ private[topic] object TopicScan {
     )
   }
 
-  /** Whether the attach ask of a run at `floor` may be shown `c`: a file's card kept at `floor`.
+  /** Whether a sort of a run at `floor` may be shown `c`: a file's card kept at `floor`.
     * A directory's card describes a container, not a matter, and one kept below `floor` is its
     * own label's run's to place: either attaches only by ref or a strand's link.
     */
