@@ -276,7 +276,7 @@ object ProjectCommandsTests extends TestSuite {
     }
 
     test(
-      "a turn is offered the reads, new, keep, edit and move; not batch, withdraw, sweep, migrate or claims"
+      "a turn is offered the reads, new, keep, edit, move and reorder; not batch, withdraw, sweep, migrate or claims"
     ) {
       plugin().commands.filter(_.offeredToTurns).map(c => ToolName.value(c.spec.name)).sorted ==>
         Vector(
@@ -289,6 +289,7 @@ object ProjectCommandsTests extends TestSuite {
           "project_list",
           "project_move",
           "project_new",
+          "project_reorder",
           "project_show",
           "project_stale"
         )

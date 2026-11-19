@@ -78,6 +78,7 @@ private[plugin] final class ProjectCommands(
       Keep,
       Edit,
       Move,
+      Reorder,
       Batch,
       Show,
       History,
@@ -270,6 +271,60 @@ private[plugin] final class ProjectCommands(
         now = done.versions.values.headOption.getOrElse(args.version)
       } yield AnswerText.nowAt(done.said, now)
     }
+  }
+
+  /** `project_reorder`. */
+  object Reorder extends KeepingCommand[Reordering] {
+    override def offeredToTurns: Boolean = shipped
+    override def shown(args: Reordering): String = args.artifact.value
+
+    val spec: ToolSpec[Reordering] = ToolSpec(
+      ToolName("project_reorder"),
+      "Moves an artifact among its siblings, the artifacts under the same parent (or, with " +
+        "none, those under none), in the order project_list with a parent lists them; ended " +
+        "siblings count too, though project_list leaves them out. Give after or before, not " +
+        "both: the sibling it is to sit right after, or right before. Nothing else about it " +
+        "changes. Answers where it now sits; when no room is left there, its siblings are " +
+        "re-ranked too, one version each, and the answer says how many. Refused for a key the " +
+        "project lacks, naming the nearest it has, and for a sibling that is the artifact " +
+        "itself or sits under another parent.",
+      Args
+        .of(
+          (
+            artifact = Field.text("The artifact's key, `<project>/<artifact>`."),
+            after = Field.text("The sibling it is to sit right after.").optional,
+            before = Field.text("The sibling it is to sit right before.").optional
+          )
+        )
+        .refine(a =>
+          for {
+            artifact <- parsed("artifact", a.artifact, ArtifactRef.read)
+            beside <- (a.after, a.before) match {
+              case (Some(s), None) => parsed("after", s, ArtifactRef.read).map(Beside.After(_))
+              case (None, Some(s)) => parsed("before", s, ArtifactRef.read).map(Beside.Before(_))
+              case (Some(_), Some(_)) =>
+                Left(ArgsError.Refused("before", "Give after or before, not both."))
+              case (None, None) =>
+                Left(
+                  ArgsError
+                    .Refused("after", "Give after or before: the sibling it is to sit beside.")
+                )
+            }
+          } yield Reordering(artifact, beside)
+        )
+    )
+
+    def run(
+        args: Reordering,
+        by: CommandBy,
+        own: DocumentKeeper,
+        claims: Claims,
+        at: Instant
+    )(using Tx^): Either[StoreError, CommandOutcome] =
+      answered(
+        alone(own, claims, args.artifact.project, by, at, "reorder")(_ => Right(Step.Reorder(args)))
+          .map(_.said)
+      )
   }
 
   /** `project_move`. */
@@ -585,13 +640,15 @@ private[plugin] final class ProjectCommands(
       }
     }
 
-    /** Step `i` of `steps` in a few words: `keep <key>`, `edit <key>`, or `move <key> to <state>`.
+    /** Step `i` of `steps` in a few words: `keep <key>`, `edit <key>`, `move <key> to <state>`,
+      * or `reorder <key>`.
       */
     private def described(steps: Vector[Step], i: Int): String =
       steps.lift(i).fold("") {
         case Step.Keep(k, _) => s"keep ${Keeping.shown(k)}"
         case Step.Edit(e) => s"edit ${e.key.value}"
         case Step.Move(m) => s"move ${m.key.value} to ${StateName.value(m.to)}"
+        case Step.Reorder(r) => s"reorder ${r.artifact.value}"
       }
   }
 
@@ -1921,6 +1978,7 @@ private[plugin] object ProjectCommands {
           case (Step.Keep(k, _), i) => (k.project, Keeping.shown(k), i)
           case (Step.Edit(e), i) => (e.key.project, e.key.value, i)
           case (Step.Move(m), i) => (m.key.project, m.key.value, i)
+          case (Step.Reorder(r), i) => (r.artifact.project, r.artifact.value, i)
         }
         .filterNot(_._1 == project)
       if (steps.isEmpty) Left("A batch takes at least one step.")
@@ -1993,11 +2051,14 @@ private[plugin] object ProjectCommands {
     )
   )
 
-  /** One step of `project_batch`, read as its command reads its arguments. */
+  /** One step a keeping command takes over a loaded project, read as its command reads its
+    * arguments: `project_batch` takes several.
+    */
   enum Step extends caps.Pure {
     case Keep(args: Keeping, whose: Whose = Whose.Caller)
     case Edit(args: Editing)
     case Move(args: Moving)
+    case Reorder(args: Reordering)
   }
 
   /** Whose words a kept body is: wholly its caller's, as `project_keep` gives it; or the version
@@ -2067,6 +2128,16 @@ private[plugin] object ProjectCommands {
 
   /** `project_move`'s arguments. */
   final case class Moving(key: ArtifactRef, to: StateName) extends caps.Pure
+
+  /** `project_reorder`'s arguments: `artifact`, to sit right beside a sibling. */
+  final case class Reordering(artifact: ArtifactRef, beside: Beside) extends caps.Pure
+
+  /** Which side of `sibling` an artifact is to sit. */
+  enum Beside extends caps.Pure {
+    def sibling: ArtifactRef
+    case After(sibling: ArtifactRef)
+    case Before(sibling: ArtifactRef)
+  }
 
   /** `project_show`'s arguments: one key, refused when not kept, or several, each not kept or
     * refused its part said in its place; as of `at`, or current.
@@ -2607,7 +2678,7 @@ private[plugin] object ProjectCommands {
 
   /** `step` taken over `now`, from `project` as loaded, written as `writer`, `mover` as
     * [[planned]] takes it: what it makes of `now` and its answer, or why it is refused, as
-    * `project_keep`, `project_edit` or `project_move` refuses.
+    * `project_keep`, `project_edit`, `project_move` or `project_reorder` refuses.
     */
   private def stepped(
       project: Loaded,
@@ -2718,6 +2789,51 @@ private[plugin] object ProjectCommands {
             mover
           )
         } yield kept
+      case Step.Reorder(args) =>
+        def found(key: ArtifactKey): Either[Stop, Artifact] =
+          now.artifacts
+            .find(_.head.key == key)
+            .toRight(Stop.Refused(s"project ${ProjectKey.value(project.key)} has no ${key.value}"))
+        def under(h: ArtifactHead): String =
+          h.parent.fold("under no parent")(p => s"under ${p.value}")
+        for {
+          moving <- refuse(resolve(args.artifact)).flatMap(found)
+          sibling <- refuse(resolve(args.beside.sibling)).flatMap(found)
+          _ <- Either.cond(
+            sibling.head.key != moving.head.key,
+            (),
+            Stop.Refused(s"${moving.head.called} cannot sit beside itself")
+          )
+          _ <- Either.cond(
+            sibling.head.parent == moving.head.parent,
+            (),
+            Stop.Refused(
+              s"${sibling.head.called} is no sibling of ${moving.head.called}: it sits " +
+                s"${under(sibling.head)}, and ${moving.head.called} ${under(moving.head)}"
+            )
+          )
+          siblings = siblingsOf(now.artifacts, moving.head.parent, moving.head.key)
+          (side, offset) = args.beside match {
+            case Beside.After(_) => ("after", 1)
+            case Beside.Before(_) => ("before", 0)
+          }
+          to = siblings.indexWhere(_.head.key == sibling.head.key) + offset
+          from = siblings.count(s => ArtifactHead.ranked.lt(s.head, moving.head))
+          ranked =
+            if (to == from) Vector.empty
+            else
+              among(
+                siblings,
+                Artifact(moving.head.copy(by = Some(writer)), moving.body),
+                to,
+                writer
+              )
+          where = s"$side ${AnswerText.named(sibling.head)}"
+        } yield (
+          changing(ranked),
+          if (ranked.isEmpty) s"${AnswerText.named(moving.head)} already sits $where."
+          else s"Placed ${AnswerText.named(moving.head)} $where." + respread(ranked.size - 1)
+        )
       case Step.Move(args) =>
         for {
           _ <- Either.cond(

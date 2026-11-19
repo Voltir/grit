@@ -13,7 +13,7 @@ import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
 import grit.core.visibility.{Clearance, Integrity, Label, Visibility}
 import grit.dbos.sql.TestTx
-import grit.projects.artifact.{Artifact, ArtifactJson}
+import grit.projects.artifact.{Artifact, ArtifactJson, Rank}
 import grit.projects.method.{
   ArtifactKind,
   Example,
@@ -295,6 +295,36 @@ object CommandFixtures {
           refs
         )
         _ <- store.keeper.withdraw(d.key, Label.Public, at)
+      } yield ()
+    }.fold(e => throw new java.lang.AssertionError(e.toString), identity)
+  }
+
+  /** The artifact kept under `key` at public given `rank` in place, as a re-key of the old form
+    * leaves siblings tied at [[Rank.Middle]].
+    */
+  def rankedAt(store: Store, key: String, rank: String): Unit = {
+    def right[A](e: Either[String, A]): A =
+      e.fold(why => throw new java.lang.AssertionError(why), identity)
+    val docKey = right(DocKey.of(key))
+    inTx {
+      for {
+        was <- store.keeper.current(docKey, Label.Public)
+        d <- was.toRight(StoreError.Invalid(s"nothing kept under $key"))
+        a <- Artifact.of(d).left.map(StoreError.Invalid(_))
+        moved = Artifact(a.head.copy(rank = right(Rank.of(rank))), a.body)
+        written <- ArtifactJson.write(moved).left.map(StoreError.Invalid(_))
+        (text, data, refs) = written
+        _ <- store.keeper.write(
+          docKey,
+          Label.Public,
+          d.integrity,
+          d.place,
+          text,
+          data,
+          d.pointer,
+          at,
+          refs
+        )
       } yield ()
     }.fold(e => throw new java.lang.AssertionError(e.toString), identity)
   }
