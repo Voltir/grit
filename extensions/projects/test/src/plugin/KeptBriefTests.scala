@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.claim.{Claim, ClaimRole, Claimed, Claims}
 import grit.core.document.{DocRef, DocText, Document, DocumentKeeper}
-import grit.core.id.{ClaimHolder, DocKey, DocumentVersionId}
+import grit.core.id.{ClaimHolder, DocKey}
 import grit.core.identity.Principal
 import grit.core.place.Place
 import grit.core.plugin.CommandOutcome

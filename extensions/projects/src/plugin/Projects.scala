@@ -9,7 +9,7 @@ import grit.core.plugin.{DocumentPosting, Documents, Plugin, PluginCommand}
 import grit.core.visibility.Label
 import grit.projects.artifact.ArtifactJson
 import grit.projects.method.{Method, MethodRefusal, TransitionCheck}
-import grit.projects.name.{ArtifactKey, MethodName, StateName}
+import grit.projects.name.{MethodName, StateName}
 import grit.std.either.Proven
 
 /** The projects plugin (ADR 0049): projects held to versions of methods declared through
