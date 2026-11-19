@@ -135,7 +135,10 @@ object MigrationTests extends TestSuite {
             "it may sit only at the project's root; " +
             "p/11 m, of kind note, cannot sit at the project's root: it may sit under change"
         )
-      version2(rooted, inChange).migrated(project(a, inside), Remap()).isRight ==> true
+      version2(rooted, inChange)
+        .migrated(project(a, inside), Remap())
+        .map(_.project.artifacts.map(x => (x.head.called, x.head.parent.map(_.value)))) ==>
+        Right(Vector(("p/1 a", None), ("p/12 n", Some("p/1"))))
     }
   }
 }
