@@ -1,6 +1,8 @@
 package grit.projects.plugin
 
+import grit.core.id.DocKey
 import grit.core.plugin.CommandOutcome
+import grit.core.visibility.{Clearance, Label, TestLabels}
 
 import utest.*
 
@@ -87,6 +89,73 @@ object ReorderTests extends TestSuite {
         CommandOutcome.Refused(
           "p/2 b is no sibling of p/4 d: it sits under no parent, and p/4 d under p/1"
         )
+      )
+    }
+    test(
+      "a re-spread from a room above its siblings' label is refused naming each, keeping nothing, where a reorder with room is kept"
+    ) {
+      val (projects, store) = three()
+      keptAbove(store, "p/3", TestLabels.Trial)
+      def versions(key: String, label: Label): Int = {
+        given grit.core.store.Tx = grit.dbos.sql.TestTx.fake(Clearance.of(TestLabels.Trial))
+        val docKey = DocKey.of(key).fold(sys.error, identity)
+        store.keeper.versions(docKey, label, 100).fold(e => sys.error(e.toString), _.size)
+      }
+      val above =
+        askBy(direct(), at, Clearance.of(TestLabels.Trial))(projects, store, "project_reorder", _*)
+      // With room, only c, kept at the room's label, changes.
+      val roomy = above(Vector("artifact" -> "p/c", "before" -> "p/a"))
+      rankedAt(store, "p/2", "n")
+      val before = Vector(
+        versions("p/1", Label.Public),
+        versions("p/2", Label.Public),
+        versions("p/3", TestLabels.Trial)
+      )
+      val answer = above(Vector("artifact" -> "p/c", "after" -> "p/a"))
+      (
+        roomy,
+        answer,
+        Vector(
+          versions("p/1", Label.Public),
+          versions("p/2", Label.Public),
+          versions("p/3", TestLabels.Trial)
+        )
+      ) ==> (
+        CommandOutcome.Done("Placed p/3 c (note, open) before p/1 a (note, open)."),
+        CommandOutcome.Refused(
+          Vector("p/2", "p/1")
+            .map(subject =>
+              s"$subject is kept labelled [level: public], below what this room writes " +
+                "([level: public, in: {trial}]): reorder from a room at its label"
+            )
+            .mkString("; ")
+        ),
+        before
+      )
+    }
+    test("a re-spread re-ranks a sibling another session holds, its brief as it was") {
+      val (projects, store) = three()
+      rankedAt(store, "p/2", "n")
+      done(
+        ask(
+          projects,
+          store,
+          "project_claim",
+          "key" -> "p/b",
+          "role" -> "builder",
+          "holder" -> "coder-opus/abc"
+        )
+      )
+      val brief = briefOf(store, "coder-opus/abc")
+      val answer = done(reorder(projects, store, "artifact" -> "p/c", "after" -> "p/a"))
+      (
+        answer,
+        rankOf(projects, store, "p/2"),
+        briefOf(store, "coder-opus/abc").map(_.version)
+      ) ==> (
+        "Placed p/3 c (note, open) after p/1 a (note, open). Re-ranked 2 siblings to make room.",
+        "u",
+        brief.map(_.version)
       )
     }
     test("a reorder naming both after and before, or neither, is refused") {
