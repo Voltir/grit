@@ -56,7 +56,7 @@ final case class Transition(
 
 /** Who may make a transition: anyone, or only a [[Mover.Person]]. */
 enum Movers extends caps.Pure {
-  case Anyone, People
+  case Anyone, Person
 }
 
 /** What a transition does besides moving its artifact: one of grit's, never a method's code. */

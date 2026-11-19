@@ -215,7 +215,7 @@ final case class Method private (
           field(t.action.digested)
         ).mkString + (t.movers match {
           case Movers.Anyone => ""
-          case Movers.People => field("people")
+          case Movers.Person => field("people")
         })
       } ++ views.map { v =>
         "view " + field(RoleName.value(v.role)) + names(v.kinds.map(KindName.value)) + field(
@@ -371,7 +371,7 @@ enum MoveRefusal extends caps.Pure {
   /** Its deltas merged into `into` are no body: `why`, a stored form over [[Body.StoredMost]]. */
   case Unmerged(head: ArtifactHead, to: StateName, into: ArtifactHead, why: String)
 
-  /** Its transition is made only by [[Mover.Person]] ([[Movers.People]]), and its mover is not. */
+  /** Its transition is made only by [[Mover.Person]] ([[Movers.Person]]), and its mover is not. */
   case PersonOnly(head: ArtifactHead, to: StateName)
 }
 

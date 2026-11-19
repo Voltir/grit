@@ -119,7 +119,7 @@ object ProjectGen {
           some(checks),
           if (r.nextInt(4) == 0) TransitionAction.MergeDeltas(kinds(r.nextInt(kinds.size)).name)
           else TransitionAction.Nothing,
-          if (r.nextInt(3) == 0) Movers.People else Movers.Anyone
+          if (r.nextInt(3) == 0) Movers.Person else Movers.Anyone
         )
       }
     }

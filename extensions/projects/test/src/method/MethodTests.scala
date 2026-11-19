@@ -187,7 +187,7 @@ object MethodTests extends TestSuite {
         right(
           Method.of(method, 1, kinds, ts, views, TransitionChecks.all).left.map(_.toString)
         ).digest
-      val people = transitions.map(_.copy(movers = Movers.People))
+      val people = transitions.map(_.copy(movers = Movers.Person))
       assert(digest(people) != digest(transitions))
     }
   }
