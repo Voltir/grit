@@ -207,6 +207,53 @@ object ProjectCommandsTests extends TestSuite {
       kept(projects, store, "a", "note", "A.")
       (believedOf(store, "p"), believedOf(store, "p/1")) ==> (Some("member"), Some("authority"))
     }
+    test("a keep giving an artifact a handle another holds is refused, naming the holder") {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "a", "note", "A.")
+      kept(projects, store, "b", "note", "B.")
+      def rename(key: String, to: String) =
+        ask(
+          projects,
+          store,
+          "project_keep",
+          "key" -> key,
+          "handle" -> to,
+          "title" -> "T",
+          "body" -> "x"
+        )
+      (rename("p/1", "b"), rename("p/2", "a")) ==> (
+        CommandOutcome.Refused("p/1 a cannot take the handle b: p/2 b holds it"),
+        CommandOutcome.Refused("p/2 b cannot take the handle a: p/1 a holds it")
+      )
+    }
+    test(
+      "a keep taking a handle a role carries is kept, and one renaming or removing it is refused, naming the role"
+    ) {
+      val projects = plugin()
+      val store = Store(declared = Vector(managing))
+      started(projects, store)
+      kept(projects, store, "a", "note", "A.")
+      def rename(to: String) =
+        ask(
+          projects,
+          store,
+          "project_keep",
+          "key" -> "p/1",
+          "handle" -> to,
+          "title" -> "T",
+          "body" -> "x"
+        )
+      val taken = rename("process")
+      val carried =
+        "p/1 process keeps its handle: the brief of role manager carries the artifact named process"
+      (taken.getClass, rename("rules"), rename("")) ==> (
+        classOf[CommandOutcome.Done],
+        CommandOutcome.Refused(carried),
+        CommandOutcome.Refused(carried)
+      )
+    }
     test("project_propose refuses a handle another artifact holds, keeping nothing") {
       val projects = proposing()
       val store = Store()
