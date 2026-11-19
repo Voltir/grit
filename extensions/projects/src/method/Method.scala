@@ -375,9 +375,11 @@ enum MoveRefusal extends caps.Pure {
   case PersonOnly(head: ArtifactHead, to: StateName)
 }
 
-/** Who is making a move, as the plugin reads its caller: a person, or an agent acting otherwise. */
+/** Who is making a move, as the plugin reads its caller: a person, or any other mover (an agent,
+  * or a caller not believed a person).
+  */
 enum Mover extends caps.Pure {
-  case Person, Agent
+  case Person, Other
 }
 
 /** Why some data is not a method. */

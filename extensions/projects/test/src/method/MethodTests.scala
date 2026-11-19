@@ -139,7 +139,7 @@ object MethodTests extends TestSuite {
       val h = head("p/why", change, "building")
       val why = Vector(artifact(h, "## Why\n\nBecause."))
       def moved(by: Mover) = m.move(why, h.key, state("done"), by).map(_.artifact.head.state)
-      (moved(Mover.Agent), moved(Mover.Person)) ==> (
+      (moved(Mover.Other), moved(Mover.Person)) ==> (
         Left(MoveRefusal.PersonOnly(h, state("done"))),
         Right(state("done"))
       )

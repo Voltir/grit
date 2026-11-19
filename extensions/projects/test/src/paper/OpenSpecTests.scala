@@ -127,7 +127,7 @@ object OpenSpecTests extends TestSuite {
   )
 
   private def merged(in: Vector[Artifact]): Either[MoveRefusal, Option[Artifact]] =
-    openSpec.move(in, key("p/tfa"), state("archived"), Mover.Agent).map(_.changed)
+    openSpec.move(in, key("p/tfa"), state("archived"), Mover.Other).map(_.changed)
 
   val tests = Tests {
     test("OpenSpec passes Method.of and its examples pass the bench") {

@@ -13,7 +13,7 @@ final case class Example(name: String, start: Project, moves: Vector[Example.Mov
 object Example {
 
   /** `key` moved to `to` by `by`, expected to come out as `expect` says. */
-  final case class Move(key: ArtifactKey, to: StateName, expect: Expect, by: Mover = Mover.Agent)
+  final case class Move(key: ArtifactKey, to: StateName, expect: Expect, by: Mover = Mover.Other)
       extends caps.Pure
 
   /** What a move is expected to come out as. */

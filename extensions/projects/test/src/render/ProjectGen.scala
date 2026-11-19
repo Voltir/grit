@@ -140,7 +140,7 @@ object ProjectGen {
               case 1 => Example.Expect.RefusedPersonOnly
               case _ => Example.Expect.RefusedBy(checks(r.nextInt(checks.size)))
             },
-            if (r.nextBoolean()) Mover.Person else Mover.Agent
+            if (r.nextBoolean()) Mover.Person else Mover.Other
           )
         }
       )
