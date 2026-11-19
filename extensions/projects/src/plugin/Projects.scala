@@ -79,11 +79,12 @@ object Projects {
   ): Either[MethodRefusal.CheckTwice, Projects] =
     Method.checksTwice(checks).headOption.toLeft(new Projects(checks, default, turns, methodsAt))
 
-  /** A watch for the artifact `key` to be in one of `states`, or why not: no states, or a key
-    * no document's may be.
+  /** A watch for the artifact kept under `stored` to be in one of `states`, or why not: no
+    * states. `stored` is the key it was first kept under: its id for an artifact made with one,
+    * its name before for one a re-key gave an id; a watch under any other key never fires.
     */
-  def reaching(key: ArtifactKey, states: Set[StateName]): Either[String, WatchFor.Holding] =
-    DocKey.of(key.value).flatMap(WatchFor.Holding.of(Name, _, states.map(ArtifactJson.stateRef)))
+  def reaching(stored: DocKey, states: Set[StateName]): Either[String, WatchFor.Holding] =
+    WatchFor.Holding.of(Name, stored, states.map(ArtifactJson.stateRef))
 
   /** The states a watch from [[reaching]] was met in: those of its refs that name one. */
   def reached(held: Watched.Held): Set[StateName] = held.refs.flatMap(ArtifactJson.stateOf)
