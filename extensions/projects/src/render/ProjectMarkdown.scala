@@ -247,14 +247,8 @@ object ProjectMarkdown {
       parent <- nullable(fields("parent"))(ArtifactKey.read)
       cites <- list(fields("cites"))
       by <- nullable(fields("by"))(unquoted("by", _))
-      read <- Body.read(body, byId)
+      read <- Body.read(body, ArtifactRef.id)
     } yield Artifact(ArtifactHead(key, handle, kind, state, title, parent, cites, by), read)
-
-  /** A reference as an export writes it: an id alone. */
-  private val byId: ArtifactRef -> Either[String, ArtifactKey] = {
-    case ArtifactRef.Id(k) => Right(k)
-    case named => Left(s"an export names artifacts by id, not ${named.value}")
-  }
 
   /** `text`'s front matter, holding exactly `names`, each once, as each name's value (empty
     * for any other name), and what follows it.

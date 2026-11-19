@@ -71,6 +71,15 @@ object NameTests extends TestSuite {
           Left(s"a project's key is over 40 characters: ${"a" * 41}")
       )
     }
+    test("ArtifactRef.id gives an id's key and refuses a handle, naming it") {
+      (
+        ArtifactRef.read("p/4").flatMap(ArtifactRef.id).map(_.value),
+        ArtifactRef.read("p/notes").flatMap(ArtifactRef.id)
+      ) ==> (
+        Right("p/4"),
+        Left("p/notes names no id: only its project tells which artifact it is")
+      )
+    }
     test("a pin under version 1 is refused") {
       val pin = MethodName.of("grit").flatMap(Pin.read(_, 0, "ab" * 32))
       assert(pin == Left("a pinned version is under 1: 0"))
