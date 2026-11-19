@@ -87,6 +87,52 @@ object MethodJsonTests extends TestSuite {
       val declared = Declared(right(expected.left.map(_.mkString("; "))), Vector.empty)
       assert(MethodJson.read(json, TransitionChecks.all) == Right(declared))
     }
+    test(
+      "a worked example of the old form, its artifacts keyed by name, reads as its form with ids, which is what is written"
+    ) {
+      // A declared method's examples are left out of its digest, so a version declared before
+      // ids keeps its stored examples of the old form, and is read back through them for good.
+      val digest =
+        right(
+          MethodJson.read(declared(), TransitionChecks.all).left.map(_.mkString)
+        ).method.digest.hex
+      val pin = s""""pin":{"method":"grit","version":1,"digest":"$digest"}"""
+      def body(text: String) =
+        s"""{"v":1,"notes":[],"blocks":[{"type":"para","text":[{"t":"$text"}]}]}"""
+      def example(artifacts: String, moved: String) = ujson.read(
+        s"""{"name":"a note closes","start":{"key":"p",$pin,"artifacts":[$artifacts]},""" +
+          s""""moves":[{"key":"$moved","to":"closed","expect":{"kind":"allowed"}}]}"""
+      )
+      val old = example(
+        s"""{"key":"p/b","head":{"kind":"note","state":"open","title":"B","parent":null,"cites":[],"by":null},"body":${body(
+            "b"
+          )}},""" +
+          s"""{"key":"p/a","head":{"kind":"note","state":"open","title":"A","parent":"p/b","cites":["p/b"],"by":null},"body":${body(
+              "a"
+            )}}""",
+        "p/a"
+      )
+      val withIds = example(
+        s"""{"head":{"id":"p/1","handle":"b","kind":"note","state":"open","title":"B","parent":null,"rank":"n","cites":[],"by":null},"body":${body(
+            "b"
+          )}},""" +
+          s"""{"head":{"id":"p/2","handle":"a","kind":"note","state":"open","title":"A","parent":"p/1","rank":"n","cites":["p/1"],"by":null},"body":${body(
+              "a"
+            )}}""",
+        "p/2"
+      )
+      val read = (e: ujson.Value) =>
+        MethodJson.read(
+          ujson.Obj.from(declared().value ++ Seq("examples" -> ujson.Arr(e))),
+          TransitionChecks.all
+        )
+      val fromOld = read(old)
+      (
+        fromOld == read(withIds),
+        fromOld.map(d => MethodJson.written(d.method, d.examples).value.get("examples"))
+      ) ==> (true, Right(Some(ujson.Arr(withIds))))
+    }
+
     test("checks not compiled, or compiled at another version, give every reason at once") {
       assert(
         MethodJson.read(declared("children-ended", "sections-present"), Vector.empty) == Left(
