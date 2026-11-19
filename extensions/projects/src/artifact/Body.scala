@@ -404,25 +404,6 @@ object Body {
       )
       .flatMap(checked)
 
-  /** The markdown a stored body of the old form, before ids (ADR 0063), was exported as: as
-    * [[markdown]] writes it, each reference a link to `artifact:` and its key as stored; or why
-    * not, as [[ProseJson.read]] refuses.
-    */
-  def oldFormMarkdown(json: ujson.Value): Either[String, String] =
-    ProseJson
-      .read(
-        json,
-        {
-          case ujson.Str(s) => Right(s)
-          case other => Left(s"a reference is not a key: $other")
-        }
-      )
-      .map(doc =>
-        Markdown.writeExact(doc.mapSpans { s =>
-          Span(s.text, s.marks ++ s.notes.map(k => Mark.Link(Scheme + k)), Vector.empty)
-        })
-      )
-
   /** A link's target where the link refers to an artifact. */
   private final case class Referred(href: String) extends caps.Pure
 

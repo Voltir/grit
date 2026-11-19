@@ -43,77 +43,6 @@ object ProjectMarkdown {
   private def path(project: Project, key: ArtifactKey): String =
     project.chain(key).map(k => ArtifactNumber.value(k.number)).mkString("", "/", ".md")
 
-  /** A project of the old form (ADR 0063), before ids, as [[render]] wrote it then, byte for
-    * byte, from what its documents hold: `stored`, each artifact's store key and data; or why
-    * not, naming the key: data that is
-    * not an old-form artifact's (its head with no id, its body prose's stored form).
-    */
-  def oldForm(
-      project: ProjectKey,
-      pin: Pin,
-      stored: Vector[(String, ujson.Value)]
-  ): Either[String, Vector[(String, String)]] = {
-    def text(head: collection.Map[String, ujson.Value], field: String): Either[String, String] =
-      head.get(field).flatMap(_.strOpt).toRight(s"its head holds no $field")
-    def nullable(head: collection.Map[String, ujson.Value], field: String)(
-        shown: String => String
-    ): Either[String, String] = head.get(field) match {
-      case Some(ujson.Str(v)) => Right(shown(v))
-      case Some(ujson.Null) | None => Right("null")
-      case Some(other) => Left(s"its $field is ${other.render()}")
-    }
-    val index = Index -> front(
-      Vector(
-        "key" -> ProjectKey.value(project),
-        "method" -> MethodName.value(pin.method),
-        "version" -> pin.version.toString,
-        "digest" -> pin.digest.hex
-      )
-    )
-    stored
-      .foldLeft[Either[String, Vector[(String, String)]]](Right(Vector(index))) {
-        case (so, (key, data)) =>
-          so.flatMap { done =>
-            (for {
-              head <- data.objOpt
-                .flatMap(_.get("head"))
-                .flatMap(_.objOpt)
-                .toRight("it holds no head")
-              _ <-
-                if (head.contains("id")) Left("it has an id: it is not of the old form")
-                else Right(())
-              kind <- text(head, "kind")
-              state <- text(head, "state")
-              title <- text(head, "title")
-              parent <- nullable(head, "parent")(identity)
-              cites <- head
-                .get("cites")
-                .flatMap(_.arrOpt)
-                .toRight("its head holds no cites")
-                .flatMap { cs =>
-                  Try(cs.map(_.str).mkString("[", ", ", "]")).toOption
-                    .toRight("its cites are not keys")
-                }
-              by <- nullable(head, "by")(quoted)
-              body <- data.objOpt.flatMap(_.get("body")).toRight("it holds no body")
-              markdown <- Body.oldFormMarkdown(body)
-            } yield s"$key.md" -> (front(
-              Vector(
-                "key" -> key,
-                "kind" -> kind,
-                "state" -> state,
-                "title" -> quoted(title),
-                "parent" -> parent,
-                "cites" -> cites,
-                "by" -> by
-              )
-            ) + "\n" + markdown + "\n")).left
-              .map(why => s"$key cannot be exported: $why")
-              .map(done :+ _)
-          }
-      }
-  }
-
   /** `artifact`'s file text as [[render]] writes it: YAML front matter (`id`, `handle`, `kind`,
     * `state`, `title`, `parent`, `rank`, `cites`, `by`; a title and a `by` as quoted strings, an
     * absent one as `null`, references by id, cites as a flow list), then its body as markdown.
@@ -229,10 +158,10 @@ object ProjectMarkdown {
   private val HeadFields: Vector[String] =
     Vector("id", "handle", "kind", "state", "title", "parent", "rank", "cites", "by")
 
-  private def front(fields: Vector[(String, String)]): String =
+  private[projects] def front(fields: Vector[(String, String)]): String =
     fields.map((k, v) => s"$k: $v").mkString("---\n", "\n", "\n---\n")
 
-  private def quoted(s: String): String = ujson.write(ujson.Str(s))
+  private[projects] def quoted(s: String): String = ujson.write(ujson.Str(s))
 
   private def index(text: String): Either[String, (ProjectKey, Pin)] =
     for {
