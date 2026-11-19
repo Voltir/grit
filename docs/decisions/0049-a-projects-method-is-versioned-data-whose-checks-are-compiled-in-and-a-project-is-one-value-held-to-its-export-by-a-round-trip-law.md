@@ -1,6 +1,6 @@
 # 0049. A project's method is versioned data whose checks are compiled in, and a project is one value held to its export by a round-trip law
 
-Status: accepted (2026-10-27); revised (2026-10-29, 2026-11-17, 2026-11-18)
+Status: accepted (2026-10-27); revised (2026-11-18)
 
 Context: the projects plugin keeps a project's artifacts (a change, a design, a task) and moves
 each from state to state as the project's methodology allows. Methodologies differ by team and
@@ -40,14 +40,16 @@ Decision:
   cannot read `methodsAt` finds no method declared: a deployment gives a label every caller of
   the plugin's commands reads.
 - **A project is one value** (`Project`): its key, its pin and its artifacts, each a head (key,
-  kind, state, title, parent, cites, author) and a body, with no link to an artifact it lacks and
-  no parent cycle. A key is an id, never a title.
+  id, handle, kind, state, title, parent, cites, author) and a body, with no link to an artifact
+  it lacks and no parent cycle. An id is a number the project mints, never a title (ADR 0063).
 - **Each has an export and its reader, held together by a round-trip law**: a project's
   (`ProjectMarkdown`, a file per artifact plus one for its key and pin; read after render keeps
   every head and link, and is a fixed point after one pass), and a method's (`MethodJson`, which
-  `project_methods` gives and `project_declare` takes; equal digest and examples).
+  `project_methods` gives and `project_declare` takes; equal digest and examples). The export
+  names artifacts by id and handle, never by the key a document is stored under.
 - **A project lives in the plugin's ledger documents** (ADR 0028), no table of its own: one per
-  artifact and an index holding its pin, written only by the plugin's commands (ADR 0053), each
+  artifact, under the key it was first kept under, and an index holding its pin and the next
+  id, written only by the plugin's commands (ADR 0053), each
   in one transaction. A keep never changes a state.
 - **A claim is one of the plugin's claims** (`grit.core.claim.Claims`, ADR 0050), never a
   document. A harness's holder is one rule, `ClaimHolders.of`, computed by the commands edge
