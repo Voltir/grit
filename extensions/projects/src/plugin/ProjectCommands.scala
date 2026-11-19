@@ -1199,7 +1199,7 @@ private[plugin] final class ProjectCommands(
       ToolName("project_rekey"),
       "Gives each artifact of a project of the old form, whose artifacts are keyed by name, " +
         "an id, numbered in the order the artifacts were made; its name becomes its handle " +
-        s"(`${grit.projects.artifact.Rekey.Carried}<name>` for a name starting with a digit, " +
+        s"(`${grit.projects.artifact.Rekey.HandlePrefix}<name>` for a name starting with a digit, " +
         "which its old key then no longer names), and every reference to it now names its id. " +
         "One transaction: refused, it keeps nothing, naming each artifact in the way, such as " +
         "one citing an artifact you cannot read. With `dry`, it counts what it would do and " +
@@ -1392,7 +1392,7 @@ private[plugin] final class ProjectCommands(
       planned: grit.projects.artifact.Rekey.Planned
   ): String =
     s"${ProjectKey.value(project)}: ${planned.artifacts.size} artifacts, ${planned.links} body " +
-      s"links, ${planned.cites} head cites, ${planned.renamed.size} handles carried"
+      s"links, ${planned.cites} head cites, ${planned.prefixed.size} handles carried"
 
   /** What a re-key of `project` answers: its counts, the ids it gave, the next new artifact's
     * number, and each carried handle; or that nothing is left to re-key.
@@ -1413,7 +1413,7 @@ private[plugin] final class ProjectCommands(
             s"${ArtifactKey.of(project, planned.next).value}." +
             (if (dry) " Nothing was kept." else "")
         ) ++ planned.artifacts.collect {
-          case a if planned.renamed.exists(_.was == a.before.key) =>
+          case a if planned.prefixed.exists(_.was == a.before.key) =>
             s"${a.after.head.called} was ${DocKey.value(a.before.key)}, a name a handle cannot " +
               "be: that key no longer names it."
         }).mkString("\n")
