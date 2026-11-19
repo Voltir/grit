@@ -1,6 +1,5 @@
 package grit.core.id
 
-import grit.core.act.MoveName
 import grit.core.document.{DocLabel, DocText}
 import grit.core.durable.Probes
 import grit.core.durable.Probes.flowsInto
