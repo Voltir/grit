@@ -48,7 +48,7 @@ object DeclaredPurityTests extends TestSuite {
 
   private val stashingRan =
     """object Stash {
-      |  @caps.unsafe.untrackedCaptures var kept: Option[grit.commands.declare.Ran] = None // so ran alone refuses
+      |  @caps.unsafe.untrackedCaptures var kept: Option[grit.commands.declare.RunCommand] = None // so ran alone refuses
       |}
       |def f() =
       |  OwnCommand.added(
@@ -73,7 +73,7 @@ object DeclaredPurityTests extends TestSuite {
 
   private val watchStashingRan =
     """object Kept {
-      |  @caps.unsafe.untrackedCaptures var kept: Option[grit.commands.declare.Ran] = None // so ran alone refuses
+      |  @caps.unsafe.untrackedCaptures var kept: Option[grit.commands.declare.RunCommand] = None // so ran alone refuses
       |}
       |def f() =
       |  HoldingWatch(Set.empty, (ran, body) => { Kept.kept = Some(ran); Right(None) }, (h, held) => "held")
