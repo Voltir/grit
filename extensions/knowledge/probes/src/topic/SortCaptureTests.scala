@@ -32,8 +32,8 @@ object SortCaptureTests extends TestSuite {
       |}
       |def sorting: Either[grit.core.classify.Ask.DuplicateKey, Sorting[To, Decision[To]]] =
       |  Sorting.choice("q", 1, 1, Criterion(To.Open, "new", None), Criterion(To.Aside, "aside", None))
-      |def placed(m: Dreaming^, item: Dreaming.Item, among: Vector[(To, DocumentVersionId)], s: Sorting[To, Decision[To]]) =
-      |  m.sort(MoveName.literal("sort-0"), item, among, grit.core.flow.Mint.tainted(s, grit.core.visibility.Integrity.Member))
+      |def placed(m: Dreaming^, item: Dreaming.Item, among: Vector[(To, DocumentVersionId)], s: grit.core.flow.Tainted[Sorting[To, Decision[To]]]) =
+      |  m.sort(MoveName.literal("sort-0"), item, among, s)
       |""".stripMargin
 
   /** A candidate of TopicKey's shape, declared pure, holding the scan's transaction. */
