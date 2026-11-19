@@ -95,6 +95,12 @@ trait Claims extends caps.Pure {
     * not read it. It writes nothing.
     */
   def held(claim: Claim)(using Tx^): Either[StoreError, Option[Claim]]
+
+  /** Waits until no other transaction holds `subject`'s lock for this plugin, at any label, then
+    * holds it until this one ends. A higher room's holder delays a lower room's. A wait past the
+    * transaction's `lock_timeout` answers its `StoreError`. It writes nothing and keeps no claim.
+    */
+  def lock(subject: DocKey)(using Tx^): Either[StoreError, Unit]
 }
 
 object Claims {

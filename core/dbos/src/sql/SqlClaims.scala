@@ -216,6 +216,15 @@ private[dbos] final class SqlClaims(plugin: PluginName) extends Claims {
       }(claimOf)
       .flatMap(SqlStatements.valid)
       .map(_.headOption)
+
+  def lock(subject: DocKey)(using Tx^): Either[StoreError, Unit] =
+    SqlStatements
+      .one("SELECT pg_advisory_xact_lock(?, hashtext(? || ' ' || ?))") { ps =>
+        ps.setInt(1, SqlClaims.LockClass)
+        ps.setString(2, PluginName.value(plugin))
+        ps.setString(3, DocKey.value(subject))
+      }(_ => ())
+      .map(_ => ())
 }
 
 private[dbos] object SqlClaims {
@@ -242,6 +251,12 @@ private[dbos] object SqlClaims {
         )
       )(_ => ())
       .map(_ => ())
+
+  /** The advisory-lock class a plugin's subject is locked under ([[Claims.lock]]), with the hash
+    * of the plugin and the subject: the bytes of `gclm`. A hash two pairs share only makes one
+    * wait for the other.
+    */
+  val LockClass: Int = 0x67636c6d
 
   /** The latest a claim's [[Claim.active]] may be and have lapsed at `at`. */
   private def leased(at: Instant): Instant = at.minusMillis(Claims.Lease.toMillis)

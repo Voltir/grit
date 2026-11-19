@@ -91,6 +91,9 @@ final class InMemoryClaims {
           )
           .map(read)
       )
+
+    // Single-threaded: no other transaction runs to hold it.
+    def lock(subject: DocKey)(using Tx^): Either[StoreError, Unit] = Right(())
   }
 
   private def reads(r: Row)(using tx: Tx^): Boolean =

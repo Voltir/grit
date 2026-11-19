@@ -109,6 +109,8 @@ object KeptBriefTests extends TestSuite {
       def live(at: Instant)(using Tx^): Either[StoreError, Vector[Claim]] = Right(read)
       def held(claim: Claim)(using Tx^): Either[StoreError, Option[Claim]] =
         store.claims.held(claim)
+      def lock(subject: DocKey)(using Tx^): Either[StoreError, Unit] =
+        store.claims.lock(subject)
     }
     askThrough(store.keeper, before, when = at.plusSeconds(60))(
       projects,
@@ -485,6 +487,8 @@ object KeptBriefTests extends TestSuite {
         def live(at: Instant)(using Tx^): Either[StoreError, Vector[Claim]] = store.claims.live(at)
         def held(claim: Claim)(using Tx^): Either[StoreError, Option[Claim]] =
           store.claims.held(claim)
+        def lock(subject: DocKey)(using Tx^): Either[StoreError, Unit] =
+          store.claims.lock(subject)
       }
       done(
         askThrough(store.keeper, landing)(
