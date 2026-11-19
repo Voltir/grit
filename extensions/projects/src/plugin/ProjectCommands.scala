@@ -1600,8 +1600,9 @@ private[plugin] final class ProjectCommands(
 
   /** Keeps again ([[briefed]]) the brief of each of `held` ([[holding]]), claims on artifacts of
     * project `key`, as the project now stands. Nothing when the project's method is not declared
-    * here; refused when it is and does not read. A brief already over its budget before the command is withdrawn ([[briefed]]); one
-    * the command would have put over it, [[settled]] has refused, `held` taken first.
+    * here; refused when it is and does not read. A brief already over its budget before the
+    * command is withdrawn ([[briefed]]); one the command would have put over it, [[settled]] has
+    * refused, `held` taken first.
     */
   private def rebriefed(own: DocumentKeeper, held: Vector[Claim], key: ProjectKey, at: Instant)(
       using Tx^

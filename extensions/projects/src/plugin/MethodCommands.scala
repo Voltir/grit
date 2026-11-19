@@ -27,9 +27,9 @@ import ProjectCommands.{Stop, answered, keptEverywhere, moverOf, parsed, refusal
 import MethodCommands.{Asking, Declaring}
 
 /** `project_declare` and `project_methods`, and the method versions every other command reads:
-  * each version one document of the plugin's own, under `<name>@<version>` at `methodsAt` alone (one
-  * digest to a version, whoever reads it), holding its method
-  * and worked examples as [[MethodJson]] writes them, its checks found among `checks`.
+  * each version one document of the plugin's own, under [[MethodCommands.key]] at `methodsAt`
+  * alone (one digest to a version, whoever reads it), holding its method and worked examples as
+  * [[MethodJson]] writes them, its checks found among `checks`.
   */
 private[plugin] final class MethodCommands(checks: Vector[TransitionCheck], methodsAt: Label)
     extends caps.Pure {
