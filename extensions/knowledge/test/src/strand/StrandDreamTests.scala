@@ -15,7 +15,7 @@ import grit.core.need.Needs
 import grit.core.place.Place
 import grit.core.stitch.StrandWorld
 import grit.core.store.Conversation
-import grit.core.visibility.{Clearance, Integrity, Label, Level, Recorded, TestLabels, Visibility}
+import grit.core.visibility.{Integrity, Label, Level, Recorded, TestLabels, Visibility}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -120,17 +120,13 @@ object StrandDreamTests extends TestSuite {
     /** What each current document a run at `floor` reads is believed at. */
     def integrities: Vector[Integrity] =
       documents
-        .keeper(Plugin, Terms)
-        .newest(Int.MaxValue)(using TestTx.fake(Clearance.of(floor)))
-        .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
+        .newestAt(Plugin, floor)
         .map(_.integrity)
 
     /** The current documents a run at `floor` reads: each key, label and text. */
     def kept: Vector[(String, String, String)] =
       documents
-        .keeper(Plugin, Terms)
-        .newest(Int.MaxValue)(using TestTx.fake(Clearance.of(floor)))
-        .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
+        .newestAt(Plugin, floor)
         .map(d => (DocKey.value(d.key), Label.written(d.label), DocText.value(d.text)))
   }
 

@@ -199,9 +199,7 @@ object CardDeclassifyTests extends TestSuite {
     /** The policy version each current rewrite was made under, as its data names it. */
     def made: Vector[Int] =
       documents
-        .keeper(Plugin, Terms)
-        .newest(Int.MaxValue)(using TestTx.fake(Clearance.of(Floor)))
-        .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
+        .newestAt(Plugin, Floor)
         .filterNot(_.key == Withheld.key)
         .flatMap(d => Declassified.Made.read(d.data).map(_.policy))
 
@@ -269,10 +267,7 @@ object CardDeclassifyTests extends TestSuite {
 
     /** What the plugin's current rewrites at [[Floor]] and its withholding there are believed at. */
     def integrities: (Vector[Integrity], Option[Integrity]) = {
-      val own = documents
-        .keeper(Plugin, Terms)
-        .newest(Int.MaxValue)(using TestTx.fake(Clearance.of(Floor)))
-        .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
+      val own = documents.newestAt(Plugin, Floor)
       (
         own.filterNot(_.key == Withheld.key).map(_.integrity),
         own.find(_.key == Withheld.key).map(_.integrity)
@@ -290,9 +285,7 @@ object CardDeclassifyTests extends TestSuite {
     /** The plugin's current documents a run at [[Floor]] reads: each label and text. */
     def kept: Vector[(String, String)] =
       documents
-        .keeper(Plugin, Terms)
-        .newest(Int.MaxValue)(using TestTx.fake(Clearance.of(Floor)))
-        .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
+        .newestAt(Plugin, Floor)
         .filterNot(_.key == Withheld.key)
         .map(d => (Label.written(d.label), DocText.value(d.text)))
 

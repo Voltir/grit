@@ -9,7 +9,8 @@ import grit.core.retention.Target
 import grit.core.review.{DocumentLabel, DocumentReview, DocumentReviews, ReviewWord, Reviews}
 import grit.core.screen.{Benched, Checks}
 import grit.core.store.{InMemoryTombstones, Savepoints, StoreError, Tx}
-import grit.core.visibility.{DeclassificationPolicy, Integrity, Item, Label}
+import grit.core.visibility.{Clearance, DeclassificationPolicy, Integrity, Item, Label}
+import grit.dbos.sql.TestTx
 
 /** An in-memory [[DocumentStore]], with each plugin's [[DocumentKeeper]], for tests, keeping
   * [[DocumentContract]]. Versions are numbered by one counter across every plugin. It marks
@@ -450,6 +451,14 @@ final class InMemoryDocuments extends DocumentStore {
 
   /** `plugin`'s documents as it reads them. */
   def shelf(plugin: PluginName): DocumentShelf = new Shelf(plugin)
+
+  /** Every current document of `plugin` a transaction at `floor` reads, newest first: its
+    * shelf's [[DocumentShelf.newest]], for a test to look at what a run left.
+    */
+  def newestAt(plugin: PluginName, floor: Label): Vector[Document] =
+    shelf(plugin)
+      .newest(Int.MaxValue)(using TestTx.fake(Clearance.of(floor)))
+      .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
 
   /** The reviews of the documents its keepers put up. */
   val reviews: DocumentReviews = new DocumentReviews {
