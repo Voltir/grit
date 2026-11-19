@@ -35,6 +35,10 @@ Packages, in one-way order (each names only those before it):
   (`ProjectMarkdownTests`); `AnswerText`, what the commands answer, the same for every edge;
   and `Brief`, what a session on one artifact is given, a pure function of the project's value
   (`BriefTests`). Imports `name`, `artifact` and `method` (a brief is shaped by a role view).
+- **`rekey`**: the move of a project of the old form, keyed by name, to ids (ADR 0063):
+  `Rekey`, its plan, and `OldForm`, a project of the old form exported as it was. Retired
+  whole once no project of the old form is left; `artifact`'s `Rekeyed`, where a re-key left
+  each artifact, stays. Imports `name`, `artifact` and `render`.
 - **`plugin`**: `Projects`, the plugin, and its commands (ADR 0053): the only writers of its
   documents, each run in one transaction, whether a person gives it or a turn calls it;
   `MethodCommands`, `project_declare` and `project_methods`, over the methods the plugin keeps

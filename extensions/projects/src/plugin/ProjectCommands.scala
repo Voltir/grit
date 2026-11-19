@@ -1200,7 +1200,7 @@ private[plugin] final class ProjectCommands(
       ToolName("project_rekey"),
       "Gives each artifact of a project of the old form, whose artifacts are keyed by name, " +
         "an id, numbered in the order the artifacts were made; its name becomes its handle " +
-        s"(`${grit.projects.artifact.Rekey.HandlePrefix}<name>` for a name starting with a digit, " +
+        s"(`${grit.projects.rekey.Rekey.HandlePrefix}<name>` for a name starting with a digit, " +
         "which its old key then no longer names), and every reference to it now names its id. " +
         "One transaction: refused, it keeps nothing, naming each artifact in the way, such as " +
         "one citing an artifact you cannot read. With `dry`, it counts what it would do and " +
@@ -1289,11 +1289,11 @@ private[plugin] final class ProjectCommands(
   private val RekeyReasonsMost: Int = 5
 
   /** What a re-key of `project` would write, read from its documents as `own` holds them, or why
-    * not: no such project, or what [[grit.projects.artifact.Rekey.plan]] refuses.
+    * not: no such project, or what [[grit.projects.rekey.Rekey.plan]] refuses.
     */
   private def rekeyPlanned(own: DocumentShelf, project: ProjectKey)(using
       Tx^
-  ): Either[Stop, grit.projects.artifact.Rekey.Planned] = {
+  ): Either[Stop, grit.projects.rekey.Rekey.Planned] = {
     val p = ProjectKey.value(project)
     for {
       found <- indexed(own, project)
@@ -1309,7 +1309,7 @@ private[plugin] final class ProjectCommands(
       }
       old <- Traversal.traverse(legacy) { d =>
         stored(own.versions(d.key, d.label, HistoryMost)).map { kept =>
-          grit.projects.artifact.Rekey.Old(
+          grit.projects.rekey.Rekey.Old(
             d,
             kept
               .collect { case DocumentVersion.Holding(v) => v.written }
@@ -1320,9 +1320,9 @@ private[plugin] final class ProjectCommands(
       }
       planned <- next match {
         case Some(n) =>
-          Right(grit.projects.artifact.Rekey.Planned(Vector.empty, Vector.empty, n, Vector.empty))
+          Right(grit.projects.rekey.Rekey.Planned(Vector.empty, Vector.empty, n, Vector.empty))
         case None =>
-          grit.projects.artifact.Rekey
+          grit.projects.rekey.Rekey
             .plan(project, pin, old)
             .left
             .map { reasons =>
@@ -1344,7 +1344,7 @@ private[plugin] final class ProjectCommands(
   private def rekeyed(
       own: DocumentKeeper,
       project: ProjectKey,
-      planned: grit.projects.artifact.Rekey.Planned,
+      planned: grit.projects.rekey.Rekey.Planned,
       by: CommandBy,
       at: Instant
   )(using Tx^)(using Locked): Either[Stop, String] =
@@ -1390,7 +1390,7 @@ private[plugin] final class ProjectCommands(
     */
   private def rekeyCounts(
       project: ProjectKey,
-      planned: grit.projects.artifact.Rekey.Planned
+      planned: grit.projects.rekey.Rekey.Planned
   ): String =
     s"${ProjectKey.value(project)}: ${planned.artifacts.size} artifacts, ${planned.links} body " +
       s"links, ${planned.cites} head cites, ${planned.prefixed.size} handles carried"
@@ -1400,7 +1400,7 @@ private[plugin] final class ProjectCommands(
     */
   private def rekeyAnswer(
       project: ProjectKey,
-      planned: grit.projects.artifact.Rekey.Planned,
+      planned: grit.projects.rekey.Rekey.Planned,
       dry: Boolean
   ): String = {
     val p = ProjectKey.value(project)
@@ -1423,7 +1423,7 @@ private[plugin] final class ProjectCommands(
   }
 
   /** `project` as files ([[ProjectMarkdown.render]]), or, in the old form, as it was exported
-    * then ([[ProjectMarkdown.oldForm]]); or why not.
+    * then ([[grit.projects.rekey.OldForm.exported]]); or why not.
     */
   private def exported(own: DocumentShelf, project: ProjectKey)(using
       Tx^
@@ -1441,7 +1441,7 @@ private[plugin] final class ProjectCommands(
           for {
             documents <- projectDocuments(own, project)
             files <- refuse(
-              ProjectMarkdown.oldForm(
+              grit.projects.rekey.OldForm.exported(
                 project,
                 pin,
                 documents.map(d => DocKey.value(d.key) -> d.data)
@@ -3816,7 +3816,7 @@ private[plugin] object ProjectCommands {
           .getOrElse(Rank.Middle)
         d =>
           if (ArtifactJson.isOldForm(d))
-            grit.projects.artifact.Rekey
+            grit.projects.rekey.Rekey
               .before(d, keyed, rank)
               .left
               .map(why => s"${DocKey.value(d.key)} cannot be read: $why")

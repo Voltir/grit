@@ -1,10 +1,20 @@
-package grit.projects.artifact
+package grit.projects.rekey
 
 import java.time.Instant
 
 import grit.core.document.{Document, InMemoryDocuments}
 import grit.core.id.DocKey
 import grit.core.visibility.Label
+import grit.projects.artifact.{
+  Artifact,
+  ArtifactHead,
+  ArtifactJson,
+  Body,
+  OldFormFixtures,
+  Pin,
+  Project,
+  Rank
+}
 import grit.projects.name.{Handle, MethodName, ProjectKey}
 
 import utest.*

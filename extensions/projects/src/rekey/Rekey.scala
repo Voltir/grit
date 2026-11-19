@@ -1,10 +1,11 @@
-package grit.projects.artifact
+package grit.projects.rekey
 
 import java.time.Instant
 
 import grit.core.document.Document
 import grit.core.id.DocKey
 import grit.core.visibility.Label
+import grit.projects.artifact.{Artifact, ArtifactJson, Body, Pin, Project, Rank, Rekeyed}
 import grit.projects.name.{ArtifactKey, ArtifactNumber, Handle, ProjectKey}
 
 /** The re-key (ADR 0063): a project's artifacts of the old form, keyed by name, given ids. */

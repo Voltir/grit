@@ -195,7 +195,7 @@ object ArtifactJson {
     * `key`, `handle` and `rank`, each reference read by `reference`; or why not: a head with an
     * id, or as [[fromHead]] refuses.
     */
-  private[artifact] def oldFormOf(
+  private[projects] def oldFormOf(
       key: ArtifactKey,
       handle: Option[Handle],
       rank: Rank,
