@@ -111,8 +111,10 @@ object TopicDocuments {
   /** 10: the most topics one run writes. */
   val PerRun: Int = 10
 
-  /** 45: the most days one `grit backfill topics` reaches back. */
-  val BackfillMost: Int = 45
+  /** 90: the most days one `grit backfill topics` reaches back, as long as a passage is kept
+    * ([[TopicParams.KeepFor]]): a day further back writes passages the next nightly run drops.
+    */
+  val BackfillMost: Int = 90
 
   /** 0.15¢ (in USD): the most one topic a backfilled day writes costs, its write ask and its
     * share of the run's sorts. Measured, when a model ask placed what a sort now does, on the
