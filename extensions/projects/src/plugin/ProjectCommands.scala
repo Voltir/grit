@@ -1339,7 +1339,7 @@ private[plugin] final class ProjectCommands(
 
   /** `planned` kept: each artifact under its key and at its label, believed as it was; the
     * table's documents, refused where one is kept already; and the index, its `next` the
-    * planned one, believed as it was. Nothing when nothing is left to re-key.
+    * planned one, believed as it was: its answer, which says so when nothing is left to re-key.
     */
   private def rekeyed(
       own: DocumentKeeper,
@@ -1959,9 +1959,9 @@ private[plugin] final class ProjectCommands(
     }
   }
 
-  /** `project_claims`. A keeping command only for its plugin's claims, which a reading command is
-    * not handed; it keeps nothing.
-    */
+  /** `project_claims`: the live claims, one project's when given. */
+  // A keeping command only for its plugin's claims, which a reading command is not handed; it
+  // keeps nothing.
   object ProjectClaims extends KeepingCommand[Surveying] {
     override def onlyReads: Boolean = true
 
@@ -2125,11 +2125,10 @@ private[plugin] final class ProjectCommands(
     }
 
   /** Each claim live at `at` on an artifact of `project`, matched by the key its document is
-    * kept under, and kept at this transaction's floor, as held ([[Claims.held]]) until it ends, in the order [[Claims.live]] gives, so that
-    * the session sweep, which takes no project's lock, waits for this transaction before it
-    * deletes one. A claim gone or made anew since it was read is left out. A claim kept below
-    * the floor is passed over: a command changes only artifacts kept at its floor
-    * ([[atTheirLabels]]), so nothing that brief shows changes.
+    * kept under, and kept at this transaction's floor, as held ([[Claims.held]]) until it ends,
+    * in the order [[Claims.live]] gives. A claim gone or made anew since it was read is left out.
+    * A claim kept below the floor is passed over: a command changes only artifacts kept at its
+    * floor ([[atTheirLabels]]), so nothing that brief shows changes.
     */
   private def heldClaims(claims: Claims, project: Loaded, at: Instant)(using
       tx: Tx^
@@ -2138,6 +2137,8 @@ private[plugin] final class ProjectCommands(
       live <- stored(claims.live(at))
       keys = ids(project)
       here = live.filter(c => c.label == Tx.floor(tx) && keys.contains(c.subject))
+      // Held, so the session sweep, which takes no project's lock, waits for this transaction
+      // before it deletes one.
       held <- Traversal.traverse(here)(c => stored(claims.held(c)))
     } yield held.flatten
 
@@ -2692,7 +2693,9 @@ private[plugin] object ProjectCommands {
       .toOption
       .toRight(s"`$text` is not a day such as 2026-10-27")
 
-  /** `project_migrate`'s arguments: the version of its method to move `project` to. */
+  /** `project_migrate`'s arguments: the version of its method to move `project` to, and the
+    * kinds, states and artifacts it renames, as `project_migrate` gives them.
+    */
   final case class Migrating(
       project: ProjectKey,
       version: Int,
@@ -2745,7 +2748,8 @@ private[plugin] object ProjectCommands {
       .mkString(", ")
     val more = if (left.size > LeftOverMost) s" and ${left.size - LeftOverMost} more" else ""
     val it = if (left.size == 1) "it" else "them"
-    s"project ${ProjectKey.value(project)} was re-keyed, but ${Words.counted(left.size, "artifact")} of the old form " +
+    s"project ${ProjectKey.value(project)} was re-keyed, but " +
+      s"${Words.counted(left.size, "artifact")} of the old form " +
       s"${if (left.size == 1) "is" else "are"} kept above its index, where the re-key could " +
       s"not read $it: $named$more. No command can number $it, since that would write the " +
       s"index from above it. Use the project from a room at its index's label " +
@@ -3014,10 +3018,10 @@ private[plugin] object ProjectCommands {
       } yield Rendered(c, key, view, brief)
     }
 
-  /** Nothing, or a refusal naming each of `after` over its budget when, rendered over `before`
-    * under `method`, each claim's artifact the one `keys` gives its subject, it was not or was shorter (`before` none: as if it was not), and the
-    * characters to cut from those of `changed` the brief holds whole (the claimed artifact, or one
-    * its role carries).
+  /** Nothing, or a refusal naming each brief of `after` over its budget that was not over it, or
+    * was shorter, rendered over `before` (none: as if it was not), each claim's artifact the one
+    * `keys` gives its subject; and the characters to cut from those of `changed` the brief holds
+    * whole (the claimed artifact, or one its role carries).
     */
   private def within(
       method: Method,
@@ -3501,10 +3505,9 @@ private[plugin] object ProjectCommands {
       )
     } yield ()
 
-  /** Keeps each artifact `steps` changed through `own`, once, as they left it ([[kept]]): wholly
-    * its caller's when a step wrote every word of it, else carrying the document of the words it
-    * carries (its own, or for a [[Whose.Part]], the one it was cut from); and the
-    * project's index, when a step minted an id, its `next` moved on ([[rewroteIndex]]).
+  /** Keeps each artifact `steps` changed through `own`, once, as they left it ([[kept]]), carrying
+    * the words [[Stepping.whose]] says it holds; and the project's index, when a step minted an
+    * id, its `next` moved on ([[rewroteIndex]]).
     */
   private def wrote(
       own: DocumentKeeper,
@@ -3627,7 +3630,9 @@ private[plugin] object ProjectCommands {
     climbs(Some(below))
   }
 
-  /** Each pair of `claims` for two holders whose artifacts overlap in `project`, the higher first. */
+  /** Each pair of `claims` for two holders whose artifacts overlap in `project`, the higher
+    * first.
+    */
   private def overlapping(
       project: Project,
       claims: Vector[(claim: Claim, key: ArtifactKey)]
@@ -3745,8 +3750,7 @@ private[plugin] object ProjectCommands {
 
   /** The key and label the versions of the artifact `key` names are kept under: its current
     * document's, as [[resolved]] finds it; or, for an artifact of `project` no longer current,
-    * the key it is kept under (for an id, the one [[Rekeyed]] gives, else the id; for a handle,
-    * the key it writes) and the label its newest version `own` reads is at; or why not, as
+    * the key it is kept under and the label its newest version `own` reads is at; or why not, as
     * [[resolved]] refuses, when `own` reads no version of it, or, for an id, the newest holds
     * another id.
     */
@@ -3790,10 +3794,8 @@ private[plugin] object ProjectCommands {
       under <- refuse(Rekeyed.storeKey(id, documents.flatten))
     } yield under
 
-  /** How `versions`, versions of one artifact of `project`, read: as [[readable]] reads them,
-    * and one kept before the project's re-key as [[grit.projects.artifact.Rekey.before]] reads
-    * it through [[Rekeyed]]'s table, at the rank of the newest version holding one; or why the
-    * table cannot be read.
+  /** How `versions`, versions of one artifact of `project`, read, one kept before the project's
+    * re-key among them; or why the table of where re-keyed artifacts are kept cannot be read.
     */
   private def versionsRead(own: DocumentShelf, project: Loaded, versions: Vector[Document])(using
       Tx^
@@ -3856,10 +3858,8 @@ private[plugin] object ProjectCommands {
   /** Keeps `r`'s brief through `own`, at its claim's label and at `place`, as the brief of the
     * claim's holder ([[DocRef.brief]]), its data naming the holder, believed at no more than the
     * least of what it shows as `project` holds them ([[Brief.shows]]), unless the one current
-    * there holds that text for that holder, believed no higher than what it shows, and a write
-    * through `own` would not believe it higher: `None` when it is current, else
-    * why none is, the one current there withdrawn: it is over [[DocRef.BriefChars]], or the
-    * plugin is full.
+    * there is that brief already: `None` when it is current, else why none is, the one current
+    * there withdrawn: it is over [[DocRef.BriefChars]], or the plugin is full.
     */
   private def briefed(own: DocumentKeeper, r: Rendered, place: Place, project: Loaded, at: Instant)(
       using Tx^
@@ -3951,8 +3951,8 @@ private[plugin] object ProjectCommands {
   private val BriefHolder: String = "holder"
 
   /** Keeps `artifact` through `own` under the key and at the label of `before`, its document, or
-    * when new under its id and at public: the version it is now at. Believed at what `own` believes its caller at, met with what `carried`, the document whose
-    * words it carries, was believed at; none when every word is its caller's.
+    * when new under its id and at public: the version it is now at. Believed at no more than
+    * `carried`, the document whose words it carries, or none when every word is its caller's.
     */
   private def kept(
       own: DocumentKeeper,

@@ -44,8 +44,8 @@ object ProjectMarkdown {
     project.chain(key).map(k => ArtifactNumber.value(k.number)).mkString("", "/", ".md")
 
   /** A project of the old form (ADR 0063), before ids, as [[render]] wrote it then, byte for
-    * byte, from what its documents hold: `stored`, each artifact's store key and data. It is
-    * what a project is backed up as before its re-key. Or why not, naming the key: data that is
+    * byte, from what its documents hold: `stored`, each artifact's store key and data; or why
+    * not, naming the key: data that is
     * not an old-form artifact's (its head with no id, its body prose's stored form).
     */
   def oldForm(

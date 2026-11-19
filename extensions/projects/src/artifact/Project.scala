@@ -5,7 +5,6 @@ import scala.annotation.tailrec
 import grit.core.id.ClaimHolder
 import grit.projects.name.{ArtifactKey, ArtifactNumber, ArtifactRef, Handle, Pin, ProjectKey}
 
-/** A project as one value: its key, the method version it pinned, and its artifacts by key. */
 final case class Project private (key: ProjectKey, pin: Pin, artifacts: Vector[Artifact])
     extends caps.Pure {
 
