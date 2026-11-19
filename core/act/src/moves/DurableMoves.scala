@@ -17,7 +17,8 @@ import grit.core.act.{
   Moves,
   Pieced,
   Piecing,
-  Posed
+  Posed,
+  Sorting
 }
 import grit.core.classify.{Answer, AnswersJson, Ask, ClassifierError, Request}
 import grit.core.document.{Declassified, DocText, DocumentKeeper, PolicyApplication}
@@ -37,6 +38,7 @@ import grit.core.stitch.{Strand, StrandShelf}
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
 import grit.core.visibility.{DeclassificationPolicy, Integrity}
+import grit.std.either.Traversal.sequence
 
 /** A planner's moves as durable steps ([[Act]]'s), over `grit.act.phase`'s `Asking` and
   * `Calling`.
@@ -179,6 +181,54 @@ object DurableMoves {
         }
       }
 
+    def sort[C <: caps.Pure, R](
+        name: MoveName,
+        item: Dreaming.Item,
+        among: Vector[(C, DocumentVersionId)],
+        sorting: Tainted[Sorting[C, R]]
+    ): Either[MoveError, Option[Dreaming.Sorted[R]]] =
+      refused(name, MoveKind.Judge).toLeft(()).flatMap { _ =>
+        val sorts = Trusted.asIs(sorting).extract
+        val versions = among.map(_._2)
+        val digest = MovesJournal.sorting(item, versions, sorts)
+        val asked = made(
+          Act.ask(Act.sort[C, R]),
+          Act.Sort(
+            name,
+            acting,
+            item,
+            among,
+            sorts,
+            reads.excerpts,
+            reads.documents,
+            readable,
+            digest
+          )
+        )
+        val same = MovesJournal.sameSorting(asked.made.digest, item, versions, sorts)
+        asked.made match {
+          case AskMade.Refused(AskMade.Kind.StrandChanged | AskMade.Kind.Unsorted, _, _, _)
+              if same =>
+            Right(None)
+          case AskMade.Judged(_, _, _, _, Some(AskMade.Sorted(_, shown))) =>
+            settled(name, asked, same) {
+              case AskMade.Judged(_, written, at, _, Some(AskMade.Sorted(level, _))) =>
+                // A version the record names that `among` does not hold diverges.
+                sequence(
+                  shown.map(v => among.collectFirst { case (c, u) if u == v => c }.toRight(()))
+                ).toOption
+                  .flatMap(cs => Sorting.reading(sorts, cs))
+                  .map(qs =>
+                    judgedBack(qs, written)
+                      .map(r => Asked(Mint.tainted(r, sorting.integrity.meet(level)), at))
+                  )
+              case _ => None
+            }.map(a => Some(Dreaming.Sorted(a, shown)))
+          case _ =>
+            settled[R](name, asked, same)(_ => None).map(_ => Option.empty[Dreaming.Sorted[R]])
+        }
+      }
+
     protected def declassifier: Option[Declassifying.Raising^] = Declassifying.raise
 
     protected def rewrite(
@@ -273,7 +323,7 @@ object DurableMoves {
           case Some(why) if stands => Right(Left(why))
           case _ =>
             settled(name, asked, stands) {
-              case AskMade.Judged(_, written, at, _) =>
+              case AskMade.Judged(_, written, at, _, _) =>
                 beside
                   .collect { case Act.Beside.Shaped(shape) => shape }
                   .map(s =>
@@ -311,7 +361,7 @@ object DurableMoves {
             Right(Left(Declassifying.Unbenched.NotRead))
           case _ =>
             settled(name, asked, same) {
-              case AskMade.Judged(_, written, at, _) =>
+              case AskMade.Judged(_, written, at, _, _) =>
                 beside.collect { case Act.Beside.Example(kind, shape, screening) =>
                   answersBack(written)
                     .flatMap(
@@ -531,7 +581,7 @@ object DurableMoves {
         val asked =
           made(Act.ask(Act.judgment[T]), Act.Judgment(name, acting, request, questions, digest))
         settled(name, asked, MovesJournal.sameJudgment(asked.made.digest, request)) {
-          case AskMade.Judged(_, written, at, _) =>
+          case AskMade.Judged(_, written, at, _, _) =>
             Some(judgedBack(questions, written).map(r => Asked(Mint.tainted(r, believed), at)))
           case _ => None
         }

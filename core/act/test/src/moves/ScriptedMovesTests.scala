@@ -10,11 +10,12 @@ import grit.core.act.{
   MoveError,
   MoveLimits,
   Moves,
+  MovesFixtures,
   ScriptedDreaming,
   ScriptedKeeping,
   ScriptedMoves
 }
-import grit.core.classify.{Answer as Judged, ClassifierError}
+import grit.core.classify.{Answer as Judged, ClassifierError, Question, Request}
 import grit.core.document.{Document, InMemoryDocuments}
 import grit.core.files.{FileError, Files, Formats, InMemoryPieces, KeptPiece}
 import grit.core.flow.TestTainted
@@ -102,6 +103,42 @@ object ScriptedMovesTests extends MovesContract {
     (use(moves), shown.all)
   }
 
+  def sorting[A <: caps.Pure](
+      limits: MoveLimits,
+      world: StrandWorld,
+      integrity: Integrity,
+      shelves: MovesContract.Shelves
+  )(
+      use: Dreaming^ -> A
+  ): (A, Vector[(ujson.Value, Vector[Question])]) = {
+    val sent = new Sent
+    val moves = new ScriptedDreaming(
+      limits,
+      Floor,
+      MovesWorld.Notes,
+      MovesWorld.NotesTerms,
+      Dreaming.Reads(
+        world.shelf,
+        _ => shelves.needs,
+        world.excerpts,
+        shelves.documents,
+        shelves.pieces
+      ),
+      (_, _) => Right(Replied(Answered, Floor)),
+      // Positional, as dreaming's.
+      shelves.documents,
+      Instant.EPOCH,
+      integrity,
+      Recorded.Empty,
+      (_: ModelRequest) => Left(MoveError.Model("no text reply scripted")),
+      (r: Request) => {
+        sent.add(r.state, r.questions)
+        Right(Replied(r.questions.map(MovesFixtures.fitting), Floor))
+      }
+    )
+    (use(moves), sent.all)
+  }
+
   /** Keeping within `limits` whose keeps keep [[MovesWorld.Notes]]' documents at
     * [[MovesContract.Floor]], scripted as [[within]] describes its world, its run believed at
     * `integrity`.
@@ -160,6 +197,16 @@ object ScriptedMovesTests extends MovesContract {
     var all: Vector[(String, Vector[String])] = Vector.empty
 
     def add(system: String, users: Vector[String]): Unit = all = all :+ (system, users)
+  }
+
+  /** Each judgment's state and questions, in order. */
+  private final class Sent {
+    // As `Shown`'s.
+    @caps.unsafe.untrackedCaptures
+    var all: Vector[(ujson.Value, Vector[Question])] = Vector.empty
+
+    def add(state: ujson.Value, questions: Vector[Question]): Unit =
+      all = all :+ (state, questions)
   }
 
   private final class Requests {

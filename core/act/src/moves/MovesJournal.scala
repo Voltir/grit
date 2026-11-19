@@ -1,7 +1,7 @@
 package grit.act.moves
 
 import grit.act.phase.Faults
-import grit.core.act.{Answer, Called, Declassifying, Pieced}
+import grit.core.act.{Answer, Called, Declassifying, Dreaming, Pieced, Sorting}
 import grit.core.classify.{Question, Request}
 import grit.core.document.{Declassified, DocText, Pointer, PolicyApplication}
 import grit.core.durable.Journaled
@@ -61,9 +61,16 @@ private[moves] enum AskMade extends Asked {
 
   /** A judgment's answers read: `answers`, the classifier's answers as
     * [[grit.core.classify.AnswersJson]] writes them, in a JSON array written compactly; what it
-    * was asked held nothing above `at`; `call`, the classifier's call.
+    * was asked held nothing above `at`; `call`, the classifier's call; for a sort's, what it
+    * read (`sorted`).
     */
-  case Judged(digest: String, answers: String, at: Label, call: AskMade.Call)
+  case Judged(
+      digest: String,
+      answers: String,
+      at: Label,
+      call: AskMade.Call,
+      sorted: Option[AskMade.Sorted] = None
+  )
 
   /** A judgment's answers did not read, `why`, after `call`, the classifier's call. */
   case Unjudged(digest: String, why: String, call: AskMade.Call)
@@ -85,7 +92,7 @@ private[moves] enum AskMade extends Asked {
     case Refused(_, _, _, _) => Vector()
     case Shaped(_, _, _, _, calls, _) => calls
     case Unshaped(_, _, calls) => calls
-    case Judged(_, _, _, call) => Vector(call)
+    case Judged(_, _, _, call, _) => Vector(call)
     case Unjudged(_, _, call) => Vector(call)
   }
 
@@ -94,7 +101,7 @@ private[moves] enum AskMade extends Asked {
     case Refused(_, _, _, at) => at
     case Shaped(_, _, at, _, _, _) => Some(at)
     case Unshaped(_, _, _) => None
-    case Judged(_, _, at, _) => Some(at)
+    case Judged(_, _, at, _, _) => Some(at)
     case Unjudged(_, _, _) => None
   }
 }
@@ -115,13 +122,16 @@ private[moves] object AskMade {
       */
     case StrandChanged
 
+    /** A sort read no item to place, or no candidate to ask about: nothing was asked. */
+    case Unsorted
+
     /** A rewrite, check or bench's ask read nothing, for `why`: nothing was asked. A bench's
       * ask whose checks do not read, or are not read here, is `Unread(Unchecked)`.
       */
     case Unread(why: Declassifying.Unread)
 
     /** Its recorded form: `capped`, `model`, `store`, `uncleared`, `ended`, `changed`
-      * (StrandChanged), or `unread:lapsed`, `unread:unchecked`, `unread:unpieced`.
+      * (StrandChanged), `unsorted`, or `unread:lapsed`, `unread:unchecked`, `unread:unpieced`.
       */
     def key: String = this match {
       case Capped => "capped"
@@ -130,6 +140,7 @@ private[moves] object AskMade {
       case Uncleared => "uncleared"
       case Ended => "ended"
       case StrandChanged => "changed"
+      case Unsorted => "unsorted"
       case Unread(Declassifying.Unread.Lapsed) => "unread:lapsed"
       case Unread(Declassifying.Unread.Unchecked) => "unread:unchecked"
       case Unread(Declassifying.Unread.Unpieced) => "unread:unpieced"
@@ -140,7 +151,7 @@ private[moves] object AskMade {
 
     /** The kind whose [[Kind.key]] is `key`; `None` for any other text. */
     def read(key: String): Option[Kind] =
-      (Vector(Capped, Model, Store, Uncleared, Ended, StrandChanged) ++
+      (Vector(Capped, Model, Store, Uncleared, Ended, StrandChanged, Unsorted) ++
         Declassifying.Unread.values.toVector.map(Unread(_))).find(_.key == key)
   }
 
@@ -154,6 +165,11 @@ private[moves] object AskMade {
       estimate: Tokens,
       upstream: Option[String] = None
   )
+
+  /** What a sort's judgment read: `level`, the meet of the run's integrity and everything read;
+    * `asked`, the versions it asked about, in the order asked.
+    */
+  final case class Sorted(level: Integrity, asked: Vector[DocumentVersionId])
 }
 
 /** What a call's `call:{n}` step came to. */
@@ -213,6 +229,10 @@ private[moves] object CallMade {
   *     an answer as [[grit.core.classify.AnswersJson]] writes it, or
   *     `{"unjudged":{"digest":d,"why":w,"model":m,"usage":u,"estimate":e}}`, or refused as
   *     above;
+  *   - a sort's `ask:{n}` ([[grit.core.act.Dreaming.sort]]): a judgment's, under its
+  *     [[sorting]] digest, its `judged` holding `"level":i,"shown":[v…]` after `at`, what it
+  *     read and the versions it asked about; or `{"refused":"changed"|"unsorted","why":w,
+  *     "digest":d}` when it read no item or no candidate. Never the text it read;
   *   - a workflow's judgment's `ask:{n}` ([[posed]]): `{"made":b,"calls":[c…],"at":l}`, `b`
   *     what it made in its own journaled form, `at` only when its pose was asked of a
   *     classifier or model (a record without it reads with no label);
@@ -324,6 +344,51 @@ object MovesJournal {
     case s"v1:$_" | s"v2:$_" =>
       recorded == strands(seen, shown, system, chars, documentChars, schema)
     case _ => false
+  }
+
+  /** The digest of a sort of `item` among `among` by `sorting`, v1: its item (a strand's root,
+    * [[grit.core.stitch.StrandDigest]] and `asOf`, or a document's version), the versions of
+    * `among` in order, then the sorting: its kind, instructions, `chars` and `documentChars`,
+    * and a choice's fixed criteria's keys and descriptions in order, or a yes/no's meanings and
+    * how many it asks. What it read is not in it: the digests and versions stand for that.
+    */
+  def sorting(
+      item: Dreaming.Item,
+      among: Vector[DocumentVersionId],
+      sorting: Sorting[?, ?]
+  ): String = v1(sortingForm(item, among, sorting))
+
+  /** As [[sameAsk]], for a sort ([[sorting]]). */
+  def sameSorting(
+      recorded: String,
+      item: Dreaming.Item,
+      among: Vector[DocumentVersionId],
+      sorting: Sorting[?, ?]
+  ): Boolean = recorded match {
+    case s"v1:$_" => recorded == this.sorting(item, among, sorting)
+    case _ => false
+  }
+
+  /** v1's canonical form of a sort, which [[sorting]] hashes. */
+  private[moves] def sortingForm(
+      item: Dreaming.Item,
+      among: Vector[DocumentVersionId],
+      sorting: Sorting[?, ?]
+  ): String = {
+    def version(v: DocumentVersionId) = text(DocumentVersionId.value(v).toString)
+    "sort" + (item match {
+      case Dreaming.Item.Discussion(s) =>
+        "d" + text(ConversationId.value(s.root)) + text(StrandDigest.value(s.digest)) +
+          text(s.asOf.toString)
+      case Dreaming.Item.Document(v) => "v" + version(v)
+    }) + count(among.size) + among.map(version).mkString + (sorting match {
+      case c: Sorting.Choosing[?] =>
+        "c" + text(c.instructions) + count(c.chars) + count(c.documentChars) +
+          count(c.fixed.size) + c.fixed.map(f => text(f.key) + optional(f.description)).mkString
+      case e: Sorting.Each[?] =>
+        "e" + text(e.instructions) + text(e.yes) + text(e.no) + count(e.chars) +
+          count(e.documentChars) + count(e.most)
+    })
   }
 
   /** As [[sameAsk]], for a judgment. */
@@ -1078,11 +1143,19 @@ object MovesJournal {
           "calls" -> ujson.Arr.from(calls.map(writeCost))
         )
       )
-    case AskMade.Judged(digest, answers, at, call) =>
+    case AskMade.Judged(digest, answers, at, call, sorted) =>
       ujson.Obj(
         "judged" -> ujson.Obj.from(
           Vector("digest" -> ujson.Str(digest), "answers" -> ujson.read(answers)) ++
-            costFields(call) :+ ("at" -> Label.written(at))
+            costFields(call) ++ Vector[(String, ujson.Value)]("at" -> Label.written(at)) ++
+            sorted.toVector.flatMap(s =>
+              Vector[(String, ujson.Value)](
+                "level" -> Integrity.written(s.level),
+                "shown" -> ujson.Arr.from(
+                  s.asked.map(v => ujson.Num(DocumentVersionId.value(v).toDouble))
+                )
+              )
+            )
         )
       )
     case AskMade.Unjudged(digest, why, call) =>
@@ -1113,7 +1186,15 @@ object MovesJournal {
             answers <- f.get("answers").toRight("ask: no answers").map(ujson.write(_))
             at <- str(f, "at").flatMap(Label.read)
             call <- cost(f)
-          } yield AskMade.Judged(digest, answers, at, call)
+            sorted <- f.get("level") match {
+              case None => Right(None)
+              case Some(l) =>
+                for {
+                  level <- l.strOpt.toRight("ask: level is not text").flatMap(Integrity.read)
+                  asked <- versions(f)
+                } yield Some(AskMade.Sorted(level, asked))
+            }
+          } yield AskMade.Judged(digest, answers, at, call, sorted)
         case _ if o.contains("unjudged") =>
           for {
             f <- fields(o("unjudged"), "ask.unjudged")

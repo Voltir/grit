@@ -285,6 +285,25 @@ trait Dreaming extends Keeping {
       summary: Tainted[Dreaming.Summary[T]]
   ): Either[MoveError, Option[Dreaming.Summarised[T]]]
 
+  /** As [[ask]] of a judgment about `item`, made in this move's own step, which reads `item`
+    * and each of `among` itself: a discussion as [[summarise]] shows it within `sorting`'s
+    * `chars`, a document as its text's head within `documentChars`, each of `among` so too.
+    * Only documents of the job's plugin or its needs that the transaction reads are read; one
+    * that is not is left out and not asked about ([[Dreaming.Sorted.among]] names those that
+    * were). `None`, asking nothing, when `item`'s messages are not the ones its scan digested,
+    * `item` is a document not read, or no candidate is left to ask about while `sorting` asks
+    * of candidates alone ([[Sorting.each]]). The answer is believed at the meet of `sorting`
+    * and everything read, and held at no more than its label; the classifier is asked only
+    * when cleared for it. Counts as one judgment either way. Recorded by ids and a digest,
+    * never the text.
+    */
+  def sort[C <: caps.Pure, R](
+      name: MoveName,
+      item: Dreaming.Item,
+      among: Vector[(C, DocumentVersionId)],
+      sorting: Tainted[Sorting[C, R]]
+  ): Either[MoveError, Option[Dreaming.Sorted[R]]]
+
   /** `source`, a document of the acting plugin or one of its needs, rewritten under `applied`
     * from the text of its file at `revision` (as its plugin's pieces of it name it,
     * [[grit.core.files.PiecedFile.revision]]), and screened. It is asked as a [[Posed.Text]] of
@@ -498,6 +517,15 @@ object Dreaming {
 
   /** A summary's reply, and the versions of `shown` it was shown, in their order. */
   final case class Summarised[T](asked: Asked[T], shown: Vector[DocumentVersionId])
+
+  /** What a sort places: a strand as its scan digested it, or one document version. */
+  enum Item extends caps.Pure {
+    case Discussion(seen: Strand.Digested)
+    case Document(version: DocumentVersionId)
+  }
+
+  /** A sort's answer, and the versions of `among` it was asked about, in the order asked. */
+  final case class Sorted[R](asked: Asked[R], among: Vector[DocumentVersionId])
 
   /** A summary's ask: `system`; the most characters of each strand shown (`chars`) and of each
     * document (`documentChars`); and the reply it reads as.

@@ -160,6 +160,28 @@ object DurableMovesTests extends MovesContract {
     (got, requests.map(r => (r.system, r.messages.collect { case Message.User(t) => t })))
   }
 
+  def sorting[A <: caps.Pure](
+      limits: MoveLimits,
+      world: StrandWorld,
+      integrity: Integrity,
+      shelves: MovesContract.Shelves
+  )(
+      use: Dreaming^ -> A
+  ): (A, Vector[(ujson.Value, Vector[Question])]) = {
+    val w =
+      new MovesWorld(broken = false, MovesContract.Floor, integrity, documents = shelves.documents)
+    val judging = new Judging()
+    val (got, _) = w.answering(
+      limits,
+      world,
+      shelves.needs,
+      MovesContract.Answer,
+      judging,
+      DurableMoves.Within
+    )(use)
+    (got, judging.states.zip(judging.asked))
+  }
+
   def declassifying[A <: caps.Pure](
       limits: MoveLimits,
       shelves: MovesContract.Shelves,
@@ -198,7 +220,8 @@ object DurableMovesTests extends MovesContract {
   * [[MovesContract.Tool]] that claims, answers `answer` (done, [[MovesContract.Read]]) and rings
   * each request as it is written, and the documents of [[MovesWorld.Notes]]. Its every
   * transaction and read is opened at `floor`, and [[MovesContract.Probe]], its summary model and
-  * its classifier are cleared for `floor`; what is said at its places is capped by `capped`
+  * its classifier are cleared for `floor` (the classifier for `judgedAt`, when given); what is
+  * said at its places is capped by `capped`
   * ([[MovesContract.Probe]]'s at [[MovesContract.ProbeOutput]]). When `broken`, the day's spend
   * cannot be read, and the acting's allowance is daily, so every ask's admission fails. Its run
   * starts believed at `integrity`, and its places are labelled by `rooms`; its pieces, kept by
@@ -213,7 +236,8 @@ final class MovesWorld(
     rooms: RoomLabels = RoomLabels.Public,
     val documents: InMemoryDocuments = new InMemoryDocuments,
     compartments: Compartments = Compartments.Shipped,
-    val pieces: InMemoryPieces = new InMemoryPieces
+    val pieces: InMemoryPieces = new InMemoryPieces,
+    judgedAt: Option[Label] = None
 ) extends caps.SharedCapability {
   import MovesContract.*
   import MovesWorld.*
@@ -230,8 +254,11 @@ final class MovesWorld(
           // The world's summary model is cleared for what it knows.
           Cleared(Party.of(Summary).getOrElse(sys.error("no upstream")), floor),
           Cleared(Party.of(Dream).getOrElse(sys.error("no upstream")), floor),
-          // The world's classifier is cleared for what it knows.
-          Cleared(Party.Service(grit.core.classify.TestClassifiers.Service), floor)
+          // The world's classifier is cleared for what it knows, unless `judgedAt` says less.
+          Cleared(
+            Party.Service(grit.core.classify.TestClassifiers.Service),
+            judgedAt.getOrElse(floor)
+          )
         ),
         caps = capped
       )

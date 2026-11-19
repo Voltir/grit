@@ -108,6 +108,29 @@ final class ScriptedDreaming(
     }
   }
 
+  def sort[C <: caps.Pure, R](
+      name: MoveName,
+      item: Dreaming.Item,
+      among: Vector[(C, DocumentVersionId)],
+      sorting: Tainted[Sorting[C, R]]
+  ): Either[MoveError, Option[Dreaming.Sorted[R]]] =
+    Sorting.read(
+      item,
+      among,
+      Trusted.asIs(sorting).extract,
+      reads.excerpts,
+      reads.documents,
+      plugin +: needs.plugins,
+      sorting.integrity.meet(integrity)
+    )(using opened) match {
+      case Left(e) =>
+        making(name, MoveKind.Judge, limits.judgments)(Left(MoveError.Store(e.described)))
+      case Right(Left(_)) => making(name, MoveKind.Judge, limits.judgments)(Right(None))
+      case Right(Right(p)) =>
+        ask(name, TestTainted.at(p.posed, p.level))
+          .map(a => Some(Dreaming.Sorted(a, p.asked)))
+    }
+
   protected def declassifier: Option[Declassifying.Raising^] =
     Some(TestTainted.raise(Declassified.declassification))
 

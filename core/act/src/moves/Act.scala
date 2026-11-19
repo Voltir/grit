@@ -24,7 +24,8 @@ import grit.core.act.{
   MoveName,
   Pieced,
   Piecing,
-  Posed
+  Posed,
+  Sorting
 }
 import grit.core.classify.{AnswersJson, Ask, ClassifierError, Reply, Request}
 import grit.core.clock.Clock
@@ -165,6 +166,21 @@ private[moves] object Act {
       chars: Int,
       documentChars: Int,
       reply: Typed[T],
+      excerpts: StrandExcerpts,
+      documents: DocumentSearch,
+      readable: Vector[PluginName],
+      digest: String
+  ) extends Acted
+
+  /** The sort `name` of `item` among `among` by `sorting`: what it reads read through
+    * `excerpts` and `documents`, only documents of a plugin of `readable`, under `digest`.
+    */
+  final case class Sort[C <: caps.Pure, R](
+      name: MoveName,
+      acting: Acting,
+      item: Dreaming.Item,
+      among: Vector[(C, DocumentVersionId)],
+      sorting: Sorting[C, R],
       excerpts: StrandExcerpts,
       documents: DocumentSearch,
       readable: Vector[PluginName],
@@ -506,6 +522,41 @@ private[moves] object Act {
     import MovesJournal.given
     Step[MovesEnv, Judgment[T], AskMade](Asks.move)(env =>
       j => judged(env, j.acting, j.request, j.questions, j.digest)
+    )
+  }
+
+  /** A sort's `ask:{n}`: its item and candidates read in one transaction for its acting's
+    * subject ([[Sorting.read]]), then, when there is something to ask, judged as
+    * [[judgment]]'s are, its record holding what it read
+    * ([[AskMade.Sorted]]); refused `changed` when the item's strand changed since its scan, and
+    * `unsorted` when its item, or every candidate a yes/no sorting asks of, was not read.
+    */
+  def sort[C <: caps.Pure, R]: Step[MovesEnv, Sort[C, R], AskMade] = {
+    import MovesJournal.given
+    Step[MovesEnv, Sort[C, R], AskMade](Asks.move)(env =>
+      s =>
+        env.db.read(s.acting.subject)(
+          Sorting.read(
+            s.item,
+            s.among,
+            s.sorting,
+            s.excerpts,
+            s.documents,
+            s.readable,
+            s.acting.integrity
+          )
+        ) match {
+          case Left(e) => AskMade.Refused(AskMade.Kind.Store, e.described, s.digest)
+          case Right(Left(Sorting.Unasked.Changed)) =>
+            AskMade.Refused(AskMade.Kind.StrandChanged, Changed, s.digest)
+          case Right(Left(Sorting.Unasked.Unread)) =>
+            AskMade.Refused(AskMade.Kind.Unsorted, Unsorted, s.digest)
+          case Right(Right(p)) =>
+            judged(env, s.acting, p.request, p.questions, s.digest) match {
+              case j: AskMade.Judged => j.copy(sorted = Some(AskMade.Sorted(p.level, p.asked)))
+              case other => other
+            }
+        }
     )
   }
 
@@ -983,6 +1034,8 @@ private[moves] object Act {
   private val Nobody = "There is nobody to make this call for, so it did not run."
 
   private val Changed = "its strand's messages changed since its scan"
+
+  private val Unsorted = "it read nothing to place, or nothing to place it among"
 
   private[moves] val Capped = "The day's spend reached its cap, so no model was asked."
 

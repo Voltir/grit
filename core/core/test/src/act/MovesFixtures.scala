@@ -104,9 +104,9 @@ object MovesFixtures {
   }
 
   /** A classifier answering each request with the next of `script` (the last again once they
-    * run out), counting its calls and keeping each request's state in [[states]]. With no
-    * script, it answers each question of its kind, at [[Judged]]'s cost: a choice its first key,
-    * wholly; a yes/no [[Yes]]; a score its first level, wholly.
+    * run out), counting its calls and keeping each request's state in [[states]] and its
+    * questions in [[asked]]. With no script, it answers each question as [[fitting]] does, at
+    * [[Judged]]'s cost.
     */
   final class Judging(script: Vector[Either[ClassifierError, Answers]] = Vector())
       extends Classifier {
@@ -115,6 +115,8 @@ object MovesFixtures {
     var calls = 0
     @caps.unsafe.untrackedCaptures
     var states: Vector[ujson.Value] = Vector()
+    @caps.unsafe.untrackedCaptures
+    var asked: Vector[Vector[Question]] = Vector()
     protected def answer(
         state: ujson.Value,
         questions: Vector[Question]
@@ -122,6 +124,7 @@ object MovesFixtures {
       val i = calls
       calls += 1
       states = states :+ state
+      asked = asked :+ questions
       script
         .lift(i)
         .orElse(script.lastOption)
@@ -135,7 +138,10 @@ object MovesFixtures {
   /** What every call of a [[Judging]] costs. */
   val Judged: Usage = Usage(Tokens(300), Tokens.Zero, Tokens.Zero, Some(BigDecimal("0.000013")))
 
-  private def fitting(q: Question): Answer = q match {
+  /** An unscripted classifier's answer to `q`: a choice its first key, wholly; a yes/no [[Yes]];
+    * a score its first level, wholly.
+    */
+  def fitting(q: Question): Answer = q match {
     case c: Question.Choice =>
       val weights =
         c.keys.zipWithIndex.map((k, i) => Answer.Weight(k.name, if (i == 0) 1.0 else 0.0))

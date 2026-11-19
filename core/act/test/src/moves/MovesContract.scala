@@ -17,9 +17,18 @@ import grit.core.act.{
   MovesFixtures,
   Pieced,
   Piecing,
-  Posed
+  Posed,
+  Sorting
 }
-import grit.core.classify.{Answer as Judged, Ask, ClassifierError, StateJson}
+import grit.core.classify.{
+  Answer as Judged,
+  Ask,
+  ClassifierError,
+  Criterion,
+  Decision,
+  Question,
+  StateJson
+}
 import grit.core.document.{
   Declassified,
   DocLabel,
@@ -124,6 +133,19 @@ abstract class MovesContract extends TestSuite {
   )(
       use: Dreaming^ -> A
   ): (A, Vector[(String, Vector[String])])
+
+  /** What `use` returns, given moves as [[dreaming]]'s, whose judgments' classifier answers each
+    * question as `grit.core.act.MovesFixtures.fitting` does, at [[Floor]]; and each judgment's
+    * state and questions, as the classifier was sent them, in order.
+    */
+  def sorting[A <: caps.Pure](
+      limits: MoveLimits,
+      world: StrandWorld,
+      integrity: Integrity = Integrity.Authority,
+      shelves: Shelves = Shelves()
+  )(
+      use: Dreaming^ -> A
+  ): (A, Vector[(ujson.Value, Vector[Question])])
 
   /** What `use` returns, given moves as [[dreaming]]'s within `limits` over `shelves` and no
     * strands, every transaction opened at [[Declassing]]: the first text ask's model replying
@@ -726,6 +748,201 @@ abstract class MovesContract extends TestSuite {
             )
           )
         )
+      )
+    }
+
+    test("a sort asks about each candidate it reads, cut at the sorting's characters") {
+      val (w, root) = strand()
+      val seen =
+        one(StrandWorld.right(w.shelf.of(Vector(root), StrandWorld.at(600))(using TestTx.fake)))
+      val shelves = Shelves(needed = Vector(Cards))
+      declared(shelves)
+      val own =
+        put(shelves, MovesWorld.Notes, "n", "the release slipped to friday", Integrity.Member)
+      val card = put(shelves, Cards.name, "c", "deploys", Integrity.Member)
+      val (got, sent) =
+        sorting(MoveLimits.of(0, 0, 1).fold(sys.error, identity), w, shelves = shelves)(m =>
+          Seen(
+            Vector(
+              sorted(
+                m,
+                "s",
+                Dreaming.Item.Discussion(seen),
+                Vector(Pick("c") -> card, Pick("n") -> own),
+                Choosing
+              )(d => s"${d.choice.of} ${d.top}")
+            )
+          )
+        )
+      (got, asked(sent)) ==> (
+        Seen(
+          Vector(
+            Right(
+              s"c 1.0 at outside among ${DocumentVersionId.value(card)},${DocumentVersionId.value(own)}"
+            )
+          )
+        ),
+        Vector(
+          """{"item":{"kind":"discussion","text":"Someone: the deploy is stuck\n…"}}""" +
+            " | Which topic is this discussion part of? [1: deploys] [2: the release slipped…]" +
+            " [new: A matter none of these covers.] [aside]"
+        )
+      )
+    }
+
+    test(
+      "a sort of a strand changed since its scan asks nothing and is None, counted as one judgment, its name spent"
+    ) {
+      val (w, root) = strand()
+      val seen =
+        one(StrandWorld.right(w.shelf.of(Vector(root), StrandWorld.at(600))(using TestTx.fake)))
+      val (got, sent) = sorting(MoveLimits.of(0, 0, 2).fold(sys.error, identity), w) { m =>
+        w.say(w.thread("C1", "2.0"), "yes", 120)
+        def sort(n: String) =
+          sorted(m, n, Dreaming.Item.Discussion(seen), Vector(), Choosing)(_.choice.of)
+        Seen(Vector(sort("s"), sort("s"), sort("t"), sort("u")))
+      }
+      (got, sent) ==> (
+        Seen(
+          Vector(
+            Right("none"),
+            Left(MoveError.Repeated(name("s"))),
+            Right("none"),
+            Left(MoveError.OverLimit(MoveKind.Judge, 2))
+          )
+        ),
+        Vector()
+      )
+    }
+
+    test(
+      "a candidate the run does not read is not asked about: one gone, above its clearance or of a plugin neither its own nor needed"
+    ) {
+      val (w, root) = strand()
+      val seen =
+        one(StrandWorld.right(w.shelf.of(Vector(root), StrandWorld.at(600))(using TestTx.fake)))
+      val shelves = Shelves(needed = Vector(Cards))
+      declared(shelves)
+      val gone = DocumentVersionId.of(999).getOrElse(throw new java.lang.AssertionError("version"))
+      val above = put(
+        shelves,
+        Cards.name,
+        "secret",
+        "the merger",
+        Integrity.Member,
+        Label.at(Level.Restricted),
+        Label.at(Level.Restricted)
+      )
+      val other = put(shelves, Others.name, "o", "elsewhere", Integrity.Member)
+      val card = put(shelves, Cards.name, "c", "deploys", Integrity.Member)
+      val among =
+        Vector(Pick("g") -> gone, Pick("a") -> above, Pick("o") -> other, Pick("c") -> card)
+      val (got, sent) =
+        sorting(MoveLimits.of(0, 0, 2).fold(sys.error, identity), w, shelves = shelves)(m =>
+          Seen(
+            Vector(
+              sorted(m, "s", Dreaming.Item.Discussion(seen), among, Choosing)(_.choice.of),
+              sorted(m, "t", Dreaming.Item.Document(other), among, Choosing)(_.choice.of)
+            )
+          )
+        )
+      (got, asked(sent).map(_.split(" \\| ").last)) ==> (
+        Seen(Vector(Right(s"c at outside among ${DocumentVersionId.value(card)}"), Right("none"))),
+        Vector(
+          "Which topic is this discussion part of? [1: deploys] [new: A matter none of these covers.] [aside]"
+        )
+      )
+    }
+
+    test("a sort is believed at the meet of what it read: a candidate believed less caps it") {
+      def believed(candidate: Integrity, sorting: Integrity) = {
+        val (w, root) = strand(Integrity.Member)
+        val seen =
+          one(StrandWorld.right(w.shelf.of(Vector(root), StrandWorld.at(600))(using TestTx.fake)))
+        val shelves = Shelves(needed = Vector(Cards))
+        declared(shelves)
+        val card = put(shelves, Cards.name, "c", "deploys", candidate)
+        this
+          .sorting(limits(1, 0), w, shelves = shelves)(m =>
+            Seen(
+              Vector(
+                sorted(
+                  m,
+                  "s",
+                  Dreaming.Item.Discussion(seen),
+                  Vector(Pick("c") -> card),
+                  Choosing,
+                  sorting
+                )(
+                  _.choice.of
+                )
+              )
+            )
+          )
+          ._1
+          .moves
+          .map(_.map(_.split(" among").head))
+      }
+      val (a, m, o) = (Integrity.Authority, Integrity.Member, Integrity.Outside)
+      Vector(believed(a, m), believed(o, m), believed(a, o)) ==>
+        Vector("c at member", "c at outside", "c at outside").map(s => Vector(Right(s)))
+    }
+
+    test(
+      "a yes/no sort asks of the candidates whose text the item's words match best, at most its nearest, each with its text, read likeliest first"
+    ) {
+      val (w, root) = strand()
+      val seen =
+        one(StrandWorld.right(w.shelf.of(Vector(root), StrandWorld.at(600))(using TestTx.fake)))
+      val shelves = Shelves(needed = Vector(Cards))
+      declared(shelves)
+      val lunch = put(shelves, Cards.name, "l", "the lunch menu", Integrity.Member)
+      val deploys = put(shelves, Cards.name, "d", "deploys stay stuck", Integrity.Member)
+      val stuck = put(shelves, Cards.name, "s", "the deploy is stuck", Integrity.Member)
+      val among = Vector(Pick("l") -> lunch, Pick("d") -> deploys, Pick("s") -> stuck)
+      val (got, sent) = sorting(limits(1, 0), w, shelves = shelves)(m =>
+        Seen(
+          Vector(
+            sorted(m, "s", Dreaming.Item.Discussion(seen), among, Nearest(2))(
+              _.map(x => s"${x.value.of}:${x.probability}").mkString(",")
+            )
+          )
+        )
+      )
+      (got, asked(sent).map(_.split(" \\| ").drop(1).mkString(" | "))) ==> (
+        Seen(
+          Vector(
+            Right(
+              s"s:${MovesFixtures.Yes},d:${MovesFixtures.Yes} at outside among " +
+                s"${DocumentVersionId.value(stuck)},${DocumentVersionId.value(deploys)}"
+            )
+          )
+        ),
+        Vector(
+          "Is this file about this topic?\n\nthe deploy is stuck (It is./It is not.)" +
+            " | Is this file about this topic?\n\ndeploys stay stuck (It is./It is not.)"
+        )
+      )
+    }
+
+    test("a yes/no sort with no candidate read asks nothing and is None, counted as a judgment") {
+      val (w, root) = strand()
+      val seen =
+        one(StrandWorld.right(w.shelf.of(Vector(root), StrandWorld.at(600))(using TestTx.fake)))
+      val gone = DocumentVersionId.of(999).getOrElse(throw new java.lang.AssertionError("version"))
+      val (got, sent) = sorting(MoveLimits.of(0, 0, 1).fold(sys.error, identity), w)(m =>
+        Seen(
+          Vector(
+            sorted(m, "s", Dreaming.Item.Discussion(seen), Vector(Pick("g") -> gone), Nearest(2))(
+              _.size.toString
+            ),
+            sorted(m, "t", Dreaming.Item.Discussion(seen), Vector(), Choosing)(_.choice.of)
+          )
+        )
+      )
+      (got, sent) ==> (
+        Seen(Vector(Right("none"), Left(MoveError.OverLimit(MoveKind.Judge, 1)))),
+        Vector()
       )
     }
 
@@ -1496,6 +1713,70 @@ object MovesContract {
 
   /** The most characters of each document a contract's summary shows. */
   val DocumentChars: Int = 20
+
+  /** The one strand of `seen`. */
+  def one(seen: Vector[Strand.Digested]): Strand.Digested =
+    seen match {
+      case Vector(s) => s
+      case other => throw new java.lang.AssertionError(s"not one strand: $other")
+    }
+
+  /** A sort's candidate, or one of its fixed criteria, by name. */
+  final case class Pick(of: String) extends caps.Pure
+
+  /** A choice among the candidates, then `new` and `aside`: a discussion shown within 30
+    * characters, a document within [[DocumentChars]].
+    */
+  val Choosing: Sorting[Pick, Decision[Pick]] = Sorting
+    .choice(
+      "Which topic is this discussion part of?",
+      30,
+      DocumentChars,
+      Criterion(Pick("new"), "new", Some("A matter none of these covers.")),
+      Criterion(Pick("aside"), "aside", None)
+    )
+    .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+
+  /** A yes/no of the `n` nearest candidates, shown as [[Choosing]] shows them. */
+  def Nearest(n: Int): Sorting[Pick, Vector[Decision.Weight[Pick]]] = Sorting
+    .each[Pick]("Is this file about this topic?", "It is.", "It is not.", 30, DocumentChars, n)
+    .fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** The sort `n` of `item` among `among` through `m`, by `sorting` believed at `believed`: its
+    * answer as `show` writes it, what it is believed at, and the versions it asked about; or
+    * "none" when nothing was asked.
+    */
+  def sorted[R](
+      m: Dreaming^,
+      n: String,
+      item: Dreaming.Item,
+      among: Vector[(Pick, DocumentVersionId)],
+      sorting: Sorting[Pick, R],
+      believed: Integrity = Believed
+  )(show: R -> String): Either[MoveError, String] =
+    m.sort(name(n), item, among, TestTainted.at(sorting, believed))
+      .map(
+        _.fold("none")(s =>
+          s"${show(replied(s.asked))} at ${Integrity.written(s.asked.reply.integrity)} among " +
+            s.among.map(DocumentVersionId.value).mkString(",")
+        )
+      )
+
+  /** Each judgment as its classifier was sent it: its state, then each question's words and its
+    * keys with what they mean, or what yes and no mean.
+    */
+  def asked(sent: Vector[(ujson.Value, Vector[Question])]): Vector[String] =
+    sent.map(s => ujson.write(s._1) + s._2.map(question).mkString)
+
+  /** `q` as [[asked]] writes it. */
+  private def question(q: Question): String = q match {
+    case c: Question.Choice =>
+      " | " + c.instructions + c.keys
+        .map(k => s" [${k.name}${k.description.fold("")(d => s": $d")}]")
+        .mkString
+    case Question.YesNo(i, yes, no) => s" | $i (${yes.getOrElse("")}/${no.getOrElse("")})"
+    case s: Question.Score => " | " + s.instructions
+  }
 
   /** Terms labelling a plugin's documents `label`. */
   def terms(label: String): DocumentTerms =
