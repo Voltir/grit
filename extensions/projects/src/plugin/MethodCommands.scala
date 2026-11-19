@@ -216,7 +216,7 @@ private[plugin] final class MethodCommands(checks: Vector[TransitionCheck], meth
   /** Nothing when `by` moves as [[Mover.Person]] ([[ProjectCommands.moverOf]]); else a refusal. */
   private def direct(by: CommandBy): Either[Stop, Unit] = moverOf(by) match {
     case Mover.Person => Right(())
-    case Mover.Agent =>
+    case Mover.Other =>
       Left(
         Stop.Refused(
           s"A method is declared only by $PersonOnlyBy. Ask a person to declare it from the " +

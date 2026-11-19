@@ -94,7 +94,7 @@ object MethodJson {
               ),
               "by",
               m.by match {
-                case Mover.Agent => None
+                case Mover.Other => None
                 case Mover.Person => Some(PersonMover)
               }
             )
@@ -295,7 +295,7 @@ object MethodJson {
       expect <- f.field("expect").flatMap(e => expect(Fields(s"${f.what}'s expect", e)))
       named <- f.addedStr("by")
       by <- named match {
-        case None | Some(AgentMover) => Right(Mover.Agent)
+        case None | Some(AgentMover) => Right(Mover.Other)
         case Some(PersonMover) => Right(Mover.Person)
         case Some(other) => Left(s"${f.what}'s by $other is neither $AgentMover nor $PersonMover")
       }

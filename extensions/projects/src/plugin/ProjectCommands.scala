@@ -3419,11 +3419,11 @@ private[plugin] object ProjectCommands {
   }
 
   /** Who `by` moves as ([[Mover]]): a person when a direct caller believed at `Authority` or
-    * more, else an agent (a turn, or a caller believed lower).
+    * more, else another (a turn, or a caller believed lower).
     */
   private[plugin] def moverOf(by: CommandBy): Mover = by match {
     case CommandBy.Direct(_, believed) if believed.dominates(Integrity.Authority) => Mover.Person
-    case _ => Mover.Agent
+    case _ => Mover.Other
   }
 
   /** Who [[moverOf]] moves as a person, in the words of every refusal that names the rule. */

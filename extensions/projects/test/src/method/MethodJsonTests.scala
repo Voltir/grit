@@ -226,7 +226,7 @@ object MethodJsonTests extends TestSuite {
         val json = MethodJson.written(method, Vector(example(by)))
         (json("transitions")(0).obj.get("movers"), json("examples")(0)("moves")(0).obj.get("by"))
       }
-      (written(m, Mover.Agent), written(people, Mover.Person)) ==> (
+      (written(m, Mover.Other), written(people, Mover.Person)) ==> (
         (None, None),
         (Some(ujson.Str("people")), Some(ujson.Str("person")))
       )
