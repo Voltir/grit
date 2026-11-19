@@ -39,6 +39,77 @@ object ProjectMarkdown {
       )
     )) +: project.artifacts.map(file)
 
+  /** A project of the old form (ADR 0063), before ids, as [[render]] wrote it then, byte for
+    * byte, from what its documents hold: `stored`, each artifact's store key and data. It is
+    * what a project is backed up as before its re-key. Or why not, naming the key: data that is
+    * not an old-form artifact's (its head with no id, its body prose's stored form).
+    */
+  def oldForm(
+      project: ProjectKey,
+      pin: Pin,
+      stored: Vector[(String, ujson.Value)]
+  ): Either[String, Vector[(String, String)]] = {
+    def text(head: collection.Map[String, ujson.Value], field: String): Either[String, String] =
+      head.get(field).flatMap(_.strOpt).toRight(s"its head holds no $field")
+    def nullable(head: collection.Map[String, ujson.Value], field: String)(
+        shown: String => String
+    ): Either[String, String] = head.get(field) match {
+      case Some(ujson.Str(v)) => Right(shown(v))
+      case Some(ujson.Null) | None => Right("null")
+      case Some(other) => Left(s"its $field is ${other.render()}")
+    }
+    val index = Index -> front(
+      Vector(
+        "key" -> ProjectKey.value(project),
+        "method" -> MethodName.value(pin.method),
+        "version" -> pin.version.toString,
+        "digest" -> pin.digest.hex
+      )
+    )
+    stored
+      .foldLeft[Either[String, Vector[(String, String)]]](Right(Vector(index))) {
+        case (so, (key, data)) =>
+          so.flatMap { done =>
+            (for {
+              head <- data.objOpt
+                .flatMap(_.get("head"))
+                .flatMap(_.objOpt)
+                .toRight("it holds no head")
+              _ <-
+                if (head.contains("id")) Left("it has an id: it is not of the old form")
+                else Right(())
+              kind <- text(head, "kind")
+              state <- text(head, "state")
+              title <- text(head, "title")
+              parent <- nullable(head, "parent")(identity)
+              cites <- head
+                .get("cites")
+                .flatMap(_.arrOpt)
+                .toRight("its head holds no cites")
+                .flatMap { cs =>
+                  Try(cs.map(_.str).mkString("[", ", ", "]")).toOption
+                    .toRight("its cites are not keys")
+                }
+              by <- nullable(head, "by")(quoted)
+              body <- data.objOpt.flatMap(_.get("body")).toRight("it holds no body")
+              markdown <- Body.oldFormMarkdown(body)
+            } yield s"$key.md" -> (front(
+              Vector(
+                "key" -> key,
+                "kind" -> kind,
+                "state" -> state,
+                "title" -> quoted(title),
+                "parent" -> parent,
+                "cites" -> cites,
+                "by" -> by
+              )
+            ) + "\n" + markdown + "\n")).left
+              .map(why => s"$key cannot be exported: $why")
+              .map(done :+ _)
+          }
+      }
+  }
+
   /** `artifact`'s file as [[render]] writes it: its path, and its text. */
   def file(artifact: Artifact): (String, String) =
     s"${artifact.head.key.value}.md" -> filed(artifact.head, None, Body.markdown(artifact.body))

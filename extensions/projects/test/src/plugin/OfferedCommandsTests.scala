@@ -79,6 +79,7 @@ object OfferedCommandsTests extends TestSuite {
         "project_withdraw",
         "project_sweep",
         "project_migrate",
+        "project_rekey",
         "project_declare"
       )
       listed.toSet ==> (reading.map(_ -> true) ++ keeping.map(_ -> false))
