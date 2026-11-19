@@ -9,7 +9,6 @@ import scala.util.control.NonFatal
 import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnRef, TurnSeq}
 import grit.core.place.Place
 import grit.core.store.{Entry, EntryStore, PayloadJson, StoreError, Tx}
-import grit.core.visibility.Integrity
 
 import org.postgresql.util.PSQLException
 
