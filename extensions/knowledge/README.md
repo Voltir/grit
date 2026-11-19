@@ -87,9 +87,7 @@ Packages, in one-way order (each names only those before it):
   `DeclassifiedCards`, the plugin of `CardDeclassify` on one schedule, needing that plugin,
   whose policies and their applications an operator sets by the SQL beside
   `grit.declassification_policies` and `grit.declassification_applications` in `schema.sql`; and
-  `StandingDocuments`, a plugin of its own over `standing`; and `Leaves`, which documents say
-  again what a topic was written from, read by the eval's duplication measure alone, since
-  the three plugins' key forms meet only here. Each is its own plugin because a
+  `StandingDocuments`, a plugin of its own over `standing`. Each is its own plugin because a
   plugin's documents share one label and one bound, and a sync holds every current document
   to be a card. Imports every package above.
 

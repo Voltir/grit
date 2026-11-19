@@ -201,17 +201,6 @@ object Standing {
       }
   }
 
-  /** The conversation whose closing `key` is the document of ([[key]]), or `None` when `key` is
-    * no Standing document's.
-    */
-  def conversation(key: DocKey): Option[ConversationId] =
-    DocKey.value(key) match {
-      case Keyed(c, _) => Some(ConversationId(c))
-      case _ => None
-    }
-
-  private val Keyed = "standing:(.+)/([0-9]+)".r
-
   /** `standing:{conversation}/{period}`: the document of the closing of that period. */
   private def key(closed: ClosedPeriod, period: PeriodSeq): Either[StoreError, DocKey] =
     DocKey
