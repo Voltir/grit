@@ -132,6 +132,28 @@ abstract class StitchContract extends TestSuite {
         .map(_.entry) ==> Vector(asked)
     }
 
+    test("inRooms reads messages, replies and posts only, oldest first") {
+      val top = conversation(Origin.Room("T", "in-rooms"))
+      val under = conversation(Origin.Thread("T", "in-rooms", "1.0"))
+      val legacy = thread("in-rooms", "2.0")
+      val post = say(top, Payload.Posted("The nightly report."), 10)
+      val answered = say(under, Payload.Message(reply), 30)
+      val heard = say(top, Payload.Heard("who is on call?"), 20)
+      val asked = say(under, Payload.Message(Message.User("me, until six")), 40)
+      say(under, Payload.Draft(reply), 50)
+      say(legacy, Payload.Heard("a legacy thread"), 25)
+      val ours = Set(top, under, legacy)
+      right(transaction(stitches.inRooms(At, At.plusSeconds(3_600))))
+        .filter(s => ours.contains(s.conversation))
+        .map(_.entry) ==> Vector(post, heard, answered, asked)
+      right(transaction(stitches.inRooms(At.plusSeconds(20), At.plusSeconds(40))))
+        .filter(s => ours.contains(s.conversation))
+        .map(_.entry) ==> Vector(heard, answered)
+      Vector(heard, asked, post, answered).map(e =>
+        right(transaction(stitches.asked(e.id))).map(_.entry)
+      ) ==> Vector(Some(heard), Some(asked), None, None)
+    }
+
     test("grit's post a thread begins with is its opening, said there and in its room") {
       val c = thread("posted", "1.0")
       val post = say(c, Payload.Posted("The engine's open issues."), 10)

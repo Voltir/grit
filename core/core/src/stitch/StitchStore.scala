@@ -44,6 +44,18 @@ trait StitchStore {
     */
   def openings(conversations: Vector[ConversationId])(using Tx^): Either[StoreError, Vector[Said]]
 
+  /** Each message, reply and post said in a channel's top level or a thread under it
+    * ([[grit.core.store.Origin.Room]], [[grit.core.store.Origin.Thread]]) from `from` until
+    * before `until` that its transaction reads, oldest first, as [[said]] reads them; no closing
+    * entry.
+    */
+  def inRooms(from: Instant, until: Instant)(using Tx^): Either[StoreError, Vector[Said]]
+
+  /** The person's message `id` names, heard or said to grit, when its transaction reads it;
+    * `None` for grit's own reply or post, any other entry, or none.
+    */
+  def asked(id: EntryId)(using Tx^): Either[StoreError, Option[Said]]
+
   /** Every link begun by, or naming as its root, any of `conversations`. */
   def links(conversations: Vector[ConversationId])(using Tx^): Either[StoreError, Vector[Link]]
 

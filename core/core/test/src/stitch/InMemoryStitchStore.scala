@@ -60,6 +60,30 @@ final class InMemoryStitchStore(entries: InMemoryEntryStore, origin: Conversatio
         .map(said)
     )
 
+  def inRooms(from: Instant, until: Instant)(using Tx^): Either[StoreError, Vector[Said]] =
+    Right(
+      inRange(from, until)
+        .filter(e =>
+          message(e) && (origin(e.conversationId) match {
+            case Origin.Room(_, _) | Origin.Thread(_, _, _) => true
+            case _ => false
+          })
+        )
+        .map(said)
+    )
+
+  def asked(id: EntryId)(using Tx^): Either[StoreError, Option[Said]] =
+    Right(
+      entries.readable
+        .find(e =>
+          e.id == id && (e.payload match {
+            case Payload.Heard(_) | Payload.Message(Message.User(_)) => true
+            case _ => false
+          })
+        )
+        .map(said)
+    )
+
   def openings(conversations: Vector[ConversationId])(using Tx^): Either[StoreError, Vector[Said]] =
     Right(
       conversations.flatMap(c =>

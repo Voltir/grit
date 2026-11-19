@@ -1,6 +1,6 @@
 package grit.core.store
 
-import grit.core.id.EdgeName
+import grit.core.id.{EdgeName, SourceId}
 import grit.core.identity.{Account, Principal}
 import grit.core.place.{Directory, Namespace, Place}
 
@@ -102,6 +102,14 @@ enum Origin {
   def rolls: Boolean = this match {
     case Room(_, _) => true
     case Slack(_, _, _) | Thread(_, _, _) | Tui(_, _) | Task(_, _) | Direct(_, _) => false
+  }
+
+  /** A thread's asking message: its channel's top level and the source id of the message it
+    * hangs under; `None` for any other origin.
+    */
+  def asking: Option[(Origin, SourceId)] = this match {
+    case Thread(team, channel, threadTs) => Some((Room(team, channel), SourceId(threadTs)))
+    case Slack(_, _, _) | Room(_, _) | Tui(_, _) | Task(_, _) | Direct(_, _) => None
   }
 
   /** The place its conversation shares with its neighbours, within which it is stitched and

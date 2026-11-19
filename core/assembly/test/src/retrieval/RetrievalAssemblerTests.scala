@@ -698,6 +698,14 @@ object RetrievalAssemblerTests extends TestSuite {
       reads += 1
       under.spokenIn(room, from, until)
     }
+    def inRooms(from: Instant, until: Instant)(using Tx^): Either[StoreError, Vector[Said]] = {
+      reads += 1
+      under.inRooms(from, until)
+    }
+    def asked(id: EntryId)(using Tx^): Either[StoreError, Option[Said]] = {
+      reads += 1
+      under.asked(id)
+    }
     def said(conversations: Vector[ConversationId], from: Instant, until: Instant)(using
         Tx^
     ): Either[StoreError, Vector[Said]] = {

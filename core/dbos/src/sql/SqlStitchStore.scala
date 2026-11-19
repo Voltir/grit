@@ -108,6 +108,35 @@ final class SqlStitchStore extends StitchStore {
         ps.setObject(SqlClearance.Params + 3, until.atOffset(ZoneOffset.UTC))
       }(readSaid)
 
+  def inRooms(from: Instant, until: Instant)(using tx: Tx^): Either[StoreError, Vector[Said]] =
+    cleared(
+      s"""WITH ${SqlClearance.With}
+         |SELECT $SaidColumns
+         |  FROM grit.entries e
+         |  JOIN grit.conversations c ON c.id = e.conversation_id
+         | WHERE c.origin ->> 'kind' IN ('room', 'thread')
+         |   AND e.created_at >= ? AND e.created_at < ?
+         |   AND $Spoken AND ${SqlClearance.entry("e")}
+         | ORDER BY e.created_at, e.seq""".stripMargin
+    ) { ps =>
+      ps.setObject(SqlClearance.Params + 1, from.atOffset(ZoneOffset.UTC))
+      ps.setObject(SqlClearance.Params + 2, until.atOffset(ZoneOffset.UTC))
+    }(readSaid)
+
+  def asked(id: EntryId)(using tx: Tx^): Either[StoreError, Option[Said]] =
+    cleared(
+      s"""WITH ${SqlClearance.With}
+         |SELECT $SaidColumns
+         |  FROM grit.entries e
+         |  JOIN grit.conversations c ON c.id = e.conversation_id
+         | WHERE e.id = ?
+         |   AND (e.payload ->> 'kind' = 'heard' OR (e.payload ->> 'kind' = 'message' AND
+         |        e.payload -> 'message' ->> 'role' = 'user'))
+         |   AND ${SqlClearance.entry("e")}""".stripMargin
+    ) { ps =>
+      ps.setString(SqlClearance.Params + 1, EntryId.value(id))
+    }(readSaid).map(_.headOption)
+
   def openings(conversations: Vector[ConversationId])(using
       tx: Tx^
   ): Either[StoreError, Vector[Said]] =

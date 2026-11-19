@@ -2,8 +2,9 @@ package grit.core.stitch
 
 import java.time.Instant
 
-import grit.core.id.{CloseRef, ConversationId, EntryId, TurnRef}
+import grit.core.id.{CloseRef, ConversationId, EntryId, SourceId, TurnRef}
 import grit.core.identity.TestAccounts
+import grit.core.inbox.InboundId
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.{CloseReason, Probability, TestClosings}
 import grit.core.store.{
@@ -30,7 +31,9 @@ final class StrandWorld(start: Instant = StrandWorld.At) {
 
   private def at(seconds: Long): Instant = start.plusSeconds(seconds)
 
-  val entries = new InMemoryEntryStore
+  // Each entry is labelled its conversation's label, as the SQL store labels it.
+  val entries: InMemoryEntryStore =
+    new InMemoryEntryStore(c => conversations.all.find(_.id == c))
   val conversations = new InMemoryConversationStore(Some(entries))
   private def originOf(c: ConversationId): Origin =
     conversations.all
@@ -39,7 +42,8 @@ final class StrandWorld(start: Instant = StrandWorld.At) {
   val periods = new InMemoryPeriodStore(entries, originOf)
   val stitches = new InMemoryStitchStore(entries, originOf)
   val shelf: StrandShelf = StrandShelf.over(stitches, conversations)
-  val excerpts: StrandExcerpts = StrandExcerpts.over(stitches, new InMemoryPrincipals)
+  val excerpts: StrandExcerpts =
+    StrandExcerpts.over(stitches, conversations, new InMemoryPrincipals)
 
   def thread(channel: String, ts: String): Conversation = right(
     conversations.findOrCreate(
@@ -49,22 +53,47 @@ final class StrandWorld(start: Instant = StrandWorld.At) {
     )(using TestTx.fake)
   )
 
+  /** Channel `channel`'s top level. */
+  def room(channel: String, label: Label = Label.Public): Conversation = right(
+    conversations.findOrCreate(
+      Origin.Room("T", channel),
+      TestAccounts.account("slack:T/U1"),
+      label
+    )(using TestTx.fake)
+  )
+
+  /** The thread under the message `ts` of channel `channel`'s top level. */
+  def under(channel: String, ts: String): Conversation = right(
+    conversations.findOrCreate(
+      Origin.Thread("T", channel, ts),
+      TestAccounts.account("slack:T/U1"),
+      Label.Public
+    )(using TestTx.fake)
+  )
+
+  /** `text` heard in `c` `seconds` after `start` (posted by grit when `posted`), kept under the
+    * inbound id of `source` when it has one.
+    */
   def say(
       c: Conversation,
       text: String,
       seconds: Long,
-      integrity: Integrity = Integrity.Member
+      integrity: Integrity = Integrity.Member,
+      source: Option[String] = None,
+      posted: Boolean = false
   ): Entry = {
     given Tx = TestTx.fake
     val next = right(entries.lockNext(c.id))
     right(periods.openFor(c.id, next.turnSeq, at(seconds)))
     val e = Entry(
-      EntryId(s"${ConversationId.value(c.id)}:${next.seq}"),
+      source.fold(EntryId(s"${ConversationId.value(c.id)}:${next.seq}"))(s =>
+        InboundId.of(c.id, SourceId(s))
+      ),
       c.id,
       next.turnSeq,
       None,
       next.seq,
-      Payload.Heard(text),
+      if (posted) Payload.Posted(text) else Payload.Heard(text),
       at(seconds),
       integrity
     )
@@ -87,20 +116,34 @@ final class StrandWorld(start: Instant = StrandWorld.At) {
     * it: its messages gone.
     */
   def purge(said: Entry, seconds: Long): Unit = {
+    seal(said, seconds)
     given Tx = TestTx.fake
-    val period = right(periods.of(TurnRef(said.conversationId, said.turnSeq)))
-      .map(_.ref)
-      .getOrElse(throw new java.lang.AssertionError(s"no period holds ${said.id}"))
+    val _ = right(periods.purge(period(said), at(seconds)))
+  }
+
+  /** The period `said` is in sealed `seconds` after `start`, so the next message opens another. */
+  def seal(said: Entry, seconds: Long): Unit = {
+    given Tx = TestTx.fake
     val _ = right(
       periods.seal(
-        CloseRef(period, said.turnSeq, at(seconds)),
+        CloseRef(period(said), said.turnSeq, at(seconds)),
         CloseReason.Lapsed,
         TestClosings.prose("purged"),
         at(seconds)
       )
     )
-    val _ = right(periods.purge(period, at(seconds)))
   }
+
+  /** The period `said` is in, sealed already ([[seal]]), purged `seconds` after `start`. */
+  def purgeSealed(said: Entry, seconds: Long): Unit = {
+    given Tx = TestTx.fake
+    val _ = right(periods.purge(period(said), at(seconds)))
+  }
+
+  private def period(said: Entry)(using Tx) =
+    right(periods.of(TurnRef(said.conversationId, said.turnSeq)))
+      .map(_.ref)
+      .getOrElse(throw new java.lang.AssertionError(s"no period holds ${said.id}"))
 
   def of(root: Conversation, asOf: Instant)(using Tx): Vector[Strand.Digested] =
     right(shelf.of(Vector(root.id), asOf))

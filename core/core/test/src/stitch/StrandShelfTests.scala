@@ -12,6 +12,11 @@ object StrandShelfTests extends TestSuite {
 
   import StrandWorld.{at, right}
 
+  /** 5-minute runs of at most 16, with `before` and `after` neighbours, settled in 30 minutes. */
+  private def cut(before: Int, after: Int): Strand.Cut = Strand.Cut
+    .of(java.time.Duration.ofMinutes(5), 16, before, after, java.time.Duration.ofMinutes(30))
+    .fold(e => throw new java.lang.AssertionError(e), identity)
+
   val tests = Tests {
     test("the same messages give the same digest; one more message another") {
       val w = new StrandWorld
@@ -137,6 +142,122 @@ object StrandShelfTests extends TestSuite {
         Vector(Some(("Someone: the deploy is stuck\nSomeone: still stuck?", Integrity.Outside)))
       w.say(b, "yes", 120)
       seen.map(s => right(w.excerpts.excerpt(s, 1000))) ==> Vector(None)
+    }
+
+    test("a thread is shown its asking message as its opening") {
+      val w = new StrandWorld
+      val top = w.room("C1")
+      w.say(top, "who can review the deploy script?", 0, source = Some("1.0"))
+      val t = w.under("C1", "1.0")
+      w.say(t, "I can, after lunch", 60)
+      given Tx = TestTx.fake
+      val units = right(w.shelf.units(at(0), at(600), cut(0, 0)))
+      units.map(u => (u.root, u.span)) ==> Vector((t.id, Strand.Span.Whole))
+      units.flatMap(u => right(w.excerpts.excerpt(u, 1000)).map(_.excerpt.text)) ==>
+        Vector("Someone: who can review the deploy script?\nSomeone: I can, after lunch")
+    }
+
+    test("a thread under grit's post, or under an unread label, has no opening") {
+      val w = new StrandWorld
+      val open = w.room("C1")
+      val shut = w.room("C2", TestLabels.Trial)
+      w.say(open, "the nightly report", 0, source = Some("1.0"), posted = true)
+      w.say(shut, "the trial's numbers", 0, source = Some("1.0"))
+      val a = w.under("C1", "1.0")
+      val b = w.under("C2", "1.0")
+      w.say(a, "thanks", 60)
+      w.say(b, "they look good", 60)
+      given Tx = TestTx.fake(Clearance.of(Label.Public), TestLabels.Trialled)
+      right(w.shelf.units(at(0), at(600), cut(0, 0)))
+        .filter(_.span == Strand.Span.Whole)
+        .flatMap(u => right(w.excerpts.excerpt(u, 1000)).map(_.excerpt.text)) ==>
+        Vector("Someone: thanks", "Someone: they look good")
+    }
+
+    test("a top level is offered as runs at its room's label, and none at another label") {
+      val w = new StrandWorld
+      val c1 = w.room("C1")
+      val c2 = w.room("C2")
+      w.say(c1, "standup in five", 0)
+      w.say(c1, "joining", 60)
+      w.say(c1, "lunch?", 1200)
+      w.say(c2, "the trial results", 0)
+      given Tx = TestTx.fake(
+        Clearance.of(Label.Public),
+        recorded = Recorded(
+          Map(
+            Origin.Room("T", "C2").room -> Recorded.Kept(None, Some(TestLabels.Trial), false, None)
+          ),
+          Map.empty
+        )
+      )
+      right(w.shelf.units(at(0), at(4000), cut(0, 0))).map(u => (u.root, u.said, u.since)) ==>
+        Vector((c1.id, 2, at(0)), (c1.id, 1, at(1200)))
+    }
+
+    test("context is top-level messages alone") {
+      val w = new StrandWorld
+      val top = w.room("C1")
+      w.say(top, "is the build green?", 0, source = Some("1.0"))
+      w.say(w.under("C1", "1.0"), "yes, since noon", 30)
+      w.say(top, "lunch at one?", 900)
+      w.say(top, "the release notes are up", 1800)
+      given Tx = TestTx.fake
+      val runs = right(w.shelf.units(at(600), at(4000), cut(1, 1))).filter(_.since == at(900))
+      runs.flatMap(u => right(w.excerpts.excerpt(u, 1000)).map(_.excerpt.text)) ==> Vector(
+        "(Said just before it, shown for context only, not part of it:)\n" +
+          "Someone: is the build green?\nSomeone: lunch at one?\n" +
+          "(Said just after it, shown for context only, not part of it:)\n" +
+          "Someone: the release notes are up"
+      )
+    }
+
+    test("a run cut on two nights' windows is the same run") {
+      val w = new StrandWorld
+      val top = w.room("C1")
+      // A chain every 4 minutes from 0 to 40, cut at most 4: runs 0-12, 16-28, 32-40.
+      (0 to 10).foreach(i => w.say(top, s"step $i", i * 240L))
+      given Tx = TestTx.fake
+      val four = Strand.Cut
+        .of(java.time.Duration.ofMinutes(5), 4, 0, 0, java.time.Duration.ofMinutes(30))
+        .fold(e => throw new java.lang.AssertionError(e), identity)
+      def ids(from: Long) =
+        right(w.shelf.units(at(from), at(9000), four)).map(u => (u.id, u.digest, u.said))
+      // Read from minute 20, the run 16-28 is cut from 16, not from the window; from 33:20,
+      // the run 32-40 from 32.
+      assert(ids(0).size == 3)
+      ids(1200) ==> ids(0).drop(1)
+      ids(2000) ==> ids(0).drop(2)
+    }
+
+    test("a run's excerpt and links read its range and context, not the whole root") {
+      val w = new StrandWorld
+      val top = w.room("C1")
+      w.say(top, "see https://example.com/a", 0)
+      w.say(top, "see https://example.com/b", 1200)
+      w.say(top, "see https://example.com/c", 2400)
+      given Tx = TestTx.fake
+      val middle = right(w.shelf.units(at(1000), at(4000), cut(1, 1))).filter(_.since == at(1200))
+      middle.flatMap(u => right(w.shelf.links(u))).map(_.toString) ==>
+        Vector(Href.in("see https://example.com/b").map(_.toString)).flatten
+      middle.flatMap(u =>
+        right(w.excerpts.excerpt(u, 1000)).map(_.excerpt.text.count(_ == '\n'))
+      ) ==>
+        Vector(4)
+    }
+
+    test("an excerpt reads changed once a message of the run is removed") {
+      val w = new StrandWorld
+      val top = w.room("C1")
+      w.seal(w.say(top, "who has the keys?", 0), 30)
+      val middle = w.say(top, "not me", 60)
+      w.seal(middle, 90)
+      w.say(top, "me", 120)
+      given Tx = TestTx.fake
+      val run = right(w.shelf.units(at(0), at(4000), cut(0, 0)))
+      run.map(u => (u.said, right(w.excerpts.excerpt(u, 1000)).isDefined)) ==> Vector((3, true))
+      w.purgeSealed(middle, 3000)
+      run.map(u => right(w.excerpts.excerpt(u, 1000))) ==> Vector(None)
     }
 
     test("a strand reads back as a step records it, which holds none of its messages' text") {

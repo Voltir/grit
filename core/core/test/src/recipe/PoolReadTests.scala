@@ -374,6 +374,8 @@ object PoolReadTests extends TestSuite {
       def said(conversations: Vector[ConversationId], from: Instant, until: Instant)(using Tx^) =
         Left(error)
       def openings(conversations: Vector[ConversationId])(using Tx^) = Left(error)
+      def inRooms(from: Instant, until: Instant)(using Tx^) = Left(error)
+      def asked(id: EntryId)(using Tx^) = Left(error)
       def links(conversations: Vector[ConversationId])(using
           Tx^
       ): Either[StoreError, Vector[Link]] =
