@@ -393,5 +393,19 @@ object TopicCodecTests extends TestSuite {
         TopicParams.Merges
       ) ==> (Right(p), Right(TopicParams.Merges), 8)
     }
+
+    test("a topics run's parameters with sorts over Sorts, 32, are refused, naming sorts") {
+      val stored =
+        ujson.Obj("perRun" -> 3, "recent" -> "PT48H", "cardRecent" -> "PT96H", "sorts" -> 33)
+      (TopicParams.read(stored).left.map(_.contains("hold sorts")), TopicParams.Sorts) ==>
+        (Left(true), 32)
+    }
+
+    test("a topics run's parameters with merges over Merges, 8, are refused, naming merges") {
+      val stored =
+        ujson.Obj("perRun" -> 3, "recent" -> "PT48H", "cardRecent" -> "PT96H", "merges" -> 9)
+      (TopicParams.read(stored).left.map(_.contains("hold merges")), TopicParams.Merges) ==>
+        (Left(true), 8)
+    }
   }
 }

@@ -10,8 +10,9 @@ import grit.core.stitch.Strand
   * strand's last message (`recent`) and a card's write (`cardRecent`) may be for it to be looked
   * at; how long one set aside stays aside before it is offered again (`asideFor`); how long a
   * passage is kept after its day (`keepFor`); at most how many topics of one discussion it
-  * sorts against the others to merge (`merges`); how it cuts a channel's top level into runs (`cut`), and at most how many strands it sorts (`sorts`); the `day` it writes for, the day of its slot in its job's zone when none: a backfill
-  * names a past day, and its strands are read as they stood at that day's end; and the last day
+  * sorts against the others to merge (`merges`); how it cuts a channel's top level into runs
+  * (`cut`); at most how many strands it sorts (`sorts`); the `day` it writes for, the day of
+  * its slot in its job's zone when none: a backfill names a past day, and its strands are read as they stood at that day's end; and the last day
   * it seeds on (`seedUntil`): a run for that day or one before reads the cards written within
   * [[TopicParams.SeedReach]] instead of `cardRecent`, so each night offers the next batch of
   * the cards no run has placed.
@@ -40,14 +41,15 @@ object TopicParams {
   /** 90 days: how long a passage is kept after its day, unless a schedule says. */
   val KeepFor: FiniteDuration = 90.days
 
-  /** 8: the most topics a run sorts against the others to merge, unless a schedule says. */
+  /** 8: the most topics a run sorts against the others to merge; a schedule may lower it. */
   val Merges: Int = 8
 
-  /** 32: the most strands a run sorts, unless a schedule says. */
+  /** 32: the most strands a run sorts; a schedule may lower it. */
   val Sorts: Int = 32
 
-  /** Its record: `{"perRun", "recent", "cardRecent", "asideFor", "keepFor", "merges", "cut", "sorts", "day"?,
-    * "seedUntil"?}`, the cut as [[Strand.Cut.write]] writes it, durations ISO-8601, the days `yyyy-mm-dd`.
+  /** Its record: `{"perRun", "recent", "cardRecent", "asideFor", "keepFor", "merges", "cut",
+    * "sorts", "day"?, "seedUntil"?}`, the cut as [[Strand.Cut.write]] writes it, durations
+    * ISO-8601, the days `yyyy-mm-dd`.
     */
   def write(p: TopicParams): ujson.Value = {
     def iso(d: FiniteDuration): String = java.time.Duration.ofSeconds(d.toSeconds).toString
@@ -66,10 +68,11 @@ object TopicParams {
     o
   }
 
-  /** The parameters [[write]] wrote, `asideFor` [[AsideFor]], `keepFor` [[KeepFor]] and
-    * `merges` [[Merges]], `cut` [[Strand.Cut.Default]] and `sorts` [[Sorts]] when absent (kept before they were), or why `v` holds none: `perRun`
-    * not a whole number at least 1, `merges` not one at least 0, `sorts` not one at least 1, no cut, `recent` under a day and the cut's settle, a duration not positive
-    * ISO-8601, or a day not `yyyy-mm-dd`.
+  /** The parameters [[write]] wrote, `asideFor` [[AsideFor]], `keepFor` [[KeepFor]],
+    * `merges` [[Merges]], `cut` [[Strand.Cut.Default]] and `sorts` [[Sorts]] when absent (kept
+    * before they were), or why `v` holds none: `perRun` not a whole number at least 1, `merges`
+    * not one from 0 to [[Merges]], `sorts` not one from 1 to [[Sorts]], no cut, `recent` under a
+    * day and the cut's settle, a duration not positive ISO-8601, or a day not `yyyy-mm-dd`.
     */
   def read(v: ujson.Value): Either[String, TopicParams] = {
     val shown = ujson.write(v).take(100)
@@ -95,9 +98,11 @@ object TopicParams {
         case None => Right(Merges)
         case Some(n) =>
           n.numOpt
-            .filter(n => n.isWhole && n >= 0 && n <= Int.MaxValue)
+            .filter(n => n.isWhole && n >= 0 && n <= Merges)
             .map(_.toInt)
-            .toRight(s"a topics run's parameters hold merges, a whole number at least 0: $shown")
+            .toRight(
+              s"a topics run's parameters hold merges, a whole number from 0 to $Merges: $shown"
+            )
       }
       day <- date(o, "day", shown)
       seedUntil <- date(o, "seedUntil", shown)
@@ -110,9 +115,11 @@ object TopicParams {
         case None => Right(Sorts)
         case Some(n) =>
           n.numOpt
-            .filter(n => n.isWhole && n >= 1 && n <= Int.MaxValue)
+            .filter(n => n.isWhole && n >= 1 && n <= Sorts)
             .map(_.toInt)
-            .toRight(s"a topics run's parameters hold sorts, a whole number at least 1: $shown")
+            .toRight(
+              s"a topics run's parameters hold sorts, a whole number from 1 to $Sorts: $shown"
+            )
       }
       // A run settles after its window ends, so the next night's window must still reach it.
       _ <- Either.cond(

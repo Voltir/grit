@@ -33,8 +33,8 @@ import grit.std.either.Proven
   * withdraws, what each ask is shown, how a reply is read and what a topic's version refers to:
   * the module's README, "A topics run". Replies [[Gathered.line]], which holds no
   * cost: its asks' cost is read from the spend ledger ([[grit.core.store.UsageLedger]]), each
-  * recorded under its run's workflow. Its `limits`: asks `perRunMost`, judgments ten per ask
-  * ([[MoveLimits.JudgmentsPerAsk]]); no calls.
+  * recorded under its run's workflow. Its `limits`: asks `perRunMost`, judgments
+  * [[TopicParams.Sorts]] + [[TopicScan.Cards]] + [[TopicParams.Merges]]; no calls.
   */
 final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[CardShelf]])
     extends DreamingJob[TopicParams] {
