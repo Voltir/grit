@@ -30,6 +30,7 @@ import grit.projects.method.{
   Mover,
   Remap,
   RoleView,
+  TransitionAction,
   TransitionCheck
 }
 import grit.projects.name.{
@@ -81,6 +82,7 @@ private[plugin] final class ProjectCommands(
       Edit,
       Move,
       Reorder,
+      Split,
       Batch,
       Show,
       Stored,
@@ -328,6 +330,57 @@ private[plugin] final class ProjectCommands(
         alone(own, claims, args.artifact.project, by, at, "reorder")(_ => Right(Step.Reorder(args)))
           .map(_.said)
       )
+  }
+
+  /** `project_split`: an artifact's `##` sections made artifacts of their own under it. */
+  object Split extends KeepingCommand[Splitting] {
+    override def offeredToTurns: Boolean = shipped
+    override def shown(args: Splitting): String = args.artifact.value
+
+    val spec: ToolSpec[Splitting] = ToolSpec(
+      ToolName("project_split"),
+      "Makes each `##` section of an artifact an artifact of its own under it, of kind " +
+        "section, in the order of their headings: its title the heading, its body what follows " +
+        "the heading, any `###` headings as written. The artifact keeps what sits above its " +
+        "first `##` heading, then a list linking each new artifact by its heading, then the " +
+        "sections that stay: those its kind must hold, and each `Delta: ` section. Use it when " +
+        "an artifact is too large to keep whole. Give the version project_show shows. Answers " +
+        "with each new artifact's key and the version the artifact is kept at. Refused, keeping " +
+        "nothing: for a version that is not the artifact's current one, naming the one it is " +
+        "at; for a body with no section to move, or with a `#` heading below its first `##` " +
+        "one; for two sections sharing a heading, a blank heading, or a section holding " +
+        "nothing; for a kind whose sections another kind's deltas are merged into; for a " +
+        "method with no kind section, or one whose sections cannot sit under the artifact; and " +
+        "as project_keep refuses.",
+      Args
+        .of(
+          (
+            artifact = Field.text("The artifact's key, `<project>/<artifact>`."),
+            version = Field.integer(EditMeaning.version, 1, Long.MaxValue)
+          )
+        )
+        .refine(a =>
+          for {
+            artifact <- parsed("artifact", a.artifact, ArtifactRef.read)
+            version <- versionOf(a.version)
+          } yield Splitting(artifact, version)
+        )
+    )
+
+    def run(
+        args: Splitting,
+        by: CommandBy,
+        own: DocumentKeeper,
+        claims: Claims,
+        at: Instant
+    )(using Tx^): Either[StoreError, CommandOutcome] = answered(
+      alone(own, claims, args.artifact.project, by, at, "split")(_ => Right(Step.Split(args)))
+        // The split artifact is the one it wrote that was kept before: each new one's id was
+        // minted after every id the project held, so it is the least of them.
+        .map(done =>
+          done.versions.minByOption(_._1).fold(done.said)((_, v) => AnswerText.nowAt(done.said, v))
+        )
+    )
   }
 
   /** `project_move`. */
@@ -644,7 +697,7 @@ private[plugin] final class ProjectCommands(
     }
 
     /** Step `i` of `steps` in a few words: `keep <key>`, `edit <key>`, `move <key> to <state>`,
-      * or `reorder <key>`.
+      * `reorder <key>`, or `split <key>`.
       */
     private def described(steps: Vector[Step], i: Int): String =
       steps.lift(i).fold("") {
@@ -652,6 +705,7 @@ private[plugin] final class ProjectCommands(
         case Step.Edit(e) => s"edit ${e.key.value}"
         case Step.Move(m) => s"move ${m.key.value} to ${StateName.value(m.to)}"
         case Step.Reorder(r) => s"reorder ${r.artifact.value}"
+        case Step.Split(s) => s"split ${s.artifact.value}"
       }
   }
 
@@ -1313,7 +1367,7 @@ private[plugin] final class ProjectCommands(
           "re-key"
         )
         _ <- planned.artifacts.foldLeft[Either[Stop, Unit]](Right(())) { (so, a) =>
-          so.flatMap(_ => kept(own, a.after, Some(a.before), Whose.Prior, at).map(_ => ()))
+          so.flatMap(_ => kept(own, a.after, Some(a.before), Some(a.before), at).map(_ => ()))
         }
         _ <- planned.table.foldLeft[Either[Stop, Unit]](Right(())) { (so, t) =>
           so.flatMap(_ =>
@@ -1917,7 +1971,7 @@ private[plugin] final class ProjectCommands(
                   own,
                   Artifact(a.head.copy(by = writer), a.body),
                   before.get(a.head.key),
-                  Whose.Prior,
+                  before.get(a.head.key),
                   at
                 ).map(_ => ())
               )
@@ -2170,6 +2224,20 @@ private[plugin] object ProjectCommands {
         Some(version)
       )
 
+    /** A new artifact of `kind` under `parent`, of `title` and `body`, with no handle or cites. */
+    def part(parent: ArtifactKey, kind: KindName, title: String, body: String): Keeping =
+      new Keeping(
+        parent.project,
+        None,
+        HandleChange.Unchanged,
+        Some(kind),
+        title,
+        body,
+        Some(Some(ArtifactRef.Id(parent))),
+        None,
+        None
+      )
+
     /** `project_keep`'s arguments as sent, of `project`, or the argument error naming the field
       * that does not read: a key, parent or cite that is no reference ([[ArtifactRef.read]]) or
       * one of another project, a handle [[Handle.of]] refuses, or a version with no key.
@@ -2266,6 +2334,7 @@ private[plugin] object ProjectCommands {
           case (Step.Edit(e), i) => (e.key.project, e.key.value, i)
           case (Step.Move(m), i) => (m.key.project, m.key.value, i)
           case (Step.Reorder(r), i) => (r.artifact.project, r.artifact.value, i)
+          case (Step.Split(s), i) => (s.artifact.project, s.artifact.value, i)
         }
         .filterNot(_._1 == project)
       if (steps.isEmpty) Left("A batch takes at least one step.")
@@ -2346,6 +2415,7 @@ private[plugin] object ProjectCommands {
     case Edit(args: Editing)
     case Move(args: Moving)
     case Reorder(args: Reordering)
+    case Split(args: Splitting)
   }
 
   /** Whose words a kept body is: wholly its caller's, as `project_keep` gives it; or the version
@@ -2353,6 +2423,9 @@ private[plugin] object ProjectCommands {
     */
   enum Whose extends caps.Pure {
     case Caller, Prior
+
+    /** A new artifact whose every word was artifact `of`'s, as `project_split` cuts it out. */
+    case Part(of: ArtifactKey)
   }
 
   /** What `project_keep`'s fields mean, said once for it and for a batch's keeps. */
@@ -2418,6 +2491,9 @@ private[plugin] object ProjectCommands {
 
   /** `project_reorder`'s arguments: `artifact`, to sit right beside a sibling. */
   final case class Reordering(artifact: ArtifactRef, beside: Beside) extends caps.Pure
+
+  /** `project_split`'s arguments: `artifact`, read at `version`. */
+  final case class Splitting(artifact: ArtifactRef, version: DocumentVersionId) extends caps.Pure
 
   /** Which side of `sibling` an artifact is to sit. */
   enum Beside extends caps.Pure {
@@ -2915,13 +2991,13 @@ private[plugin] object ProjectCommands {
   }
 
   /** What steps have made of a loaded project so far: its artifacts, the keys of those they
-    * changed, in the order first changed, and the keys of those whose every word their caller
-    * wrote ([[Whose.Caller]]).
+    * changed, in the order first changed, and whose words each changed one is, where not the
+    * version before's ([[Whose.Prior]]).
     */
   private final case class Stepping(
       artifacts: Vector[Artifact],
       changed: Vector[ArtifactKey],
-      callers: Set[ArtifactKey],
+      whose: Map[ArtifactKey, Whose],
       next: ArtifactNumber
   ) extends caps.Pure
 
@@ -2941,7 +3017,7 @@ private[plugin] object ProjectCommands {
     steps.foldLeft(
       (
         Vector.empty[Either[Stop, String]],
-        Stepping(project.artifacts, Vector.empty, Set.empty, project.next)
+        Stepping(project.artifacts, Vector.empty, Map.empty, project.next)
       )
     ) { (sofar: (Vector[Either[Stop, String]], Stepping), step: Step) =>
       val (said, now) = sofar
@@ -3006,13 +3082,16 @@ private[plugin] object ProjectCommands {
       writer: String,
       mover: Mover
   ): Either[Stop, (Stepping, String)] = {
-    def changing(changed: Vector[Artifact], wrote: Set[ArtifactKey] = Set.empty): Stepping = {
+    def changing(
+        changed: Vector[Artifact],
+        wrote: Map[ArtifactKey, Whose] = Map.empty
+    ): Stepping = {
       val keys = changed.map(_.head.key)
       Stepping(
         now.artifacts.map(a => changed.find(_.head.key == a.head.key).getOrElse(a)) ++
           changed.filterNot(c => now.artifacts.exists(_.head.key == c.head.key)),
         now.changed ++ keys.filterNot(now.changed.contains),
-        now.callers ++ wrote,
+        now.whose ++ wrote,
         now.next
       )
     }
@@ -3078,8 +3157,8 @@ private[plugin] object ProjectCommands {
           changed = changing(
             ranked,
             whose match {
-              case Whose.Caller => Set(key)
-              case Whose.Prior => Set.empty
+              case Whose.Prior => Map.empty
+              case other => Map(key -> other)
             }
           )
           next =
@@ -3156,6 +3235,52 @@ private[plugin] object ProjectCommands {
           if (ranked.isEmpty) s"${AnswerText.named(moving.head)} already sits $where."
           else s"Placed ${AnswerText.named(moving.head)} $where." + respread(ranked.size - 1)
         )
+      case Step.Split(args) =>
+        for {
+          key <- refuse(resolve(args.artifact))
+          current <- now.artifacts
+            .find(_.head.key == key)
+            .toRight(Stop.Refused(s"project ${ProjectKey.value(project.key)} has no ${key.value}"))
+          // The version is checked where the artifact is kept, after its parts.
+          cannot = (why: String) => Stop.Refused(s"${current.head.called} cannot be split: $why")
+          into = method.transitions.collectFirst {
+            case t if t.action == TransitionAction.MergeDeltas(current.head.kind) => t.kind
+          }
+          _ <- into
+            .map(from =>
+              cannot(
+                s"a move of a ${KindName.value(from)} merges its deltas into the sections of a " +
+                  KindName.value(current.head.kind)
+              )
+            )
+            .toLeft(())
+          required = method.kinds
+            .find(_.name == current.head.kind)
+            .fold(Set.empty)(_.sections.toSet)
+          split <- Body.split(current.body, required).left.map(cannot)
+          made <- cutOut(project, method, now, key, split.parts, writer, mover).left.map {
+            case Stop.Refused(why) => cannot(why)
+            case failed => failed
+          }
+          left <- split.leaving(made.links).left.map(cannot)
+          kept <- stepped(
+            project,
+            method,
+            made.stepping,
+            Step.Keep(
+              Keeping.again(key, current.head.title, Body.markdown(left), args.version),
+              Whose.Prior
+            ),
+            writer,
+            mover
+          )
+          (done, _) = kept
+        } yield (
+          done,
+          s"Split ${AnswerText.named(current.head)}, each section moved to an artifact of its " +
+            "own under it: " +
+            made.links.map(l => s"${l.key.value} ${l.part.title}").mkString("; ") + "."
+        )
       case Step.Move(args) =>
         for {
           _ <- Either.cond(
@@ -3177,6 +3302,42 @@ private[plugin] object ProjectCommands {
         )
     }
   }
+
+  /** What [[cutOut]] made: the steps' work so far, and each part with the key it is kept under. */
+  private final case class Parted(
+      stepping: Stepping,
+      links: Vector[(part: Body.Part, key: ArtifactKey)]
+  ) extends caps.Pure
+
+  /** Each of `parts` kept over `now` as a new artifact of kind section under `parent`, in order,
+    * as [[stepped]] keeps one, written as `writer`; or the first refusal.
+    */
+  private def cutOut(
+      project: Loaded,
+      method: Method,
+      now: Stepping,
+      parent: ArtifactKey,
+      parts: Vector[Body.Part],
+      writer: String,
+      mover: Mover
+  ): Either[Stop, Parted] =
+    parts.foldLeft[Either[Stop, Parted]](Right(Parted(now, Vector.empty))) {
+      (so: Either[Stop, Parted], part: Body.Part) =>
+        so.flatMap { sofar =>
+          val child = ArtifactKey.of(project.key, sofar.stepping.next)
+          stepped(
+            project,
+            method,
+            sofar.stepping,
+            Step.Keep(
+              Keeping.part(parent, KindName.Section, part.title, Body.markdown(part.body)),
+              Whose.Part(parent)
+            ),
+            writer,
+            mover
+          ).map((next, _) => Parted(next, sofar.links.appended((part = part, key = child))))
+        }
+    }
 
   /** The artifacts of `artifacts` under `parent` (or, with none, those under none), but `besides`,
     * in [[ArtifactHead.ranked]] order.
@@ -3251,7 +3412,8 @@ private[plugin] object ProjectCommands {
     } yield ()
 
   /** Keeps each artifact `steps` changed through `own`, once, as they left it ([[kept]]): wholly
-    * its caller's when a step wrote every word of it, else carrying its document's; and the
+    * its caller's when a step wrote every word of it, else carrying the document of the words it
+    * carries (its own, or for a [[Whose.Part]], the one it was cut from); and the
     * project's index, when a step minted an id, its `next` moved on and who started it kept
     * (`by`, when it names no one), believed at no more than its version before, nor its caller.
     */
@@ -3266,15 +3428,20 @@ private[plugin] object ProjectCommands {
   )(using Locked): Either[Stop, Map[ArtifactKey, DocumentVersionId]] =
     for {
       versions <- Traversal
-        .traverse(steps.changed.flatMap(k => steps.artifacts.find(_.head.key == k)))(a =>
+        .traverse(steps.changed.flatMap(k => steps.artifacts.find(_.head.key == k))) { a =>
+          val before = project.documents.find(_._2.head.key == a.head.key).map(_._1)
           kept(
             own,
             a,
-            project.documents.find(_._2.head.key == a.head.key).map(_._1),
-            if (steps.callers(a.head.key)) Whose.Caller else Whose.Prior,
+            before,
+            steps.whose.get(a.head.key) match {
+              case Some(Whose.Caller) => None
+              case Some(Whose.Part(of)) => project.documents.find(_._2.head.key == of).map(_._1)
+              case Some(Whose.Prior) | None => before
+            },
             at
           ).map(a.head.key -> _)
-        )
+        }
       _ <-
         if (steps.next == project.next) Right(())
         else
@@ -3489,7 +3656,7 @@ private[plugin] object ProjectCommands {
     for {
       _ <- docs.uncited.foldLeft[Either[Stop, Unit]](Right(())) { case (so, (d, a)) =>
         so.flatMap(_ =>
-          kept(own, Artifact(a.head.copy(by = writer), a.body), Some(d), Whose.Prior, at)
+          kept(own, Artifact(a.head.copy(by = writer), a.body), Some(d), Some(d), at)
             .map(_ => ())
         )
       }
@@ -3711,14 +3878,14 @@ private[plugin] object ProjectCommands {
   private val BriefHolder: String = "holder"
 
   /** Keeps `artifact` through `own` under the key and at the label of `before`, its document, or
-    * when new under its id and at public: the version it is now at. Believed at what `own` believes its caller at, met with what
-    * `before` was believed at when `whose` is [[Whose.Prior]] and there is one.
+    * when new under its id and at public: the version it is now at. Believed at what `own` believes its caller at, met with what `carried`, the document whose
+    * words it carries, was believed at; none when every word is its caller's.
     */
   private def kept(
       own: DocumentKeeper,
       artifact: Artifact,
       before: Option[Document],
-      whose: Whose,
+      carried: Option[Document],
       at: Instant
   )(using Tx^)(using Locked): Either[Stop, DocumentVersionId] =
     for {
@@ -3734,10 +3901,7 @@ private[plugin] object ProjectCommands {
         own,
         key,
         before.fold(Label.Public)(_.label),
-        whose match {
-          case Whose.Caller => Tx.top
-          case Whose.Prior => DocumentKeeper.replacing(before)
-        },
+        DocumentKeeper.replacing(carried),
         text,
         data,
         refs,

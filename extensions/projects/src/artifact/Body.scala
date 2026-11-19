@@ -5,7 +5,7 @@ import java.nio.charset.StandardCharsets
 import grit.core.document.Document
 import grit.core.message.Cut
 import grit.projects.name.{ArtifactKey, ArtifactRef}
-import grit.prose.form.{Block, Doc, Level, Mark, Span, Text}
+import grit.prose.form.{Block, Doc, Item, Level, Mark, Span, Text}
 import grit.prose.index.IndexText
 import grit.prose.json.ProseJson
 import grit.prose.markdown.Markdown
@@ -103,6 +103,85 @@ object Body {
     */
   def section(b: Body, title: String): Either[String, String] =
     addressed(sectionsOf(b.blocks), title).map(a => markdown(Doc(a.section.blocks)))
+
+  /** It cut at its `##` headings, each section titled one of `kept`, or a delta ([[Delta]]),
+    * staying in it; or why not: it has no `##` section, a heading of level 1 sits below one, or
+    * of the sections that would move, none is left, one's title is blank, two share a title,
+    * or one holds nothing under its heading.
+    */
+  def split(b: Body, kept: Set[String]): Either[String, Split] = {
+    val (above, titled) = sectionsOf(b.blocks).span(_.title.isEmpty)
+    def stays(title: String): Boolean = kept(title) || title.startsWith(Delta)
+    val moving = titled.collect { case Section(Some(t), _) if !stays(t) => t }
+    val refusal = titled
+      .collectFirst { case Section(None, Block.Heading(_, text) +: _) =>
+        s"its heading \"${text.plain.trim}\" sits below its first `##` heading"
+      }
+      .orElse(Option.when(titled.isEmpty)("it has no `##` section"))
+      .orElse(
+        Option.when(moving.isEmpty)(
+          "each of its sections stays in it: " + titled.flatMap(_.title).mkString("; ")
+        )
+      )
+      .orElse(Option.when(moving.exists(_.isEmpty))("a section's heading is blank"))
+      .orElse(
+        moving.diff(moving.distinct).headOption.map(t => s"it has several sections titled \"$t\"")
+      )
+      .orElse(titled.collectFirst {
+        case Section(Some(t), Vector(_)) if !stays(t) =>
+          s"its section \"$t\" holds nothing under its heading"
+      })
+    refusal.toLeft(
+      new Split(
+        above.flatMap(_.blocks),
+        titled.collect {
+          case Section(Some(t), Block.Heading(_, heading) +: under) if !stays(t) =>
+            new Part(t, heading, Doc(under))
+        },
+        titled.filter(_.title.exists(stays)).flatMap(_.blocks)
+      )
+    )
+  }
+
+  /** A body [[split]] cut: the sections that move out of it, in order, and what it keeps. */
+  final class Split private[Body] (
+      lead: Vector[Block[ArtifactKey]],
+      val parts: Vector[Part],
+      stays: Vector[Block[ArtifactKey]]
+  ) extends caps.Pure {
+
+    /** What the body keeps once each of `links`' parts is the artifact its key names: what sat
+      * above its first `##` heading, a list linking each part by its heading, in the order
+      * given, then the sections that stay; or why not: a stored form over [[StoredMost]].
+      */
+    def leaving(links: Vector[(part: Part, key: ArtifactKey)]): Either[String, Body] =
+      checked(
+        Doc(
+          lead ++ (Block.Bullets(
+            links.map(l =>
+              Item(
+                Vector(
+                  Block.Paragraph(
+                    Text.of(
+                      l.part.heading.spans.map(s => Span(s.text, s.marks, Vector(l.key)))
+                    )
+                  )
+                )
+              )
+            )
+          ) +: stays)
+        )
+      )
+  }
+
+  /** A `##` section [[split]] moves out of a body: its heading's title and text, and what
+    * follows its heading.
+    */
+  final class Part private[Body] (
+      val title: String,
+      private[Body] val heading: Text[ArtifactKey],
+      val body: Body
+  ) extends caps.Pure
 
   /** A change to part of a body. */
   enum Edit extends caps.Pure {
