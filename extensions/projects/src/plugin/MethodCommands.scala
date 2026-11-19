@@ -8,6 +8,7 @@ import grit.core.claim.Claims
 import grit.core.document.{DocRef, DocText, Document, DocumentKeeper, DocumentShelf}
 import grit.core.id.DocKey
 import grit.core.need.PluginReads
+import grit.core.place.Place
 import grit.core.plugin.{CommandBy, CommandOutcome, KeepingCommand, ReadingCommand}
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Args, ArgsError, Field, ToolName, ToolSpec}
@@ -27,12 +28,12 @@ import ProjectCommands.{
   PersonOnlyBy,
   Stop,
   answered,
-  keptEverywhere,
   moverOf,
   parsed,
   refusal,
   refuse,
-  stored
+  stored,
+  written
 }
 import MethodCommands.{Asking, Declaring}
 
@@ -241,7 +242,7 @@ private[plugin] final class MethodCommands(checks: Vector[TransitionCheck], meth
         DocText.of(s"Method ${MethodName.value(method.name)} version ${method.version}.")
       )
       refs <- refuse(MethodCommands.refs(method.name))
-      _ <- keptEverywhere(own, key, methodsAt, Tx.top, text, data, refs, at)
+      _ <- written(own.write(key, methodsAt, Tx.top, Place.Everywhere, text, data, None, at, refs))
     } yield s"Declared the $named, digest ${method.digest.hex}."
   }
 
