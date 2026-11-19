@@ -154,7 +154,7 @@ object ProjectCommandsTests extends TestSuite {
         Vector("project_propose")
     }
 
-    test("project_keep answers the version it kept at, and one that changes nothing the current") {
+    test("a keep that changes nothing answers the version current") {
       val projects = plugin()
       val store = Store()
       started(projects, store)
@@ -417,9 +417,12 @@ object ProjectCommandsTests extends TestSuite {
         "project" -> "p",
         "steps" -> ujson.Arr(keep("a"), keep("b"))
       )
-      assert(
-        answer.isInstanceOf[CommandOutcome.Refused],
-        store.count == 2
+      (answer, store.count) ==> (
+        CommandOutcome.Refused(
+          "this deployment keeps at most 3 project documents and holds that many already, so " +
+            "nothing was kept"
+        ),
+        2
       )
     }
 

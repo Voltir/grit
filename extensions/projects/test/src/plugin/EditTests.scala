@@ -47,7 +47,7 @@ object EditTests extends TestSuite {
 
     test("project_show takes a section or head, not both") {
       refusedArgs(plugin(), "project_show", "key" -> "p/a", "head" -> true, "section" -> "Goal")
-        .exists(_.contains("Give head or section, not both")) ==> true
+        ==> Some("Give head or section, not both.")
     }
 
     test("an edit replaces an exact text held once, answering the version it is kept at") {
@@ -99,14 +99,13 @@ object EditTests extends TestSuite {
       val current = versionOf(projects, store, "p/a")
       val refused =
         edit(projects, store, "version" -> read, "section" -> "Goal", "body" -> "Eins.")
-      (
-        refused match {
-          case CommandOutcome.Refused(why) =>
-            why.startsWith(s"p/a is at version $current, not $read as given: kept since")
-          case _ => false
-        },
-        versionOf(projects, store, "p/a")
-      ) ==> (true, current)
+      (refused, versionOf(projects, store, "p/a")) ==> (
+        CommandOutcome.Refused(
+          s"p/a is at version $current, not $read as given: kept since by $by at $at. Show it " +
+            "again and keep from what it holds now."
+        ),
+        current
+      )
     }
 
     test("an edit of a heading several sections share is refused, naming which they are") {
@@ -131,8 +130,8 @@ object EditTests extends TestSuite {
         "body" -> s"Lead.\n\n## Goal\n\n$long\n\n## Reads\n\nTwo."
       )
       val edited = edit(projects, store, "version" -> read, "section" -> "Goal", "body" -> long)
-      (asKept.isInstanceOf[CommandOutcome.Refused], edited, versionOf(projects, store, "p/a")) ==>
-        (true, asKept, read)
+      (asKept, edited, versionOf(projects, store, "p/a")) ==>
+        (CommandOutcome.Refused("a body's stored form is 33242 bytes, over 28672"), asKept, read)
     }
 
     test("an edit takes old and new, or section and body, and not both") {
