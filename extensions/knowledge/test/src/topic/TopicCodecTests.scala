@@ -169,6 +169,29 @@ object TopicCodecTests extends TestSuite {
         .state ==> Meeting.State.Planned(Meeting.When(LocalDate.of(2026, 11, 20), None))
     }
 
+    test("refined: each reply's meeting, a bad or empty field leaving the one it had") {
+      val ana = Meeting.of(Meeting.State.Proposed(None), Vector("Ana"))
+      def on(d: Int) = LocalDate.of(2026, 11, d)
+      Vector(
+        // planned with no day is proposed
+        reply("state" -> "planned"),
+        // a day past `ahead` (5) is dropped
+        reply("state" -> "planned", "day" -> "2026-11-25"),
+        // held with no day is held on the run's day
+        reply("state" -> "held"),
+        // a bad day is dropped, the names kept
+        reply("day" -> "next week", "start" -> "09:30", "who" -> ujson.Arr("Ben")),
+        // no names is no change to them
+        reply("state" -> "planned", "day" -> "2026-11-20", "who" -> ujson.Arr())
+      ).map(Meeting.refined(ana, _, day, 5)) ==> Vector(
+        ana,
+        ana,
+        Meeting.of(Meeting.State.Held(day), Vector("Ana")),
+        Meeting.of(Meeting.State.Proposed(None), Vector("Ben")),
+        Meeting.of(Meeting.State.Planned(Meeting.When(on(20), None)), Vector("Ana"))
+      )
+    }
+
     test("a topic is version 3, each doc stored prose, a claim on two spans written once") {
       val twice = Topic.of(
         Doc(

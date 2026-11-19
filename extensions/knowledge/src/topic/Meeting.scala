@@ -41,7 +41,7 @@ object Meeting {
 
   /** `was` as a write's `reply` refines it on the run's `day`: `{"state": "proposed" | "planned"
     * | "held", "day": "YYYY-MM-DD", "start": "HH:MM", "who": [name]}`, each field optional, a
-    * missing or bad one leaving `was`'s; a day more than 2 days before `day`, or more than
+    * missing, bad or empty one leaving `was`'s; a day more than 2 days before `day`, or more than
     * `ahead` days after it, left out; planned with no day proposed; held with no day held on
     * `day`; held after `day` planned; and a meeting once held kept held as it was, whatever the
     * reply.
@@ -72,8 +72,8 @@ object Meeting {
         .orElse(wasWhen.map(w => newStart.fold(w)(s => w.copy(start = Some(s)))))
       val state = field("state").flatMap(_.strOpt) match {
         case Some("held") =>
-          when.map(_.day).filter(_.isAfter(day)) match {
-            case Some(_) => when.fold[State](State.Proposed(None))(State.Planned(_))
+          when.filter(_.day.isAfter(day)) match {
+            case Some(later) => State.Planned(later)
             case None => State.Held(when.fold(day)(_.day))
           }
         case Some("planned") => when.fold[State](State.Proposed(None))(State.Planned(_))
@@ -86,7 +86,7 @@ object Meeting {
       }
       val who = field("who")
         .flatMap(_.arrOpt)
-        .filter(_.forall(_.strOpt.nonEmpty))
+        .filter(names => names.nonEmpty && names.forall(_.strOpt.nonEmpty))
         .map(_.toVector.flatMap(_.strOpt))
         .getOrElse(was.who)
       of(state, who)
