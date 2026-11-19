@@ -178,8 +178,10 @@ object MethodTests extends TestSuite {
             Vector(right(RoleView.of(role("manager"), Set(note.name), 1, covers = covers))),
             TransitionChecks.all
           )
-          .map(_.digest)
-      (digest(true) != digest(false), digest(false).isRight) ==> ((true, true))
+          .map(_.digest.hex)
+      // Pinned: a method's covering view is digested as it was when views could first cover.
+      (digest(true), digest(false).isRight, digest(false) != digest(true)) ==>
+        ((Right("6f1ee98a92f56ab472012348f7a1f321f0f30f2e2a6a2b245c45739eb9f1b2cf"), true, true))
     }
     test("a transition only people make changes the digest") {
       // That one anyone makes adds nothing is pinned by "a method's digest is pinned".
