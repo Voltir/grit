@@ -2,21 +2,16 @@ package grit.projects.artifact
 
 import java.time.Instant
 
-import scala.concurrent.duration.*
-
-import grit.core.document.{DocLabel, DocText, DocWeight, Document, DocumentTerms, InMemoryDocuments}
-import grit.core.id.{DocKey, PluginName}
-import grit.core.place.Place
-import grit.core.visibility.{Integrity, Label}
-import grit.dbos.sql.TestTx
+import grit.core.document.{Document, InMemoryDocuments}
+import grit.core.id.DocKey
+import grit.core.visibility.Label
 import grit.projects.name.{ArtifactKey, ArtifactNumber, ProjectKey}
 
 import utest.*
 
 object RekeyedTests extends TestSuite {
 
-  private def right[A](e: Either[String, A]): A =
-    e.fold(why => throw new java.lang.AssertionError(why), identity)
+  import grit.projects.method.MethodFixtures.right
 
   private val p: ProjectKey = right(ProjectKey.of("p"))
   private def number(n: Int): ArtifactNumber = right(ArtifactNumber.of(n))
@@ -29,30 +24,17 @@ object RekeyedTests extends TestSuite {
       under: DocKey,
       label: Label,
       data: ujson.Value
-  ): Either[String, Document] = {
-    val plugin = right(PluginName.of("projects"))
-    val terms = right(
-      DocLabel.of("projects").flatMap(DocumentTerms.of(_, DocWeight.Unscaled, 1.day, 100))
+  ): Either[String, Document] =
+    Right(
+      OldFormFixtures.kept(
+        documents,
+        under,
+        label,
+        "r",
+        data,
+        Instant.parse("2026-11-18T12:00:00Z")
+      )
     )
-    val at = Instant.parse("2026-11-18T12:00:00Z")
-    given grit.core.store.Tx = TestTx.fake
-    (for {
-      _ <- documents
-        .keeper(plugin, terms)
-        .write(
-          under,
-          label,
-          Integrity.Member,
-          Place.Everywhere,
-          right(DocText.of("r")),
-          data,
-          None,
-          at,
-          Set.empty
-        )
-      d <- documents.shelf(plugin).current(under, label)
-    } yield d).left.map(_.toString).flatMap(_.toRight("nothing kept"))
-  }
 
   val tests: Tests = Tests {
     test("numbers 1 to 256 are held by document 0, and 257 by document 1") {
@@ -68,7 +50,7 @@ object RekeyedTests extends TestSuite {
         Some(doc(s"p/${"x" * 77}355"))
       )
     }
-    test("where an id is kept is read from the documents of every label, merged") {
+    test("where an id is kept is read from several versions of the table, merged") {
       val documents = new InMemoryDocuments
       val public = kept(
         documents,
