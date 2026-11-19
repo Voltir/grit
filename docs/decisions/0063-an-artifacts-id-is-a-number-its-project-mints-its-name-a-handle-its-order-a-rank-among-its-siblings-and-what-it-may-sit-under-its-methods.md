@@ -44,7 +44,8 @@ Decision:
   re-spreads that parent's children. A milestone is numbered in its title when it opens.
 - **Containment is method data** (`ArtifactKind.nesting`, checked by `Project.of`); its default
   digests as before.
-- **The export holds the id, handle and rank**, one file per artifact at `<n>.md`.
+- **The export holds the id, handle and rank**, one file per artifact at its parents' numbers
+  then its own (ADR 0049).
 
 **The re-key** is one command, one transaction, believed at `Authority`, run as a step of the
 deploy that ships it. It numbers what it reads by first version's time, ties by key; each old key
@@ -56,7 +57,7 @@ no `next` refuses every command but the re-key and the export, naming the re-key
 written from the stored documents as before. The old-form reader goes once every deployment is
 re-keyed.
 
-Left to the build's plans: a large artifact as a tree of sections; an export nested by parent; a
+Left to the build's plans: a large artifact as a tree of sections; a
 claim covering its subtree (`RoleView.covers`), refused only by another holder's overlapping
 covering claim, judged under the same lock.
 
