@@ -18,7 +18,7 @@ object CarriedIntegrityTests extends TestSuite {
   private val (session, personally) = (Integrity.Member, Integrity.Authority)
 
   /** A steward of [[TestLabels.trial]]: `Authority` in it alone, as `Tx.integrityOf` gives. */
-  private val steward = Integrity.at(Integrity.Level.Authority, TestLabels.trial)
+  private val steward = TestLabels.Endorsed
 
   /** Command `name` asked by [[steward]] in a deployment declaring [[TestLabels.trial]]. */
   private def asSteward(projects: Projects, store: Store)(

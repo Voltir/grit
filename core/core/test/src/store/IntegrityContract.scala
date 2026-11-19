@@ -62,10 +62,10 @@ abstract class IntegrityContract extends TestSuite {
       val open = turn(conversation(Origin.Task("open", "met")))
       val member = say(capped, "member", Integrity.Member)
       val untrusted = say(capped, "untrusted", Integrity.Untrusted)
-      val endorsed = say(open, "endorsed", Trial)
+      val endorsed = say(open, "endorsed", TestLabels.Endorsed)
       believed(member) ==> Some(Integrity.Outside)
       believed(untrusted) ==> Some(Integrity.Untrusted)
-      believed(endorsed) ==> Some(Trial)
+      believed(endorsed) ==> Some(TestLabels.Endorsed)
       val c = capped.conversationId
       transaction(right(entries.list(c))).map(_.integrity) ==>
         Vector(Integrity.Outside, Integrity.Untrusted)
@@ -116,9 +116,6 @@ object IntegrityContract {
 
   /** The task whose room is capped. */
   val CappedRoom: String = "capped"
-
-  /** Authority endorsed in the contracts' compartment: kept apart from member by both parts. */
-  val Trial: Integrity = Integrity.at(Integrity.Level.Authority, TestLabels.trial)
 
   /** Member endorsed in the contracts' compartment: incomparable with authority alone, whose
     * meet with it is member.

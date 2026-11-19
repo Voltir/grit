@@ -296,7 +296,7 @@ abstract class DocumentContract extends TestSuite {
     ) {
       val p = name("doc-integrity")
       val k = keeper(p, terms())
-      val endorsed = Integrity.at(Integrity.Level.Authority, TestLabels.trial)
+      val endorsed = TestLabels.Endorsed
       def write(integrity: Integrity, m: Int) = transaction(
         ok(
           k.write(
@@ -327,7 +327,7 @@ abstract class DocumentContract extends TestSuite {
         "whichever is the lower"
     ) {
       val p = name("doc-capped")
-      val endorsed = Integrity.at(Integrity.Level.Authority, TestLabels.trial)
+      val endorsed = TestLabels.Endorsed
       // Each order fails one bug: the outer cap lower misses an inner cap dropped, the inner
       // lower misses the outer's own.
       val orders =
