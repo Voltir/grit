@@ -12,8 +12,8 @@ trait StrandExcerpts {
   /** What `seen`'s members said before its `asOf` that the transaction reads, as
     * [[Stitching.excerpt]] shows them within `chars` (its opening, a thread's asking message or
     * else the root's first message, then the latest; a run read by its span), believed at the
-    * meet of every message read, the opening included; `None` when the messages it places are not the ones `seen` digested (one was
-    * removed or said since).
+    * meet of every message read, the opening included; `None` when the messages it places are
+    * not the ones `seen` digested (one was removed or said since).
     */
   def excerpt(seen: Strand.Digested, chars: Int)(using
       Tx^

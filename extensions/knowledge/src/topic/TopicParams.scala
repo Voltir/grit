@@ -12,10 +12,10 @@ import grit.core.stitch.Strand
   * passage is kept after its day (`keepFor`); at most how many topics of one discussion it
   * sorts against the others to merge (`merges`); how it cuts a channel's top level into runs
   * (`cut`); at most how many strands it sorts (`sorts`); the `day` it writes for, the day of
-  * its slot in its job's zone when none: a backfill names a past day, and its strands are read as they stood at that day's end; and the last day
-  * it seeds on (`seedUntil`): a run for that day or one before reads the cards written within
-  * [[TopicParams.SeedReach]] instead of `cardRecent`, so each night offers the next batch of
-  * the cards no run has placed.
+  * its slot in its job's zone when none: a backfill names a past day, and its strands are read
+  * as they stood at that day's end; and the last day it seeds on (`seedUntil`): a run for that
+  * day or one before reads the cards written within [[TopicParams.SeedReach]] instead of
+  * `cardRecent`, so each night offers the next batch of the cards no run has placed.
   */
 final case class TopicParams(
     perRun: Int,
