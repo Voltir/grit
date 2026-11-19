@@ -40,16 +40,13 @@ object CoveringTests extends TestSuite {
     ask(projects, store, "project_claim", "key" -> key, "role" -> as, "holder" -> holder)
 
   private def under(projects: Projects, store: Store, local: String, parent: Option[String]) =
-    ask(
+    keeping(
       projects,
       store,
-      "project_keep",
-      (naming(projects, store, local) ++ Vector[(String, ujson.Value)](
-        "kind" -> "note",
-        "title" -> local,
-        "body" -> "Text.",
-        "parent" -> parent.fold(ujson.Null)(p => ujson.Str(s"p/$p"))
-      ))*
+      local,
+      "note",
+      "Text.",
+      "parent" -> parent.fold(ujson.Null)(p => ujson.Str(s"p/$p"))
     )
 
   /** Project `p`: note `a`, `b` under it, `c` under `b`. */

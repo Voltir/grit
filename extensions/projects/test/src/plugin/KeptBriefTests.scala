@@ -41,16 +41,7 @@ object KeptBriefTests extends TestSuite {
       body: String,
       more: (String, ujson.Value)*
   ): CommandOutcome =
-    ask(
-      projects,
-      store,
-      "project_keep",
-      (naming(projects, store, local) ++ Vector[(String, ujson.Value)](
-        "kind" -> "note",
-        "title" -> s"Title $local",
-        "body" -> body
-      ) ++ more)*
-    )
+    keeping(projects, store, local, "note", body, more*)
 
   private def claim(
       projects: Projects,

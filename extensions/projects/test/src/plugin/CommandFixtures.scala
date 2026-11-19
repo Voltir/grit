@@ -407,17 +407,28 @@ object CommandFixtures {
       kind: String,
       body: String
   ): Unit =
-    done(
-      ask(
-        projects,
-        store,
-        "project_keep",
-        (naming(projects, store, local) ++ Vector[(String, ujson.Value)](
-          "kind" -> kind,
-          "title" -> s"Title $local",
-          "body" -> body
-        ))*
-      )
+    done(keeping(projects, store, local, kind, body))
+
+  /** The answer to a keep of `p/<local>` ([[naming]]), of `kind`, titled `Title <local>`, holding
+    * `body`, with `more`.
+    */
+  def keeping(
+      projects: Projects,
+      store: Store,
+      local: String,
+      kind: String,
+      body: String,
+      more: (String, ujson.Value)*
+  ): CommandOutcome =
+    ask(
+      projects,
+      store,
+      "project_keep",
+      (naming(projects, store, local) ++ Vector[(String, ujson.Value)](
+        "kind" -> kind,
+        "title" -> s"Title $local",
+        "body" -> body
+      ) ++ more)*
     )
 
   /** How a keep names artifact `p/<local>`: by that key when the project has it, else as a new
