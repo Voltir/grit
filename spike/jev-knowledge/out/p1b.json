@@ -1,0 +1,330 @@
+[
+{
+"wid": "01a15f52-f908-779d-8441-c595ec4b0537:0",
+"suffices": true,
+"len": 95,
+"deictic": 0.07142857142857142,
+"sketch": 0.57,
+"short": 0.29
+},
+{
+"wid": "01a15f82-05a0-7d1b-b9a1-b3b2df8f5ec1:0",
+"suffices": true,
+"len": 267,
+"deictic": 0.02631578947368421,
+"sketch": 0.54,
+"short": 0.33
+},
+{
+"wid": "01a15f82-05a0-7d1b-b9a1-b3b2df8f5ec1:6",
+"suffices": false,
+"len": 18,
+"deictic": 0.0,
+"sketch": 0.28,
+"short": 0.16
+},
+{
+"wid": "01a1600a-166b-7f89-b874-041f679b9914:0",
+"suffices": false,
+"len": 79,
+"deictic": 0.0,
+"sketch": 0.9,
+"short": 0.13
+},
+{
+"wid": "01a16045-4d93-756f-b10f-f2bf73aaccb2:0",
+"suffices": true,
+"len": 83,
+"deictic": 0.07692307692307693,
+"sketch": 0.59,
+"short": 0.14
+},
+{
+"wid": "01a16045-4d93-756f-b10f-f2bf73aaccb2:1",
+"suffices": true,
+"len": 106,
+"deictic": 0.16666666666666666,
+"sketch": 0.36,
+"short": 0.13
+},
+{
+"wid": "01a16045-4d93-756f-b10f-f2bf73aaccb2:2",
+"suffices": true,
+"len": 111,
+"deictic": 0.0,
+"sketch": 0.83,
+"short": 0.32
+},
+{
+"wid": "01a16045-4d93-756f-b10f-f2bf73aaccb2:4",
+"suffices": false,
+"len": 102,
+"deictic": 0.07142857142857142,
+"sketch": 0.76,
+"short": 0.32
+},
+{
+"wid": "01a1647a-12f6-78fa-a829-2e816cb8a843:2",
+"suffices": true,
+"len": 80,
+"deictic": 0.07142857142857142,
+"sketch": 0.28,
+"short": 0.12
+},
+{
+"wid": "01a165f4-c2fa-7859-b2b9-6185adc05609:0",
+"suffices": true,
+"len": 186,
+"deictic": 0.03333333333333333,
+"sketch": 0.88,
+"short": 0.27
+},
+{
+"wid": "01a165f4-c2fa-7859-b2b9-6185adc05609:1",
+"suffices": true,
+"len": 161,
+"deictic": 0.08,
+"sketch": 0.44,
+"short": 0.23
+},
+{
+"wid": "01a16613-729d-7637-90d5-6d030640d1c0:0",
+"suffices": true,
+"len": 255,
+"deictic": 0.07142857142857142,
+"sketch": 0.76,
+"short": 0.23
+},
+{
+"wid": "01a16613-effa-7c99-ae22-4abc81108693:0",
+"suffices": true,
+"len": 277,
+"deictic": 0.0851063829787234,
+"sketch": 0.65,
+"short": 0.34
+},
+{
+"wid": "01a1661d-8322-7009-b3c7-10df7cdfe463:0",
+"suffices": false,
+"len": 211,
+"deictic": 0.027777777777777776,
+"sketch": 0.9,
+"short": 0.52
+},
+{
+"wid": "01a1661d-e299-72c9-8ff2-c150c6e90d65:0",
+"suffices": true,
+"len": 192,
+"deictic": 0.0625,
+"sketch": 0.85,
+"short": 0.29
+},
+{
+"wid": "01a16740-0395-72a7-9e0b-a3c1f97db0a7:0",
+"suffices": true,
+"len": 95,
+"deictic": 0.09090909090909091,
+"sketch": 0.92,
+"short": 0.56
+},
+{
+"wid": "01a1694f-64fa-7c4a-9e42-a23333f6ca1e:0",
+"suffices": false,
+"len": 145,
+"deictic": 0.047619047619047616,
+"sketch": 0.86,
+"short": 0.35
+},
+{
+"wid": "01a1694f-64fa-7c4a-9e42-a23333f6ca1e:1",
+"suffices": true,
+"len": 37,
+"deictic": 0.0,
+"sketch": 0.39,
+"short": 0.21
+},
+{
+"wid": "01a169f0-8e77-722b-97c9-12a112955b05:0",
+"suffices": true,
+"len": 158,
+"deictic": 0.07407407407407407,
+"sketch": 0.73,
+"short": 0.26
+},
+{
+"wid": "01a16a04-147c-7c54-9c1e-edf0dc1977ca:0",
+"suffices": true,
+"len": 103,
+"deictic": 0.0625,
+"sketch": 0.73,
+"short": 0.18
+},
+{
+"wid": "01a16af9-634e-707c-b129-495a2b2fc83c:0",
+"suffices": true,
+"len": 103,
+"deictic": 0.0625,
+"sketch": 0.73,
+"short": 0.18
+},
+{
+"wid": "01a1a78a-236b-7f52-ac16-212f705c1c81:1",
+"suffices": false,
+"len": 92,
+"deictic": 0.0,
+"sketch": 0.78,
+"short": 0.23
+},
+{
+"wid": "01a1a792-3b1e-737c-9a98-d1053ff20ae3:1",
+"suffices": false,
+"len": 72,
+"deictic": 0.07692307692307693,
+"sketch": 0.15,
+"short": 0.19
+},
+{
+"wid": "01a1b2cd-3349-7516-acaf-14c0b9e68be5:0",
+"suffices": false,
+"len": 164,
+"deictic": 0.03571428571428571,
+"sketch": 0.88,
+"short": 0.19
+},
+{
+"wid": "01a1b2d1-1669-7d5f-984c-df8253e11768:0",
+"suffices": false,
+"len": 169,
+"deictic": 0.03571428571428571,
+"sketch": 0.83,
+"short": 0.15
+},
+{
+"wid": "01a1b2d3-4316-734a-bb40-0da3b2c9f576:0",
+"suffices": false,
+"len": 169,
+"deictic": 0.03571428571428571,
+"sketch": 0.84,
+"short": 0.16
+},
+{
+"wid": "01a1b325-3521-7861-b3ab-55528a54520e:0",
+"suffices": false,
+"len": 93,
+"deictic": 0.11764705882352941,
+"sketch": 0.9,
+"short": 0.21
+},
+{
+"wid": "01a1c1bc-b4cf-721b-85a8-19b30dd8286d:25",
+"suffices": false,
+"len": 56,
+"deictic": 0.1111111111111111,
+"sketch": 0.31,
+"short": 0.18
+},
+{
+"wid": "01a1c1bc-b4cf-721b-85a8-19b30dd8286d:26",
+"suffices": true,
+"len": 186,
+"deictic": 0.058823529411764705,
+"sketch": 0.27,
+"short": 0.26
+},
+{
+"wid": "01a1c1bc-b4cf-721b-85a8-19b30dd8286d:30",
+"suffices": false,
+"len": 31,
+"deictic": 0.2,
+"sketch": 0.15,
+"short": 0.16
+},
+{
+"wid": "01a1c1bc-b4cf-721b-85a8-19b30dd8286d:38",
+"suffices": true,
+"len": 306,
+"deictic": 0.034482758620689655,
+"sketch": 0.41,
+"short": 0.28
+},
+{
+"wid": "01a1c1bc-b4cf-721b-85a8-19b30dd8286d:44",
+"suffices": true,
+"len": 249,
+"deictic": 0.075,
+"sketch": 0.34,
+"short": 0.22
+},
+{
+"wid": "01a1c1bc-b4cf-721b-85a8-19b30dd8286d:47",
+"suffices": false,
+"len": 375,
+"deictic": 0.0,
+"sketch": 0.13,
+"short": 0.18
+},
+{
+"wid": "01a1c1bc-b4cf-721b-85a8-19b30dd8286d:48",
+"suffices": false,
+"len": 331,
+"deictic": 0.06779661016949153,
+"sketch": 0.78,
+"short": 0.34
+},
+{
+"wid": "01a1c1bc-b4cf-721b-85a8-19b30dd8286d:56",
+"suffices": false,
+"len": 44,
+"deictic": 0.0,
+"sketch": 0.16,
+"short": 0.37
+},
+{
+"wid": "01a1c1bc-b4cf-721b-85a8-19b30dd8286d:59",
+"suffices": false,
+"len": 29,
+"deictic": 0.0,
+"sketch": 0.24,
+"short": 0.25
+},
+{
+"wid": "01a1c1bc-b4cf-721b-85a8-19b30dd8286d:60",
+"suffices": false,
+"len": 58,
+"deictic": 0.0,
+"sketch": 0.27,
+"short": 0.2
+},
+{
+"wid": "01a1c1bc-b4cf-721b-85a8-19b30dd8286d:61",
+"suffices": false,
+"len": 35,
+"deictic": 0.0,
+"sketch": 0.59,
+"short": 0.26
+},
+{
+"wid": "01a1c1bc-b4cf-721b-85a8-19b30dd8286d:7",
+"suffices": false,
+"len": 73,
+"deictic": 0.0,
+"sketch": 0.74,
+"short": 0.25
+},
+{
+"wid": "01a1d0b8-e1f3-7ecf-bec4-62c9acea2de5:0",
+"suffices": false,
+"len": 200,
+"deictic": 0.16216216216216217,
+"sketch": 0.34,
+"short": 0.18
+},
+{
+"wid": "01a1ef9f-dbf9-7fc4-bb26-267716622057:1",
+"suffices": false,
+"len": 48,
+"deictic": 0.14285714285714285,
+"sketch": 0.15,
+"short": 0.14
+}
+]

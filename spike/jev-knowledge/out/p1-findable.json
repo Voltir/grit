@@ -1,0 +1,2132 @@
+[
+{
+"wid": "01a15f52-f908-779d-8441-c595ec4b0537:0",
+"passed": [
+"closed:01a0fd8e-9bb3-7ccf-bbad-72a7a66f99b9",
+"closed:01a0fd8e-9b81-7e2d-a3ab-055caecf2454"
+],
+"kinds": {
+"closed": 2
+},
+"message": {
+"r@10": [
+1,
+2
+],
+"r@30": [
+2,
+2
+],
+"r@60": [
+2,
+2
+]
+},
+"message_ranks": [
+7,
+11
+],
+"written": {
+"r@10": [
+1,
+2
+],
+"r@30": [
+1,
+2
+],
+"r@60": [
+2,
+2
+]
+},
+"written_ranks": [
+10,
+38
+],
+"recorded_ranks": [
+3,
+7
+]
+},
+{
+"wid": "01a15f82-05a0-7d1b-b9a1-b3b2df8f5ec1:0",
+"passed": [
+"closed:01a0fd8e-a8e1-7a7e-9274-8e6f809816a6"
+],
+"kinds": {
+"closed": 1
+},
+"message": {
+"r@10": [
+0,
+1
+],
+"r@30": [
+1,
+1
+],
+"r@60": [
+1,
+1
+]
+},
+"message_ranks": [
+21
+],
+"written": {
+"r@10": [
+0,
+1
+],
+"r@30": [
+1,
+1
+],
+"r@60": [
+1,
+1
+]
+},
+"written_ranks": [
+20
+],
+"recorded_ranks": [
+15
+]
+},
+{
+"wid": "01a15f82-05a0-7d1b-b9a1-b3b2df8f5ec1:6",
+"passed": [
+"closed:01a10d09-d0d3-7575-80e8-92ecffa15ef6"
+],
+"kinds": {
+"closed": 1
+},
+"message": {
+"r@10": [
+0,
+1
+],
+"r@30": [
+0,
+1
+],
+"r@60": [
+1,
+1
+]
+},
+"message_ranks": [
+34
+],
+"written": {
+"r@10": [
+0,
+1
+],
+"r@30": [
+1,
+1
+],
+"r@60": [
+1,
+1
+]
+},
+"written_ranks": [
+11
+],
+"recorded_ranks": [
+10
+]
+},
+{
+"wid": "01a1600a-166b-7f89-b874-041f679b9914:0",
+"passed": [
+"closed:01a1124b-a336-7868-9de0-c37e5a945efa",
+"closed:01a11842-c457-78e4-b015-f9d34b100043",
+"closed:01a154f7-cfee-7f05-b289-23b616e675b7"
+],
+"kinds": {
+"closed": 3
+},
+"message": {
+"r@10": [
+1,
+3
+],
+"r@30": [
+2,
+3
+],
+"r@60": [
+3,
+3
+]
+},
+"message_ranks": [
+3,
+30,
+51
+],
+"written": {
+"r@10": [
+0,
+3
+],
+"r@30": [
+2,
+3
+],
+"r@60": [
+3,
+3
+]
+},
+"written_ranks": [
+20,
+26,
+37
+],
+"recorded_ranks": [
+18,
+20,
+29
+]
+},
+{
+"wid": "01a16045-4d93-756f-b10f-f2bf73aaccb2:0",
+"passed": [
+"closed:01a1554a-df40-719a-94c3-d235755d8b97",
+"closed:01a117e3-2c43-7976-9702-c4c1077cddc3"
+],
+"kinds": {
+"closed": 2
+},
+"message": {
+"r@10": [
+2,
+2
+],
+"r@30": [
+2,
+2
+],
+"r@60": [
+2,
+2
+]
+},
+"message_ranks": [
+4,
+2
+],
+"written": {
+"r@10": [
+1,
+2
+],
+"r@30": [
+1,
+2
+],
+"r@60": [
+2,
+2
+]
+},
+"written_ranks": [
+2,
+50
+],
+"recorded_ranks": [
+3,
+18
+]
+},
+{
+"wid": "01a16045-4d93-756f-b10f-f2bf73aaccb2:1",
+"passed": [
+"closed:01a14d48-df4e-7494-a60a-b914be84615e"
+],
+"kinds": {
+"closed": 1
+},
+"message": {
+"r@10": [
+1,
+1
+],
+"r@30": [
+1,
+1
+],
+"r@60": [
+1,
+1
+]
+},
+"message_ranks": [
+5
+],
+"written": {
+"r@10": [
+0,
+1
+],
+"r@30": [
+0,
+1
+],
+"r@60": [
+0,
+1
+]
+},
+"written_ranks": [
+null
+],
+"recorded_ranks": [
+28
+]
+},
+{
+"wid": "01a16045-4d93-756f-b10f-f2bf73aaccb2:2",
+"passed": [
+"closed:01a154f7-cfee-7f05-b289-23b616e675b7",
+"closed:01a1124b-a336-7868-9de0-c37e5a945efa",
+"closed:01a1124e-4dd0-7505-818c-106e9dc9bfb4"
+],
+"kinds": {
+"closed": 3
+},
+"message": {
+"r@10": [
+2,
+3
+],
+"r@30": [
+3,
+3
+],
+"r@60": [
+3,
+3
+]
+},
+"message_ranks": [
+11,
+5,
+6
+],
+"written": {
+"r@10": [
+3,
+3
+],
+"r@30": [
+3,
+3
+],
+"r@60": [
+3,
+3
+]
+},
+"written_ranks": [
+3,
+7,
+6
+],
+"recorded_ranks": [
+10,
+17,
+22
+]
+},
+{
+"wid": "01a16045-4d93-756f-b10f-f2bf73aaccb2:4",
+"passed": [
+"doc:585",
+"closed:01a13c99-cee3-7c58-9b27-e5792be851d8",
+"closed:01a11eaf-8d5b-7604-9b32-803e28f82d59"
+],
+"kinds": {
+"doc": 1,
+"closed": 2
+},
+"message": {
+"r@10": [
+1,
+3
+],
+"r@30": [
+1,
+3
+],
+"r@60": [
+1,
+3
+]
+},
+"message_ranks": [
+100,
+9,
+66
+],
+"written": {
+"r@10": [
+3,
+3
+],
+"r@30": [
+3,
+3
+],
+"r@60": [
+3,
+3
+]
+},
+"written_ranks": [
+4,
+2,
+10
+],
+"recorded_ranks": [
+2,
+7,
+11
+]
+},
+{
+"wid": "01a1647a-12f6-78fa-a829-2e816cb8a843:2",
+"passed": [
+"closed:01a117a5-40aa-7236-bceb-d28f043f0327"
+],
+"kinds": {
+"closed": 1
+},
+"message": {
+"r@10": [
+0,
+1
+],
+"r@30": [
+1,
+1
+],
+"r@60": [
+1,
+1
+]
+},
+"message_ranks": [
+29
+],
+"written": {
+"r@10": [
+1,
+1
+],
+"r@30": [
+1,
+1
+],
+"r@60": [
+1,
+1
+]
+},
+"written_ranks": [
+1
+],
+"recorded_ranks": [
+1
+]
+},
+{
+"wid": "01a165f4-c2fa-7859-b2b9-6185adc05609:0",
+"passed": [
+"doc:828"
+],
+"kinds": {
+"doc": 1
+},
+"message": {
+"r@10": [
+1,
+1
+],
+"r@30": [
+1,
+1
+],
+"r@60": [
+1,
+1
+]
+},
+"message_ranks": [
+1
+],
+"written": {
+"r@10": [
+1,
+1
+],
+"r@30": [
+1,
+1
+],
+"r@60": [
+1,
+1
+]
+},
+"written_ranks": [
+1
+],
+"recorded_ranks": [
+1
+]
+},
+{
+"wid": "01a165f4-c2fa-7859-b2b9-6185adc05609:1",
+"passed": [
+"doc:828"
+],
+"kinds": {
+"doc": 1
+},
+"message": {
+"r@10": [
+1,
+1
+],
+"r@30": [
+1,
+1
+],
+"r@60": [
+1,
+1
+]
+},
+"message_ranks": [
+4
+],
+"written": {
+"r@10": [
+1,
+1
+],
+"r@30": [
+1,
+1
+],
+"r@60": [
+1,
+1
+]
+},
+"written_ranks": [
+6
+],
+"recorded_ranks": [
+1
+]
+},
+{
+"wid": "01a16613-729d-7637-90d5-6d030640d1c0:0",
+"passed": [
+"doc:828"
+],
+"kinds": {
+"doc": 1
+},
+"message": {
+"r@10": [
+1,
+1
+],
+"r@30": [
+1,
+1
+],
+"r@60": [
+1,
+1
+]
+},
+"message_ranks": [
+1
+],
+"written": {
+"r@10": [
+1,
+1
+],
+"r@30": [
+1,
+1
+],
+"r@60": [
+1,
+1
+]
+},
+"written_ranks": [
+2
+],
+"recorded_ranks": [
+1
+]
+},
+{
+"wid": "01a16613-effa-7c99-ae22-4abc81108693:0",
+"passed": [
+"doc:828"
+],
+"kinds": {
+"doc": 1
+},
+"message": {
+"r@10": [
+1,
+1
+],
+"r@30": [
+1,
+1
+],
+"r@60": [
+1,
+1
+]
+},
+"message_ranks": [
+1
+],
+"written": {
+"r@10": [
+1,
+1
+],
+"r@30": [
+1,
+1
+],
+"r@60": [
+1,
+1
+]
+},
+"written_ranks": [
+2
+],
+"recorded_ranks": [
+1
+]
+},
+{
+"wid": "01a1661d-8322-7009-b3c7-10df7cdfe463:0",
+"passed": [
+"closed:01a117ce-c177-7c6b-972c-8e84ae7dfdf9",
+"closed:01a117cb-40d2-78d9-aae4-fff7994d8250"
+],
+"kinds": {
+"closed": 2
+},
+"message": {
+"r@10": [
+1,
+2
+],
+"r@30": [
+1,
+2
+],
+"r@60": [
+2,
+2
+]
+},
+"message_ranks": [
+3,
+51
+],
+"written": {
+"r@10": [
+1,
+2
+],
+"r@30": [
+1,
+2
+],
+"r@60": [
+1,
+2
+]
+},
+"written_ranks": [
+2,
+65
+],
+"recorded_ranks": [
+3,
+26
+]
+},
+{
+"wid": "01a1661d-e299-72c9-8ff2-c150c6e90d65:0",
+"passed": [
+"doc:828"
+],
+"kinds": {
+"doc": 1
+},
+"message": {
+"r@10": [
+1,
+1
+],
+"r@30": [
+1,
+1
+],
+"r@60": [
+1,
+1
+]
+},
+"message_ranks": [
+1
+],
+"written": {
+"r@10": [
+1,
+1
+],
+"r@30": [
+1,
+1
+],
+"r@60": [
+1,
+1
+]
+},
+"written_ranks": [
+1
+],
+"recorded_ranks": [
+1
+]
+},
+{
+"wid": "01a16740-0395-72a7-9e0b-a3c1f97db0a7:0",
+"passed": [
+"closed:01a16613-effa-7c99-ae22-4abc81108693"
+],
+"kinds": {
+"closed": 1
+},
+"message": {
+"r@10": [
+0,
+1
+],
+"r@30": [
+1,
+1
+],
+"r@60": [
+1,
+1
+]
+},
+"message_ranks": [
+23
+],
+"written": {
+"r@10": [
+1,
+1
+],
+"r@30": [
+1,
+1
+],
+"r@60": [
+1,
+1
+]
+},
+"written_ranks": [
+9
+],
+"recorded_ranks": [
+12
+]
+},
+{
+"wid": "01a1694f-64fa-7c4a-9e42-a23333f6ca1e:0",
+"passed": [
+"doc:828",
+"closed:01a16562-51b2-7c7f-b8b0-89210ff5a326"
+],
+"kinds": {
+"doc": 1,
+"closed": 1
+},
+"message": {
+"r@10": [
+0,
+2
+],
+"r@30": [
+0,
+2
+],
+"r@60": [
+0,
+2
+]
+},
+"message_ranks": [
+97,
+null
+],
+"written": {
+"r@10": [
+2,
+2
+],
+"r@30": [
+2,
+2
+],
+"r@60": [
+2,
+2
+]
+},
+"written_ranks": [
+4,
+5
+],
+"recorded_ranks": [
+6,
+13
+]
+},
+{
+"wid": "01a1694f-64fa-7c4a-9e42-a23333f6ca1e:1",
+"passed": [
+"closed:01a11bbd-c67b-7dbf-be30-797b947d22d2"
+],
+"kinds": {
+"closed": 1
+},
+"message": {
+"r@10": [
+1,
+1
+],
+"r@30": [
+1,
+1
+],
+"r@60": [
+1,
+1
+]
+},
+"message_ranks": [
+1
+],
+"written": {
+"r@10": [
+1,
+1
+],
+"r@30": [
+1,
+1
+],
+"r@60": [
+1,
+1
+]
+},
+"written_ranks": [
+6
+],
+"recorded_ranks": [
+11
+]
+},
+{
+"wid": "01a169f0-8e77-722b-97c9-12a112955b05:0",
+"passed": [
+"closed:01a1696b-faf5-7bcf-8db6-907ef068ca32"
+],
+"kinds": {
+"closed": 1
+},
+"message": {
+"r@10": [
+1,
+1
+],
+"r@30": [
+1,
+1
+],
+"r@60": [
+1,
+1
+]
+},
+"message_ranks": [
+1
+],
+"written": {
+"r@10": [
+1,
+1
+],
+"r@30": [
+1,
+1
+],
+"r@60": [
+1,
+1
+]
+},
+"written_ranks": [
+1
+],
+"recorded_ranks": [
+1
+]
+},
+{
+"wid": "01a16a04-147c-7c54-9c1e-edf0dc1977ca:0",
+"passed": [
+"closed:01a1696b-faf5-7bcf-8db6-907ef068ca32"
+],
+"kinds": {
+"closed": 1
+},
+"message": {
+"r@10": [
+1,
+1
+],
+"r@30": [
+1,
+1
+],
+"r@60": [
+1,
+1
+]
+},
+"message_ranks": [
+1
+],
+"written": {
+"r@10": [
+1,
+1
+],
+"r@30": [
+1,
+1
+],
+"r@60": [
+1,
+1
+]
+},
+"written_ranks": [
+1
+],
+"recorded_ranks": [
+4
+]
+},
+{
+"wid": "01a16af9-634e-707c-b129-495a2b2fc83c:0",
+"passed": [
+"piece:6554",
+"doc:889",
+"closed:01a1696b-faf5-7bcf-8db6-907ef068ca32",
+"closed:01a169f0-8e77-722b-97c9-12a112955b05",
+"piece:5167",
+"piece:5189"
+],
+"kinds": {
+"piece": 3,
+"doc": 1,
+"closed": 2
+},
+"message": {
+"r@10": [
+4,
+6
+],
+"r@30": [
+6,
+6
+],
+"r@60": [
+6,
+6
+]
+},
+"message_ranks": [
+6,
+4,
+1,
+2,
+20,
+21
+],
+"written": {
+"r@10": [
+4,
+6
+],
+"r@30": [
+6,
+6
+],
+"r@60": [
+6,
+6
+]
+},
+"written_ranks": [
+2,
+6,
+1,
+4,
+21,
+22
+],
+"recorded_ranks": [
+1,
+4,
+5,
+10,
+15,
+16
+]
+},
+{
+"wid": "01a1a78a-236b-7f52-ac16-212f705c1c81:1",
+"passed": [
+"doc:1395",
+"doc:1461",
+"closed:01a164de-cbaa-705c-88cf-693c55913e13"
+],
+"kinds": {
+"doc": 2,
+"closed": 1
+},
+"message": {
+"r@10": [
+0,
+3
+],
+"r@30": [
+1,
+3
+],
+"r@60": [
+1,
+3
+]
+},
+"message_ranks": [
+13,
+null,
+null
+],
+"written": {
+"r@10": [
+3,
+3
+],
+"r@30": [
+3,
+3
+],
+"r@60": [
+3,
+3
+]
+},
+"written_ranks": [
+1,
+2,
+3
+],
+"recorded_ranks": [
+1,
+2,
+3
+]
+},
+{
+"wid": "01a1a792-3b1e-737c-9a98-d1053ff20ae3:1",
+"passed": [
+"doc:1293",
+"piece:5159",
+"doc:1288"
+],
+"kinds": {
+"doc": 2,
+"piece": 1
+},
+"message": {
+"r@10": [
+1,
+3
+],
+"r@30": [
+2,
+3
+],
+"r@60": [
+3,
+3
+]
+},
+"message_ranks": [
+12,
+3,
+33
+],
+"written": {
+"r@10": [
+2,
+3
+],
+"r@30": [
+3,
+3
+],
+"r@60": [
+3,
+3
+]
+},
+"written_ranks": [
+4,
+3,
+26
+],
+"recorded_ranks": [
+3,
+4,
+23
+]
+},
+{
+"wid": "01a1b2cd-3349-7516-acaf-14c0b9e68be5:0",
+"passed": [
+"doc:1585",
+"doc:1267"
+],
+"kinds": {
+"doc": 2
+},
+"message": {
+"r@10": [
+0,
+2
+],
+"r@30": [
+0,
+2
+],
+"r@60": [
+1,
+2
+]
+},
+"message_ranks": [
+77,
+55
+],
+"written": {
+"r@10": [
+0,
+2
+],
+"r@30": [
+1,
+2
+],
+"r@60": [
+2,
+2
+]
+},
+"written_ranks": [
+16,
+46
+],
+"recorded_ranks": [
+3,
+29
+]
+},
+{
+"wid": "01a1b2d1-1669-7d5f-984c-df8253e11768:0",
+"passed": [
+"doc:1630",
+"closed:01a1a78c-3d0b-7243-887b-c0430e953163"
+],
+"kinds": {
+"doc": 1,
+"closed": 1
+},
+"message": {
+"r@10": [
+0,
+2
+],
+"r@30": [
+0,
+2
+],
+"r@60": [
+1,
+2
+]
+},
+"message_ranks": [
+95,
+50
+],
+"written": {
+"r@10": [
+1,
+2
+],
+"r@30": [
+2,
+2
+],
+"r@60": [
+2,
+2
+]
+},
+"written_ranks": [
+6,
+19
+],
+"recorded_ranks": [
+4,
+16
+]
+},
+{
+"wid": "01a1b2d3-4316-734a-bb40-0da3b2c9f576:0",
+"passed": [
+"doc:1630"
+],
+"kinds": {
+"doc": 1
+},
+"message": {
+"r@10": [
+0,
+1
+],
+"r@30": [
+0,
+1
+],
+"r@60": [
+0,
+1
+]
+},
+"message_ranks": [
+95
+],
+"written": {
+"r@10": [
+0,
+1
+],
+"r@30": [
+1,
+1
+],
+"r@60": [
+1,
+1
+]
+},
+"written_ranks": [
+14
+],
+"recorded_ranks": [
+8
+]
+},
+{
+"wid": "01a1b325-3521-7861-b3ab-55528a54520e:0",
+"passed": [
+"closed:01a1b2d6-c315-7ca2-9659-086984c7e0bf",
+"doc:1632"
+],
+"kinds": {
+"closed": 1,
+"doc": 1
+},
+"message": {
+"r@10": [
+1,
+2
+],
+"r@30": [
+1,
+2
+],
+"r@60": [
+2,
+2
+]
+},
+"message_ranks": [
+1,
+50
+],
+"written": {
+"r@10": [
+2,
+2
+],
+"r@30": [
+2,
+2
+],
+"r@60": [
+2,
+2
+]
+},
+"written_ranks": [
+2,
+5
+],
+"recorded_ranks": [
+3,
+5
+]
+},
+{
+"wid": "01a1c1bc-b4cf-721b-85a8-19b30dd8286d:25",
+"passed": [
+"doc:1522",
+"closed:01a17e05-e175-7d9f-b72a-1395ff4dc94b",
+"closed:01a17e05-e7b8-71a2-8bac-11e5698fc564",
+"doc:1330"
+],
+"kinds": {
+"doc": 2,
+"closed": 2
+},
+"message": {
+"r@10": [
+0,
+4
+],
+"r@30": [
+1,
+4
+],
+"r@60": [
+1,
+4
+]
+},
+"message_ranks": [
+160,
+26,
+null,
+115
+],
+"written": {
+"r@10": [
+0,
+4
+],
+"r@30": [
+3,
+4
+],
+"r@60": [
+3,
+4
+]
+},
+"written_ranks": [
+22,
+14,
+23,
+69
+],
+"recorded_ranks": [
+12,
+16,
+18,
+20
+]
+},
+{
+"wid": "01a1c1bc-b4cf-721b-85a8-19b30dd8286d:26",
+"passed": [
+"doc:1638"
+],
+"kinds": {
+"doc": 1
+},
+"message": {
+"r@10": [
+1,
+1
+],
+"r@30": [
+1,
+1
+],
+"r@60": [
+1,
+1
+]
+},
+"message_ranks": [
+9
+],
+"written": {
+"r@10": [
+1,
+1
+],
+"r@30": [
+1,
+1
+],
+"r@60": [
+1,
+1
+]
+},
+"written_ranks": [
+2
+],
+"recorded_ranks": [
+2
+]
+},
+{
+"wid": "01a1c1bc-b4cf-721b-85a8-19b30dd8286d:30",
+"passed": [
+"closed:01a17e05-8d39-7d37-9724-e5a8c552b6ed",
+"piece:5241",
+"doc:1417"
+],
+"kinds": {
+"closed": 1,
+"piece": 1,
+"doc": 1
+},
+"message": {
+"r@10": [
+0,
+3
+],
+"r@30": [
+0,
+3
+],
+"r@60": [
+1,
+3
+]
+},
+"message_ranks": [
+null,
+59,
+168
+],
+"written": {
+"r@10": [
+1,
+3
+],
+"r@30": [
+3,
+3
+],
+"r@60": [
+3,
+3
+]
+},
+"written_ranks": [
+2,
+17,
+21
+],
+"recorded_ranks": [
+3,
+11,
+17
+]
+},
+{
+"wid": "01a1c1bc-b4cf-721b-85a8-19b30dd8286d:38",
+"passed": [
+"doc:1349",
+"closed:01a1888e-645c-7ec2-94a2-8fc173f39722",
+"closed:01a1647a-12f6-78fa-a829-2e816cb8a843"
+],
+"kinds": {
+"doc": 1,
+"closed": 2
+},
+"message": {
+"r@10": [
+3,
+3
+],
+"r@30": [
+3,
+3
+],
+"r@60": [
+3,
+3
+]
+},
+"message_ranks": [
+9,
+1,
+7
+],
+"written": {
+"r@10": [
+0,
+3
+],
+"r@30": [
+3,
+3
+],
+"r@60": [
+3,
+3
+]
+},
+"written_ranks": [
+16,
+13,
+26
+],
+"recorded_ranks": [
+12,
+16,
+27
+]
+},
+{
+"wid": "01a1c1bc-b4cf-721b-85a8-19b30dd8286d:44",
+"passed": [
+"doc:1715"
+],
+"kinds": {
+"doc": 1
+},
+"message": {
+"r@10": [
+1,
+1
+],
+"r@30": [
+1,
+1
+],
+"r@60": [
+1,
+1
+]
+},
+"message_ranks": [
+6
+],
+"written": {
+"r@10": [
+1,
+1
+],
+"r@30": [
+1,
+1
+],
+"r@60": [
+1,
+1
+]
+},
+"written_ranks": [
+9
+],
+"recorded_ranks": [
+11
+]
+},
+{
+"wid": "01a1c1bc-b4cf-721b-85a8-19b30dd8286d:47",
+"passed": [
+"doc:1757",
+"doc:1523",
+"doc:1764",
+"closed:01a17e05-ef05-7ace-b1a6-fee54b074a2e",
+"closed:01a15f6b-2c27-7252-b87b-c2e2ee52a1b8",
+"doc:1755",
+"doc:1357"
+],
+"kinds": {
+"doc": 5,
+"closed": 2
+},
+"message": {
+"r@10": [
+4,
+7
+],
+"r@30": [
+5,
+7
+],
+"r@60": [
+7,
+7
+]
+},
+"message_ranks": [
+3,
+5,
+14,
+8,
+6,
+49,
+31
+],
+"written": {
+"r@10": [
+4,
+7
+],
+"r@30": [
+7,
+7
+],
+"r@60": [
+7,
+7
+]
+},
+"written_ranks": [
+3,
+6,
+7,
+8,
+12,
+15,
+22
+],
+"recorded_ranks": [
+3,
+6,
+7,
+8,
+12,
+15,
+26
+]
+},
+{
+"wid": "01a1c1bc-b4cf-721b-85a8-19b30dd8286d:48",
+"passed": [
+"piece:5241",
+"piece:5199",
+"doc:1760",
+"closed:01a17e05-f70e-7798-a563-1457d43fd41d"
+],
+"kinds": {
+"piece": 2,
+"doc": 1,
+"closed": 1
+},
+"message": {
+"r@10": [
+2,
+4
+],
+"r@30": [
+2,
+4
+],
+"r@60": [
+2,
+4
+]
+},
+"message_ranks": [
+1,
+71,
+62,
+2
+],
+"written": {
+"r@10": [
+2,
+4
+],
+"r@30": [
+4,
+4
+],
+"r@60": [
+4,
+4
+]
+},
+"written_ranks": [
+1,
+6,
+22,
+29
+],
+"recorded_ranks": [
+1,
+9,
+17,
+26
+]
+},
+{
+"wid": "01a1c1bc-b4cf-721b-85a8-19b30dd8286d:56",
+"passed": [
+"doc:1330"
+],
+"kinds": {
+"doc": 1
+},
+"message": {
+"r@10": [
+0,
+1
+],
+"r@30": [
+0,
+1
+],
+"r@60": [
+0,
+1
+]
+},
+"message_ranks": [
+81
+],
+"written": {
+"r@10": [
+0,
+1
+],
+"r@30": [
+0,
+1
+],
+"r@60": [
+1,
+1
+]
+},
+"written_ranks": [
+32
+],
+"recorded_ranks": [
+21
+]
+},
+{
+"wid": "01a1c1bc-b4cf-721b-85a8-19b30dd8286d:59",
+"passed": [
+"doc:1527"
+],
+"kinds": {
+"doc": 1
+},
+"message": {
+"r@10": [
+0,
+1
+],
+"r@30": [
+0,
+1
+],
+"r@60": [
+0,
+1
+]
+},
+"message_ranks": [
+86
+],
+"written": {
+"r@10": [
+1,
+1
+],
+"r@30": [
+1,
+1
+],
+"r@60": [
+1,
+1
+]
+},
+"written_ranks": [
+4
+],
+"recorded_ranks": [
+2
+]
+},
+{
+"wid": "01a1c1bc-b4cf-721b-85a8-19b30dd8286d:60",
+"passed": [
+"closed:01a1135b-8566-7c83-9524-a74a26340786",
+"doc:1523",
+"doc:1757",
+"doc:1764",
+"doc:1357",
+"closed:01a17e05-ef05-7ace-b1a6-fee54b074a2e"
+],
+"kinds": {
+"closed": 2,
+"doc": 4
+},
+"message": {
+"r@10": [
+1,
+6
+],
+"r@30": [
+1,
+6
+],
+"r@60": [
+3,
+6
+]
+},
+"message_ranks": [
+10,
+59,
+null,
+null,
+62,
+41
+],
+"written": {
+"r@10": [
+3,
+6
+],
+"r@30": [
+6,
+6
+],
+"r@60": [
+6,
+6
+]
+},
+"written_ranks": [
+4,
+6,
+10,
+11,
+18,
+22
+],
+"recorded_ranks": [
+5,
+6,
+11,
+13,
+22,
+25
+]
+},
+{
+"wid": "01a1c1bc-b4cf-721b-85a8-19b30dd8286d:61",
+"passed": [
+"doc:1650",
+"closed:01a1b2d3-4316-734a-bb40-0da3b2c9f576",
+"closed:01a1a397-43f4-7266-a1de-ca15340c6657",
+"closed:01a17e05-d595-7c01-907c-f2064160b109"
+],
+"kinds": {
+"doc": 1,
+"closed": 3
+},
+"message": {
+"r@10": [
+0,
+4
+],
+"r@30": [
+1,
+4
+],
+"r@60": [
+1,
+4
+]
+},
+"message_ranks": [
+97,
+null,
+12,
+null
+],
+"written": {
+"r@10": [
+0,
+4
+],
+"r@30": [
+4,
+4
+],
+"r@60": [
+4,
+4
+]
+},
+"written_ranks": [
+11,
+18,
+26,
+23
+],
+"recorded_ranks": [
+15,
+17,
+19,
+20
+]
+},
+{
+"wid": "01a1c1bc-b4cf-721b-85a8-19b30dd8286d:7",
+"passed": [
+"piece:5162",
+"piece:5245",
+"piece:5242",
+"piece:5148",
+"piece:5161",
+"doc:1617",
+"closed:01a17e05-e1e4-79cc-869d-e43584a2a8c1",
+"doc:1348"
+],
+"kinds": {
+"piece": 5,
+"doc": 2,
+"closed": 1
+},
+"message": {
+"r@10": [
+2,
+8
+],
+"r@30": [
+2,
+8
+],
+"r@60": [
+5,
+8
+]
+},
+"message_ranks": [
+7,
+5,
+null,
+37,
+55,
+144,
+53,
+150
+],
+"written": {
+"r@10": [
+4,
+8
+],
+"r@30": [
+7,
+8
+],
+"r@60": [
+8,
+8
+]
+},
+"written_ranks": [
+1,
+3,
+9,
+10,
+11,
+22,
+30,
+35
+],
+"recorded_ranks": [
+1,
+2,
+8,
+9,
+10,
+14,
+25,
+29
+]
+},
+{
+"wid": "01a1d0b8-e1f3-7ecf-bec4-62c9acea2de5:0",
+"passed": [
+"doc:1683",
+"doc:1570"
+],
+"kinds": {
+"doc": 2
+},
+"message": {
+"r@10": [
+1,
+2
+],
+"r@30": [
+1,
+2
+],
+"r@60": [
+2,
+2
+]
+},
+"message_ranks": [
+4,
+57
+],
+"written": {
+"r@10": [
+1,
+2
+],
+"r@30": [
+2,
+2
+],
+"r@60": [
+2,
+2
+]
+},
+"written_ranks": [
+2,
+22
+],
+"recorded_ranks": [
+1,
+19
+]
+},
+{
+"wid": "01a1ef9f-dbf9-7fc4-bb26-267716622057:1",
+"passed": [
+"doc:1523",
+"closed:01a17e05-e1e4-79cc-869d-e43584a2a8c1",
+"closed:01a154f8-add5-7f86-b98a-72f0c9797f07"
+],
+"kinds": {
+"doc": 1,
+"closed": 2
+},
+"message": {
+"r@10": [
+0,
+3
+],
+"r@30": [
+0,
+3
+],
+"r@60": [
+0,
+3
+]
+},
+"message_ranks": [
+77,
+null,
+null
+],
+"written": {
+"r@10": [
+0,
+3
+],
+"r@30": [
+1,
+3
+],
+"r@60": [
+3,
+3
+]
+},
+"written_ranks": [
+24,
+31,
+33
+],
+"recorded_ranks": [
+19,
+29,
+30
+]
+}
+]

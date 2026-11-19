@@ -1,0 +1,152 @@
+{
+ "by_tag": {
+  "E0-choice": {
+   "calls": 200,
+   "cents": 2.0627,
+   "errors": 0,
+   "tokens": 491122
+  },
+  "E0-yesno": {
+   "calls": 20,
+   "cents": 0.1452,
+   "errors": 0,
+   "tokens": 34565
+  },
+  "E2-a": {
+   "calls": 199,
+   "cents": 2.2115,
+   "errors": 0,
+   "tokens": 526544
+  },
+  "E2-b": {
+   "calls": 175,
+   "cents": 0.7199,
+   "errors": 0,
+   "tokens": 171402
+  },
+  "E2-c": {
+   "calls": 195,
+   "cents": 0.7391,
+   "errors": 0,
+   "tokens": 175978
+  },
+  "E2-d": {
+   "calls": 195,
+   "cents": 1.0526,
+   "errors": 0,
+   "tokens": 250613
+  },
+  "E34-a-firstline-whole-title+summary": {
+   "calls": 194,
+   "cents": 1.5484,
+   "errors": 0,
+   "tokens": 368666
+  },
+  "E34-a-lead+passage-whole-title+summary": {
+   "calls": 199,
+   "cents": 4.1095,
+   "errors": 0,
+   "tokens": 978457
+  },
+  "E34-a-lead-cut800-title+summary": {
+   "calls": 25,
+   "cents": 0.3417,
+   "errors": 0,
+   "tokens": 81363
+  },
+  "E34-a-lead-ends-title+summary": {
+   "calls": 38,
+   "cents": 0.5334,
+   "errors": 0,
+   "tokens": 127007
+  },
+  "E34-a-lead-whole-title": {
+   "calls": 78,
+   "cents": 0.4997,
+   "errors": 0,
+   "tokens": 118979
+  },
+  "E34-c-firstline-whole-title+summary": {
+   "calls": 191,
+   "cents": 0.5957,
+   "errors": 0,
+   "tokens": 141845
+  },
+  "E34-c-lead+passage-whole-title+summary": {
+   "calls": 194,
+   "cents": 1.1267,
+   "errors": 0,
+   "tokens": 268264
+  },
+  "E34-c-lead-cut800-title+summary": {
+   "calls": 25,
+   "cents": 0.1076,
+   "errors": 0,
+   "tokens": 25609
+  },
+  "E34-c-lead-ends-title+summary": {
+   "calls": 38,
+   "cents": 0.1488,
+   "errors": 0,
+   "tokens": 35420
+  },
+  "E34-c-lead-whole-title": {
+   "calls": 75,
+   "cents": 0.2235,
+   "errors": 0,
+   "tokens": 53212
+  },
+  "E5-ii": {
+   "calls": 121,
+   "cents": 1.6823,
+   "errors": 0,
+   "tokens": 400549
+  },
+  "E6-pairwise": {
+   "calls": 40,
+   "cents": 0.0837,
+   "errors": 0,
+   "tokens": 19928
+  },
+  "E6-sequential": {
+   "calls": 19,
+   "cents": 0.1152,
+   "errors": 0,
+   "tokens": 27437
+  },
+  "P1b-short": {
+   "calls": 40,
+   "cents": 0.1191,
+   "errors": 0,
+   "tokens": 28362
+  },
+  "P1b-sketch": {
+   "calls": 40,
+   "cents": 0.123,
+   "errors": 0,
+   "tokens": 29282
+  },
+  "P2-31-60": {
+   "calls": 220,
+   "cents": 1.8932,
+   "errors": 0,
+   "tokens": 450767
+  },
+  "P2-fidelity": {
+   "calls": 58,
+   "cents": 0.3381,
+   "errors": 0,
+   "tokens": 80508
+  },
+  "smoke": {
+   "calls": 1,
+   "cents": 0.0019,
+   "errors": 0,
+   "tokens": 444
+  }
+ },
+ "calls": 2580,
+ "cents": 20.5226,
+ "tokens": 4886323,
+ "usd": 0.20522556600000003
+}

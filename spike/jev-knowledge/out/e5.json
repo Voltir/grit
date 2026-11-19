@@ -1,0 +1,1954 @@
+{
+"L1S:01a1637b-8546:01a15f10-4ea1-79b9-9f33-4e73f1aa68cf": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a15f10-4ea1-79b9-9f33-4e73f1aa68cf",
+"ii": {
+"keep": 0.68,
+"choice": "none",
+"p_top": 0.97,
+"place": "new",
+"tokens": 495
+},
+"i": {
+"place": "aside",
+"p_aside": 0.9
+}
+},
+"L1S:01a1637b-8546:01a15f52-f908-779d-8441-c595ec4b0537": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a15f52-f908-779d-8441-c595ec4b0537",
+"ii": {
+"keep": 0.8,
+"choice": "none",
+"p_top": 0.99,
+"place": "new",
+"tokens": 644
+},
+"i": {
+"place": "new",
+"p_aside": 0.04
+}
+},
+"L1S:01a1b698-049c:01a1b2de-58fb-7346-a209-d66215a2d622": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a1b2de-58fb-7346-a209-d66215a2d622",
+"ii": {
+"keep": 0.8,
+"choice": "none",
+"p_top": 0.86,
+"place": "new",
+"tokens": 3153
+},
+"i": {
+"place": "new",
+"p_aside": 0.03
+}
+},
+"L1S:01a1b698-049c:01a1b2d6-c315-7ca2-9659-086984c7e0bf": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a1b2d6-c315-7ca2-9659-086984c7e0bf",
+"ii": {
+"keep": 0.38,
+"choice": "topic:strand-01a17e06-1401-7c0e-9c1d-713b848ee1c7",
+"p_top": 0.6,
+"place": "aside",
+"tokens": 3446
+},
+"i": {
+"place": "topic:strand-01a17e06-1401-7c0e-9c1d-713b848ee1c7",
+"p_aside": 0.36
+}
+},
+"L1S:01a159ca-a49f:01a154eb-92c9-7b3f-bcd7-571b6713d6e4": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a154eb-92c9-7b3f-bcd7-571b6713d6e4",
+"ii": {
+"keep": 0.92,
+"choice": "none",
+"p_top": 1.0,
+"place": "new",
+"tokens": 547
+},
+"i": {
+"place": "new",
+"p_aside": 0.04
+}
+},
+"L1S:01a18261-ae00:01a17dd2-c263-7689-879d-7ec37d378f71": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17dd2-c263-7689-879d-7ec37d378f71",
+"ii": {
+"keep": 0.62,
+"choice": "none",
+"p_top": 0.45,
+"place": "new",
+"tokens": 3511
+},
+"i": {
+"place": "aside",
+"p_aside": 0.22
+}
+},
+"L1S:01a18261-ae00:01a17e58-837e-79e7-a975-c41c3c388148": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e58-837e-79e7-a975-c41c3c388148",
+"ii": {
+"keep": 0.13,
+"choice": "topic:strand-01a17e06-1401-7c0e-9c1d-713b848ee1c7",
+"p_top": 0.41,
+"place": "aside",
+"tokens": 3182
+},
+"i": {
+"place": "aside",
+"p_aside": 0.95
+}
+},
+"L1S:01a18261-ae00:01a17e34-fac9-74a6-92e5-455b0aa2ea6d": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e34-fac9-74a6-92e5-455b0aa2ea6d",
+"ii": {
+"keep": 0.74,
+"choice": "topic:strand-01a0fd8e-a8e1-7a7e-9274-8e6f809816a6",
+"p_top": 0.57,
+"place": "topic:strand-01a0fd8e-a8e1-7a7e-9274-8e6f809816a6",
+"tokens": 3458
+},
+"i": {
+"place": "topic:strand-01a0fd8e-a8e1-7a7e-9274-8e6f809816a6",
+"p_aside": 0.0
+}
+},
+"L1S:01a17e13-ac23:01a154eb-92c9-7b3f-bcd7-571b6713d6e4": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a154eb-92c9-7b3f-bcd7-571b6713d6e4",
+"ii": {
+"keep": 0.92,
+"choice": "topic:strand-01a17e05-dc08-72d4-be94-d182d05dee94",
+"p_top": 0.48,
+"place": "topic:strand-01a17e05-dc08-72d4-be94-d182d05dee94",
+"tokens": 3376
+},
+"i": {
+"place": "topic:strand-01a17e05-dc08-72d4-be94-d182d05dee94",
+"p_aside": 0.0
+}
+},
+"L1S:01a17e12-61e6:01a17e05-dc08-72d4-be94-d182d05dee94": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e05-dc08-72d4-be94-d182d05dee94",
+"ii": {
+"keep": 0.16,
+"choice": "topic:strand-01a17e05-ff8a-7923-9eab-aa758516cce7",
+"p_top": 0.36,
+"place": "aside",
+"tokens": 3115
+},
+"i": {
+"place": "aside",
+"p_aside": 0.9
+}
+},
+"L1S:01a17e12-61e6:01a17e05-deff-7389-8ebb-75bb8e4fe7e4": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e05-deff-7389-8ebb-75bb8e4fe7e4",
+"ii": {
+"keep": 0.41,
+"choice": "topic:strand-01a17e05-ff8a-7923-9eab-aa758516cce7",
+"p_top": 0.73,
+"place": "aside",
+"tokens": 3118
+},
+"i": {
+"place": "topic:strand-01a17e05-ff8a-7923-9eab-aa758516cce7",
+"p_aside": 0.43
+}
+},
+"L1S:01a17e12-61e6:01a17e05-e175-7d9f-b72a-1395ff4dc94b": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e05-e175-7d9f-b72a-1395ff4dc94b",
+"ii": {
+"keep": 0.66,
+"choice": "topic:strand-01a17e06-1401-7c0e-9c1d-713b848ee1c7",
+"p_top": 0.28,
+"place": "topic:strand-01a17e06-1401-7c0e-9c1d-713b848ee1c7",
+"tokens": 3102
+},
+"i": {
+"place": "aside",
+"p_aside": 0.19
+}
+},
+"L1S:01a17e12-61e6:01a17e05-e1ae-771e-a0c0-0af3d6cf76f5": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e05-e1ae-771e-a0c0-0af3d6cf76f5",
+"ii": {
+"keep": 0.82,
+"choice": "none",
+"p_top": 0.34,
+"place": "new",
+"tokens": 3183
+},
+"i": {
+"place": "topic:strand-01a117a5-40aa-7236-bceb-d28f043f0327",
+"p_aside": 0.02
+}
+},
+"L1S:01a17e12-61e6:01a17e05-e3b1-7d09-9253-addd8c49182e": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e05-e3b1-7d09-9253-addd8c49182e",
+"ii": {
+"keep": 0.83,
+"choice": "topic:strand-01a17e05-cc8e-7587-baf7-26dd647c5cb1",
+"p_top": 0.55,
+"place": "topic:strand-01a17e05-cc8e-7587-baf7-26dd647c5cb1",
+"tokens": 3184
+},
+"i": {
+"place": "topic:strand-01a17e05-cc8e-7587-baf7-26dd647c5cb1",
+"p_aside": 0.0
+}
+},
+"L1S:01a17e12-61e6:01a17e05-e5d6-795b-b19b-1a2a9d793d1d": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e05-e5d6-795b-b19b-1a2a9d793d1d",
+"ii": {
+"keep": 0.42,
+"choice": "none",
+"p_top": 0.53,
+"place": "aside",
+"tokens": 3114
+},
+"i": {
+"place": "aside",
+"p_aside": 0.68
+}
+},
+"L1S:01a18cae-6a48:01a1888e-645c-7ec2-94a2-8fc173f39722": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a1888e-645c-7ec2-94a2-8fc173f39722",
+"ii": {
+"keep": 0.86,
+"choice": "topic:strand-01a17e05-e175-7d9f-b72a-1395ff4dc94b",
+"p_top": 0.66,
+"place": "topic:strand-01a17e05-e175-7d9f-b72a-1395ff4dc94b",
+"tokens": 3279
+},
+"i": {
+"place": "topic:strand-01a17e05-e175-7d9f-b72a-1395ff4dc94b",
+"p_aside": 0.0
+}
+},
+"L1S:01a1a6a5-1e37:01a1a3a5-0863-7802-a46c-fc94cf8cc6c1": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a1a3a5-0863-7802-a46c-fc94cf8cc6c1",
+"ii": {
+"keep": 0.87,
+"choice": "topic:strand-01a0fd8e-a8e1-7a7e-9274-8e6f809816a6",
+"p_top": 0.38,
+"place": "topic:strand-01a0fd8e-a8e1-7a7e-9274-8e6f809816a6",
+"tokens": 3326
+},
+"i": {
+"place": "topic:strand-01a0fd8e-a8e1-7a7e-9274-8e6f809816a6",
+"p_aside": 0.0
+}
+},
+"L1S:01a168a1-df62:01a16496-78eb-76c0-9cdc-f71eaa555553": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a16496-78eb-76c0-9cdc-f71eaa555553",
+"ii": {
+"keep": 0.49,
+"choice": "none",
+"p_top": 0.62,
+"place": "aside",
+"tokens": 1326
+},
+"i": {
+"place": "aside",
+"p_aside": 0.41
+}
+},
+"L1S:01a168a1-df62:01a164b4-8b95-705d-9259-90f8391d7f0e": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a164b4-8b95-705d-9259-90f8391d7f0e",
+"ii": {
+"keep": 0.54,
+"choice": "topic:strand-01a15f10-4ea1-79b9-9f33-4e73f1aa68cf",
+"p_top": 0.31,
+"place": "topic:strand-01a15f10-4ea1-79b9-9f33-4e73f1aa68cf",
+"tokens": 1313
+},
+"i": {
+"place": "topic:strand-01a15f10-4ea1-79b9-9f33-4e73f1aa68cf",
+"p_aside": 0.29
+}
+},
+"L1S:01a168a1-df62:01a16562-51b2-7c7f-b8b0-89210ff5a326": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a16562-51b2-7c7f-b8b0-89210ff5a326",
+"ii": {
+"keep": 0.39,
+"choice": "none",
+"p_top": 0.9,
+"place": "aside",
+"tokens": 1631
+},
+"i": {
+"place": "aside",
+"p_aside": 0.89
+}
+},
+"L1S:01a168a1-df62:01a16570-e7d5-7545-93cb-50daf4b135e8": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a16570-e7d5-7545-93cb-50daf4b135e8",
+"ii": {
+"keep": 0.86,
+"choice": "topic:strand-01a154eb-92c9-7b3f-bcd7-571b6713d6e4",
+"p_top": 0.87,
+"place": "topic:strand-01a154eb-92c9-7b3f-bcd7-571b6713d6e4",
+"tokens": 1645
+},
+"i": {
+"place": "topic:strand-01a154eb-92c9-7b3f-bcd7-571b6713d6e4",
+"p_aside": 0.01
+}
+},
+"L1S:01a17e14-55f1:01a16562-51b2-7c7f-b8b0-89210ff5a326": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a16562-51b2-7c7f-b8b0-89210ff5a326",
+"ii": {
+"keep": 0.41,
+"choice": "topic:strand-01a17e06-1401-7c0e-9c1d-713b848ee1c7",
+"p_top": 0.75,
+"place": "aside",
+"tokens": 3584
+},
+"i": {
+"place": "topic:strand-01a17e06-1401-7c0e-9c1d-713b848ee1c7",
+"p_aside": 0.22
+}
+},
+"L1S:01a17e14-55f1:01a169f0-8e77-722b-97c9-12a112955b05": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a169f0-8e77-722b-97c9-12a112955b05",
+"ii": {
+"keep": 0.63,
+"choice": "topic:strand-01a17e06-1401-7c0e-9c1d-713b848ee1c7",
+"p_top": 0.38,
+"place": "topic:strand-01a17e06-1401-7c0e-9c1d-713b848ee1c7",
+"tokens": 3511
+},
+"i": {
+"place": "topic:strand-01a17e06-1401-7c0e-9c1d-713b848ee1c7",
+"p_aside": 0.17
+}
+},
+"L1S:01a17e14-55f1:01a16a04-147c-7c54-9c1e-edf0dc1977ca": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a16a04-147c-7c54-9c1e-edf0dc1977ca",
+"ii": {
+"keep": 0.69,
+"choice": "topic:strand-01a17e05-d33b-7850-818b-bf0abb4a24a7",
+"p_top": 0.71,
+"place": "topic:strand-01a17e05-d33b-7850-818b-bf0abb4a24a7",
+"tokens": 3449
+},
+"i": {
+"place": "topic:strand-01a17e05-d33b-7850-818b-bf0abb4a24a7",
+"p_aside": 0.03
+}
+},
+"L1S:01a16500-6879:01a154eb-92c9-7b3f-bcd7-571b6713d6e4": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a154eb-92c9-7b3f-bcd7-571b6713d6e4",
+"ii": {
+"keep": 0.91,
+"choice": "topic:strand-01a0fd92-1da6-7c7e-b594-eb1788ba4509",
+"p_top": 0.69,
+"place": "topic:strand-01a0fd92-1da6-7c7e-b594-eb1788ba4509",
+"tokens": 1207
+},
+"i": {
+"place": "topic:strand-01a0fd92-1da6-7c7e-b594-eb1788ba4509",
+"p_aside": 0.0
+}
+},
+"L1S:01a18788-12b8:01a17dd2-c263-7689-879d-7ec37d378f71": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17dd2-c263-7689-879d-7ec37d378f71",
+"ii": {
+"keep": 0.64,
+"choice": "none",
+"p_top": 0.55,
+"place": "new",
+"tokens": 3501
+},
+"i": {
+"place": "new",
+"p_aside": 0.19
+}
+},
+"L1S:01a18788-12b8:01a18362-709b-769b-a6e1-69e25c19d337": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a18362-709b-769b-a6e1-69e25c19d337",
+"ii": {
+"keep": 0.65,
+"choice": "topic:strand-01a15f10-4ea1-79b9-9f33-4e73f1aa68cf",
+"p_top": 0.84,
+"place": "topic:strand-01a15f10-4ea1-79b9-9f33-4e73f1aa68cf",
+"tokens": 3210
+},
+"i": {
+"place": "topic:strand-01a15f10-4ea1-79b9-9f33-4e73f1aa68cf",
+"p_aside": 0.04
+}
+},
+"L1S:01a18788-12b8:01a1842e-1298-7b77-8330-766eaae4a7e9": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a1842e-1298-7b77-8330-766eaae4a7e9",
+"ii": {
+"keep": 0.13,
+"choice": "topic:strand-01a17e05-ff8a-7923-9eab-aa758516cce7",
+"p_top": 0.49,
+"place": "aside",
+"tokens": 3182
+},
+"i": {
+"place": "aside",
+"p_aside": 0.91
+}
+},
+"L1S:01a18788-12b8:01a1842e-507d-7ac7-8420-7de72c223d9a": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a1842e-507d-7ac7-8420-7de72c223d9a",
+"ii": {
+"keep": 0.85,
+"choice": "topic:strand-01a17e05-e175-7d9f-b72a-1395ff4dc94b",
+"p_top": 0.56,
+"place": "topic:strand-01a17e05-e175-7d9f-b72a-1395ff4dc94b",
+"tokens": 3273
+},
+"i": {
+"place": "topic:strand-01a17e05-e175-7d9f-b72a-1395ff4dc94b",
+"p_aside": 0.01
+}
+},
+"L1S:01a17e10-6c4d:01a17e06-1401-7c0e-9c1d-713b848ee1c7": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e06-1401-7c0e-9c1d-713b848ee1c7",
+"ii": {
+"keep": 0.07,
+"choice": "topic:strand-01a17e05-ff8a-7923-9eab-aa758516cce7",
+"p_top": 0.99,
+"place": "aside",
+"tokens": 1881
+},
+"i": {
+"place": "topic:strand-01a17e05-ff8a-7923-9eab-aa758516cce7",
+"p_aside": 0.34
+}
+},
+"L1S:01a191d4-be13:01a18dc3-07b2-7b5e-9bad-8f0351bd20c8": {
+"set": "L1S",
+"label": "topic:strand-01a18362-709b-769b-a6e1-69e25c19d337",
+"opened": "topic:strand-01a18dc3-07b2-7b5e-9bad-8f0351bd20c8",
+"ii": {
+"keep": 0.76,
+"choice": "topic:strand-01a15f10-4ea1-79b9-9f33-4e73f1aa68cf",
+"p_top": 0.97,
+"place": "topic:strand-01a15f10-4ea1-79b9-9f33-4e73f1aa68cf",
+"tokens": 3181
+},
+"i": {
+"place": "topic:strand-01a15f10-4ea1-79b9-9f33-4e73f1aa68cf",
+"p_aside": 0.02
+}
+},
+"L1S:01a17e14-0d56:01a16496-78eb-76c0-9cdc-f71eaa555553": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a16496-78eb-76c0-9cdc-f71eaa555553",
+"ii": {
+"keep": 0.48,
+"choice": "none",
+"p_top": 0.39,
+"place": "aside",
+"tokens": 3274
+},
+"i": {
+"place": "topic:strand-01a0fd8e-9a40-7819-81fb-4a3efc441cbc",
+"p_aside": 0.15
+}
+},
+"L1S:01a17e14-0d56:01a164b4-8b95-705d-9259-90f8391d7f0e": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a164b4-8b95-705d-9259-90f8391d7f0e",
+"ii": {
+"keep": 0.56,
+"choice": "none",
+"p_top": 0.23,
+"place": "new",
+"tokens": 3261
+},
+"i": {
+"place": "aside",
+"p_aside": 0.5
+}
+},
+"L1S:01a17e14-0d56:01a16562-51b2-7c7f-b8b0-89210ff5a326": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a16562-51b2-7c7f-b8b0-89210ff5a326",
+"ii": {
+"keep": 0.41,
+"choice": "topic:strand-01a17e06-1401-7c0e-9c1d-713b848ee1c7",
+"p_top": 0.74,
+"place": "aside",
+"tokens": 3579
+},
+"i": {
+"place": "topic:strand-01a17e06-1401-7c0e-9c1d-713b848ee1c7",
+"p_aside": 0.17
+}
+},
+"L1S:01a17e14-0d56:01a16570-e7d5-7545-93cb-50daf4b135e8": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a16570-e7d5-7545-93cb-50daf4b135e8",
+"ii": {
+"keep": 0.81,
+"choice": "topic:strand-01a0fd8e-9a40-7819-81fb-4a3efc441cbc",
+"p_top": 0.74,
+"place": "topic:strand-01a0fd8e-9a40-7819-81fb-4a3efc441cbc",
+"tokens": 3574
+},
+"i": {
+"place": "topic:strand-01a0fd8e-9a40-7819-81fb-4a3efc441cbc",
+"p_aside": 0.0
+}
+},
+"L1S:01a17e0f-902a:01a17e05-beac-774f-bda4-1ad7cfdc9684": {
+"set": "L1S",
+"label": "topic:strand-01a17e05-ae58-7413-942b-53e88650618e",
+"opened": "topic:strand-01a17e05-beac-774f-bda4-1ad7cfdc9684",
+"ii": {
+"keep": 0.89,
+"choice": "topic:strand-01a17e05-ae58-7413-942b-53e88650618e",
+"p_top": 1.0,
+"place": "topic:strand-01a17e05-ae58-7413-942b-53e88650618e",
+"tokens": 1385
+},
+"i": {
+"place": "topic:strand-01a17e05-ae58-7413-942b-53e88650618e",
+"p_aside": 0.0
+}
+},
+"L1S:01a17e0f-902a:01a17e05-c0e5-7b53-a3a9-19bb7d842180": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e05-c0e5-7b53-a3a9-19bb7d842180",
+"ii": {
+"keep": 0.89,
+"choice": "none",
+"p_top": 0.7,
+"place": "new",
+"tokens": 1444
+},
+"i": {
+"place": "new",
+"p_aside": 0.01
+}
+},
+"L1S:01a17e0f-902a:01a17e05-c3e7-7171-8a9b-aa64874aadf5": {
+"set": "L1S",
+"label": "topic:strand-01a17e05-a55c-77a5-b936-1e483837b85b",
+"opened": "topic:strand-01a17e05-c3e7-7171-8a9b-aa64874aadf5",
+"ii": {
+"keep": 0.88,
+"choice": "topic:strand-01a17e05-ae58-7413-942b-53e88650618e",
+"p_top": 0.49,
+"place": "topic:strand-01a17e05-ae58-7413-942b-53e88650618e",
+"tokens": 1339
+},
+"i": {
+"place": "topic:strand-01a17e05-ae58-7413-942b-53e88650618e",
+"p_aside": 0.01
+}
+},
+"L1S:01a17e0e-431e:01a17e05-9598-7e08-adc6-3057af214c6f": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e05-9598-7e08-adc6-3057af214c6f",
+"ii": {
+"keep": 0.72,
+"choice": "none",
+"p_top": 0.87,
+"place": "new",
+"tokens": 664
+},
+"i": {
+"place": "new",
+"p_aside": 0.1
+}
+},
+"L1S:01a17e0e-431e:01a17e05-9962-7c19-8bcb-6aeffcff9979": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e05-9962-7c19-8bcb-6aeffcff9979",
+"ii": {
+"keep": 0.91,
+"choice": "none",
+"p_top": 0.96,
+"place": "new",
+"tokens": 692
+},
+"i": {
+"place": "new",
+"p_aside": 0.06
+}
+},
+"L1S:01a17e0e-431e:01a17e05-9a62-7a94-ae78-8be2d0889377": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e05-9a62-7a94-ae78-8be2d0889377",
+"ii": {
+"keep": 0.88,
+"choice": "none",
+"p_top": 0.87,
+"place": "new",
+"tokens": 871
+},
+"i": {
+"place": "new",
+"p_aside": 0.02
+}
+},
+"L1S:01a17e0e-431e:01a17e05-a277-77b8-8921-f6d5cf3d4ae9": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e05-a277-77b8-8921-f6d5cf3d4ae9",
+"ii": {
+"keep": 0.31,
+"choice": "none",
+"p_top": 0.5,
+"place": "aside",
+"tokens": 605
+},
+"i": {
+"place": "aside",
+"p_aside": 0.88
+}
+},
+"L1S:01a17e0e-431e:01a17e05-a44b-7e4e-9836-320377d4df90": {
+"set": "L1S",
+"label": "topic:strand-01a17e05-9052-737b-bc61-5f52b6811f3e",
+"opened": "topic:strand-01a17e05-a44b-7e4e-9836-320377d4df90",
+"ii": {
+"keep": 0.63,
+"choice": "none",
+"p_top": 0.99,
+"place": "new",
+"tokens": 719
+},
+"i": {
+"place": "new",
+"p_aside": 0.28
+}
+},
+"L1S:01a17e0e-431e:01a17e05-a55c-77a5-b936-1e483837b85b": {
+"set": "L1S",
+"label": "aside",
+"opened": "topic:strand-01a17e05-a55c-77a5-b936-1e483837b85b",
+"ii": {
+"keep": 0.4,
+"choice": "none",
+"p_top": 0.82,
+"place": "aside",
+"tokens": 587
+},
+"i": {
+"place": "aside",
+"p_aside": 0.74
+}
+},
+"L1S:01a17e0f-c082:01a17e05-cf59-7819-b9b8-fda91685cce0": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e05-cf59-7819-b9b8-fda91685cce0",
+"ii": {
+"keep": 0.22,
+"choice": "none",
+"p_top": 0.77,
+"place": "aside",
+"tokens": 1438
+},
+"i": {
+"place": "aside",
+"p_aside": 0.87
+}
+},
+"L1S:01a17e0f-c082:01a17e05-d33b-7850-818b-bf0abb4a24a7": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e05-d33b-7850-818b-bf0abb4a24a7",
+"ii": {
+"keep": 0.89,
+"choice": "topic:strand-01a17e05-ad12-71e6-98d1-6a67499053b4",
+"p_top": 0.48,
+"place": "topic:strand-01a17e05-ad12-71e6-98d1-6a67499053b4",
+"tokens": 1588
+},
+"i": {
+"place": "topic:strand-01a17e05-ad12-71e6-98d1-6a67499053b4",
+"p_aside": 0.01
+}
+},
+"L1S:01a17e0f-c082:01a17e05-cc8e-7587-baf7-26dd647c5cb1": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e05-cc8e-7587-baf7-26dd647c5cb1",
+"ii": {
+"keep": 0.8,
+"choice": "none",
+"p_top": 0.66,
+"place": "new",
+"tokens": 1575
+},
+"i": {
+"place": "new",
+"p_aside": 0.03
+}
+},
+"L1S:01a17e11-d96a:01a17e05-d8e6-7f60-95c7-41fd3e24f69f": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e05-d8e6-7f60-95c7-41fd3e24f69f",
+"ii": {
+"keep": 0.9,
+"choice": "topic:strand-01a17e05-d33b-7850-818b-bf0abb4a24a7",
+"p_top": 0.69,
+"place": "topic:strand-01a17e05-d33b-7850-818b-bf0abb4a24a7",
+"tokens": 2679
+},
+"i": {
+"place": "topic:strand-01a17e05-d33b-7850-818b-bf0abb4a24a7",
+"p_aside": 0.0
+}
+},
+"L1S:01a16dc8-47e9:01a16562-51b2-7c7f-b8b0-89210ff5a326": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a16562-51b2-7c7f-b8b0-89210ff5a326",
+"ii": {
+"keep": 0.43,
+"choice": "none",
+"p_top": 0.9,
+"place": "aside",
+"tokens": 1805
+},
+"i": {
+"place": "aside",
+"p_aside": 0.87
+}
+},
+"L1S:01a16dc8-47e9:01a15f72-e78f-7e2f-bfd0-8226d692b673": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a15f72-e78f-7e2f-bfd0-8226d692b673",
+"ii": {
+"keep": 0.82,
+"choice": "topic:strand-01a13260-c0ee-79e2-aebf-e899be8f38ca",
+"p_top": 0.88,
+"place": "topic:strand-01a13260-c0ee-79e2-aebf-e899be8f38ca",
+"tokens": 1577
+},
+"i": {
+"place": "topic:strand-01a13260-c0ee-79e2-aebf-e899be8f38ca",
+"p_aside": 0.0
+}
+},
+"L1S:01a17e11-f9e1:01a17e05-db65-747d-97cd-cfb89fcf8748": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e05-db65-747d-97cd-cfb89fcf8748",
+"ii": {
+"keep": 0.8,
+"choice": "topic:strand-01a17e05-a5f0-70a3-bc4d-c72d131a9325",
+"p_top": 0.57,
+"place": "topic:strand-01a17e05-a5f0-70a3-bc4d-c72d131a9325",
+"tokens": 2719
+},
+"i": {
+"place": "topic:strand-01a17e05-a5f0-70a3-bc4d-c72d131a9325",
+"p_aside": 0.0
+}
+},
+"L1S:01a17e12-fb56:01a17e05-f55c-7794-afb1-f6dc711ba2da": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e05-f55c-7794-afb1-f6dc711ba2da",
+"ii": {
+"keep": 0.89,
+"choice": "topic:strand-01a0fd8e-9b3f-7ce1-91c9-d4c622e827c6",
+"p_top": 0.41,
+"place": "topic:strand-01a0fd8e-9b3f-7ce1-91c9-d4c622e827c6",
+"tokens": 3171
+},
+"i": {
+"place": "topic:strand-01a0fd8e-9b3f-7ce1-91c9-d4c622e827c6",
+"p_aside": 0.01
+}
+},
+"L1S:01a17e12-fb56:01a17e05-ed4b-7716-86db-d16576c87590": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e05-ed4b-7716-86db-d16576c87590",
+"ii": {
+"keep": 0.88,
+"choice": "topic:strand-01a0fd8e-9b3f-7ce1-91c9-d4c622e827c6",
+"p_top": 0.66,
+"place": "topic:strand-01a0fd8e-9b3f-7ce1-91c9-d4c622e827c6",
+"tokens": 3363
+},
+"i": {
+"place": "topic:strand-01a0fd8e-9b3f-7ce1-91c9-d4c622e827c6",
+"p_aside": 0.0
+}
+},
+"L1S:01a17e0e-bc66:01a17e05-ae58-7413-942b-53e88650618e": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e05-ae58-7413-942b-53e88650618e",
+"ii": {
+"keep": 0.91,
+"choice": "none",
+"p_top": 0.95,
+"place": "new",
+"tokens": 1056
+},
+"i": {
+"place": "new",
+"p_aside": 0.01
+}
+},
+"L1S:01a17e0e-bc66:01a17e05-a55c-77a5-b936-1e483837b85b": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e05-a55c-77a5-b936-1e483837b85b",
+"ii": {
+"keep": 0.6,
+"choice": "none",
+"p_top": 0.7,
+"place": "new",
+"tokens": 994
+},
+"i": {
+"place": "aside",
+"p_aside": 0.56
+}
+},
+"L1S:01a17e0e-bc66:01a17e05-ae1d-7217-8f36-309c0079c621": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e05-ae1d-7217-8f36-309c0079c621",
+"ii": {
+"keep": 0.69,
+"choice": "none",
+"p_top": 0.9,
+"place": "new",
+"tokens": 1095
+},
+"i": {
+"place": "new",
+"p_aside": 0.07
+}
+},
+"L1S:01a17e0e-bc66:01a17e05-ad12-71e6-98d1-6a67499053b4": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e05-ad12-71e6-98d1-6a67499053b4",
+"ii": {
+"keep": 0.76,
+"choice": "none",
+"p_top": 0.94,
+"place": "new",
+"tokens": 1155
+},
+"i": {
+"place": "new",
+"p_aside": 0.1
+}
+},
+"L1S:01a17e0e-bc66:01a17e05-b97f-72f2-84d4-b1aada59afac": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e05-b97f-72f2-84d4-b1aada59afac",
+"ii": {
+"keep": 0.26,
+"choice": "none",
+"p_top": 0.65,
+"place": "aside",
+"tokens": 982
+},
+"i": {
+"place": "aside",
+"p_aside": 0.79
+}
+},
+"L1S:01a17e0e-7c05:01a17e05-a5f0-70a3-bc4d-c72d131a9325": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e05-a5f0-70a3-bc4d-c72d131a9325",
+"ii": {
+"keep": 0.66,
+"choice": "none",
+"p_top": 0.99,
+"place": "new",
+"tokens": 818
+},
+"i": {
+"place": "aside",
+"p_aside": 0.88
+}
+},
+"L1S:01a17e0e-7c05:01a17e05-a5aa-722f-a43b-3ba3762ec7eb": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e05-a5aa-722f-a43b-3ba3762ec7eb",
+"ii": {
+"keep": 0.9,
+"choice": "none",
+"p_top": 0.93,
+"place": "new",
+"tokens": 1100
+},
+"i": {
+"place": "new",
+"p_aside": 0.0
+}
+},
+"L1S:01a17e0e-7c05:01a17e05-aa3d-748a-a377-ade7461bb4c5": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e05-aa3d-748a-a377-ade7461bb4c5",
+"ii": {
+"keep": 0.84,
+"choice": "none",
+"p_top": 0.54,
+"place": "new",
+"tokens": 886
+},
+"i": {
+"place": "topic:strand-01a17e05-9962-7c19-8bcb-6aeffcff9979",
+"p_aside": 0.03
+}
+},
+"L1S:01a17e13-dcfc:01a15f10-4ea1-79b9-9f33-4e73f1aa68cf": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a15f10-4ea1-79b9-9f33-4e73f1aa68cf",
+"ii": {
+"keep": 0.65,
+"choice": "topic:strand-01a17e05-db65-747d-97cd-cfb89fcf8748",
+"p_top": 0.41,
+"place": "topic:strand-01a17e05-db65-747d-97cd-cfb89fcf8748",
+"tokens": 3232
+},
+"i": {
+"place": "topic:strand-01a17e05-db65-747d-97cd-cfb89fcf8748",
+"p_aside": 0.21
+}
+},
+"L1S:01a17e13-dcfc:01a15f6b-2c27-7252-b87b-c2e2ee52a1b8": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a15f6b-2c27-7252-b87b-c2e2ee52a1b8",
+"ii": {
+"keep": 0.86,
+"choice": "topic:strand-01a0fd8e-96c8-7694-93f4-4e86b5f44a4e",
+"p_top": 0.56,
+"place": "topic:strand-01a0fd8e-96c8-7694-93f4-4e86b5f44a4e",
+"tokens": 3247
+},
+"i": {
+"place": "topic:strand-01a0fd8e-96c8-7694-93f4-4e86b5f44a4e",
+"p_aside": 0.01
+}
+},
+"L1S:01a17e13-dcfc:01a15f72-e78f-7e2f-bfd0-8226d692b673": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a15f72-e78f-7e2f-bfd0-8226d692b673",
+"ii": {
+"keep": 0.88,
+"choice": "topic:strand-01a149e5-f0c0-7272-bc22-db4604ad2500",
+"p_top": 0.45,
+"place": "topic:strand-01a149e5-f0c0-7272-bc22-db4604ad2500",
+"tokens": 3304
+},
+"i": {
+"place": "topic:strand-01a149e5-f0c0-7272-bc22-db4604ad2500",
+"p_aside": 0.0
+}
+},
+"L1S:01a17e13-dcfc:01a15f52-f908-779d-8441-c595ec4b0537": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a15f52-f908-779d-8441-c595ec4b0537",
+"ii": {
+"keep": 0.78,
+"choice": "topic:strand-01a17e05-ae58-7413-942b-53e88650618e",
+"p_top": 0.77,
+"place": "topic:strand-01a17e05-ae58-7413-942b-53e88650618e",
+"tokens": 3381
+},
+"i": {
+"place": "topic:strand-01a17e05-ae58-7413-942b-53e88650618e",
+"p_aside": 0.0
+}
+},
+"L1S:01a172ee-a394:01a15f72-e78f-7e2f-bfd0-8226d692b673": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a15f72-e78f-7e2f-bfd0-8226d692b673",
+"ii": {
+"keep": 0.82,
+"choice": "topic:strand-01a13260-c0ee-79e2-aebf-e899be8f38ca",
+"p_top": 0.88,
+"place": "topic:strand-01a13260-c0ee-79e2-aebf-e899be8f38ca",
+"tokens": 1577
+},
+"i": {
+"place": "topic:strand-01a13260-c0ee-79e2-aebf-e899be8f38ca",
+"p_aside": 0.0
+}
+},
+"L1S:01a172ee-a394:01a169f0-8e77-722b-97c9-12a112955b05": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a169f0-8e77-722b-97c9-12a112955b05",
+"ii": {
+"keep": 0.62,
+"choice": "none",
+"p_top": 0.45,
+"place": "new",
+"tokens": 1732
+},
+"i": {
+"place": "topic:strand-01a164b4-8b95-705d-9259-90f8391d7f0e",
+"p_aside": 0.2
+}
+},
+"L1S:01a172ee-a394:01a16a04-147c-7c54-9c1e-edf0dc1977ca": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a16a04-147c-7c54-9c1e-edf0dc1977ca",
+"ii": {
+"keep": 0.68,
+"choice": "none",
+"p_top": 0.83,
+"place": "new",
+"tokens": 1670
+},
+"i": {
+"place": "new",
+"p_aside": 0.32
+}
+},
+"L1S:01a17e11-4f7b:01a17e06-207a-7004-9fa1-a031c37512bd": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e06-207a-7004-9fa1-a031c37512bd",
+"ii": {
+"keep": 0.82,
+"choice": "topic:strand-01a0fd8e-a8e1-7a7e-9274-8e6f809816a6",
+"p_top": 0.97,
+"place": "topic:strand-01a0fd8e-a8e1-7a7e-9274-8e6f809816a6",
+"tokens": 2418
+},
+"i": {
+"place": "topic:strand-01a0fd8e-a8e1-7a7e-9274-8e6f809816a6",
+"p_aside": 0.0
+}
+},
+"L1S:01a17e10-12b6:01a17e05-ff8a-7923-9eab-aa758516cce7": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e05-ff8a-7923-9eab-aa758516cce7",
+"ii": {
+"keep": 0.25,
+"choice": "none",
+"p_top": 0.81,
+"place": "aside",
+"tokens": 1700
+},
+"i": {
+"place": "aside",
+"p_aside": 0.99
+}
+},
+"L1S:01a17e10-12b6:01a17e06-056e-7be1-a43c-e960364f416c": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e06-056e-7be1-a43c-e960364f416c",
+"ii": {
+"keep": 0.54,
+"choice": "none",
+"p_top": 0.99,
+"place": "new",
+"tokens": 1607
+},
+"i": {
+"place": "aside",
+"p_aside": 0.92
+}
+},
+"L1S:01a17e10-12b6:01a17e06-0709-7d1c-b972-e4100b02631f": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e06-0709-7d1c-b972-e4100b02631f",
+"ii": {
+"keep": 0.16,
+"choice": "none",
+"p_top": 0.97,
+"place": "aside",
+"tokens": 1621
+},
+"i": {
+"place": "aside",
+"p_aside": 0.99
+}
+},
+"L1S:01a17e10-12b6:01a17e05-fac2-7b7a-9467-9797cdd7d4fd": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a17e05-fac2-7b7a-9467-9797cdd7d4fd",
+"ii": {
+"keep": 0.09,
+"choice": "none",
+"p_top": 0.96,
+"place": "aside",
+"tokens": 1640
+},
+"i": {
+"place": "aside",
+"p_aside": 0.99
+}
+},
+"L1S:01a16500-91b1:01a15f10-4ea1-79b9-9f33-4e73f1aa68cf": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a15f10-4ea1-79b9-9f33-4e73f1aa68cf",
+"ii": {
+"keep": 0.7,
+"choice": "topic:strand-01a0fd8e-9ad8-7cab-b07e-834e0be7d6ce",
+"p_top": 0.42,
+"place": "topic:strand-01a0fd8e-9ad8-7cab-b07e-834e0be7d6ce",
+"tokens": 1155
+},
+"i": {
+"place": "topic:strand-01a0fd8e-9ad8-7cab-b07e-834e0be7d6ce",
+"p_aside": 0.2
+}
+},
+"L1S:01a16500-91b1:01a15f6b-2c27-7252-b87b-c2e2ee52a1b8": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a15f6b-2c27-7252-b87b-c2e2ee52a1b8",
+"ii": {
+"keep": 0.87,
+"choice": "topic:strand-01a0fd8e-96c8-7694-93f4-4e86b5f44a4e",
+"p_top": 0.68,
+"place": "topic:strand-01a0fd8e-96c8-7694-93f4-4e86b5f44a4e",
+"tokens": 1170
+},
+"i": {
+"place": "topic:strand-01a0fd8e-96c8-7694-93f4-4e86b5f44a4e",
+"p_aside": 0.01
+}
+},
+"L1S:01a16500-91b1:01a15f52-f908-779d-8441-c595ec4b0537": {
+"set": "L1S",
+"label": "new",
+"opened": "topic:strand-01a15f52-f908-779d-8441-c595ec4b0537",
+"ii": {
+"keep": 0.78,
+"choice": "topic:strand-01a0fd8e-9b3f-7ce1-91c9-d4c622e827c6",
+"p_top": 0.67,
+"place": "topic:strand-01a0fd8e-9b3f-7ce1-91c9-d4c622e827c6",
+"tokens": 1304
+},
+"i": {
+"place": "topic:strand-01a0fd8e-9b3f-7ce1-91c9-d4c622e827c6",
+"p_aside": 0.03
+}
+},
+"SELF::01a15f10-4ea1-79b9-9f33-4e73f1aa68cf": {
+"set": "SELF",
+"label": "topic:strand-01a15f10-4ea1-79b9-9f33-4e73f1aa68cf",
+"opened": "topic:strand-01a15f10-4ea1-79b9-9f33-4e73f1aa68cf",
+"ii": {
+"keep": 0.66,
+"choice": "topic:strand-01a15f10-4ea1-79b9-9f33-4e73f1aa68cf",
+"p_top": 0.91,
+"place": "topic:strand-01a15f10-4ea1-79b9-9f33-4e73f1aa68cf",
+"tokens": 5093
+},
+"i": {
+"place": "topic:strand-01a15f10-4ea1-79b9-9f33-4e73f1aa68cf",
+"p_aside": 0.01
+}
+},
+"SELF::01a15f52-f908-779d-8441-c595ec4b0537": {
+"set": "SELF",
+"label": "topic:strand-01a15f52-f908-779d-8441-c595ec4b0537",
+"opened": "topic:strand-01a15f52-f908-779d-8441-c595ec4b0537",
+"ii": {
+"keep": 0.8,
+"choice": "topic:strand-01a15f52-f908-779d-8441-c595ec4b0537",
+"p_top": 1.0,
+"place": "topic:strand-01a15f52-f908-779d-8441-c595ec4b0537",
+"tokens": 5242
+},
+"i": {
+"place": "topic:strand-01a15f52-f908-779d-8441-c595ec4b0537",
+"p_aside": 0.0
+}
+},
+"SELF::01a17e05-8c4a-7e89-bb5e-912f8effaab7": {
+"set": "SELF",
+"label": "topic:strand-01a17e05-8c4a-7e89-bb5e-912f8effaab7",
+"opened": "topic:strand-01a17e05-8c4a-7e89-bb5e-912f8effaab7",
+"ii": {
+"keep": 0.9,
+"choice": "topic:strand-01a17e05-8c4a-7e89-bb5e-912f8effaab7",
+"p_top": 0.95,
+"place": "topic:strand-01a17e05-8c4a-7e89-bb5e-912f8effaab7",
+"tokens": 5125
+},
+"i": {
+"place": "topic:strand-01a17e05-8c4a-7e89-bb5e-912f8effaab7",
+"p_aside": 0.0
+}
+},
+"SELF::01a17e05-9052-737b-bc61-5f52b6811f3e": {
+"set": "SELF",
+"label": "topic:strand-01a17e05-9052-737b-bc61-5f52b6811f3e",
+"opened": "topic:strand-01a17e05-9052-737b-bc61-5f52b6811f3e",
+"ii": {
+"keep": 0.81,
+"choice": "topic:strand-01a17e05-9052-737b-bc61-5f52b6811f3e",
+"p_top": 0.93,
+"place": "topic:strand-01a17e05-9052-737b-bc61-5f52b6811f3e",
+"tokens": 5140
+},
+"i": {
+"place": "topic:strand-01a17e05-9052-737b-bc61-5f52b6811f3e",
+"p_aside": 0.0
+}
+},
+"SELF::01a17e05-9303-7ae2-ab1a-c193be7a4a71": {
+"set": "SELF",
+"label": "topic:strand-01a17e05-9303-7ae2-ab1a-c193be7a4a71",
+"opened": "topic:strand-01a17e05-9303-7ae2-ab1a-c193be7a4a71",
+"ii": {
+"keep": 0.82,
+"choice": "topic:strand-01a17e05-9052-737b-bc61-5f52b6811f3e",
+"p_top": 0.73,
+"place": "topic:strand-01a17e05-9052-737b-bc61-5f52b6811f3e",
+"tokens": 5198
+},
+"i": {
+"place": "topic:strand-01a17e05-9052-737b-bc61-5f52b6811f3e",
+"p_aside": 0.0
+}
+},
+"SELF::01a1b2de-58fb-7346-a209-d66215a2d622": {
+"set": "SELF",
+"label": "topic:strand-01a1b2de-58fb-7346-a209-d66215a2d622",
+"opened": "topic:strand-01a1b2de-58fb-7346-a209-d66215a2d622",
+"ii": {
+"keep": 0.79,
+"choice": "topic:strand-01a1b2de-58fb-7346-a209-d66215a2d622",
+"p_top": 1.0,
+"place": "topic:strand-01a1b2de-58fb-7346-a209-d66215a2d622",
+"tokens": 5131
+},
+"i": {
+"place": "topic:strand-01a1b2de-58fb-7346-a209-d66215a2d622",
+"p_aside": 0.0
+}
+},
+"SELF::01a1b2d6-c315-7ca2-9659-086984c7e0bf": {
+"set": "SELF",
+"label": "topic:strand-01a1b2d6-c315-7ca2-9659-086984c7e0bf",
+"opened": "topic:strand-01a1b2d6-c315-7ca2-9659-086984c7e0bf",
+"ii": {
+"keep": 0.4,
+"choice": "topic:strand-01a1b2d6-c315-7ca2-9659-086984c7e0bf",
+"p_top": 1.0,
+"place": "aside",
+"tokens": 5424
+},
+"i": {
+"place": "topic:strand-01a1b2d6-c315-7ca2-9659-086984c7e0bf",
+"p_aside": 0.0
+}
+},
+"SELF::01a154eb-92c9-7b3f-bcd7-571b6713d6e4": {
+"set": "SELF",
+"label": "topic:strand-01a154eb-92c9-7b3f-bcd7-571b6713d6e4",
+"opened": "topic:strand-01a154eb-92c9-7b3f-bcd7-571b6713d6e4",
+"ii": {
+"keep": 0.91,
+"choice": "topic:strand-01a154eb-92c9-7b3f-bcd7-571b6713d6e4",
+"p_top": 0.99,
+"place": "topic:strand-01a154eb-92c9-7b3f-bcd7-571b6713d6e4",
+"tokens": 5203
+},
+"i": {
+"place": "topic:strand-01a154eb-92c9-7b3f-bcd7-571b6713d6e4",
+"p_aside": 0.0
+}
+},
+"SELF::01a17e58-837e-79e7-a975-c41c3c388148": {
+"set": "SELF",
+"label": "topic:strand-01a17e58-837e-79e7-a975-c41c3c388148",
+"opened": "topic:strand-01a17e58-837e-79e7-a975-c41c3c388148",
+"ii": {
+"keep": 0.12,
+"choice": "topic:strand-01a164b4-8b95-705d-9259-90f8391d7f0e",
+"p_top": 0.55,
+"place": "aside",
+"tokens": 5084
+},
+"i": {
+"place": "aside",
+"p_aside": 0.95
+}
+},
+"SELF::01a17e34-fac9-74a6-92e5-455b0aa2ea6d": {
+"set": "SELF",
+"label": "topic:strand-01a17e34-fac9-74a6-92e5-455b0aa2ea6d",
+"opened": "topic:strand-01a17e34-fac9-74a6-92e5-455b0aa2ea6d",
+"ii": {
+"keep": 0.7,
+"choice": "topic:strand-01a17e34-fac9-74a6-92e5-455b0aa2ea6d",
+"p_top": 0.93,
+"place": "topic:strand-01a17e34-fac9-74a6-92e5-455b0aa2ea6d",
+"tokens": 5360
+},
+"i": {
+"place": "topic:strand-01a17e34-fac9-74a6-92e5-455b0aa2ea6d",
+"p_aside": 0.0
+}
+},
+"SELF::01a17e05-dc08-72d4-be94-d182d05dee94": {
+"set": "SELF",
+"label": "topic:strand-01a17e05-dc08-72d4-be94-d182d05dee94",
+"opened": "topic:strand-01a17e05-dc08-72d4-be94-d182d05dee94",
+"ii": {
+"keep": 0.16,
+"choice": "topic:strand-01a164b4-8b95-705d-9259-90f8391d7f0e",
+"p_top": 0.52,
+"place": "aside",
+"tokens": 5099
+},
+"i": {
+"place": "aside",
+"p_aside": 0.97
+}
+},
+"SELF::01a17e05-e175-7d9f-b72a-1395ff4dc94b": {
+"set": "SELF",
+"label": "topic:strand-01a17e05-e175-7d9f-b72a-1395ff4dc94b",
+"opened": "topic:strand-01a17e05-e175-7d9f-b72a-1395ff4dc94b",
+"ii": {
+"keep": 0.66,
+"choice": "topic:strand-01a17e05-e175-7d9f-b72a-1395ff4dc94b",
+"p_top": 0.98,
+"place": "topic:strand-01a17e05-e175-7d9f-b72a-1395ff4dc94b",
+"tokens": 5086
+},
+"i": {
+"place": "topic:strand-01a17e05-e175-7d9f-b72a-1395ff4dc94b",
+"p_aside": 0.0
+}
+},
+"SELF::01a17e05-e5d6-795b-b19b-1a2a9d793d1d": {
+"set": "SELF",
+"label": "topic:strand-01a17e05-e5d6-795b-b19b-1a2a9d793d1d",
+"opened": "topic:strand-01a17e05-e5d6-795b-b19b-1a2a9d793d1d",
+"ii": {
+"keep": 0.41,
+"choice": "topic:strand-01a17e05-e5d6-795b-b19b-1a2a9d793d1d",
+"p_top": 1.0,
+"place": "aside",
+"tokens": 5098
+},
+"i": {
+"place": "topic:strand-01a17e05-e5d6-795b-b19b-1a2a9d793d1d",
+"p_aside": 0.01
+}
+},
+"SELF::01a1888e-645c-7ec2-94a2-8fc173f39722": {
+"set": "SELF",
+"label": "topic:strand-01a1888e-645c-7ec2-94a2-8fc173f39722",
+"opened": "topic:strand-01a1888e-645c-7ec2-94a2-8fc173f39722",
+"ii": {
+"keep": 0.87,
+"choice": "topic:strand-01a1888e-645c-7ec2-94a2-8fc173f39722",
+"p_top": 1.0,
+"place": "topic:strand-01a1888e-645c-7ec2-94a2-8fc173f39722",
+"tokens": 5141
+},
+"i": {
+"place": "topic:strand-01a1888e-645c-7ec2-94a2-8fc173f39722",
+"p_aside": 0.0
+}
+},
+"SELF::01a1a3a5-0863-7802-a46c-fc94cf8cc6c1": {
+"set": "SELF",
+"label": "topic:strand-01a1a3a5-0863-7802-a46c-fc94cf8cc6c1",
+"opened": "topic:strand-01a1a3a5-0863-7802-a46c-fc94cf8cc6c1",
+"ii": {
+"keep": 0.86,
+"choice": "topic:strand-01a1a3a5-0863-7802-a46c-fc94cf8cc6c1",
+"p_top": 1.0,
+"place": "topic:strand-01a1a3a5-0863-7802-a46c-fc94cf8cc6c1",
+"tokens": 5249
+},
+"i": {
+"place": "topic:strand-01a1a3a5-0863-7802-a46c-fc94cf8cc6c1",
+"p_aside": 0.0
+}
+},
+"SELF::01a16496-78eb-76c0-9cdc-f71eaa555553": {
+"set": "SELF",
+"label": "topic:strand-01a16496-78eb-76c0-9cdc-f71eaa555553",
+"opened": "topic:strand-01a16496-78eb-76c0-9cdc-f71eaa555553",
+"ii": {
+"keep": 0.51,
+"choice": "topic:strand-01a16496-78eb-76c0-9cdc-f71eaa555553",
+"p_top": 1.0,
+"place": "topic:strand-01a16496-78eb-76c0-9cdc-f71eaa555553",
+"tokens": 5104
+},
+"i": {
+"place": "topic:strand-01a16496-78eb-76c0-9cdc-f71eaa555553",
+"p_aside": 0.01
+}
+},
+"SELF::01a164b4-8b95-705d-9259-90f8391d7f0e": {
+"set": "SELF",
+"label": "topic:strand-01a164b4-8b95-705d-9259-90f8391d7f0e",
+"opened": "topic:strand-01a164b4-8b95-705d-9259-90f8391d7f0e",
+"ii": {
+"keep": 0.54,
+"choice": "topic:strand-01a17e05-8c4a-7e89-bb5e-912f8effaab7",
+"p_top": 0.43,
+"place": "topic:strand-01a17e05-8c4a-7e89-bb5e-912f8effaab7",
+"tokens": 5091
+},
+"i": {
+"place": "aside",
+"p_aside": 0.47
+}
+},
+"SELF::01a16570-e7d5-7545-93cb-50daf4b135e8": {
+"set": "SELF",
+"label": "topic:strand-01a16570-e7d5-7545-93cb-50daf4b135e8",
+"opened": "topic:strand-01a16570-e7d5-7545-93cb-50daf4b135e8",
+"ii": {
+"keep": 0.87,
+"choice": "topic:strand-01a16570-e7d5-7545-93cb-50daf4b135e8",
+"p_top": 0.99,
+"place": "topic:strand-01a16570-e7d5-7545-93cb-50daf4b135e8",
+"tokens": 5423
+},
+"i": {
+"place": "topic:strand-01a16570-e7d5-7545-93cb-50daf4b135e8",
+"p_aside": 0.0
+}
+},
+"SELF::01a169f0-8e77-722b-97c9-12a112955b05": {
+"set": "SELF",
+"label": "topic:strand-01a169f0-8e77-722b-97c9-12a112955b05",
+"opened": "topic:strand-01a169f0-8e77-722b-97c9-12a112955b05",
+"ii": {
+"keep": 0.62,
+"choice": "topic:strand-01a169f0-8e77-722b-97c9-12a112955b05",
+"p_top": 0.98,
+"place": "topic:strand-01a169f0-8e77-722b-97c9-12a112955b05",
+"tokens": 5336
+},
+"i": {
+"place": "topic:strand-01a169f0-8e77-722b-97c9-12a112955b05",
+"p_aside": 0.0
+}
+},
+"SELF::01a16a04-147c-7c54-9c1e-edf0dc1977ca": {
+"set": "SELF",
+"label": "topic:strand-01a16a04-147c-7c54-9c1e-edf0dc1977ca",
+"opened": "topic:strand-01a16a04-147c-7c54-9c1e-edf0dc1977ca",
+"ii": {
+"keep": 0.67,
+"choice": "topic:strand-01a16a04-147c-7c54-9c1e-edf0dc1977ca",
+"p_top": 1.0,
+"place": "topic:strand-01a16a04-147c-7c54-9c1e-edf0dc1977ca",
+"tokens": 5274
+},
+"i": {
+"place": "topic:strand-01a16a04-147c-7c54-9c1e-edf0dc1977ca",
+"p_aside": 0.0
+}
+},
+"SELF::01a18362-709b-769b-a6e1-69e25c19d337": {
+"set": "SELF",
+"label": "topic:strand-01a18362-709b-769b-a6e1-69e25c19d337",
+"opened": "topic:strand-01a18362-709b-769b-a6e1-69e25c19d337",
+"ii": {
+"keep": 0.65,
+"choice": "topic:strand-01a18362-709b-769b-a6e1-69e25c19d337",
+"p_top": 0.98,
+"place": "topic:strand-01a18362-709b-769b-a6e1-69e25c19d337",
+"tokens": 5122
+},
+"i": {
+"place": "topic:strand-01a18362-709b-769b-a6e1-69e25c19d337",
+"p_aside": 0.0
+}
+},
+"SELF::01a1842e-1298-7b77-8330-766eaae4a7e9": {
+"set": "SELF",
+"label": "topic:strand-01a1842e-1298-7b77-8330-766eaae4a7e9",
+"opened": "topic:strand-01a1842e-1298-7b77-8330-766eaae4a7e9",
+"ii": {
+"keep": 0.13,
+"choice": "topic:strand-01a1842e-1298-7b77-8330-766eaae4a7e9",
+"p_top": 1.0,
+"place": "aside",
+"tokens": 5094
+},
+"i": {
+"place": "topic:strand-01a1842e-1298-7b77-8330-766eaae4a7e9",
+"p_aside": 0.01
+}
+},
+"SELF::01a1842e-507d-7ac7-8420-7de72c223d9a": {
+"set": "SELF",
+"label": "topic:strand-01a1842e-507d-7ac7-8420-7de72c223d9a",
+"opened": "topic:strand-01a1842e-507d-7ac7-8420-7de72c223d9a",
+"ii": {
+"keep": 0.85,
+"choice": "topic:strand-01a1842e-507d-7ac7-8420-7de72c223d9a",
+"p_top": 1.0,
+"place": "topic:strand-01a1842e-507d-7ac7-8420-7de72c223d9a",
+"tokens": 5185
+},
+"i": {
+"place": "topic:strand-01a1842e-507d-7ac7-8420-7de72c223d9a",
+"p_aside": 0.0
+}
+},
+"SELF::01a17e06-1401-7c0e-9c1d-713b848ee1c7": {
+"set": "SELF",
+"label": "topic:strand-01a17e06-1401-7c0e-9c1d-713b848ee1c7",
+"opened": "topic:strand-01a17e06-1401-7c0e-9c1d-713b848ee1c7",
+"ii": {
+"keep": 0.06,
+"choice": "topic:strand-01a17e06-1401-7c0e-9c1d-713b848ee1c7",
+"p_top": 0.94,
+"place": "aside",
+"tokens": 5093
+},
+"i": {
+"place": "topic:strand-01a17e06-1401-7c0e-9c1d-713b848ee1c7",
+"p_aside": 0.28
+}
+},
+"SELF::01a17e05-c0e5-7b53-a3a9-19bb7d842180": {
+"set": "SELF",
+"label": "topic:strand-01a17e05-c0e5-7b53-a3a9-19bb7d842180",
+"opened": "topic:strand-01a17e05-c0e5-7b53-a3a9-19bb7d842180",
+"ii": {
+"keep": 0.89,
+"choice": "topic:strand-01a17e05-c0e5-7b53-a3a9-19bb7d842180",
+"p_top": 1.0,
+"place": "topic:strand-01a17e05-c0e5-7b53-a3a9-19bb7d842180",
+"tokens": 5210
+},
+"i": {
+"place": "topic:strand-01a17e05-c0e5-7b53-a3a9-19bb7d842180",
+"p_aside": 0.0
+}
+},
+"SELF::01a17e05-9598-7e08-adc6-3057af214c6f": {
+"set": "SELF",
+"label": "topic:strand-01a17e05-9598-7e08-adc6-3057af214c6f",
+"opened": "topic:strand-01a17e05-9598-7e08-adc6-3057af214c6f",
+"ii": {
+"keep": 0.71,
+"choice": "topic:strand-01a17e05-9598-7e08-adc6-3057af214c6f",
+"p_top": 1.0,
+"place": "topic:strand-01a17e05-9598-7e08-adc6-3057af214c6f",
+"tokens": 5165
+},
+"i": {
+"place": "topic:strand-01a17e05-9598-7e08-adc6-3057af214c6f",
+"p_aside": 0.0
+}
+},
+"SELF::01a17e05-9962-7c19-8bcb-6aeffcff9979": {
+"set": "SELF",
+"label": "topic:strand-01a17e05-9962-7c19-8bcb-6aeffcff9979",
+"opened": "topic:strand-01a17e05-9962-7c19-8bcb-6aeffcff9979",
+"ii": {
+"keep": 0.9,
+"choice": "topic:strand-01a17e05-9962-7c19-8bcb-6aeffcff9979",
+"p_top": 0.98,
+"place": "topic:strand-01a17e05-9962-7c19-8bcb-6aeffcff9979",
+"tokens": 5193
+},
+"i": {
+"place": "topic:strand-01a17e05-9962-7c19-8bcb-6aeffcff9979",
+"p_aside": 0.0
+}
+},
+"SELF::01a17e05-a277-77b8-8921-f6d5cf3d4ae9": {
+"set": "SELF",
+"label": "topic:strand-01a17e05-a277-77b8-8921-f6d5cf3d4ae9",
+"opened": "topic:strand-01a17e05-a277-77b8-8921-f6d5cf3d4ae9",
+"ii": {
+"keep": 0.3,
+"choice": "topic:strand-01a17e05-a277-77b8-8921-f6d5cf3d4ae9",
+"p_top": 0.97,
+"place": "aside",
+"tokens": 5106
+},
+"i": {
+"place": "topic:strand-01a17e05-a277-77b8-8921-f6d5cf3d4ae9",
+"p_aside": 0.06
+}
+},
+"SELF::01a17e05-cf59-7819-b9b8-fda91685cce0": {
+"set": "SELF",
+"label": "topic:strand-01a17e05-cf59-7819-b9b8-fda91685cce0",
+"opened": "topic:strand-01a17e05-cf59-7819-b9b8-fda91685cce0",
+"ii": {
+"keep": 0.21,
+"choice": "topic:strand-01a17e05-cf59-7819-b9b8-fda91685cce0",
+"p_top": 1.0,
+"place": "aside",
+"tokens": 5116
+},
+"i": {
+"place": "topic:strand-01a17e05-cf59-7819-b9b8-fda91685cce0",
+"p_aside": 0.02
+}
+},
+"SELF::01a17e05-d33b-7850-818b-bf0abb4a24a7": {
+"set": "SELF",
+"label": "topic:strand-01a17e05-d33b-7850-818b-bf0abb4a24a7",
+"opened": "topic:strand-01a17e05-d33b-7850-818b-bf0abb4a24a7",
+"ii": {
+"keep": 0.89,
+"choice": "topic:strand-01a17e05-d33b-7850-818b-bf0abb4a24a7",
+"p_top": 1.0,
+"place": "topic:strand-01a17e05-d33b-7850-818b-bf0abb4a24a7",
+"tokens": 5266
+},
+"i": {
+"place": "topic:strand-01a17e05-d33b-7850-818b-bf0abb4a24a7",
+"p_aside": 0.0
+}
+},
+"SELF::01a17e05-cc8e-7587-baf7-26dd647c5cb1": {
+"set": "SELF",
+"label": "topic:strand-01a17e05-cc8e-7587-baf7-26dd647c5cb1",
+"opened": "topic:strand-01a17e05-cc8e-7587-baf7-26dd647c5cb1",
+"ii": {
+"keep": 0.81,
+"choice": "topic:strand-01a17e05-cc8e-7587-baf7-26dd647c5cb1",
+"p_top": 1.0,
+"place": "topic:strand-01a17e05-cc8e-7587-baf7-26dd647c5cb1",
+"tokens": 5253
+},
+"i": {
+"place": "topic:strand-01a17e05-cc8e-7587-baf7-26dd647c5cb1",
+"p_aside": 0.0
+}
+},
+"SELF::01a17e05-d8e6-7f60-95c7-41fd3e24f69f": {
+"set": "SELF",
+"label": "topic:strand-01a17e05-d8e6-7f60-95c7-41fd3e24f69f",
+"opened": "topic:strand-01a17e05-d8e6-7f60-95c7-41fd3e24f69f",
+"ii": {
+"keep": 0.91,
+"choice": "topic:strand-01a17e05-d8e6-7f60-95c7-41fd3e24f69f",
+"p_top": 1.0,
+"place": "topic:strand-01a17e05-d8e6-7f60-95c7-41fd3e24f69f",
+"tokens": 5150
+},
+"i": {
+"place": "topic:strand-01a17e05-d8e6-7f60-95c7-41fd3e24f69f",
+"p_aside": 0.0
+}
+},
+"SELF::01a15f72-e78f-7e2f-bfd0-8226d692b673": {
+"set": "SELF",
+"label": "topic:strand-01a15f72-e78f-7e2f-bfd0-8226d692b673",
+"opened": "topic:strand-01a15f72-e78f-7e2f-bfd0-8226d692b673",
+"ii": {
+"keep": 0.82,
+"choice": "topic:strand-01a15f72-e78f-7e2f-bfd0-8226d692b673",
+"p_top": 1.0,
+"place": "topic:strand-01a15f72-e78f-7e2f-bfd0-8226d692b673",
+"tokens": 5181
+},
+"i": {
+"place": "topic:strand-01a15f72-e78f-7e2f-bfd0-8226d692b673",
+"p_aside": 0.0
+}
+},
+"SELF::01a17e05-db65-747d-97cd-cfb89fcf8748": {
+"set": "SELF",
+"label": "topic:strand-01a17e05-db65-747d-97cd-cfb89fcf8748",
+"opened": "topic:strand-01a17e05-db65-747d-97cd-cfb89fcf8748",
+"ii": {
+"keep": 0.79,
+"choice": "topic:strand-01a17e05-db65-747d-97cd-cfb89fcf8748",
+"p_top": 0.97,
+"place": "topic:strand-01a17e05-db65-747d-97cd-cfb89fcf8748",
+"tokens": 5135
+},
+"i": {
+"place": "topic:strand-01a17e05-db65-747d-97cd-cfb89fcf8748",
+"p_aside": 0.0
+}
+},
+"SELF::01a17e05-f55c-7794-afb1-f6dc711ba2da": {
+"set": "SELF",
+"label": "topic:strand-01a17e05-f55c-7794-afb1-f6dc711ba2da",
+"opened": "topic:strand-01a17e05-f55c-7794-afb1-f6dc711ba2da",
+"ii": {
+"keep": 0.89,
+"choice": "topic:strand-01a149e5-f0c0-7272-bc22-db4604ad2500",
+"p_top": 0.86,
+"place": "topic:strand-01a149e5-f0c0-7272-bc22-db4604ad2500",
+"tokens": 5104
+},
+"i": {
+"place": "topic:strand-01a149e5-f0c0-7272-bc22-db4604ad2500",
+"p_aside": 0.0
+}
+},
+"SELF::01a17e05-ae58-7413-942b-53e88650618e": {
+"set": "SELF",
+"label": "topic:strand-01a17e05-ae58-7413-942b-53e88650618e",
+"opened": "topic:strand-01a17e05-ae58-7413-942b-53e88650618e",
+"ii": {
+"keep": 0.91,
+"choice": "topic:strand-01a17e05-ae58-7413-942b-53e88650618e",
+"p_top": 1.0,
+"place": "topic:strand-01a17e05-ae58-7413-942b-53e88650618e",
+"tokens": 5165
+},
+"i": {
+"place": "topic:strand-01a17e05-ae58-7413-942b-53e88650618e",
+"p_aside": 0.0
+}
+},
+"SELF::01a17e05-a55c-77a5-b936-1e483837b85b": {
+"set": "SELF",
+"label": "topic:strand-01a17e05-a55c-77a5-b936-1e483837b85b",
+"opened": "topic:strand-01a17e05-a55c-77a5-b936-1e483837b85b",
+"ii": {
+"keep": 0.6,
+"choice": "topic:strand-01a17e05-a55c-77a5-b936-1e483837b85b",
+"p_top": 1.0,
+"place": "topic:strand-01a17e05-a55c-77a5-b936-1e483837b85b",
+"tokens": 5103
+},
+"i": {
+"place": "topic:strand-01a17e05-a55c-77a5-b936-1e483837b85b",
+"p_aside": 0.0
+}
+},
+"SELF::01a17e05-ae1d-7217-8f36-309c0079c621": {
+"set": "SELF",
+"label": "topic:strand-01a17e05-ae1d-7217-8f36-309c0079c621",
+"opened": "topic:strand-01a17e05-ae1d-7217-8f36-309c0079c621",
+"ii": {
+"keep": 0.69,
+"choice": "topic:strand-01a17e05-ae1d-7217-8f36-309c0079c621",
+"p_top": 0.97,
+"place": "topic:strand-01a17e05-ae1d-7217-8f36-309c0079c621",
+"tokens": 5204
+},
+"i": {
+"place": "topic:strand-01a17e05-ae1d-7217-8f36-309c0079c621",
+"p_aside": 0.0
+}
+},
+"SELF::01a17e05-ad12-71e6-98d1-6a67499053b4": {
+"set": "SELF",
+"label": "topic:strand-01a17e05-ad12-71e6-98d1-6a67499053b4",
+"opened": "topic:strand-01a17e05-ad12-71e6-98d1-6a67499053b4",
+"ii": {
+"keep": 0.74,
+"choice": "topic:strand-01a17e05-ad12-71e6-98d1-6a67499053b4",
+"p_top": 1.0,
+"place": "topic:strand-01a17e05-ad12-71e6-98d1-6a67499053b4",
+"tokens": 5264
+},
+"i": {
+"place": "topic:strand-01a17e05-ad12-71e6-98d1-6a67499053b4",
+"p_aside": 0.0
+}
+},
+"SELF::01a17e05-b97f-72f2-84d4-b1aada59afac": {
+"set": "SELF",
+"label": "topic:strand-01a17e05-b97f-72f2-84d4-b1aada59afac",
+"opened": "topic:strand-01a17e05-b97f-72f2-84d4-b1aada59afac",
+"ii": {
+"keep": 0.27,
+"choice": "topic:strand-01a17e05-b97f-72f2-84d4-b1aada59afac",
+"p_top": 0.99,
+"place": "aside",
+"tokens": 5091
+},
+"i": {
+"place": "topic:strand-01a17e05-b97f-72f2-84d4-b1aada59afac",
+"p_aside": 0.05
+}
+},
+"SELF::01a17e05-a5f0-70a3-bc4d-c72d131a9325": {
+"set": "SELF",
+"label": "topic:strand-01a17e05-a5f0-70a3-bc4d-c72d131a9325",
+"opened": "topic:strand-01a17e05-a5f0-70a3-bc4d-c72d131a9325",
+"ii": {
+"keep": 0.66,
+"choice": "topic:strand-01a17e05-a5f0-70a3-bc4d-c72d131a9325",
+"p_top": 0.99,
+"place": "topic:strand-01a17e05-a5f0-70a3-bc4d-c72d131a9325",
+"tokens": 5110
+},
+"i": {
+"place": "topic:strand-01a17e05-a5f0-70a3-bc4d-c72d131a9325",
+"p_aside": 0.0
+}
+},
+"SELF::01a17e05-a5aa-722f-a43b-3ba3762ec7eb": {
+"set": "SELF",
+"label": "topic:strand-01a17e05-a5aa-722f-a43b-3ba3762ec7eb",
+"opened": "topic:strand-01a17e05-a5aa-722f-a43b-3ba3762ec7eb",
+"ii": {
+"keep": 0.91,
+"choice": "topic:strand-01a17e05-a5aa-722f-a43b-3ba3762ec7eb",
+"p_top": 1.0,
+"place": "topic:strand-01a17e05-a5aa-722f-a43b-3ba3762ec7eb",
+"tokens": 5392
+},
+"i": {
+"place": "topic:strand-01a17e05-a5aa-722f-a43b-3ba3762ec7eb",
+"p_aside": 0.0
+}
+},
+"SELF::01a17e05-aa3d-748a-a377-ade7461bb4c5": {
+"set": "SELF",
+"label": "topic:strand-01a17e05-aa3d-748a-a377-ade7461bb4c5",
+"opened": "topic:strand-01a17e05-aa3d-748a-a377-ade7461bb4c5",
+"ii": {
+"keep": 0.84,
+"choice": "topic:strand-01a17e05-aa3d-748a-a377-ade7461bb4c5",
+"p_top": 1.0,
+"place": "topic:strand-01a17e05-aa3d-748a-a377-ade7461bb4c5",
+"tokens": 5178
+},
+"i": {
+"place": "topic:strand-01a17e05-aa3d-748a-a377-ade7461bb4c5",
+"p_aside": 0.0
+}
+},
+"SELF::01a15f6b-2c27-7252-b87b-c2e2ee52a1b8": {
+"set": "SELF",
+"label": "topic:strand-01a15f6b-2c27-7252-b87b-c2e2ee52a1b8",
+"opened": "topic:strand-01a15f6b-2c27-7252-b87b-c2e2ee52a1b8",
+"ii": {
+"keep": 0.86,
+"choice": "topic:strand-01a15f6b-2c27-7252-b87b-c2e2ee52a1b8",
+"p_top": 0.99,
+"place": "topic:strand-01a15f6b-2c27-7252-b87b-c2e2ee52a1b8",
+"tokens": 5108
+},
+"i": {
+"place": "topic:strand-01a15f6b-2c27-7252-b87b-c2e2ee52a1b8",
+"p_aside": 0.0
+}
+},
+"SELF::01a17e06-207a-7004-9fa1-a031c37512bd": {
+"set": "SELF",
+"label": "topic:strand-01a17e06-207a-7004-9fa1-a031c37512bd",
+"opened": "topic:strand-01a17e06-207a-7004-9fa1-a031c37512bd",
+"ii": {
+"keep": 0.8,
+"choice": "topic:strand-01a17e06-207a-7004-9fa1-a031c37512bd",
+"p_top": 0.97,
+"place": "topic:strand-01a17e06-207a-7004-9fa1-a031c37512bd",
+"tokens": 5165
+},
+"i": {
+"place": "topic:strand-01a17e06-207a-7004-9fa1-a031c37512bd",
+"p_aside": 0.0
+}
+},
+"SELF::01a17e05-ff8a-7923-9eab-aa758516cce7": {
+"set": "SELF",
+"label": "topic:strand-01a17e05-ff8a-7923-9eab-aa758516cce7",
+"opened": "topic:strand-01a17e05-ff8a-7923-9eab-aa758516cce7",
+"ii": {
+"keep": 0.24,
+"choice": "topic:strand-01a17e05-ff8a-7923-9eab-aa758516cce7",
+"p_top": 0.92,
+"place": "aside",
+"tokens": 5192
+},
+"i": {
+"place": "topic:strand-01a17e05-ff8a-7923-9eab-aa758516cce7",
+"p_aside": 0.3
+}
+}
+}
