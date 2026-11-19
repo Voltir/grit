@@ -29,19 +29,7 @@ object ProjectCommandsTests extends TestSuite {
 
   /** Keeps note `p/<local>`, titled `Title <local>`, under `parent`. */
   private def under(projects: Projects, store: Store, local: String, parent: String): Unit =
-    done(
-      ask(
-        projects,
-        store,
-        "project_keep",
-        "project" -> "p",
-        "handle" -> local,
-        "kind" -> "note",
-        "title" -> s"Title $local",
-        "body" -> "Below.",
-        "parent" -> parent
-      )
-    )
+    done(keeping(projects, store, local, "note", "Below.", "parent" -> parent))
 
   val tests: Tests = Tests {
 
