@@ -90,24 +90,28 @@ final case class RoleView private (
     kinds: Set[KindName],
     depth: Int,
     carried: Set[Handle],
-    covers: Boolean
+    covers: Cover
 ) extends caps.Pure
+
+/** What a claim as a view's role covers: its artifact alone, or what sits under it too, at any
+  * depth.
+  */
+enum Cover extends caps.Pure {
+  case Alone, Under
+}
 
 object RoleView {
 
   /** 3: the most links a role view follows. */
   val Deepest: Int = 3
 
-  /** This view, or why not: `depth` under 0 or over [[Deepest]], or `kinds` empty. With
-    * `covers`, a claim as `role` covers what sits under its artifact, at any depth: no other
-    * holder's covering claim may hold it, its artifact, or one above it.
-    */
+  /** This view, or why not: `depth` under 0 or over [[Deepest]], or `kinds` empty. */
   def of(
       role: RoleName,
       kinds: Set[KindName],
       depth: Int,
       carried: Set[Handle] = Set.empty,
-      covers: Boolean = false
+      covers: Cover = Cover.Alone
   ): Either[String, RoleView] =
     if (depth < 0 || depth > Deepest)
       Left(s"a role view's depth is $depth, not 0 to $Deepest")

@@ -4,7 +4,7 @@ import grit.core.claim.{ClaimRole, Claims}
 import grit.core.id.{ClaimHolder, DocKey}
 import grit.core.plugin.CommandOutcome
 import grit.core.visibility.Label
-import grit.projects.method.{MethodFixtures, RoleView}
+import grit.projects.method.{Cover, MethodFixtures, RoleView}
 
 import utest.*
 
@@ -23,7 +23,7 @@ object CoveringTests extends TestSuite {
     Vector(
       method(roles =
         Vector(
-          right(RoleView.of(role("manager"), Set(note.name), 1, covers = true)),
+          right(RoleView.of(role("manager"), Set(note.name), 1, covers = Cover.Under)),
           right(RoleView.of(role("reader"), Set(note.name), 1))
         )
       )

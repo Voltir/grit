@@ -25,6 +25,7 @@ import grit.core.visibility.{Integrity, Label}
 import grit.projects.artifact.{Artifact, ArtifactHead, ArtifactJson, Body, Project, Rank, Rekeyed}
 import grit.projects.method.{
   ArtifactKind,
+  Cover,
   Method,
   MoveRefusal,
   Mover,
@@ -3606,7 +3607,7 @@ private[plugin] object ProjectCommands {
     * covers nothing.
     */
   private def covers(method: Method, role: ClaimRole): Boolean =
-    method.views.exists(v => v.covers && v.role == role)
+    method.views.exists(v => v.covers == Cover.Under && v.role == role)
 
   /** Each of `live` that covers under `method`, with its artifact's id among `ids`. */
   private def covering(

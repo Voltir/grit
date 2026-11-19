@@ -168,7 +168,7 @@ object MethodTests extends TestSuite {
         ((4, digests(3)))
     }
     test("a role view's covering changes the digest") {
-      def digest(covers: Boolean) =
+      def digest(covers: Cover) =
         Method
           .of(
             method,
@@ -180,7 +180,11 @@ object MethodTests extends TestSuite {
           )
           .map(_.digest.hex)
       // Pinned: a method's covering view is digested as it was when views could first cover.
-      (digest(true), digest(false).isRight, digest(false) != digest(true)) ==>
+      (
+        digest(Cover.Under),
+        digest(Cover.Alone).isRight,
+        digest(Cover.Alone) != digest(Cover.Under)
+      ) ==>
         ((Right("6f1ee98a92f56ab472012348f7a1f321f0f30f2e2a6a2b245c45739eb9f1b2cf"), true, true))
     }
     test("a transition only people make changes the digest") {

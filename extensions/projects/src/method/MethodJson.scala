@@ -70,7 +70,7 @@ object MethodJson {
           "depth" -> v.depth,
           "carried" -> strings(v.carried.toVector.map(Handle.value).sorted)
         )
-        if (v.covers) o("covers") = true
+        if (v.covers == Cover.Under) o("covers") = true
         o
       }),
       "checks" -> ujson.Arr.from(method.checks.sortBy(c => CheckName.value(c.name)).map { c =>
@@ -253,8 +253,8 @@ object MethodJson {
       carried <- names(f, "carried")(Handle.of)
       written <- f.added("covers")
       covers <- written match {
-        case None => Right(false)
-        case Some(ujson.Bool(b)) => Right(b)
+        case None | Some(ujson.Bool(false)) => Right(Cover.Alone)
+        case Some(ujson.Bool(true)) => Right(Cover.Under)
         case Some(_) => Left(s"${f.what}'s covers is neither true nor false")
       }
       view <- RoleView
