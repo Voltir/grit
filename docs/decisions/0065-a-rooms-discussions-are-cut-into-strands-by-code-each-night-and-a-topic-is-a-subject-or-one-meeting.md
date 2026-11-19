@@ -7,8 +7,7 @@ stitch links, so no strand of them reached the topics run, and none of a room's 
 knowledge. Stitching them would need a live write per message, made with no hindsight: in a
 labelled room, five messages had their subject defined by a later one. A replay of two labelled
 rooms measured the alternatives: 5-minute runs of top-level messages, each thread whole, placed
-best; per-message units, and runs shown their neighbours as context, placed worse (Jev joined a
-unit to the document holding one of its neighbours). The same replay found a confidence mark on
+best, and per-message units worse. The same replay found a confidence mark on
 the sort's choice cost more than it saved, and that a meeting talked about over several messages
 is one occurrence with a day, a start and people, not a subject.
 
@@ -20,7 +19,7 @@ Decision:
 - **Units are cut by code each night** (`StrandShelf.units`): a legacy stitched strand; a thread
   under a channel's top level, whole, opening with the message it hangs under; or a run of a
   channel's top-level messages less than `Strand.Cut.gap` apart, of at most `most`, offered once
-  it has settled. A run is cut from its true start whatever the window reads it, is told apart
+  it has settled. A run is cut from its true start whatever window reads it, is told apart
   by its first message (`Strand.Id`), and has no ref: settled, it never grows.
 - **One choice places a unit**, among its shortlist plus `new_topic`, `new_meeting` and `aside`,
   and stands whatever its probability. A unit that opens a topic is written at once, so a later

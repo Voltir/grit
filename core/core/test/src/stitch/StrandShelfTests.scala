@@ -12,11 +12,6 @@ object StrandShelfTests extends TestSuite {
 
   import StrandWorld.{at, right}
 
-  /** 5-minute runs of at most 16, with `before` and `after` neighbours, settled in 30 minutes. */
-  private def cut(before: Int, after: Int): Strand.Cut = Strand.Cut
-    .of(java.time.Duration.ofMinutes(5), 16, before, after, java.time.Duration.ofMinutes(30))
-    .fold(e => throw new java.lang.AssertionError(e), identity)
-
   val tests = Tests {
     test("the same messages give the same digest; one more message another") {
       val w = new StrandWorld
@@ -151,7 +146,7 @@ object StrandShelfTests extends TestSuite {
       val t = w.under("C1", "1.0")
       w.say(t, "I can, after lunch", 60)
       given Tx = TestTx.fake
-      val units = right(w.shelf.units(at(0), at(600), cut(0, 0)))
+      val units = right(w.shelf.units(at(0), at(600), Strand.Cut.Default))
       units.map(u => (u.root, u.span)) ==> Vector((t.id, Strand.Span.Whole))
       units.flatMap(u => right(w.excerpts.excerpt(u, 1000)).map(_.excerpt.text)) ==>
         Vector("Someone: who can review the deploy script?\nSomeone: I can, after lunch")
@@ -168,7 +163,7 @@ object StrandShelfTests extends TestSuite {
       w.say(a, "thanks", 60)
       w.say(b, "they look good", 60)
       given Tx = TestTx.fake(Clearance.of(Label.Public), TestLabels.Trialled)
-      right(w.shelf.units(at(0), at(600), cut(0, 0)))
+      right(w.shelf.units(at(0), at(600), Strand.Cut.Default))
         .filter(_.span == Strand.Span.Whole)
         .flatMap(u => right(w.excerpts.excerpt(u, 1000)).map(_.excerpt.text)) ==>
         Vector("Someone: thanks", "Someone: they look good")
@@ -191,25 +186,10 @@ object StrandShelfTests extends TestSuite {
           Map.empty
         )
       )
-      right(w.shelf.units(at(0), at(4000), cut(0, 0))).map(u => (u.root, u.said, u.since)) ==>
+      right(w.shelf.units(at(0), at(4000), Strand.Cut.Default)).map(u =>
+        (u.root, u.said, u.since)
+      ) ==>
         Vector((c1.id, 2, at(0)), (c1.id, 1, at(1200)))
-    }
-
-    test("context is top-level messages alone") {
-      val w = new StrandWorld
-      val top = w.room("C1")
-      w.say(top, "is the build green?", 0, source = Some("1.0"))
-      w.say(w.under("C1", "1.0"), "yes, since noon", 30)
-      w.say(top, "lunch at one?", 900)
-      w.say(top, "the release notes are up", 1800)
-      given Tx = TestTx.fake
-      val runs = right(w.shelf.units(at(600), at(4000), cut(1, 1))).filter(_.since == at(900))
-      runs.flatMap(u => right(w.excerpts.excerpt(u, 1000)).map(_.excerpt.text)) ==> Vector(
-        "(Said just before it, shown for context only, not part of it:)\n" +
-          "Someone: is the build green?\nSomeone: lunch at one?\n" +
-          "(Said just after it, shown for context only, not part of it:)\n" +
-          "Someone: the release notes are up"
-      )
     }
 
     test("a run cut on two nights' windows is the same run") {
@@ -219,7 +199,7 @@ object StrandShelfTests extends TestSuite {
       (0 to 10).foreach(i => w.say(top, s"step $i", i * 240L))
       given Tx = TestTx.fake
       val four = Strand.Cut
-        .of(java.time.Duration.ofMinutes(5), 4, 0, 0, java.time.Duration.ofMinutes(30))
+        .of(java.time.Duration.ofMinutes(5), 4, java.time.Duration.ofMinutes(30))
         .fold(e => throw new java.lang.AssertionError(e), identity)
       def ids(from: Long) =
         right(w.shelf.units(at(from), at(9000), four)).map(u => (u.id, u.digest, u.said))
@@ -230,20 +210,19 @@ object StrandShelfTests extends TestSuite {
       ids(2000) ==> ids(0).drop(2)
     }
 
-    test("a run's excerpt and links read its range and context, not the whole root") {
+    test("a run's excerpt and links read its range, not the whole root") {
       val w = new StrandWorld
       val top = w.room("C1")
       w.say(top, "see https://example.com/a", 0)
       w.say(top, "see https://example.com/b", 1200)
       w.say(top, "see https://example.com/c", 2400)
       given Tx = TestTx.fake
-      val middle = right(w.shelf.units(at(1000), at(4000), cut(1, 1))).filter(_.since == at(1200))
+      val middle =
+        right(w.shelf.units(at(1000), at(4000), Strand.Cut.Default)).filter(_.since == at(1200))
       middle.flatMap(u => right(w.shelf.links(u))).map(_.toString) ==>
         Vector(Href.in("see https://example.com/b").map(_.toString)).flatten
-      middle.flatMap(u =>
-        right(w.excerpts.excerpt(u, 1000)).map(_.excerpt.text.count(_ == '\n'))
-      ) ==>
-        Vector(4)
+      middle.flatMap(u => right(w.excerpts.excerpt(u, 1000)).map(_.excerpt.text)) ==>
+        Vector("Someone: see https://example.com/b")
     }
 
     test("an excerpt reads changed once a message of the run is removed") {
@@ -254,7 +233,7 @@ object StrandShelfTests extends TestSuite {
       w.seal(middle, 90)
       w.say(top, "me", 120)
       given Tx = TestTx.fake
-      val run = right(w.shelf.units(at(0), at(4000), cut(0, 0)))
+      val run = right(w.shelf.units(at(0), at(4000), Strand.Cut.Default))
       run.map(u => (u.said, right(w.excerpts.excerpt(u, 1000)).isDefined)) ==> Vector((3, true))
       w.purgeSealed(middle, 3000)
       run.map(u => right(w.excerpts.excerpt(u, 1000))) ==> Vector(None)

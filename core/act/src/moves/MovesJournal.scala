@@ -630,9 +630,8 @@ object MovesJournal {
   /** A run's span in a canonical form; nothing for a whole strand, so its forms read as before. */
   private def span(seen: Strand.Digested): String = seen.span match {
     case Strand.Span.Whole => ""
-    case Strand.Span.Run(first, last, before, after) =>
-      "run" + text(EntryId.value(first)) + text(EntryId.value(last)) + count(before) +
-        count(after)
+    case Strand.Span.Run(first, last) =>
+      "run" + text(EntryId.value(first)) + text(EntryId.value(last))
   }
 
   /** v1's canonical form of a judgment, which [[judgment]] hashes. */

@@ -11,9 +11,8 @@ trait StrandExcerpts {
 
   /** What `seen`'s members said before its `asOf` that the transaction reads, as
     * [[Stitching.excerpt]] shows them within `chars` (its opening, a thread's asking message or
-    * else the root's first message, then the latest; a run read by its span, with context
-    * marked apart), believed at the meet of every message read, the opening and context
-    * included; `None` when the messages it places are not the ones `seen` digested (one was
+    * else the root's first message, then the latest; a run read by its span), believed at the
+    * meet of every message read, the opening included; `None` when the messages it places are not the ones `seen` digested (one was
     * removed or said since).
     */
   def excerpt(seen: Strand.Digested, chars: Int)(using
@@ -47,11 +46,11 @@ object StrandExcerpts {
         said.headOption.filter(_ => StrandDigest.of(said.map(_.entry.id)) == seen.digest) match {
           case None => Right(None)
           case Some(first) =>
-            val read = (p.opening.toVector ++ p.before ++ said ++ p.after).distinctBy(_.entry.id)
+            val read = (p.opening.toVector ++ said).distinctBy(_.entry.id)
             principals.speakers(read.map(_.entry.id)).map { speakers =>
               Some(
                 Strand.Shown(
-                  Stitching.excerpt(p.opening, said, speakers, chars, p.before, p.after),
+                  Stitching.excerpt(p.opening, said, speakers, chars),
                   read.map(_.entry.integrity).foldLeft(first.entry.integrity)(_.meet(_))
                 )
               )

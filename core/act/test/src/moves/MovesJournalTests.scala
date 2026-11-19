@@ -536,7 +536,7 @@ object MovesJournalTests extends TestSuite {
         at
       )
       def run(first: String) =
-        whole.copy(span = Strand.Span.Run(EntryId(first), EntryId("b"), 0, 0))
+        whole.copy(span = Strand.Span.Run(EntryId(first), EntryId("b")))
       val among =
         grit.core.act.Sorting.Among[MovesContract.Pick](Vector.empty, Vector.empty, 0)
       def forms(s: Strand.Digested): (String, String, String) = (

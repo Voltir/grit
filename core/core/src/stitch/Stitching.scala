@@ -285,35 +285,17 @@ object Stitching {
   final case class Excerpt private[stitch] (
       opening: Option[Line],
       left: Int,
-      latest: Vector[Line],
-      before: Vector[Line] = Vector.empty,
-      after: Vector[Line] = Vector.empty
+      latest: Vector[Line]
   ) {
-    def text: String = {
-      val own =
-        (opening.map(_.shown).toVector ++ Option.when(left > 0)("…") ++ latest.map(_.shown))
-      // Draft wording, for Nick: the context fence.
-      def context(head: String, lines: Vector[Line]) =
-        Option.when(lines.nonEmpty)(head +: lines.map(_.shown)).toVector.flatten
-      (context(Excerpt.Before, before) ++ own ++ context(Excerpt.After, after)).mkString("\n")
-    }
+    def text: String =
+      (opening.map(_.shown).toVector ++ Option.when(left > 0)("…") ++ latest.map(_.shown))
+        .mkString("\n")
 
     /** This with a [[text]] of at most `chars`: the newest of `latest` while they fit, the rest
       * counted in `left`; when none fits, `opening` cut at a word with `…`, keeping its speaker;
       * empty when not even that fits.
       */
     def within(chars: Int): Excerpt =
-      if (before.isEmpty && after.isEmpty) own(chars)
-      else {
-        // Context is shown only when the strand's own lines fit beside it.
-        val bare = copy(before = Vector.empty, after = Vector.empty)
-        val room = chars - (text.length - bare.text.length)
-        Some(bare.own(room).copy(before = before, after = after))
-          .filter(e => room > 0 && e.latest.nonEmpty && e.text.length <= chars)
-          .getOrElse(bare.own(chars))
-      }
-
-    private def own(chars: Int): Excerpt =
       (latest.size to 0 by -1).iterator
         .map(k => Excerpt(opening, left + latest.size - k, latest.takeRight(k)))
         .find(_.text.length <= chars)
@@ -332,10 +314,6 @@ object Stitching {
 
     /** No strand. */
     val empty: Excerpt = Excerpt(None, 0, Vector.empty)
-
-    // Draft wording, for Nick: the context fence around a run's neighbours.
-    private val Before = "(Said just before it, shown for context only, not part of it:)"
-    private val After = "(Said just after it, shown for context only, not part of it:)"
   }
 
   /** The exchanges `first`, a stitchable conversation's first message in `room`, may continue,
@@ -551,20 +529,12 @@ object Stitching {
       opening: Option[Said],
       strand: Vector[Said],
       speakers: Speakers,
-      chars: Int,
-      before: Vector[Said] = Vector.empty,
-      after: Vector[Said] = Vector.empty
+      chars: Int
   ): Excerpt = {
     val rest = strand
       .filterNot(s => opening.exists(_.entry.id == s.entry.id))
       .sortBy(_.entry.createdAt)
-    Excerpt(
-      opening.flatMap(line(_, speakers)),
-      0,
-      rest.flatMap(line(_, speakers)),
-      before.flatMap(line(_, speakers)),
-      after.flatMap(line(_, speakers))
-    ).within(chars)
+    Excerpt(opening.flatMap(line(_, speakers)), 0, rest.flatMap(line(_, speakers))).within(chars)
   }
 
   /** `s`'s words, when it is a message: a person's, grit's reply, or grit's post. */

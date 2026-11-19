@@ -30,8 +30,7 @@ trait StrandShelf {
 
   /** The links `seen`'s members' messages hold ([[Href.in]] over each, oldest first, each link
     * once), of those said before its `asOf` that the transaction reads, a thread's opening
-    * among them and a run read by its span, with its context left out: the one part of their
-    * text a run's code is handed.
+    * among them and a run read by its span: the one part of their text a run's code is handed.
     */
   def links(seen: Strand.Digested)(using Tx^): Either[StoreError, Vector[Href]]
 
@@ -64,7 +63,7 @@ object StrandShelf {
       .map(_.filter(_.root == root).map(_.conversation).distinct)
       .flatMap(followers => stitches.said(root +: followers, Instant.EPOCH, asOf))
 
-  /** A day: how far before a run's first message its context is read. */
+  /** A day: how far back each step reads to find where a run's chain of messages begins. */
   private[stitch] val Reach: java.time.Duration = java.time.Duration.ofDays(1)
 
   /** How many characters of `said` a reader is shown, at most [[Stitching.MessageChars]] of
@@ -73,22 +72,16 @@ object StrandShelf {
   private[stitch] def chars(said: Vector[Said]): Int =
     said.flatMap(Stitching.spoken).map(Cut.head(_, Stitching.MessageChars).length).sum
 
-  /** What a strand shows: the message it opens with (`opening`), the messages it places
-    * (`placed`), and a run's context said `before` and `after` them.
+  /** What a strand shows: the message it opens with (`opening`) and the messages it places
+    * (`placed`).
     */
-  private[stitch] final case class Placing(
-      opening: Option[Said],
-      before: Vector[Said],
-      placed: Vector[Said],
-      after: Vector[Said]
-  )
+  private[stitch] final case class Placing(opening: Option[Said], placed: Vector[Said])
 
   /** What `seen` shows as it stood at its `asOf`, as its transaction reads it: a whole strand's
     * [[saidIn]], opening with a thread's asking message ([[grit.core.store.Origin.asking]],
     * `None` under grit's own post or one not read) or else its root's first message; a run's
-    * messages `first` to `last` of its root, with its context's counts of the top-level
-    * messages read within [[Reach]] before them and up to its `asOf` after; nothing placed when
-    * `first` or `last` is not read.
+    * messages `first` to `last` of its root, said from its `since` to its `touched`; nothing
+    * placed when `first` or `last` is not read.
     */
   private[stitch] def placing(
       stitches: StitchStore,
@@ -114,22 +107,14 @@ object StrandShelf {
         // A thread opens with its asking message; a stitched strand with its root's first.
         if (root.exists(_.origin.asking.nonEmpty)) asking
         else said.find(_.conversation == seen.root),
-        Vector.empty,
-        said,
-        Vector.empty
+        said
       )
-    case Strand.Span.Run(first, last, before, after) =>
-      stitches.said(Vector(seen.root), seen.since.minus(Reach), seen.asOf).map { all =>
+    case Strand.Span.Run(first, last) =>
+      // `said` reads until before its end: a millisecond past `touched` takes the last message.
+      stitches.said(Vector(seen.root), seen.since, seen.touched.plusMillis(1)).map { all =>
         val i = all.indexWhere(_.entry.id == first)
         val j = all.indexWhere(_.entry.id == last)
-        if (i < 0 || j < i) Placing(None, Vector.empty, Vector.empty, Vector.empty)
-        else
-          Placing(
-            None,
-            all.slice((i - before).max(0), i),
-            all.slice(i, j + 1),
-            all.slice(j + 1, j + 1 + after)
-          )
+        Placing(None, if (i < 0 || j < i) Vector.empty else all.slice(i, j + 1))
       }
   }
 
@@ -192,7 +177,7 @@ object StrandShelf {
     )(using Tx^): Either[StoreError, Vector[Strand.Digested]] = {
       val reach = if (Reach.compareTo(cut.gap) >= 0) Reach else cut.gap
       // The chain the first message said from `from` is in begins after a gap of cut.gap or
-      // more; read back until that gap, and Reach of context before it, are read.
+      // more; read back a step at a time until that gap is read.
       def back(lo: Instant, got: Vector[Said]): Either[StoreError, Vector[Said]] = {
         val first = got.indexWhere(!_.entry.createdAt.isBefore(from))
         val start = Iterator
@@ -216,28 +201,24 @@ object StrandShelf {
         val room = c.origin.room
         cut
           .pieces(top, until)
-          .filterNot(_.run.lastOption.exists(_.entry.createdAt.isBefore(from)))
-          .flatMap { p =>
+          .filterNot(_.lastOption.exists(_.entry.createdAt.isBefore(from)))
+          .flatMap { run =>
             for {
-              first <- p.run.headOption
-              last <- p.run.lastOption
-            } yield {
-              val shown =
-                p.before.filterNot(_.entry.createdAt.isBefore(first.entry.createdAt.minus(Reach)))
-              Strand.Digested(
-                room,
-                Tx.roomLabel(room),
-                c.id,
-                Vector(c.id),
-                p.run.size,
-                chars(p.run),
-                first.entry.createdAt,
-                last.entry.createdAt,
-                StrandDigest.of(p.run.map(_.entry.id)),
-                until,
-                Strand.Span.Run(first.entry.id, last.entry.id, shown.size, p.after.size)
-              )
-            }
+              first <- run.headOption
+              last <- run.lastOption
+            } yield Strand.Digested(
+              room,
+              Tx.roomLabel(room),
+              c.id,
+              Vector(c.id),
+              run.size,
+              chars(run),
+              first.entry.createdAt,
+              last.entry.createdAt,
+              StrandDigest.of(run.map(_.entry.id)),
+              until,
+              Strand.Span.Run(first.entry.id, last.entry.id)
+            )
           }
       }
     }
