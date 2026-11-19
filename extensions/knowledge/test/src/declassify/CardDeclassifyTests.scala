@@ -356,6 +356,20 @@ object CardDeclassifyTests extends TestSuite {
       )
     }
 
+    test("a withholding is believed as the run that withheld it") {
+      val runs = new Runs
+      val _ = runs.card("c1", integrity = TestLabels.Endorsed)
+      runs.policy(1)
+      runs.apply("c1", 1)
+      (
+        runs.run(leak = 0.5, visibility = TestLabels.Trialled, believed = TestLabels.TrialledOwn),
+        runs.integrities
+      ) ==> (
+        "declassified cards: 0 written, 1 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 0 withdrawn, 0 left for the next run",
+        (Vector(), Some(TestLabels.TrialledOwn))
+      )
+    }
+
     test(
       "an unpieced card is tallied unpieced, not lapsed, and rewritten once its file is pieced"
     ) {

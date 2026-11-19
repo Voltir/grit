@@ -1340,5 +1340,43 @@ object TopicDreamTests extends TestSuite {
         Vector((key(a), TestLabels.Endorsed))
       )
     }
+
+    test("a topic a scan prunes is believed as it was, never raised") {
+      val w = new StrandWorld
+      val _ = strand(w, "C1", "deploy pipeline", integrity = Integrity.Outside)
+      val runs = new Runs(w)
+      val _ = runs.run()
+      val _ = strand(w, "C2", "deploy rollback", 86400, Integrity.Outside)
+      val day2 = Some(Day.plusDays(1))
+      val later = StrandWorld.at(86400 + 3600)
+      val _ = runs.run(day = day2, now = later, attach = (_, _) => placed(Seq(group("1", Seq(1)))))
+      val joined = runs.topics.map(_.integrity)
+      val moved = runs.run(day = day2, now = later, rooms = labelled(Internal, "C1"))
+      (joined, moved, runs.topics.map(_.integrity)) ==> (
+        Vector(Integrity.Outside),
+        "topics: 0 written (0 opened), 1 withdrawn, 1 unchanged, 0 set aside, 0 left for the next run",
+        Vector(Integrity.Outside)
+      )
+    }
+
+    test("the aside a scan keeps is believed as it was, never raised") {
+      val w = new StrandWorld
+      val a = strand(w, "C1", "deploy pipeline", integrity = Integrity.Outside)
+      val runs = new Runs(w)
+      runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
+      val _ = runs.run(attach = placing("none"))
+      val first = (runs.aside._1, runs.aside._2.size, runs.asideBelieved)
+      given Tx = TestTx.fake
+      val card = ok(runs.documents.shelf(Knowledge).newest(1)).map(_.key)
+      card.foreach(k =>
+        ok(runs.documents.keeper(Knowledge, CardTerms).withdraw(k, Label.Public, Now))
+      )
+      val _ = runs.run(now = Now.plusSeconds(1800), attach = placing("none"))
+      (first, runs.aside, runs.asideBelieved) ==> (
+        (Vector(a.id), 1, Some(Integrity.Outside)),
+        (Vector(a.id), Vector()),
+        Some(Integrity.Outside)
+      )
+    }
   }
 }
