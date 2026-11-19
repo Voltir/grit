@@ -135,10 +135,10 @@ object DeclareTests extends TestSuite {
       // list, stale, sweep and a brief read a project by its ref, which a method never holds.
       val store = Store()
       started(plugin(), store)
-      kept(plugin(), store, "a", "note", "Text.")
+      kept(plugin(), store, "a", "note", "Kept at its first version.")
       done(
         askAt(at.plusSeconds(1))(plugin(), store, "project_find", "query" -> "version")
-      ) ==> "Nothing matches."
+      ) ==> "p/a (note, open): Title a"
     }
     test(
       "a move is refused when its pinned version is not declared, or its digest is not the pin's"
