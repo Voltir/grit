@@ -6,6 +6,7 @@ import grit.core.id.DocumentVersionId
 import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project, Rank}
 import grit.projects.name.{
   ArtifactKey,
+  ArtifactNumber,
   ArtifactRef,
   Handle,
   KindName,
@@ -21,11 +22,10 @@ object ProjectMarkdown {
   /** `project.md`: the file holding a project's key and pin. */
   val Index: String = "project.md"
 
-  /** `project` as files: `<key>.md` each, YAML front matter (`key`, its id, `handle`, `kind`,
-    * `state`, `title`, `parent`, `cites`, `by`; a title and a `by` as quoted strings, an absent
-    * one as `null`, references by id,
-    * cites as a flow list) then its body as markdown; and one [[Index]] holding its `key`, and
-    * its pin's `method`, `version` and `digest`. [[read]] of them is a project with the same
+  /** `project` as files: one per artifact at the numbers of its chain ([[Project.chain]]),
+    * `12.md` for a root and `12/15.md` for its child, holding [[text]]; and one [[Index]]
+    * holding the project's `key`, and its pin's `method`, `version` and `digest`. A retitle or a
+    * new handle moves no file; a new parent does. [[read]] of them is a project with the same
     * heads and links; read again after a second render, the same project: markdown is written
     * for a reader, so a body may normalise once.
     */
@@ -37,7 +37,11 @@ object ProjectMarkdown {
         "version" -> project.pin.version.toString,
         "digest" -> project.pin.digest.hex
       )
-    )) +: project.artifacts.map(file)
+    )) +: project.artifacts.map(a => path(project, a.head.key) -> text(a))
+
+  /** The path [[render]] writes `key`'s file at in `project`. */
+  private def path(project: Project, key: ArtifactKey): String =
+    project.chain(key).map(k => ArtifactNumber.value(k.number)).mkString("", "/", ".md")
 
   /** A project of the old form (ADR 0063), before ids, as [[render]] wrote it then, byte for
     * byte, from what its documents hold: `stored`, each artifact's store key and data. It is
@@ -110,11 +114,14 @@ object ProjectMarkdown {
       }
   }
 
-  /** `artifact`'s file as [[render]] writes it: its path, and its text. */
-  def file(artifact: Artifact): (String, String) =
-    s"${artifact.head.key.value}.md" -> filed(artifact.head, None, Body.markdown(artifact.body))
+  /** `artifact`'s file text as [[render]] writes it: YAML front matter (`id`, `handle`, `kind`,
+    * `state`, `title`, `parent`, `rank`, `cites`, `by`; a title and a `by` as quoted strings, an
+    * absent one as `null`, references by id, cites as a flow list), then its body as markdown.
+    */
+  def text(artifact: Artifact): String =
+    filed(artifact.head, None, Body.markdown(artifact.body))
 
-  /** `artifact` kept as `version`, as `project_show` gives it: [[file]]'s text with a last front
+  /** `artifact` kept as `version`, as `project_show` gives it: [[text]] with a last front
     * matter line `version: <n>`, which [[readShown]] reads back and [[read]] never does: an export
     * holds no version.
     */
@@ -168,7 +175,7 @@ object ProjectMarkdown {
   private def fronted(h: ArtifactHead, version: Option[DocumentVersionId]): String =
     front(
       Vector(
-        "key" -> h.key.value,
+        "id" -> h.key.value,
         "handle" -> h.handle.fold("null")(Handle.value),
         "kind" -> KindName.value(h.kind),
         "state" -> StateName.value(h.state),
@@ -181,9 +188,9 @@ object ProjectMarkdown {
     )
 
   /** Files as [[render]] writes them, as a project, or every file that is not one, with why: a
-    * missing or unreadable [[Index]], a file whose front matter is not [[render]]'s, a file not
-    * at its key's path, a body [[Body.read]] refuses, or what [[Project.of]] refuses, named by
-    * the file of the artifact it is about.
+    * missing or unreadable [[Index]], a file whose front matter is not [[render]]'s, a body
+    * [[Body.read]] refuses, what [[Project.of]] refuses, or a file not at its chain's path, each
+    * named by the file it is about.
     */
   def read(files: Vector[(String, String)]): Either[Vector[(String, String)], Project] = {
     val (indexes, others) = files.partition(_._1 == Index)
@@ -192,14 +199,27 @@ object ProjectMarkdown {
       case Vector() => Left(Index -> s"no $Index")
       case _ => Left(Index -> s"$Index is there ${indexes.size} times")
     }
-    val artifacts = others.map((path, text) => artifact(path, text).left.map(path -> _))
+    val artifacts = others.map((path, text) => artifact(text).map(path -> _).left.map(path -> _))
     val bad = pinned.left.toOption.toVector ++ artifacts.flatMap(_.left.toOption)
     pinned match {
       case Right((key, pin)) if bad.isEmpty =>
         val read = artifacts.flatMap(_.toOption)
-        Project.refusals(key, read) match {
-          case Vector() => Project.of(key, pin, read).left.map(why => Vector(Index -> why))
-          case refused => Left(refused.map((k, why) => s"${k.value}.md" -> why))
+        def at(k: ArtifactKey): Vector[String] = read.collect {
+          case (path, a) if a.head.key == k => path
+        }
+        Project.refusals(key, read.map(_._2)) match {
+          case Vector() =>
+            Project.of(key, pin, read.map(_._2)).left.map(why => Vector(Index -> why)).flatMap {
+              project =>
+                read.collect {
+                  case (found, a) if found != path(project, a.head.key) =>
+                    found -> s"${a.head.key.value} belongs at ${path(project, a.head.key)}, its parents' numbers then its own"
+                } match {
+                  case Vector() => Right(project)
+                  case misplaced => Left(misplaced)
+                }
+            }
+          case refused => Left(refused.flatMap((k, why) => at(k).map(_ -> why)))
         }
       case _ => Left(bad)
     }
@@ -207,7 +227,7 @@ object ProjectMarkdown {
 
   private val IndexFields: Vector[String] = Vector("key", "method", "version", "digest")
   private val HeadFields: Vector[String] =
-    Vector("key", "handle", "kind", "state", "title", "parent", "rank", "cites", "by")
+    Vector("id", "handle", "kind", "state", "title", "parent", "rank", "cites", "by")
 
   private def front(fields: Vector[(String, String)]): String =
     fields.map((k, v) => s"$k: $v").mkString("---\n", "\n", "\n---\n")
@@ -225,22 +245,13 @@ object ProjectMarkdown {
       pin <- Pin.read(method, version, fields("digest"))
     } yield (key, pin)
 
-  private def artifact(path: String, text: String): Either[String, Artifact] =
-    for {
-      (fields, body) <- split(text, HeadFields)
-      key <- ArtifactKey.read(fields("key"))
-      _ <- Either.cond(
-        path == s"${key.value}.md",
-        (),
-        s"the file of ${key.value} is not ${key.value}.md"
-      )
-      read <- headed(fields, body)
-    } yield read
+  private def artifact(text: String): Either[String, Artifact] =
+    split(text, HeadFields).flatMap((fields, body) => headed(fields, body))
 
   /** The artifact `fields`, a front matter's [[HeadFields]], and `body` hold, or why not. */
   private def headed(fields: Fields, body: String): Either[String, Artifact] =
     for {
-      key <- ArtifactKey.read(fields("key"))
+      key <- ArtifactKey.read(fields("id"))
       handle <- nullable(fields("handle"))(Handle.of)
       kind <- KindName.of(fields("kind"))
       state <- StateName.of(fields("state"))

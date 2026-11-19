@@ -15,6 +15,21 @@ final case class Project private (key: ProjectKey, pin: Pin, artifacts: Vector[A
     */
   def resolve(ref: ArtifactRef): Either[String, ArtifactKey] =
     Project.resolving(key, artifacts, ref)
+
+  /** The ids from the root of `key`'s tree down to it by parent: the root first, `key` last;
+    * empty for a key this project lacks.
+    */
+  def chain(key: ArtifactKey): Vector[ArtifactKey] = {
+    val parents = artifacts.map(a => a.head.key -> a.head.parent).toMap
+    // Total: every parent is an artifact of this project, and none is its own ancestor (`of`).
+    @tailrec def up(at: ArtifactKey, below: List[ArtifactKey]): List[ArtifactKey] =
+      parents.get(at) match {
+        case None => Nil
+        case Some(None) => at :: below
+        case Some(Some(parent)) => up(parent, at :: below)
+      }
+    up(key, Nil).toVector
+  }
 }
 
 object Project {

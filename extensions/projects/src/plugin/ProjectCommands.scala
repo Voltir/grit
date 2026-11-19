@@ -844,7 +844,7 @@ private[plugin] final class ProjectCommands(
                   )
                 )
                 .flatMap(d => refuse(readable(d)))
-                .map(a => ProjectMarkdown.file(a)._2)
+                .map(ProjectMarkdown.text)
             for {
               older <- file(from)
               newer <- file(to)
