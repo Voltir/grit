@@ -147,6 +147,19 @@ object SplitTests extends TestSuite {
         "p/1 a cannot be split: a move of a change merges its deltas into the sections of a note"
       )
     }
+    test("a new artifact over the stored limit is refused naming no split, having none to split") {
+      val (projects, store) = holding()
+      val long = Vector.fill(3000)("ten chars.").mkString(" ")
+      ask(
+        projects,
+        store,
+        "project_keep",
+        "project" -> "p",
+        "kind" -> "note",
+        "title" -> "Long",
+        "body" -> s"## Goal\n\n$long"
+      ) ==> CommandOutcome.Refused("a body's stored form is 33113 bytes, over 28672")
+    }
     test("a method with no kind section refuses the split, keeping nothing") {
       val projects = plugin()
       val store = Store()

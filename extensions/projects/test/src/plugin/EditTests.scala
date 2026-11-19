@@ -131,7 +131,15 @@ object EditTests extends TestSuite {
       )
       val edited = edit(projects, store, "version" -> read, "section" -> "Goal", "body" -> long)
       (asKept, edited, versionOf(projects, store, "p/a")) ==>
-        (CommandOutcome.Refused("a body's stored form is 33242 bytes, over 28672"), asKept, read)
+        (
+          CommandOutcome.Refused(
+            "a body's stored form is 33242 bytes, over 28672. Split p/1 a with project_split, " +
+              "which makes each of its `##` sections an artifact of its own under it, then keep " +
+              "the part that grew."
+          ),
+          asKept,
+          read
+        )
     }
 
     test("an edit takes old and new, or section and body, and not both") {
