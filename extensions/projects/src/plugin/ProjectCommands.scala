@@ -127,15 +127,18 @@ private[plugin] final class ProjectCommands(
     )(using Tx^): Either[StoreError, CommandOutcome] = answered {
       val p = ProjectKey.value(args.project)
       val named = args.method.getOrElse(default)
-      for {
-        method <- declaring.latest(own, named)
-        was <- indexOf(own, args.project)
-        _ <- Either.cond(was.isEmpty, (), Stop.Refused(s"project $p exists already"))
-        pin <- refuse(Pin.of(method.name, method.version, method.digest))
-        index <- refuse(ArtifactJson.index(args.project, pin, author(by)))
-        (key, text, data, refs) = index
-        _ <- keptEverywhere(own, key, Label.Public, Tx.top, text, data, refs, at)
-      } yield s"Started project $p under method ${MethodName.value(method.name)} version ${method.version}."
+      locked(claims, args.project).flatMap { lock =>
+        given Locked = lock
+        for {
+          method <- declaring.latest(own, named)
+          was <- indexOf(own, args.project)
+          _ <- Either.cond(was.isEmpty, (), Stop.Refused(s"project $p exists already"))
+          pin <- refuse(Pin.of(method.name, method.version, method.digest))
+          index <- refuse(ArtifactJson.index(args.project, pin, author(by)))
+          (key, text, data, refs) = index
+          _ <- keptEverywhere(own, key, Label.Public, Tx.top, text, data, refs, at)
+        } yield s"Started project $p under method ${MethodName.value(method.name)} version ${method.version}."
+      }
     }
   }
 
@@ -490,49 +493,52 @@ private[plugin] final class ProjectCommands(
         at: Instant
     )(using Tx^): Either[StoreError, CommandOutcome] = answered {
       val n = args.steps.size
-      for {
-        held <- if (args.dry) Right(Vector.empty) else holding(claims, args.project, at)
-        project <- loaded(own, args.project)
-        method <- declared(own, project.pin)
-        plan = planned(project, method, args.steps, author(by), moverOf(by), onward = args.dry)
-        (said, steps) = plan
-        answers <- Traversal.traverse(said.zipWithIndex) {
-          case (Right(answer), i) => Right(s"${i + 1}. $answer")
-          case (Left(Stop.Refused(why)), i) => Right(s"${i + 1}. Refused: $why")
-          case (Left(failed), _) => Left(failed)
-        }
-        lines = answers.mkString("\n")
-        wouldRefuse =
-          s"Dry run, nothing kept; the batch would be refused. Each step would answer:\n$lines"
-        refused = said.zipWithIndex.collectFirst { case (Left(Stop.Refused(why)), i) => (i, why) }
-        done <- (refused, args.dry) match {
-          case (Some((i, why)), false) =>
-            Left(
-              Stop.Refused(
-                s"Nothing was kept: step ${i + 1} of $n (${described(args.steps, i)}) was " +
-                  s"refused: $why"
+      locked(claims, args.project).flatMap { lock =>
+        given Locked = lock
+        for {
+          held <- if (args.dry) Right(Vector.empty) else holding(claims, args.project, at)
+          project <- loaded(own, args.project)
+          method <- declared(own, project.pin)
+          plan = planned(project, method, args.steps, author(by), moverOf(by), onward = args.dry)
+          (said, steps) = plan
+          answers <- Traversal.traverse(said.zipWithIndex) {
+            case (Right(answer), i) => Right(s"${i + 1}. $answer")
+            case (Left(Stop.Refused(why)), i) => Right(s"${i + 1}. Refused: $why")
+            case (Left(failed), _) => Left(failed)
+          }
+          lines = answers.mkString("\n")
+          wouldRefuse =
+            s"Dry run, nothing kept; the batch would be refused. Each step would answer:\n$lines"
+          refused = said.zipWithIndex.collectFirst { case (Left(Stop.Refused(why)), i) => (i, why) }
+          done <- (refused, args.dry) match {
+            case (Some((i, why)), false) =>
+              Left(
+                Stop.Refused(
+                  s"Nothing was kept: step ${i + 1} of $n (${described(args.steps, i)}) was " +
+                    s"refused: $why"
+                )
               )
-            )
-          case (Some(_), true) => Left(Stop.Refused(wouldRefuse))
-          case (None, false) =>
-            settled(claims, project, method, args.project, steps, at, "change it").left
-              .map {
-                case Stop.Refused(why) => Stop.Refused(s"Nothing was kept: $why")
-                case failed => failed
-              }
-              .flatMap(_ => wrote(own, project, steps, at))
-              .flatMap(_ => rebriefed(own, held, args.project, at))
-              .map(_ => s"Every step is done:\n$lines")
-          case (None, true) =>
-            settled(claims, project, method, args.project, steps, at, "change it").left
-              .map {
-                case Stop.Refused(why) =>
-                  Stop.Refused(s"$wouldRefuse\nOnce every step is done, refused: $why")
-                case failed => failed
-              }
-              .map(_ => s"Dry run, nothing kept. Each step would answer:\n$lines")
-        }
-      } yield done
+            case (Some(_), true) => Left(Stop.Refused(wouldRefuse))
+            case (None, false) =>
+              settled(claims, project, method, args.project, steps, at, "change it").left
+                .map {
+                  case Stop.Refused(why) => Stop.Refused(s"Nothing was kept: $why")
+                  case failed => failed
+                }
+                .flatMap(_ => wrote(own, project, steps, at))
+                .flatMap(_ => rebriefed(own, held, args.project, at))
+                .map(_ => s"Every step is done:\n$lines")
+            case (None, true) =>
+              settled(claims, project, method, args.project, steps, at, "change it").left
+                .map {
+                  case Stop.Refused(why) =>
+                    Stop.Refused(s"$wouldRefuse\nOnce every step is done, refused: $why")
+                  case failed => failed
+                }
+                .map(_ => s"Dry run, nothing kept. Each step would answer:\n$lines")
+          }
+        } yield done
+      }
     }
 
     /** Step `i` of `steps` in a few words: `keep <key>`, or `move <key> to <state>`. */
@@ -1022,52 +1028,50 @@ private[plugin] final class ProjectCommands(
     )(using Tx^): Either[StoreError, CommandOutcome] = answered {
       val holder = ClaimHolder.value(args.holder)
       val key = args.key.value
-      for {
-        project <- loaded(own, args.key.project)
-        method <- declared(own, project.pin)
-        _ <- viewOf(method, args.role)
-        found <- artifact(project, args.key)
-        (document, a) = found
-        claimed <- stored(
-          claims.claim(document.key, args.holder, args.role, by.person, document.label, at)
+      locked(claims, args.key.project).flatMap { lock =>
+        given Locked = lock
+        for {
+          project <- loaded(own, args.key.project)
+          method <- declared(own, project.pin)
+          _ <- viewOf(method, args.role)
+          found <- artifact(project, args.key)
+          (document, a) = found
+          claimed <- claimedFor(claims, document, args, by.person, at)
+          made <- claimed match {
+            case Claimed.Made(c) => Right(c)
+            case Claimed.Taken(first) =>
+              Left(
+                Stop.Refused(
+                  first.fold(s"$key is claimed already; project_release frees it")(c =>
+                    s"$key is claimed already, as ${ClaimRole.value(c.role)} for " +
+                      s"${ClaimHolder.value(c.holder)} by ${accounts(c.by)} since ${c.made}; " +
+                      s"it lapses at ${c.lapses} unless they keep working; project_release frees it"
+                  )
+                )
+              )
+            case Claimed.Holding(other) =>
+              Left(
+                Stop.Refused(
+                  other.fold(
+                    s"$holder works another artifact already; release it with project_release first"
+                  )(c =>
+                    s"$holder works ${DocKey.value(c.subject)} already, claimed since ${c.made}; " +
+                      s"it lapses at ${c.lapses} unless they keep working; " +
+                      "release it with project_release first"
+                  )
+                )
+              )
+          }
+          whole <- refuse(Project.of(args.key.project, project.pin, project.artifacts))
+          // The role has a view and the artifact is the project's, so the claim has its brief.
+          unkept <- rendered(method, whole, Vector(made)).headOption
+            .toRight(Stop.Refused(s"$key has no brief as ${RoleName.value(args.role)}"))
+            .flatMap(briefed(own, _, document.place, project, at))
+        } yield AnswerText.claimed(
+          s"Claimed ${AnswerText.named(a.head)} as ${RoleName.value(args.role)} for $holder.",
+          unkept
         )
-        made <- claimed match {
-          case Claimed.Made(c) => Right(c)
-          case Claimed.Taken(first) =>
-            Left(
-              Stop.Refused(
-                first.fold(s"$key is claimed already; project_release frees it")(c =>
-                  s"$key is claimed already, as ${ClaimRole.value(c.role)} for " +
-                    s"${ClaimHolder.value(c.holder)} by ${accounts(c.by)} since ${c.made}; " +
-                    s"it lapses at ${c.lapses} unless they keep working; project_release frees it"
-                )
-              )
-            )
-          case Claimed.Holding(other) =>
-            Left(
-              Stop.Refused(
-                other.fold(
-                  s"$holder works another artifact already; release it with project_release first"
-                )(c =>
-                  s"$holder works ${DocKey.value(c.subject)} already, claimed since ${c.made}; " +
-                    s"it lapses at ${c.lapses} unless they keep working; " +
-                    "release it with project_release first"
-                )
-              )
-            )
-        }
-        // Loaded again: the claim waits at its row for a keep that holds it, and the brief must
-        // show what that keep left, not the project as it was before the wait.
-        after <- loaded(own, args.key.project)
-        whole <- refuse(Project.of(args.key.project, after.pin, after.artifacts))
-        // The role has a view and the artifact is the project's, so the claim has its brief.
-        unkept <- rendered(method, whole, Vector(made)).headOption
-          .toRight(Stop.Refused(s"$key has no brief as ${RoleName.value(args.role)}"))
-          .flatMap(briefed(own, _, document.place, after, at))
-      } yield AnswerText.claimed(
-        s"Claimed ${AnswerText.named(a.head)} as ${RoleName.value(args.role)} for $holder.",
-        unkept
-      )
+      }
     }
   }
 
@@ -1089,18 +1093,21 @@ private[plugin] final class ProjectCommands(
         claims: Claims,
         at: Instant
     )(using Tx^): Either[StoreError, CommandOutcome] = answered {
-      for {
-        project <- loaded(own, args.key.project)
-        found <- artifact(project, args.key)
-        (document, _) = found
-        freed <- stored(claims.release(document.key, document.label))
-        // The brief goes even when its claim is gone, as a swept lapsed claim is.
-        briefFor <- unbriefed(own, args.key, at)
-        holder <- freed
-          .map(_.holder)
-          .orElse(briefFor)
-          .toRight(Stop.Refused(s"${args.key.value} is not claimed"))
-      } yield AnswerText.released(args.key, holder)
+      locked(claims, args.key.project).flatMap { lock =>
+        given Locked = lock
+        for {
+          project <- loaded(own, args.key.project)
+          found <- artifact(project, args.key)
+          (document, _) = found
+          freed <- stored(claims.release(document.key, document.label))
+          // The brief goes even when its claim is gone, as a swept lapsed claim is.
+          briefFor <- unbriefed(own, args.key, at)
+          holder <- freed
+            .map(_.holder)
+            .orElse(briefFor)
+            .toRight(Stop.Refused(s"${args.key.value} is not claimed"))
+        } yield AnswerText.released(args.key, holder)
+      }
     }
   }
 
@@ -1183,25 +1190,28 @@ private[plugin] final class ProjectCommands(
         claims: Claims,
         at: Instant
     )(using Tx^): Either[StoreError, CommandOutcome] = answered {
-      for {
-        held <- holding(claims, args.key.project, at)
-        project <- loaded(own, args.key.project)
-        whole <- refuse(Project.of(args.key.project, project.pin, project.artifacts))
-        ended <-
-          if (args.cascade) ending(own, project.pin)
-          else Right[Stop, ArtifactHead -> Boolean](_ => false)
-        // What is left is a Project, so its export reads back (ADR 0049).
-        done <- refuse(Project.withdrawn(whole, args.key, args.cascade, ended))
-        docs = documented(project, done)
-        _ <- unclaimed(claims, docs.gone ++ docs.uncited, at)
-        _ <- atTheirLabels(citing(docs), "withdraw")
-        _ <- carried(own, docs, by, at)
-        _ <- rebriefed(own, held, args.key.project, at)
-      } yield AnswerText.withdrawn(
-        done.gone.map(_.head.key),
-        done.uncited.map(_.head.key),
-        Projects.Terms.retention
-      )
+      locked(claims, args.key.project).flatMap { lock =>
+        given Locked = lock
+        for {
+          held <- holding(claims, args.key.project, at)
+          project <- loaded(own, args.key.project)
+          whole <- refuse(Project.of(args.key.project, project.pin, project.artifacts))
+          ended <-
+            if (args.cascade) ending(own, project.pin)
+            else Right[Stop, ArtifactHead -> Boolean](_ => false)
+          // What is left is a Project, so its export reads back (ADR 0049).
+          done <- refuse(Project.withdrawn(whole, args.key, args.cascade, ended))
+          docs = documented(project, done)
+          _ <- unclaimed(claims, docs.gone ++ docs.uncited, at)
+          _ <- atTheirLabels(citing(docs), "withdraw")
+          _ <- carried(own, docs, by, at)
+          _ <- rebriefed(own, held, args.key.project, at)
+        } yield AnswerText.withdrawn(
+          done.gone.map(_.head.key),
+          done.uncited.map(_.head.key),
+          Projects.Terms.retention
+        )
+      }
     }
   }
 
@@ -1281,51 +1291,54 @@ private[plugin] final class ProjectCommands(
         at: Instant
     )(using Tx^): Either[StoreError, CommandOutcome] = answered {
       val today = at.atZone(ZoneOffset.UTC).toLocalDate
-      for {
-        _ <-
-          if (args.before.isAfter(today))
-            Left(Stop.Refused(s"before is ${args.before}, later than today, $today (UTC)"))
-          else Right(())
-        held <- if (args.dry) Right(Vector.empty) else holding(claims, args.project, at)
-        project <- loaded(own, args.project)
-        method <- declared(own, project.pin)
-        _ <- args.kinds.filterNot(k => method.kinds.exists(_.name == k)).toVector match {
-          case Vector() => Right(())
-          case unknown =>
-            Left(
-              Stop.Refused(
-                s"${unknown.map(KindName.value).sorted.mkString(", ")}: not among the kinds of " +
-                  s"${MethodName.value(method.name)} version ${method.version}, which are " +
-                  s"${method.kinds.map(k => KindName.value(k.name)).sorted.mkString(", ")}"
+      locked(claims, args.project).flatMap { lock =>
+        given Locked = lock
+        for {
+          _ <-
+            if (args.before.isAfter(today))
+              Left(Stop.Refused(s"before is ${args.before}, later than today, $today (UTC)"))
+            else Right(())
+          held <- if (args.dry) Right(Vector.empty) else holding(claims, args.project, at)
+          project <- loaded(own, args.project)
+          method <- declared(own, project.pin)
+          _ <- args.kinds.filterNot(k => method.kinds.exists(_.name == k)).toVector match {
+            case Vector() => Right(())
+            case unknown =>
+              Left(
+                Stop.Refused(
+                  s"${unknown.map(KindName.value).sorted.mkString(", ")}: not among the kinds of " +
+                    s"${MethodName.value(method.name)} version ${method.version}, which are " +
+                    s"${method.kinds.map(k => KindName.value(k.name)).sorted.mkString(", ")}"
+                )
               )
-            )
-        }
-        whole <- refuse(Project.of(args.project, project.pin, project.artifacts))
-        live <- stored(claims.live(at))
-        began = args.before.atStartOfDay(ZoneOffset.UTC).toInstant
-        due = project.documents.collect {
-          case (d, a) if args.kinds(a.head.kind) && d.written.isBefore(began) => a.head.key
-        }.toSet
-        claimed = claimedOf(live, project.documents).map((a, h) => a.head.key -> h).toMap
-        // What is left is a Project, so its export reads back (ADR 0049).
-        swept = Project.swept(whole, due, endsUnder(method), claimed)
-        docs = documented(project, swept.withdrawn)
-        _ <- atTheirLabels(
-          docs.gone.map((d, a) => d -> s"${a.head.key.value} would be withdrawn, but") ++
-            citing(docs),
-          "withdraw"
+          }
+          whole <- refuse(Project.of(args.project, project.pin, project.artifacts))
+          live <- stored(claims.live(at))
+          began = args.before.atStartOfDay(ZoneOffset.UTC).toInstant
+          due = project.documents.collect {
+            case (d, a) if args.kinds(a.head.kind) && d.written.isBefore(began) => a.head.key
+          }.toSet
+          claimed = claimedOf(live, project.documents).map((a, h) => a.head.key -> h).toMap
+          // What is left is a Project, so its export reads back (ADR 0049).
+          swept = Project.swept(whole, due, endsUnder(method), claimed)
+          docs = documented(project, swept.withdrawn)
+          _ <- atTheirLabels(
+            docs.gone.map((d, a) => d -> s"${a.head.key.value} would be withdrawn, but") ++
+              citing(docs),
+            "withdraw"
+          )
+          _ <-
+            if (args.dry) Right(())
+            else carried(own, docs, by, at).flatMap(_ => rebriefed(own, held, args.project, at))
+        } yield AnswerText.swept(
+          swept,
+          args.dry,
+          args.show,
+          args.skip,
+          ListMost,
+          Projects.Terms.retention
         )
-        _ <-
-          if (args.dry) Right(())
-          else carried(own, docs, by, at).flatMap(_ => rebriefed(own, held, args.project, at))
-      } yield AnswerText.swept(
-        swept,
-        args.dry,
-        args.show,
-        args.skip,
-        ListMost,
-        Projects.Terms.retention
-      )
+      }
     }
   }
 
@@ -1427,39 +1440,42 @@ private[plugin] final class ProjectCommands(
         at: Instant
     )(using Tx^): Either[StoreError, CommandOutcome] = answered {
       val p = ProjectKey.value(args.project)
-      for {
-        project <- loaded(own, args.project)
-        whole <- refuse(Project.of(args.project, project.pin, project.artifacts))
-        target <- declaring.version(own, project.pin.method, args.version)
-        done <- refuse(target.migrated(whole, args.remap))
-        index <- indexed(own, args.project)
-        _ <- unclaimed(claims, project.documents, at)
-        renamed = done.renamed.toSet
-        _ <- atTheirLabels(
-          (index._1 -> s"project $p") +: project.documents.collect {
-            case (d, a) if renamed(a.head.key) => d -> a.head.key.value
-          },
-          "migrate"
-        )
-        writer = Some(author(by))
-        before = project.documents.map((d, a) => a.head.key -> d).toMap
-        _ <- done.project.artifacts
-          .filter(a => renamed(a.head.key))
-          .foldLeft[Either[Stop, Unit]](Right(())) { (so, a) =>
-            so.flatMap(_ =>
-              kept(
-                own,
-                Artifact(a.head.copy(by = writer), a.body),
-                before.get(a.head.key),
-                Whose.Prior,
-                at
-              ).map(_ => ())
-            )
-          }
-        rewritten <- refuse(ArtifactJson.index(args.project, done.project.pin, author(by)))
-        (key, text, data, refs) = rewritten
-        _ <- keptEverywhere(own, key, index._1.label, Tx.top, text, data, refs, at)
-      } yield AnswerText.migrated(args.project, done.project.pin, done.renamed, ListMost)
+      locked(claims, args.project).flatMap { lock =>
+        given Locked = lock
+        for {
+          project <- loaded(own, args.project)
+          whole <- refuse(Project.of(args.project, project.pin, project.artifacts))
+          target <- declaring.version(own, project.pin.method, args.version)
+          done <- refuse(target.migrated(whole, args.remap))
+          index <- indexed(own, args.project)
+          _ <- unclaimed(claims, project.documents, at)
+          renamed = done.renamed.toSet
+          _ <- atTheirLabels(
+            (index._1 -> s"project $p") +: project.documents.collect {
+              case (d, a) if renamed(a.head.key) => d -> a.head.key.value
+            },
+            "migrate"
+          )
+          writer = Some(author(by))
+          before = project.documents.map((d, a) => a.head.key -> d).toMap
+          _ <- done.project.artifacts
+            .filter(a => renamed(a.head.key))
+            .foldLeft[Either[Stop, Unit]](Right(())) { (so, a) =>
+              so.flatMap(_ =>
+                kept(
+                  own,
+                  Artifact(a.head.copy(by = writer), a.body),
+                  before.get(a.head.key),
+                  Whose.Prior,
+                  at
+                ).map(_ => ())
+              )
+            }
+          rewritten <- refuse(ArtifactJson.index(args.project, done.project.pin, author(by)))
+          (key, text, data, refs) = rewritten
+          _ <- keptEverywhere(own, key, index._1.label, Tx.top, text, data, refs, at)
+        } yield AnswerText.migrated(args.project, done.project.pin, done.renamed, ListMost)
+      }
     }
   }
 
@@ -1565,30 +1581,32 @@ private[plugin] final class ProjectCommands(
   )(stepping: Loaded -> Either[Stop, Step])(using
       Tx^
   ): Either[Stop, (said: String, versions: Map[ArtifactKey, DocumentVersionId])] =
-    for {
-      held <- holding(claims, key, at)
-      project <- loaded(own, key)
-      step <- stepping(project)
-      method <- declared(own, project.pin)
-      plan = planned(project, method, Vector(step), author(by), moverOf(by), onward = false)
-      (said, steps) = plan
-      answer <- said.headOption.toRight(Stop.Refused("nothing was asked")).flatten
-      _ <- settled(claims, project, method, key, steps, at, verb)
-      versions <- wrote(own, project, steps, at)
-      _ <- rebriefed(own, held, key, at)
-    } yield (said = answer, versions = versions)
+    locked(claims, key).flatMap { lock =>
+      given Locked = lock
+      for {
+        held <- holding(claims, key, at)
+        project <- loaded(own, key)
+        step <- stepping(project)
+        method <- declared(own, project.pin)
+        plan = planned(project, method, Vector(step), author(by), moverOf(by), onward = false)
+        (said, steps) = plan
+        answer <- said.headOption.toRight(Stop.Refused("nothing was asked")).flatten
+        _ <- settled(claims, project, method, key, steps, at, verb)
+        versions <- wrote(own, project, steps, at)
+        _ <- rebriefed(own, held, key, at)
+      } yield (said = answer, versions = versions)
+    }
 
   /** Each claim live at `at` on an artifact of project `key` and kept at this transaction's
-    * floor, as held ([[Claims.held]]) until it ends, in the order [[Claims.live]] gives: taken
-    * before a command loads the project, so that of two commands changing one project, the
-    * second waits here for the first to end, then loads and checks what both kept. A claim gone
-    * or made anew since it was read is left out. A claim kept below the floor is passed over: a
-    * command changes only artifacts kept at its floor ([[atTheirLabels]]), so nothing that
-    * brief shows changes.
+    * floor, as held ([[Claims.held]]) until it ends, in the order [[Claims.live]] gives, so that
+    * the session sweep, which takes no project's lock, waits for this transaction before it
+    * deletes one. A claim gone or made anew since it was read is left out. A claim kept below
+    * the floor is passed over: a command changes only artifacts kept at its floor
+    * ([[atTheirLabels]]), so nothing that brief shows changes.
     */
   private def holding(claims: Claims, key: ProjectKey, at: Instant)(using
       tx: Tx^
-  ): Either[Stop, Vector[Claim]] =
+  )(using Locked): Either[Stop, Vector[Claim]] =
     for {
       live <- stored(claims.live(at))
       here = live.filter(c =>
@@ -1606,7 +1624,7 @@ private[plugin] final class ProjectCommands(
     */
   private def rebriefed(own: DocumentKeeper, held: Vector[Claim], key: ProjectKey, at: Instant)(
       using Tx^
-  ): Either[Stop, Unit] =
+  )(using Locked): Either[Stop, Unit] =
     for {
       project <- if (held.isEmpty) Right(None) else loaded(own, key).map(Some(_))
       method <- project.fold(Right(None))(p =>
@@ -2011,6 +2029,33 @@ private[plugin] object ProjectCommands {
     def artifacts: Vector[Artifact] = documents.map(_._2)
   }
 
+  /** That this transaction holds a project's lock: what each helper that keeps, withdraws or
+    * claims for a project asks for. [[locked]] alone makes one.
+    */
+  private final class Locked private[ProjectCommands] () extends caps.Pure
+
+  /** Holds `project`'s lock ([[Claims.lock]] of `<project>#lock`) until this transaction ends:
+    * of two commands on one project, from rooms at any labels, the second waits here for the
+    * first to end, then reads what it kept.
+    */
+  private def locked(claims: Claims, project: ProjectKey)(using Tx^): Either[Stop, Locked] =
+    for {
+      key <- refuse(DocKey.of(s"${ProjectKey.value(project)}#lock"))
+      _ <- stored(claims.lock(key))
+    } yield new Locked
+
+  /** [[Claims.claim]] of `document`, the artifact `args` names, as `args` asks, by `by`, at its
+    * label.
+    */
+  private def claimedFor(
+      claims: Claims,
+      document: Document,
+      args: Claiming,
+      by: Principal.Person,
+      at: Instant
+  )(using Tx^)(using Locked): Either[Stop, Claimed] =
+    stored(claims.claim(document.key, args.holder, args.role, by, document.label, at))
+
   private[plugin] def answered(step: Either[Stop, String]): Either[StoreError, CommandOutcome] =
     step match {
       case Right(text) => Right(CommandOutcome.Done(text))
@@ -2084,7 +2129,7 @@ private[plugin] object ProjectCommands {
   /** As [[written]], `text`, `data` and `refs` kept through `own` under `key` at `label`, at
     * every place and with no pointer, believed at `believed` as `own` believes it.
     */
-  private[plugin] def keptEverywhere(
+  private def keptEverywhere(
       own: DocumentKeeper,
       key: DocKey,
       label: Label,
@@ -2093,7 +2138,7 @@ private[plugin] object ProjectCommands {
       data: ujson.Value,
       refs: Set[DocRef],
       at: Instant
-  )(using Tx^): Either[Stop, Written] =
+  )(using Tx^)(using Locked): Either[Stop, Written] =
     written(own.write(key, label, believed, Place.Everywhere, text, data, None, at, refs))
 
   /** `project`'s index document as `own` holds it, and the pin it holds, or why not. */
@@ -2349,7 +2394,7 @@ private[plugin] object ProjectCommands {
     */
   private def wrote(own: DocumentKeeper, project: Loaded, steps: Stepping, at: Instant)(using
       Tx^
-  ): Either[Stop, Map[ArtifactKey, DocumentVersionId]] =
+  )(using Locked): Either[Stop, Map[ArtifactKey, DocumentVersionId]] =
     Traversal
       .traverse(steps.changed.flatMap(k => steps.artifacts.find(_.head.key == k)))(a =>
         kept(
@@ -2450,7 +2495,7 @@ private[plugin] object ProjectCommands {
     */
   private def carried(own: DocumentKeeper, docs: Documented, by: CommandBy, at: Instant)(using
       Tx^
-  ): Either[Stop, Unit] = {
+  )(using Locked): Either[Stop, Unit] = {
     val writer = Some(author(by))
     for {
       _ <- docs.uncited.foldLeft[Either[Stop, Unit]](Right(())) { case (so, (d, a)) =>
@@ -2523,7 +2568,7 @@ private[plugin] object ProjectCommands {
     */
   private def briefed(own: DocumentKeeper, r: Rendered, place: Place, project: Loaded, at: Instant)(
       using Tx^
-  ): Either[Stop, Option[String]] = {
+  )(using Locked): Either[Stop, Option[String]] = {
     val over =
       f"it is over ${DocRef.BriefChars}%,d characters; shorten the artifact or what its role carries"
     val (label, holder) = (r.claim.label, r.claim.holder)
@@ -2589,7 +2634,7 @@ private[plugin] object ProjectCommands {
     */
   private def unbriefed(own: DocumentKeeper, artifact: ArtifactKey, at: Instant)(using
       Tx^
-  ): Either[Stop, Option[ClaimHolder]] =
+  )(using Locked): Either[Stop, Option[ClaimHolder]] =
     briefKey(artifact).fold(
       _ => Right(None),
       key =>
@@ -2620,7 +2665,7 @@ private[plugin] object ProjectCommands {
       before: Option[Document],
       whose: Whose,
       at: Instant
-  )(using Tx^): Either[Stop, DocumentVersionId] =
+  )(using Tx^)(using Locked): Either[Stop, DocumentVersionId] =
     for {
       document <- refuse(
         ArtifactJson

@@ -18,6 +18,7 @@ import grit.core.tool.ToolName
 import grit.core.visibility.Integrity
 import grit.core.visibility.{Clearance, Label, Level}
 import grit.dbos.sql.LiveDb
+import grit.projects.artifact.{Artifact, ArtifactJson}
 import grit.projects.method.{ArtifactKind, Method, MethodFixtures, TransitionChecks}
 import grit.projects.plugin.{CommandFixtures, Projects}
 
@@ -733,6 +734,82 @@ object ProjectsLiveTests extends TestSuite {
           val current = currentBrief(config)
           (waited, ended, kept, current.map(Right(_)), rendered.map(_.contains("rewritten"))) ==>
             (true, Right(()), Right(classOf[CommandOutcome.Done]), Vector(rendered), Right(true))
+        } finally pool.shutdownNow()
+      }
+    }
+    test(
+      "a claim made while a batch holds its project waits for it, and its brief holds its writes"
+    ) {
+      CommandRooms.commanding(
+        "projects_locked",
+        _ => Vector(atInternal)
+      ) { (config, engine, commands) =>
+        declared(commands, CommandFixtures.managing)
+        ran(commands, ann, desk, ToolName("project_new"), "project" -> "p")
+        keep(commands, desk, "process", "How work is run.")
+        keep(commands, desk, "m", "The manager's note.")
+        val pool = Executors.newFixedThreadPool(2)
+        given ExecutionContext = ExecutionContext.fromExecutorService(pool)
+        val (holding, go) = (new CountDownLatch(1), new CountDownLatch(1))
+        try {
+          // A batch's transaction, mid-way: it holds the project's lock and has kept p/m
+          // rewritten, through the plugin's own claims and keeper, and has not yet ended.
+          val internal = Label.at(Level.Internal)
+          val batch = Future {
+            LiveDb.transaction(config, Clearance.inRoom(desk, internal, internal)) {
+              val (claims, keeper) =
+                (engine.claims(Projects.Name), engine.keeper(Projects.Name, Projects.Terms))
+              for {
+                lock <- DocKey.of("p#lock").left.map(StoreError.Invalid(_))
+                _ <- claims.lock(lock)
+                key <- DocKey.of("p/m").left.map(StoreError.Invalid(_))
+                was <- keeper
+                  .current(key, internal)
+                  .flatMap(_.toRight(StoreError.Invalid("no p/m")))
+                data = ujson.read(
+                  was.data.render().replace("The manager's note.", "The manager's note, rewritten.")
+                )
+                rewritten <- Artifact
+                  .of(was.copy(data = data))
+                  .flatMap(ArtifactJson.write)
+                  .left
+                  .map(StoreError.Invalid(_))
+                (text, written, refs) = rewritten
+                _ <- keeper.write(
+                  key,
+                  was.label,
+                  Integrity.Member,
+                  was.place,
+                  text,
+                  written,
+                  None,
+                  at,
+                  refs
+                )
+              } yield {
+                holding.countDown()
+                val _ = go.await(30, TimeUnit.SECONDS)
+              }
+            }
+          }
+          holding.await(30, TimeUnit.SECONDS)
+          val claiming = Future(
+            ran(
+              commands,
+              ann,
+              desk,
+              ToolName("project_claim"),
+              "key" -> "p/m",
+              "role" -> "manager",
+              "holder" -> "coder-opus/abc"
+            ).map(_.getClass)
+          )
+          val waited = scala.util.Try(Await.ready(claiming, 1.second)).isFailure
+          go.countDown()
+          val (ended, claimed) =
+            (Await.result(batch, 30.seconds), Await.result(claiming, 30.seconds))
+          (waited, ended, claimed, currentBrief(config).map(_.contains("rewritten"))) ==>
+            (true, Right(()), Right(classOf[CommandOutcome.Done]), Vector(true))
         } finally pool.shutdownNow()
       }
     }

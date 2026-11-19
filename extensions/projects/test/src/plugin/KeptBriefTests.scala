@@ -468,7 +468,7 @@ object KeptBriefTests extends TestSuite {
       (liveNow(store).map(c => ClaimRole.value(c.role)), brief, now.contains("rewritten")) ==>
         (Vector("reviewer"), Some(now), true)
     }
-    test("a claim made again while a keep lands briefs the project as that keep left it") {
+    test("a claim made again after a keep it waited for briefs the project as that keep left it") {
       val (projects, store) = claimedProject(method = reviewing)
       val landing: Claims = new Claims {
         def claim(
@@ -478,17 +478,18 @@ object KeptBriefTests extends TestSuite {
             by: Principal.Person,
             label: Label,
             at: Instant
-        )(using Tx^): Either[StoreError, Claimed] = {
-          done(keep(projects, store, "m", "The note, rewritten.", "cites" -> ujson.Arr("p/c")))
+        )(using Tx^): Either[StoreError, Claimed] =
           store.claims.claim(subject, holder, role, by, label, at)
-        }
         def release(subject: DocKey, label: Label)(using Tx^): Either[StoreError, Option[Claim]] =
           store.claims.release(subject, label)
         def live(at: Instant)(using Tx^): Either[StoreError, Vector[Claim]] = store.claims.live(at)
         def held(claim: Claim)(using Tx^): Either[StoreError, Option[Claim]] =
           store.claims.held(claim)
-        def lock(subject: DocKey)(using Tx^): Either[StoreError, Unit] =
+        // The keep holding the project's lock commits while the claim waits for it.
+        def lock(subject: DocKey)(using Tx^): Either[StoreError, Unit] = {
+          done(keep(projects, store, "m", "The note, rewritten.", "cites" -> ujson.Arr("p/c")))
           store.claims.lock(subject)
+        }
       }
       done(
         askThrough(store.keeper, landing)(
