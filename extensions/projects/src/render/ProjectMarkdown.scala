@@ -134,7 +134,7 @@ object ProjectMarkdown {
     */
   def readShown(text: String): Either[String, (Artifact, DocumentVersionId)] =
     for {
-      (fields, body) <- split(text, HeadFields :+ "version")
+      (fields, body) <- frontMatter(text, HeadFields :+ "version")
       version <- fields("version").toLongOption
         .flatMap(DocumentVersionId.of)
         .toRight(s"version ${fields("version")} is no version: a whole number, 1 or more")
@@ -236,7 +236,7 @@ object ProjectMarkdown {
 
   private def index(text: String): Either[String, (ProjectKey, Pin)] =
     for {
-      (fields, _) <- split(text, IndexFields)
+      (fields, _) <- frontMatter(text, IndexFields)
       key <- ProjectKey.of(fields("key"))
       method <- MethodName.of(fields("method"))
       version <- fields("version").toIntOption.toRight(
@@ -246,7 +246,7 @@ object ProjectMarkdown {
     } yield (key, pin)
 
   private def artifact(text: String): Either[String, Artifact] =
-    split(text, HeadFields).flatMap((fields, body) => headed(fields, body))
+    frontMatter(text, HeadFields).flatMap((fields, body) => headed(fields, body))
 
   /** The artifact `fields`, a front matter's [[HeadFields]], and `body` hold, or why not. */
   private def headed(fields: Fields, body: String): Either[String, Artifact] =
@@ -266,7 +266,7 @@ object ProjectMarkdown {
   /** `text`'s front matter, holding exactly `names`, each once, as each name's value (empty
     * for any other name), and what follows it.
     */
-  private def split(text: String, names: Vector[String]): Either[String, (Fields, String)] = {
+  private def frontMatter(text: String, names: Vector[String]): Either[String, (Fields, String)] = {
     val end = text.indexOf("\n---\n", 3)
     if (!text.startsWith("---\n") || end < 0) Left("no front matter between --- lines")
     else {
