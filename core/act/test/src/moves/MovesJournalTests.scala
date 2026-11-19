@@ -8,7 +8,7 @@ import grit.core.durable.Journaled
 import grit.core.edge.RequestState
 import grit.core.files.TestPieces
 import grit.core.flow.{TestTainted, Trusted}
-import grit.core.id.{ConversationId, DocKey, DocumentVersionId, PluginName, ToolCallId}
+import grit.core.id.{ConversationId, DocKey, DocumentVersionId, EntryId, PluginName, ToolCallId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.place.{Namespace, Place, Service}
 import grit.core.provider.{ModelRequest, ToolSchema, ToolUse}
@@ -506,6 +506,53 @@ object MovesJournalTests extends TestSuite {
       pinned[AskMade](
         AskMade.Refused(AskMade.Kind.StrandChanged, "moved", "v1:ab"),
         """{"refused":"changed","why":"moved","digest":"v1:ab"}"""
+      )
+    }
+
+    test("a run's summary and sort are digested with its span; a whole strand's as before") {
+      val schema = JsonSchema
+        .read(
+          ujson.Obj(
+            "type" -> "object",
+            "properties" -> ujson.Obj(),
+            "additionalProperties" -> false
+          )
+        )
+        .fold(e => throw new java.lang.AssertionError(e.message), identity)
+      val digest = StrandDigest
+        .read("0123456789abcdef")
+        .fold(e => throw new java.lang.AssertionError(e), identity)
+      val at = java.time.Instant.parse("2026-10-12T09:10:00Z")
+      val whole = Strand.Digested(
+        Place.under(Namespace.Slack, Vector("T", "C1")),
+        Label.Public,
+        ConversationId("c1"),
+        Vector(ConversationId("c1")),
+        2,
+        40,
+        at,
+        at,
+        digest,
+        at
+      )
+      def run(first: String) =
+        whole.copy(span = Strand.Span.Run(EntryId(first), EntryId("b"), 0, 0))
+      val among =
+        grit.core.act.Sorting.Among[MovesContract.Pick](Vector.empty, Vector.empty, 0)
+      def forms(s: Strand.Digested): (String, String, String) = (
+        MovesJournal.strand(s, "Summarise.", 1000, schema),
+        MovesJournal.strands(Vector(s, s), Vector.empty, "Summarise.", 1000, 0, schema),
+        MovesJournal.sortingForm(
+          grit.core.act.Dreaming.Item.Discussion(s),
+          among,
+          MovesContract.Choosing
+        )
+      )
+      val (a, b, c) = (forms(whole), forms(run("a")), forms(run("c")))
+      assert(
+        a._1 != b._1 && a._2 != b._2 && a._3 != b._3,
+        b._1 != c._1 && b._2 != c._2 && b._3 != c._3,
+        !a._3.contains("run")
       )
     }
 

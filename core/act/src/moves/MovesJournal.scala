@@ -7,7 +7,7 @@ import grit.core.document.{Declassified, DocText, Pointer, PolicyApplication}
 import grit.core.durable.Journaled
 import grit.core.edge.{OutcomeJson, RequestState}
 import grit.core.flow.{Mint, Trusted}
-import grit.core.id.{ConversationId, DocKey, DocumentVersionId, PluginName, Sha256}
+import grit.core.id.{ConversationId, DocKey, DocumentVersionId, EntryId, PluginName, Sha256}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.place.{Place, Service}
 import grit.core.prompt.Fenced
@@ -382,7 +382,7 @@ object MovesJournal {
     "sort" + (item match {
       case Dreaming.Item.Discussion(s) =>
         "d" + text(ConversationId.value(s.root)) + text(StrandDigest.value(s.digest)) +
-          text(s.asOf.toString)
+          text(s.asOf.toString) + span(s)
       case Dreaming.Item.Document(v) => "v" + version(v)
     }) + versions(among.pinned) + versions(among.pool) + count(among.fill) + (sorting match {
       case c: Sorting.Choosing[?] =>
@@ -624,7 +624,16 @@ object MovesJournal {
       schema: JsonSchema
   ): String =
     "strand" + text(ConversationId.value(seen.root)) + text(StrandDigest.value(seen.digest)) +
-      text(seen.asOf.toString) + count(chars) + text(system) + text(ujson.write(schema.json))
+      text(seen.asOf.toString) + span(seen) + count(chars) + text(system) +
+      text(ujson.write(schema.json))
+
+  /** A run's span in a canonical form; nothing for a whole strand, so its forms read as before. */
+  private def span(seen: Strand.Digested): String = seen.span match {
+    case Strand.Span.Whole => ""
+    case Strand.Span.Run(first, last, before, after) =>
+      "run" + text(EntryId.value(first)) + text(EntryId.value(last)) + count(before) +
+        count(after)
+  }
 
   /** v1's canonical form of a judgment, which [[judgment]] hashes. */
   private[moves] def judgmentForm(request: Request): String =
@@ -646,7 +655,7 @@ object MovesJournal {
   ): String =
     "strands" + count(seen.size) + seen.map { s =>
       text(ConversationId.value(s.root)) + text(StrandDigest.value(s.digest)) +
-        text(s.asOf.toString)
+        text(s.asOf.toString) + span(s)
     }.mkString + count(shown.size) + shown
       .map(v => text(DocumentVersionId.value(v).toString))
       .mkString +
