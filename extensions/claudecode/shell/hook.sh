@@ -24,6 +24,11 @@ say() {
 
 # The bound on a whole run, in seconds.
 bound=3
+# The bounds on a commit's and a rewrite's requests, and on a SessionEnd's, in microseconds from
+# the start: git returns from a commit only once its hooks end, and Claude Code gives SessionEnd's
+# hooks 1.5 s by default.
+committed=1000000
+ended=1200000
 
 # The watchdog: the first run starts the hook again under `timeout`, which stops it and every
 # program it started at the bound, and exits 0 (`holder`, with its status).
@@ -421,8 +426,7 @@ lined() {
 event() {
   local w fw='' line d
   payload || return 0
-  # Claude Code gives SessionEnd's hooks 1.5 s by default.
-  [ "$event" != SessionEnd ] || deadline=$((10#$started + 1200000))
+  [ "$event" != SessionEnd ] || deadline=$((10#$started + ended))
   # An agent no type names is none this session started: a compaction's (recorded).
   [ -z "$agent" ] || [ -n "$type" ] || return 0
   w=$(toplevel "$cwd") || w=$cwd
@@ -454,8 +458,7 @@ rebasing() {
 commits() {
   local top subjects lines line post='' i k=0 what were
   local -a shas=() subject=() args=()
-  # git returns from a commit only once its hooks end, so their requests end 1 s after the start.
-  deadline=$((10#$started + 1000000))
+  deadline=$((10#$started + committed))
   top=$(git rev-parse --show-toplevel 2> /dev/null) || return 0
   dir=${CLAUDE_PROJECT_DIR:-$top}
   for i in "$@"; do shas+=("${i%% *}"); done

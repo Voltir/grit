@@ -364,11 +364,14 @@ object EventHookTests extends TestSuite {
         val rewritten = made.out.map(sha => s"$old $sha").mkString("\n") + "\n"
         // A deep starting directory, so each line holds some 3.5 KB and 120 pass a post's 256 KiB.
         val deep = f.proj.toString + ("/" + "d" * 200) * 15
+        // Unbounded: the edge reading the first post's 256 KiB on a loaded machine left the
+        // second no time within a commit's 1 s; that bound has its own test.
         val run = f.run(
           "rewrite",
           rewritten,
           Map("CLAUDE_CODE_SESSION_ID" -> First, "CLAUDE_PROJECT_DIR" -> deep),
-          args = Seq("rebase")
+          args = Seq("rebase"),
+          program = f.unbounded
         )
         val recorded = f.recorded
         (

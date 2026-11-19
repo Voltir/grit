@@ -43,21 +43,41 @@ final class HookFixtures(
   /** The hook `proj`'s join installed. */
   def hook: Path = machine.hook(proj)
 
-  /** The hook's `role` with `args`, run in `in` as Claude Code runs a handler's command, reading
-    * `payload`, given `env` (by default [[claude]]'s).
+  /** A copy of [[hook]] beside it whose bounds on time, its run's, a commit's and a SessionEnd's,
+    * are each a minute: for a test of what a run posts, which a loaded machine's slowness must not
+    * turn into a test of how soon. Throws when [[hook]] no longer sets each bound in one line.
+    */
+  lazy val unbounded: Path = {
+    val text = Seq(
+      "\nbound=3\n" -> "\nbound=60\n",
+      "\ncommitted=1000000\n" -> "\ncommitted=60000000\n",
+      "\nended=1200000\n" -> "\nended=60000000\n"
+    ).foldLeft(Files.readString(hook)) { case (text, (was, is)) =>
+      if (text.indexOf(was) < 0 || text.indexOf(was) != text.lastIndexOf(was))
+        throw new java.lang.AssertionError(s"the hook sets no one ${was.trim}")
+      text.replace(was, is)
+    }
+    val copy = Files.writeString(hook.resolveSibling("hook-unbounded"), text)
+    Files.setPosixFilePermissions(copy, PosixFilePermissions.fromString("rwx------"))
+    copy
+  }
+
+  /** The hook `program` (by default [[hook]]), its `role` with `args`, run in `in` as Claude Code
+    * runs a handler's command, reading `payload`, given `env` (by default [[claude]]'s).
     */
   def run(
       role: String,
       payload: String = "",
       env: Map[String, String] = claude,
       in: Path = proj,
-      args: Seq[String] = Seq.empty
+      args: Seq[String] = Seq.empty,
+      program: Path = hook
   ): Bash.Done =
     Bash.run(
       in,
       machine.home,
       machine.bin,
-      Seq("-c", (Argv.quote(hook.toString) +: role +: args.map(Argv.quote)).mkString(" ")),
+      Seq("-c", (Argv.quote(program.toString) +: role +: args.map(Argv.quote)).mkString(" ")),
       payload,
       env
     )
