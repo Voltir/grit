@@ -208,6 +208,36 @@ object ClaimTests extends TestSuite {
     }
 
     test(
+      "a dry batch that would put a claimed artifact's brief past 9,500 characters answers each step, then why it would be refused"
+    ) {
+      val projects = plugin()
+      val store = Store()
+      holding(projects, store)
+      done(claimed(projects, store))
+      val step = ujson.Obj(
+        "command" -> "keep",
+        "key" -> "p/a",
+        "title" -> "Title a",
+        "body" -> ("Text. " * 2000).trim
+      )
+      ask(
+        projects,
+        store,
+        "project_batch",
+        "project" -> "p",
+        "dry" -> true,
+        "steps" -> ujson.Arr(step)
+      ) ==>
+        CommandOutcome.Refused(
+          "Dry run, nothing kept; the batch would be refused. Each step would answer:\n" +
+            "1. Kept p/a (note, open).\nOnce every step is done, refused: " +
+            s"the brief of p/a, claimed as builder for $holder, would be 12,057 characters, " +
+            "2,557 over the 9,500 a brief holds (the artifact with what its role always carries): " +
+            "cut at least 2,557 characters from p/a"
+        )
+    }
+
+    test(
       "a keep of an artifact a claimed brief carries is refused when that brief would pass the budget"
     ) {
       val projects = plugin()
