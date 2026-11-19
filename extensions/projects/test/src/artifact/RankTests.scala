@@ -109,13 +109,15 @@ object RankTests extends TestSuite {
         Rank.of(""),
         Rank.of("nB"),
         Rank.of("na"),
-        Rank.of("n" * 33).isLeft,
+        Rank.of("n" * 33),
+        Rank.of("n" * 32).map(Rank.value),
         Rank.of("nb").map(Rank.value)
       ) ==> (
         Left("a rank is empty"),
         Left("a rank holds the letters a–z alone: nB"),
         Left("a rank does not end in a: na"),
-        true,
+        Left(s"a rank holds at most 32 characters: ${"n" * 33}"),
+        Right("n" * 32),
         Right("nb")
       )
     }
