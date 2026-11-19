@@ -16,6 +16,7 @@ import grit.knowledge.ref.{Ref, TopicKey}
 import grit.knowledge.topic.TopicScan.{Scanned, Touch}
 import grit.knowledge.topic.TopicWrite.{Held, Kept, Today}
 import grit.prose.words.Words
+import grit.std.either.Proven
 
 /** The job `topics-dream`, its days reckoned in `zone`, its cards through `cards` when its plugin
   * needs one that exports them. A run for its `day` ([[TopicParams]]), kept at its floor, reading
@@ -457,9 +458,7 @@ object TopicDream {
   private def typed[T](schema: ujson.Value, read: ujson.Value -> Either[String, T]): Typed[T] =
     // A literal in JsonSchema's subset but for the descriptions, which are text: every test of
     // a run throws here if not.
-    JsonSchema
-      .read(schema)
-      .fold(why => throw new IllegalStateException(why.toString), s => Typed(s, c => read(c.json)))
+    Typed(Proven.right(JsonSchema.read(schema).left.map(_.toString)), c => read(c.json))
 
   /** `w` kept as `t`'s topic for `day`, referring besides to the `units` its strands link, put
     * up for review when `review` and written.

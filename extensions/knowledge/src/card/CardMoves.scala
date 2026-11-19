@@ -2,6 +2,7 @@ package grit.knowledge.card
 
 import grit.core.act.MoveName
 import grit.knowledge.ref.CardKey
+import grit.std.either.Proven
 
 /** What a sync run's move does to one unit, by the word its name starts with. */
 enum Phase(val word: String) {
@@ -57,6 +58,5 @@ object CardMoves {
   // `/` and 64 hex digits, for a vet `/` and a window's decimal digits, and for a numbered move
   // `-` and its decimal digits: within MoveName's 200 characters, with no `:` or control
   // character, so `of` never refuses it; `CardMovesTests` holds each sync run's.
-  private def known(text: String): MoveName =
-    MoveName.of(text).fold(why => throw new IllegalStateException(why), identity)
+  private def known(text: String): MoveName = Proven.right(MoveName.of(text))
 }

@@ -44,6 +44,7 @@ import grit.lifecycle.shadow.{Shadow, ShadowAsking, ShadowEnv, ShadowVariant}
 import grit.lifecycle.stitch.{Stitch, StitchEnv}
 import grit.lifecycle.triage.{Mentions, Triage, TriageEnv, TriageRecords, TriageSpeech}
 import grit.models.{CatalogModels, JevClassifier, JevConfig, Seed, StubClassifier, StubModels}
+import grit.std.either.Proven
 import grit.tools.{About, Administering, Cleared, FileReading, MessageIds, Probes, Tuning}
 import grit.turn.{
   Turn,
@@ -140,7 +141,8 @@ private[grit] object Launch {
     val reached: Models = s.keys match {
       case None => new StubModels(run.stubDelay)
       case Some(keys) =>
-        val seed = Seed.catalog.fold(why => throw new IllegalStateException(why), identity)
+        // The catalog is bundled (CatalogModelsTests reads it): a Left is a fault of the build.
+        val seed = Proven.right(Seed.catalog)
         new CatalogModels(
           keys,
           seed.withPolicy(d.policy),
@@ -662,8 +664,8 @@ private[grit] object Launch {
       messages: MessageIds.Stores,
       files: Files^
   ): Vector[Tool.Offered^{files}] = {
-    val about: Tool[Option[About.Section]] =
-      About.load(persona).fold(why => throw new IllegalStateException(why), t => t)
+    // Its docs are bundled (AboutTests loads every one): a Left is a fault of the build.
+    val about: Tool[Option[About.Section]] = Proven.right(About.load(persona))
     Vector[Tool.Offered^{files}](
       about,
       Cleared.tool(askers),

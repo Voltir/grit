@@ -2,6 +2,7 @@ package grit.lifecycle.triage
 
 import grit.core.allot.{Features, TaskKind}
 import grit.core.classify.{Ask, Criterion}
+import grit.std.either.Proven
 
 /** The task questions, asked together in one call about [[TriageQuestion.State]]'s
   * `new_message`, `author` and `thread`, with no pool: `kind`, a choice of [[TaskKind]]'s keys,
@@ -39,8 +40,8 @@ object TaskQuestions {
       "steps, or by reading several sources, rather than with one quick answer? A greeting, " +
       "thanks or a single fact is not hard."
     // Its keys are TaskKind's distinct words, so no Left is taken; TaskQuestionsTests builds it.
-    kinds
-      .fold(d => throw new IllegalStateException(s"kind repeats ${d.key}"), identity)
+    Proven
+      .right(kinds.left.map(d => s"kind repeats ${d.key}"))
       .zip(Ask.yesNo[TriageQuestion.State](hard, None, None))
       .map((decision, p) => Features.from(decision, p))
   }

@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets
 import grit.core.document.{DocRef, DocText, Document}
 import grit.core.id.DocKey
 import grit.projects.name.{ArtifactKey, KindName, MethodName, Pin, ProjectKey, StateName}
+import grit.std.either.Proven
 
 /** An artifact as the projects plugin's document holds it. */
 object ArtifactJson {
@@ -168,7 +169,7 @@ object ArtifactJson {
   /** The ref an artifact in `state` holds, as [[write]] names it. */
   def stateRef(state: StateName): DocRef =
     // A literal kind DocRef.of accepts, and a state's name, which is a slug.
-    DocRef.of(StateKind, StateName.value(state)).fold(e => sys.error(e), identity)
+    Proven.right(DocRef.of(StateKind, StateName.value(state)))
 
   /** The state `ref` names, when it is the ref [[stateRef]] gives. */
   def stateOf(ref: DocRef): Option[StateName] =

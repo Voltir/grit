@@ -7,6 +7,7 @@ import grit.core.id.{ConversationId, DocKey}
 import grit.core.stitch.{Strand, StrandDigest}
 import grit.knowledge.card.CardSummary
 import grit.prose.words.Words
+import grit.std.either.Proven
 
 /** A strand's document: its key, its text and its data. */
 object StrandDocument {
@@ -17,9 +18,7 @@ object StrandDocument {
   /** `strand:{root}`. */
   def key(root: ConversationId): DocKey =
     // A conversation id is short text with no control character: DocKey.of never refuses it.
-    DocKey
-      .of(s"strand:${ConversationId.value(root)}")
-      .fold(why => throw new IllegalArgumentException(why), identity)
+    Proven.right(DocKey.of(s"strand:${ConversationId.value(root)}"))
 
   /** "{n} threads in this room, {said} messages, from {since} to {touched}." (days in UTC; "1
     * thread" and "1 message" in the singular), a blank line, the summary, then after a blank

@@ -1,6 +1,7 @@
 package grit.knowledge.ref
 
 import grit.core.id.{CorpusName, DocKey, Sha256}
+import grit.std.either.Proven
 
 /** A card's key: the SHA-256 of `{corpus}\n{path}`, as 64 lowercase hex digits, so a unit keeps
   * one key however long its path.
@@ -24,7 +25,7 @@ object CardKey {
   /** The key of the document holding `key`'s card: its hex digits. */
   def docKey(key: CardKey): DocKey =
     // 64 hex digits, one line within 200 characters: DocKey.of never refuses them.
-    DocKey.of(key).fold(why => throw new IllegalStateException(why), identity)
+    Proven.right(DocKey.of(key))
 
   private val Hex64 = "[0-9a-f]{64}".r
 }

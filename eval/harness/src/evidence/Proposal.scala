@@ -5,6 +5,7 @@ import grit.core.id.{Harness, SessionId}
 import grit.dbos.internal.TrialRows
 import grit.eval.harness.bench.{Bench, Sha, Standing}
 import grit.eval.harness.sent.Cut
+import grit.std.either.Proven
 
 /** What a proposer of amendments to the coder's standing text reads: one task's blind brief, the
   * standing text its runs began with, the runs as the bench kept them, and every amendment
@@ -155,7 +156,5 @@ object Proposal {
     * is one. Throws on any other.
     */
   private[evidence] def path(s: String): RelPath =
-    RelPath
-      .of(s)
-      .fold(e => throw new IllegalStateException(s"not a relative path: $s ($e)"), identity)
+    Proven.right(RelPath.of(s).left.map(e => s"not a relative path: $s ($e)"))
 }

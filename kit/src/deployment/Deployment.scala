@@ -41,6 +41,8 @@ import grit.lifecycle.shadow.ShadowVariant
 import grit.lifecycle.triage.TriageQuestions
 import grit.models.JevClassifier
 import grit.std.collect.Collect.firstRepeat
+import grit.std.either.Proven
+import grit.std.either.Traversal.sequence
 import grit.tools.{Coding, Names}
 import grit.turn.{Turn, TurnLoop, TurnVerdict}
 
@@ -107,12 +109,7 @@ object Offered {
         .map(Allowlist.Rule.Following(_, "the suites or modules to check"))
     )
     // Every argv above is a non-empty program without a NUL, and ReferenceLongest is in bounds.
-    rules
-      .foldLeft[Either[String, Vector[Allowlist.Rule]]](Right(Vector.empty))((all, rule) =>
-        all.flatMap(done => rule.map(done :+ _))
-      )
-      .flatMap(Allowlist.of(_, ReferenceLongest))
-      .fold(why => throw new IllegalStateException(why), identity)
+    Proven.right(sequence(rules).flatMap(Allowlist.of(_, ReferenceLongest)))
   }
 }
 

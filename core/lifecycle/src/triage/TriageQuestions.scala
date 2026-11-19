@@ -7,6 +7,7 @@ import grit.core.id.QuestionName
 import grit.core.persona.Persona
 import grit.core.triage.{Corpora, Gate, Kind, Reading, Tags}
 import grit.std.collect.Collect.firstRepeat
+import grit.std.either.Proven
 
 /** Questions about a heard message ([[TriageQuestion.State]]), asked together in one
   * classifier call, each answer kept under its question's name, and the gate a draft is
@@ -154,7 +155,7 @@ object TriageQuestions {
     // Its kind keys are Kind's distinct names whatever the wording, its names are distinct and
     // every bound of its gate reads a One of its kind, so no Left is taken;
     // TriageQuestionsTests builds it.
-    built.fold(why => throw new IllegalStateException(why), identity)
+    Proven.right(built)
   }
 
   /** [[v1]] in the shipped wording ([[TriageQuestion.Wording.Shipped]]). */
@@ -215,7 +216,7 @@ object TriageQuestions {
     } yield set
     // Its gap's keys are distinct, its names are distinct and every bound of V2's gate reads a
     // One of its kind, so no Left is taken; TriageQuestionsTests builds it.
-    built.fold(why => throw new IllegalStateException(why), identity)
+    Proven.right(built)
   }
 
   /** `to-grit` ([[Tags.V3.toGrit]]), worded with `persona`'s name. */
@@ -325,7 +326,7 @@ object TriageQuestions {
     } yield set
     // Its gap's keys are distinct, its names are distinct and every bound of v6's gate reads a
     // One of its kind or a fact, so no Left is taken; TriageQuestionsTests builds it.
-    built.fold(why => throw new IllegalStateException(why), identity)
+    Proven.right(built)
   }
 
   /** v7, the set that replaced [[v6]], worded with `persona`'s name: v6's questions in v6's
@@ -334,24 +335,25 @@ object TriageQuestions {
     */
   def v7(persona: Persona): TriageQuestions = {
     val six = v6(persona)
-    of(
-      six.first,
-      six.rest :+ Item.One(
-        Tags.V7.forRoom,
-        Question.YesNo(
-          "Read new_message, thread and exchanges_in_channel (when present). Would a reply to " +
-            "new_message be for the whole channel rather than for its author alone: a heads-up " +
-            "others need, an answer several people asked for, a decision the channel has to " +
-            "know, or new_message asking for everyone to be told?",
-          None,
-          None
-        )
-      ),
-      six.speak
+    // v6's set with one yes/no of a name it lacks, under v6's gate, so no Left is taken;
+    // TriageQuestionsTests builds it.
+    Proven.right(
+      of(
+        six.first,
+        six.rest :+ Item.One(
+          Tags.V7.forRoom,
+          Question.YesNo(
+            "Read new_message, thread and exchanges_in_channel (when present). Would a reply to " +
+              "new_message be for the whole channel rather than for its author alone: a heads-up " +
+              "others need, an answer several people asked for, a decision the channel has to " +
+              "know, or new_message asking for everyone to be told?",
+            None,
+            None
+          )
+        ),
+        six.speak
+      ).left.map(_.toString)
     )
-      // v6's set with one yes/no of a name it lacks, under v6's gate, so no Left is taken;
-      // TriageQuestionsTests builds it.
-      .fold(why => throw new IllegalStateException(why.toString), identity)
   }
 
   /** The set live triage asks for a deployment presenting as `persona`: [[v7]]. */

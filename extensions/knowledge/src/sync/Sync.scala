@@ -18,6 +18,7 @@ import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.{Integrity, Label}
 import grit.knowledge.card.{Card, CardMoves, CardSummary, Phase, UnitVersion}
 import grit.knowledge.ref.CardKey
+import grit.std.either.Proven
 
 /** The job `knowledge-sync` over `sources`. A run, for the source its parameters name, walks it
   * as its [[Source.walk]] says: lists what changed since the cards it holds; writes a card at its
@@ -69,12 +70,14 @@ final class Sync(sources: Vector[Source[?]]) extends KeepingJob[SyncParams] {
 
   override val limits: MoveLimits = {
     val asks = sources.flatMap(_.syncs.map(_.perRun)).maxOption.getOrElse(0)
-    // Each at least zero (a source's perRun and maxUnits are at least 1), each an Int:
-    // MoveLimits.of never refuses them.
+    // Each at least zero, each an Int: `asks` is the most of perRuns, each at least 1, or 0;
+    // Source.calls sums it with maxUnits (GitHubCards.of and DriveCards.of refuse one under
+    // 1), 1 and besides (a count, or DrivesMost), capped at Int.MaxValue; and the judgments
+    // are capped there before toInt. So MoveLimits.of never refuses them.
     val calls = sources.map(_.calls(asks)).maxOption.getOrElse(0).toLong
-    MoveLimits
-      .of(asks, calls.toInt, (calls * Sync.MostWindows).min(Int.MaxValue.toLong).toInt)
-      .fold(why => throw new IllegalStateException(why), identity)
+    Proven.right(
+      MoveLimits.of(asks, calls.toInt, (calls * Sync.MostWindows).min(Int.MaxValue.toLong).toInt)
+    )
   }
 
   def run(run: Trusted[JobRun[SyncParams]], moves: Keeping^): String =
