@@ -10,6 +10,7 @@ import grit.core.place.Place
 import grit.core.plugin.CommandOutcome
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.{Clearance, Integrity, Label, TestLabels}
+import grit.projects.artifact.OldFormFixtures
 import grit.projects.method.{Method, MethodFixtures, RoleView}
 
 import utest.*
@@ -186,9 +187,16 @@ object KeptBriefTests extends TestSuite {
       val projects = plugin()
       val store = Store(declared = Vector(managing))
       started(projects, store)
-      kept(projects, store, "c", "note", "Cited.")
-      done(keep(projects, store, "m", "The manager's note.", "cites" -> ujson.Arr("p/c")))
-      storedUnder(store, "p/2", "p/m")
+      rekeyed(
+        projects,
+        store,
+        (key = "p/c", data = OldFormFixtures.data("Cited"), believed = Integrity.Authority),
+        (
+          key = "p/m",
+          data = OldFormFixtures.data("The manager's note", cites = Vector("p/c")),
+          believed = Integrity.Authority
+        )
+      )
       claim(projects, store, "p/m")
       done(keep(projects, store, "m", "The note, rewritten.", "cites" -> ujson.Arr("p/c")))
       val now = rendered(projects, store)

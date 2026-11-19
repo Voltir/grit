@@ -271,32 +271,66 @@ object CommandFixtures {
   def started(projects: Projects, store: Store): Unit =
     done(ask(projects, store, "project_new", "project" -> "p"))
 
-  /** As a re-key leaves an artifact: the one kept under `from` at public kept instead under `to`,
-    * the key it had before it had an id, and `from` withdrawn.
+  /** Project `p`, started, put back in the old form (ADR 0063): its index holding no `next`, and
+    * each of `artifacts` kept at public under its key, believed as given, with `data` the old
+    * form's ([[grit.projects.artifact.OldFormFixtures.data]]).
     */
-  def storedUnder(store: Store, from: String, to: String): Unit = {
+  def oldForm(
+      store: Store,
+      artifacts: (key: String, data: ujson.Value, believed: Integrity)*
+  ): Unit = {
     def key(k: String): DocKey =
       DocKey.of(k).fold(why => throw new java.lang.AssertionError(why), identity)
+    def ref(kind: String): grit.core.document.DocRef =
+      grit.core.document.DocRef
+        .of(kind, "p")
+        .fold(why => throw new java.lang.AssertionError(why), identity)
     inTx {
       for {
-        was <- store.keeper.current(key(from), Label.Public)
-        d <- was.toRight(StoreError.Invalid(s"nothing kept under $from"))
-        written <- Artifact.of(d).flatMap(ArtifactJson.write).left.map(StoreError.Invalid(_))
-        (text, data, refs) = written
+        index <- store.keeper.current(key("p"), Label.Public)
+        d <- index.toRight(StoreError.Invalid("no index"))
         _ <- store.keeper.write(
-          key(to),
-          Label.Public,
+          d.key,
+          d.label,
           d.integrity,
           d.place,
-          text,
-          data,
+          d.text,
+          ujson.Obj.from(d.data.obj.toSeq.filterNot(_._1 == "next")),
           None,
           at,
-          refs
+          Set(ref("pinned"))
         )
-        _ <- store.keeper.withdraw(d.key, Label.Public, at)
       } yield ()
     }.fold(e => throw new java.lang.AssertionError(e.toString), identity)
+    artifacts.foreach { a =>
+      inTx(
+        store.keeper.write(
+          key(a.key),
+          Label.Public,
+          a.believed,
+          Place.Everywhere,
+          grit.core.document.DocText
+            .of("Old.")
+            .fold(why => throw new java.lang.AssertionError(why), identity),
+          a.data,
+          None,
+          at,
+          Set(ref("project"))
+        )
+      ).fold(e => throw new java.lang.AssertionError(e.toString), _ => ())
+    }
+  }
+
+  /** Project `p`, started, as a re-key leaves [[oldForm]]'s `artifacts`: numbered in key order,
+    * each kept still under its old key.
+    */
+  def rekeyed(
+      projects: Projects,
+      store: Store,
+      artifacts: (key: String, data: ujson.Value, believed: Integrity)*
+  ): Unit = {
+    oldForm(store, artifacts*)
+    done(ask(projects, store, "project_rekey", "project" -> "p"))
   }
 
   /** The artifact kept under `key` at public given `rank` in place, as a re-key of the old form

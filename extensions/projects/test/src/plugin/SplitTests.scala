@@ -173,7 +173,9 @@ object SplitTests extends TestSuite {
           "\n" + plan + "\n"
         )
     }
-    test("each part is believed at no more than the artifact it was cut from, kept below its caller") {
+    test(
+      "each part is believed at no more than the artifact it was cut from, kept below its caller"
+    ) {
       val projects = plugin()
       val store = Store(declared = Vector(method(kinds = Vector(change, note, section))))
       started(projects, store)
