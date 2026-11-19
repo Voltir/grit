@@ -225,7 +225,7 @@ object MethodJsonTests extends TestSuite {
             m.kinds,
             m.transitions,
             m.views.map(v =>
-              right(RoleView.of(v.role, v.kinds, v.depth, v.carried, covers = true))
+              right(RoleView.of(v.role, v.kinds, v.depth, v.carried, covers = Cover.Under))
             ),
             TransitionChecks.all
           )

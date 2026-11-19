@@ -221,7 +221,7 @@ final case class Method private (
         "view " + field(RoleName.value(v.role)) + names(v.kinds.map(KindName.value)) + field(
           v.depth.toString
         ) + (if (v.carried.isEmpty) "" else names(v.carried.map(Handle.value))) +
-          (if (v.covers) field("covers") else "")
+          (if (v.covers == Cover.Under) field("covers") else "")
       } ++ checks.map(c => "check " + field(CheckName.value(c.name)) + field(c.version.toString))
     Sha256.text(
       (Vector(field(MethodName.value(name)), field(version.toString)) ++ lines.sorted)
