@@ -7,7 +7,8 @@ import scala.concurrent.duration.*
 /** What a topics run is told: at most how many topics it writes (`perRun`); how far back a
   * strand's last message (`recent`) and a card's write (`cardRecent`) may be for it to be looked
   * at; how long one set aside stays aside before it is offered again (`asideFor`); how long a
-  * passage is kept after its day (`keepFor`); the `day` it writes for, the day of its slot in its job's zone when none: a backfill
+  * passage is kept after its day (`keepFor`); at most how many topics of one discussion it
+  * sorts against the others to merge (`merges`); the `day` it writes for, the day of its slot in its job's zone when none: a backfill
   * names a past day, and its strands are read as they stood at that day's end; and the last day
   * it seeds on (`seedUntil`): a run for that day or one before reads the cards written within
   * [[TopicParams.SeedReach]] instead of `cardRecent`, so each night offers the next batch of
@@ -20,7 +21,8 @@ final case class TopicParams(
     day: Option[LocalDate],
     seedUntil: Option[LocalDate],
     asideFor: FiniteDuration = TopicParams.AsideFor,
-    keepFor: FiniteDuration = TopicParams.KeepFor
+    keepFor: FiniteDuration = TopicParams.KeepFor,
+    merges: Int = TopicParams.Merges
 ) extends caps.Pure
 
 object TopicParams {
@@ -34,7 +36,10 @@ object TopicParams {
   /** 90 days: how long a passage is kept after its day, unless a schedule says. */
   val KeepFor: FiniteDuration = 90.days
 
-  /** Its record: `{"perRun", "recent", "cardRecent", "asideFor", "keepFor", "day"?,
+  /** 8: the most topics a run sorts against the others to merge, unless a schedule says. */
+  val Merges: Int = 8
+
+  /** Its record: `{"perRun", "recent", "cardRecent", "asideFor", "keepFor", "merges", "day"?,
     * "seedUntil"?}`, durations ISO-8601, the days `yyyy-mm-dd`.
     */
   def write(p: TopicParams): ujson.Value = {
@@ -44,15 +49,17 @@ object TopicParams {
       "recent" -> iso(p.recent),
       "cardRecent" -> iso(p.cardRecent),
       "asideFor" -> iso(p.asideFor),
-      "keepFor" -> iso(p.keepFor)
+      "keepFor" -> iso(p.keepFor),
+      "merges" -> p.merges
     )
     p.day.foreach(d => o("day") = d.toString)
     p.seedUntil.foreach(d => o("seedUntil") = d.toString)
     o
   }
 
-  /** The parameters [[write]] wrote, `asideFor` [[AsideFor]] and `keepFor` [[KeepFor]] when
-    * absent (kept before they were), or why `v` holds none: `perRun` not a whole number at least 1, a duration not positive
+  /** The parameters [[write]] wrote, `asideFor` [[AsideFor]], `keepFor` [[KeepFor]] and
+    * `merges` [[Merges]] when absent (kept before they were), or why `v` holds none: `perRun`
+    * not a whole number at least 1, `merges` not one at least 0, a duration not positive
     * ISO-8601, or a day not `yyyy-mm-dd`.
     */
   def read(v: ujson.Value): Either[String, TopicParams] = {
@@ -75,9 +82,26 @@ object TopicParams {
       cardRecent <- duration(o, "cardRecent")
       asideFor <- if (o.contains("asideFor")) duration(o, "asideFor") else Right(AsideFor)
       keepFor <- if (o.contains("keepFor")) duration(o, "keepFor") else Right(KeepFor)
+      merges <- o.get("merges") match {
+        case None => Right(Merges)
+        case Some(n) =>
+          n.numOpt
+            .filter(n => n.isWhole && n >= 0 && n <= Int.MaxValue)
+            .map(_.toInt)
+            .toRight(s"a topics run's parameters hold merges, a whole number at least 0: $shown")
+      }
       day <- date(o, "day", shown)
       seedUntil <- date(o, "seedUntil", shown)
-    } yield TopicParams(perRun.toInt, recent, cardRecent, day, seedUntil, asideFor, keepFor)
+    } yield TopicParams(
+      perRun.toInt,
+      recent,
+      cardRecent,
+      day,
+      seedUntil,
+      asideFor,
+      keepFor,
+      merges
+    )
   }
 
   private def date(

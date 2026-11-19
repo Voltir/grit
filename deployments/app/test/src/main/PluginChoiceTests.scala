@@ -215,7 +215,8 @@ object PluginChoiceTests extends TestSuite {
                 "recent" -> "PT48H",
                 "cardRecent" -> "PT48H",
                 "asideFor" -> "PT168H",
-                "keepFor" -> "PT2160H"
+                "keepFor" -> "PT2160H",
+                "merges" -> 8
               ),
               Label.Public
             )
@@ -241,6 +242,7 @@ object PluginChoiceTests extends TestSuite {
               "cardRecent" -> "PT48H",
               "asideFor" -> "PT168H",
               "keepFor" -> "PT2160H",
+              "merges" -> 8,
               "seedUntil" -> "2026-10-30"
             )
           )

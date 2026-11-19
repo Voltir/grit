@@ -254,13 +254,54 @@ object TopicCodecTests extends TestSuite {
         0,
         Vector.empty,
         unreadable,
-        later
+        later,
+        Vector.empty
       )
       codec.decode(codec.encode(scan(1, 2))) ==> Right(scan(1, 2))
       // A scan journaled with neither count, as one that counted none is.
       val recorded = """{"attached":[],"strands":[],"cards":[],"topics":[],""" +
         """"near":[{"root":"c1","topics":[]}],"withdrew":0,"unchanged":0,"left":0,"linked":[]}"""
       codec.decode(recorded) ==> Right(scan(0, 0))
+    }
+
+    test(
+      "a scan's topics to merge round-trip by key and version, and a scan recorded without them reads none"
+    ) {
+      val codec = summon[Journaled[TopicScan.Scanned]]
+      def scan(single: Vector[(TopicKey, DocumentVersionId)]): TopicScan.Scanned =
+        TopicScan.Scanned(
+          Vector.empty,
+          Vector.empty,
+          Vector.empty,
+          Vector.empty,
+          Vector.empty,
+          0,
+          0,
+          0,
+          Vector.empty,
+          0,
+          0,
+          single
+        )
+      val recorded = """{"attached":[],"strands":[],"cards":[],"topics":[],""" +
+        """"near":[],"withdrew":0,"unchanged":0,"left":0,"linked":[]}"""
+      (
+        codec.decode(codec.encode(scan(Vector(key -> version(3), other -> version(5))))),
+        codec.decode(recorded)
+      ) ==> (Right(scan(Vector(key -> version(3), other -> version(5)))), Right(scan(Vector.empty)))
+    }
+
+    test(
+      "a topics run's parameters read back as written, merges among them; ones kept before merges read it as Merges, 8"
+    ) {
+      import scala.concurrent.duration.*
+      val p = TopicParams(3, 2.days, 4.days, None, None, 7.days, 30.days, 2)
+      val stored = ujson.Obj("perRun" -> 3, "recent" -> "PT48H", "cardRecent" -> "PT96H")
+      (
+        TopicParams.read(TopicParams.write(p)),
+        TopicParams.read(stored).map(_.merges),
+        TopicParams.Merges
+      ) ==> (Right(p), Right(TopicParams.Merges), 8)
     }
   }
 }

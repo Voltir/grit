@@ -153,5 +153,49 @@ object TopicFoldTests extends TestSuite {
         Some(nth(40))
       )
     }
+
+    // A topic written from the strands of `roots`, a passage each.
+    def written(roots: String*): Topic = Topic.of(
+      doc("lead"),
+      roots.toVector.zipWithIndex.map((r, i) =>
+        Passage(day(i + 1), Lineage.of(Vector(strand(r))), doc(r))
+      )
+    )
+    def keyed(n: Int): TopicKey = right(TopicKey.strand(ConversationId(s"t-$n")))
+
+    test(
+      "a scan offers to merge the topics of fewer than two discussions, oldest written first, at most merges"
+    ) {
+      val topics = Vector(
+        (keyed(1), version(30), written("s-1")),
+        (keyed(2), version(10), written("s-2", "s-3")),
+        (keyed(3), version(20), written("s-4", "s-4")),
+        (keyed(4), version(5), written()),
+        (keyed(5), version(40), written("s-5"))
+      )
+      (
+        TopicScan.single(topics, Vector.empty, 8),
+        TopicScan.single(topics, Vector.empty, 2)
+      ) ==> (
+        Vector(
+          keyed(4) -> version(5),
+          keyed(3) -> version(20),
+          keyed(1) -> version(30),
+          keyed(5) -> version(40)
+        ),
+        Vector(keyed(4) -> version(5), keyed(3) -> version(20))
+      )
+    }
+
+    test("a topic set aside at its version is not offered to merge; one set aside at another is") {
+      val at = java.time.Instant.parse("2026-11-19T00:00:00Z")
+      val topics =
+        Vector((keyed(1), version(30), written("s-1")), (keyed(2), version(31), written("s-2")))
+      val aside = Vector(
+        Aside.Item(Lineage.Tag.Topic(version(30)), at),
+        Aside.Item(Lineage.Tag.Topic(version(12)), at)
+      )
+      TopicScan.single(topics, aside, 8) ==> Vector(keyed(2) -> version(31))
+    }
   }
 }

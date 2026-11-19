@@ -35,7 +35,9 @@ private[topic] object TopicScan {
     * of its room, each newest first); how many passages it `withdrew`, and how many strands and
     * cards it found `unchanged` or `left` past the run's most; and how many of the floor's
     * topics it withdrew for data this reader refuses (`unreadable`), not passages, and how many
-    * it left as they are for data of a later reader's version (`later`).
+    * it left as they are for data of a later reader's version (`later`); and the topics a run
+    * sorts against the others to merge (`single`, [[TopicScan.single]] of the floor's topics
+    * after its withdrawals, at most `merges`).
     */
   final case class Scanned(
       attached: Vector[Touch],
@@ -48,7 +50,8 @@ private[topic] object TopicScan {
       left: Int,
       linked: Vector[Linked],
       unreadable: Int,
-      later: Int
+      later: Int,
+      single: Vector[(TopicKey, DocumentVersionId)]
   ) extends caps.Pure {
 
     /** The card units `strands` link, and the cards paired with them, each once. */
@@ -98,8 +101,9 @@ private[topic] object TopicScan {
     * before `day`, withdrawn, the topic itself when none is left (a passage whose strand's
     * messages are gone is kept);
     * then the strands at the floor spoken in within `recent` before `until`, and the cards
-    * changed within `cardRecent` before `until`: the floor's [[Aside]] kept to those among them at
-    * the digest or version set aside, and set aside within `asideFor` before `until`; each already in a topic's lineage or the aside at its
+    * changed within `cardRecent` before `until`: the floor's [[Aside]] kept to those among them,
+    * and to its topics, at the digest or version set aside, and set aside within `asideFor`
+    * before `until`; each already in a topic's lineage or the aside at its
     * digest or version, or referred to by a topic of a later version, unchanged, each a topic refers to attached to it, and of the rest at most
     * `most` strands and [[Cards]] cards of files kept at the floor to place, oldest first, the
     * others left (a card kept below the floor is its own label's run's to place); the cards read
@@ -160,13 +164,21 @@ private[topic] object TopicScan {
                             referrers(keeper, keys, read._3, seen.filter(unplaced))(_.unit)
                               .flatMap((cs: Vector[(CardShelf.Seen, Option[TopicKey])]) => {
                                 val p = Placed(ss, cs)
-                                aside(keeper, floor, all, held, recent, seen, linked, at).flatMap {
-                                  (_: Vector[Aside.Item]) =>
+                                val versions = topics.map(_._2).toSet
+                                aside(keeper, floor, all, held, recent, seen, linked, versions, at)
+                                  .flatMap { (now: Vector[Aside.Item]) =>
                                     Right(
-                                      gathered(most, floor, kept, recent, seen, p, linked)
-                                        .copy(unreadable = read._2, later = read._3.size)
+                                      gathered(most, floor, kept, recent, seen, p, linked).copy(
+                                        unreadable = read._2,
+                                        later = read._3.size,
+                                        single = single(
+                                          topics.map((k, v, h) => (k, v, h.topic)),
+                                          now,
+                                          params.merges
+                                        )
+                                      )
                                     )
-                                }
+                                  }
                               })
                           )
                       }
@@ -348,8 +360,9 @@ private[topic] object TopicScan {
 
   /** The floor's aside, `all` of it, kept to those `held` (not expired) that are strands of
     * `recent` and cards of `seen` a sort may be shown ([[offered]]), at the digest or
-    * version they are now, less the cards `linked` pairs: the aside after. A card kept at
-    * another label or a directory's leaves it, since no run at `floor` asks of it again.
+    * version they are now, and topics at a version of `topics`, less the cards `linked`
+    * pairs: the aside after. A card kept at another label or a directory's leaves it, since no
+    * run at `floor` asks of it again, and so does a topic written since it was set aside.
     */
   private def aside(
       keeper: DocumentKeeper,
@@ -359,6 +372,7 @@ private[topic] object TopicScan {
       recent: Vector[Strand.Digested],
       seen: Vector[CardShelf.Seen],
       linked: Vector[Linked],
+      topics: Set[DocumentVersionId],
       at: Instant
   )(using Tx^): Either[StoreError, Vector[Aside.Item]] = {
     val paired = linked.flatMap(_.cards.map(_.version)).toSet
@@ -366,7 +380,7 @@ private[topic] object TopicScan {
       case t @ Lineage.Tag.Strand(_, _, _) => recent.exists(s => isStrand(s)(t))
       case Lineage.Tag.Card(v) =>
         seen.exists(c => c.version == v && offered(c, floor)) && !paired.contains(v)
-      case Lineage.Tag.Topic(_) => false
+      case Lineage.Tag.Topic(v) => topics.contains(v)
     })
     if (now == all) Right(all) else Aside.kept(keeper, floor, now, at).map(_ => now)
   }
@@ -423,8 +437,33 @@ private[topic] object TopicScan {
       (strands.size - most).max(0) + (cards.size - Cards).max(0),
       linked,
       0,
-      0
+      0,
+      Vector.empty
     )
+  }
+
+  /** Of `topics`, by key and version, those written from fewer than two discussions (strands,
+    * by root) that `aside` does not hold at their version, oldest written first, at most
+    * `merges`.
+    */
+  def single(
+      topics: Vector[(TopicKey, DocumentVersionId, Topic)],
+      aside: Vector[Aside.Item],
+      merges: Int
+  ): Vector[(TopicKey, DocumentVersionId)] = {
+    val set = aside.collect { case Aside.Item(Lineage.Tag.Topic(v), _) => v }.toSet
+    topics
+      .filter((_, v, t) =>
+        !set.contains(v) &&
+          t.passages
+            .flatMap(_.from.tags)
+            .collect { case Lineage.Tag.Strand(root, _, _) => root }
+            .distinct
+            .size < 2
+      )
+      .sortBy((_, v, _) => DocumentVersionId.value(v))
+      .take(merges.max(0))
+      .map((k, v, _) => (k, v))
   }
 
   /** Of `newest`, the topics `s` shares something with, as [[Scanned.near]] orders them. */
@@ -479,10 +518,11 @@ private[topic] object TopicScan {
     )
 
   /** Its record: `{"attached": [...], "strands": [...], "cards": [...], "topics": [...],
-    * "near": [{"root", "topics": [...]}], "withdrew", "unchanged", "left", "linked": [...]}`,
-    * and `"unreadable"` when some topic was withdrawn for data this reader refuses, `"later"`
-    * when some was left for data of a later version; read as linking none when `linked` is
-    * absent, and none unreadable or later when `unreadable` or `later` is.
+    * "near": [{"root", "topics": [...]}], "withdrew", "unchanged", "left", "linked": [...],
+    * "single": [...]}`, and `"unreadable"` when some topic was withdrawn for data this reader
+    * refuses, `"later"` when some was left for data of a later version; read as linking none
+    * when `linked` is absent, offering none to merge when `single` is, and none unreadable or
+    * later when `unreadable` or `later` is.
     */
   given Journaled[Scanned] = Journaled.json(
     s => {
@@ -495,7 +535,8 @@ private[topic] object TopicScan {
         "withdrew" -> s.withdrew,
         "unchanged" -> s.unchanged,
         "left" -> s.left,
-        "linked" -> ujson.Arr.from(s.linked.map(linkedJson))
+        "linked" -> ujson.Arr.from(s.linked.map(linkedJson)),
+        "single" -> ujson.Arr.from(s.single.map((k, v) => lead(k, v)))
       )
       // Written only when some were, so a scan with none records as it did before the count.
       if (s.unreadable > 0) record("unreadable") = ujson.Num(s.unreadable.toDouble)
@@ -519,6 +560,8 @@ private[topic] object TopicScan {
         unreadable <- count(o.get("unreadable").orElse(Some(ujson.Num(0))), "unreadable")
         // A scan recorded before a later version's topic was left and counted leaves none.
         later <- count(o.get("later").orElse(Some(ujson.Num(0))), "later")
+        // A scan recorded before topics were merged offers none.
+        single <- list(o.get("single").orElse(Some(ujson.Arr())), "single")(readLead)
       } yield Scanned(
         attached,
         strands,
@@ -530,7 +573,8 @@ private[topic] object TopicScan {
         left,
         linked,
         unreadable,
-        later
+        later,
+        single
       )
   )
 
