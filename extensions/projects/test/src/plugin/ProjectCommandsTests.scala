@@ -606,6 +606,17 @@ object ProjectCommandsTests extends TestSuite {
         "Opening words, all of them.\n\nSections: Goal; Reads (0.1 KB in all)\n"
     }
 
+    test("project_show's head and project_list both give a body's size rounded up to a tenth") {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "a", "note", "x" * 1030)
+      val headed = done(ask(projects, store, "project_show", "key" -> "p/a", "head" -> true))
+      val listed = done(ask(projects, store, "project_list", "project" -> "p"))
+      (headed.linesIterator.toVector.lastOption, listed.contains(" · 1.1 KB · ")) ==>
+        (Some("Sections: none (1.1 KB in all)"), true)
+    }
+
     test("project_show refuses key and keys together, and neither, naming both") {
       val projects = plugin()
       val show = projects.commands.find(c => ToolName.value(c.spec.name) == "project_show")

@@ -41,8 +41,7 @@ object AnswerText {
     * it.`). Then, past the first `skip` rows, at most `most`, one line each:
     * `<key> (<kind>, <state>): <title> · under <parent> · <size> KB · changed <day> · <beneath>
     * under it · <lead>`, leaving out what `parts` does not show, the parent when there is none,
-    * and `beneath` when it is 0; `<size>` is its markdown's UTF-8 bytes in KiB, rounded up to a
-    * tenth, `<day>` the UTC date it was `written`. When rows are left past them, a last line:
+    * and `beneath` when it is 0; `<size> KB` is [[size]], `<day>` the UTC date it was `written`. When rows are left past them, a last line:
     * `<n> more not shown; skip: <next> shows the next, or <narrow>.` With `skip` at or past the
     * end, `No line past <n>.` in place of the rows. With no row, the one line `No artifact
     * matches.`, then the ended count when above 0.
@@ -74,12 +73,10 @@ object AnswerText {
       val lines = rows
         .map { r =>
           val h = r.artifact.head
-          val bytes = Body.markdown(r.artifact.body).getBytes(StandardCharsets.UTF_8).length.toLong
-          val tenths = math.max(1L, (bytes * 10L + 1023L) / 1024L)
           (Vector(head(h, parts.kind, parts.state)) ++
             h.parent.filterNot(parts.besides.contains).map(p => s"under ${p.value}") ++
             Vector(
-              s"${tenths / 10}.${tenths % 10} KB",
+              size(r.artifact.body),
               s"changed ${r.written.atZone(ZoneOffset.UTC).toLocalDate}"
             ) ++
             Option.when(r.beneath > 0)(s"${r.beneath} under it") ++
@@ -135,6 +132,13 @@ object AnswerText {
   private def readableFor(readable: FiniteDuration): String =
     s"Their history stays readable for ${readable.toDays} days: project_show with an `at` " +
       "before now, and project_history."
+
+  /** The size of `b` as markdown, `<n>.<n> KB`: its UTF-8 bytes in KiB, rounded up to a tenth. */
+  def size(b: Body): String = {
+    val tenths =
+      (Body.markdown(b).getBytes(StandardCharsets.UTF_8).length.toLong * 10L + 1023L) / 1024L
+    s"${tenths / 10}.${tenths % 10} KB"
+  }
 
   /** `<key> (<kind>, <state>)`: an artifact named in a sentence about it. */
   def named(h: ArtifactHead): String =

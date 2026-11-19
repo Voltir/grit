@@ -59,21 +59,18 @@ object ProjectMarkdown {
 
   /** `artifact` kept as `version` without its whole body: [[shown]]'s front matter, then its body's first
     * paragraph whole ([[Body.lead]]), then `Sections: ` and its `##` headings' titles, `; `
-    * between them (`none` when it has none), with the size of its body as markdown in KB, to
-    * one decimal: `Sections: Goal; Reads (2.4 KB in all)`.
+    * between them (`none` when it has none), with the size of its body ([[AnswerText.size]]):
+    * `Sections: Goal; Reads (2.4 KB in all)`.
     */
   def head(artifact: Artifact, version: DocumentVersionId): String = {
-    val markdown = Body.markdown(artifact.body)
-    val kb = markdown.getBytes(java.nio.charset.StandardCharsets.UTF_8).length / 1024.0
     val sections = Body.sections(artifact.body)
     val lead = Body.lead(artifact.body, Int.MaxValue)
     fronted(artifact.head, Some(version)) + "\n" + Vector(lead)
       .filter(_.nonEmpty)
       .map(_ + "\n\n")
       .mkString +
-      f"Sections: ${
-          if (sections.isEmpty) "none" else sections.mkString("; ")
-        } ($kb%.1f KB in all)\n"
+      s"Sections: ${if (sections.isEmpty) "none" else sections.mkString("; ")} " +
+      s"(${AnswerText.size(artifact.body)} in all)\n"
   }
 
   /** `artifact` kept as `version` with one section of its body: [[shown]]'s front matter, then
