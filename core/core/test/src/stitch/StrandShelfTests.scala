@@ -197,6 +197,15 @@ object StrandShelfTests extends TestSuite {
         Vector((c1.id, 2, at(0)), (c1.id, 1, at(1200)))
     }
 
+    test("a thread a stitch links a legacy thread to is one unit") {
+      val w = new StrandWorld
+      val t = w.under("C1", "1.0")
+      w.say(t, "I can, after lunch", 60)
+      w.follow(w.say(w.thread("C1", "2.0"), "and I after that", 120), t)
+      given Tx = TestTx.fake
+      right(w.shelf.units(at(0), at(600), Strand.Cut.Default)).map(_.root) ==> Vector(t.id)
+    }
+
     test("a run cut on two nights' windows is the same run") {
       val w = new StrandWorld
       val top = w.room("C1")

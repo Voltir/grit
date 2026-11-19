@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.id.{ConversationId, Href}
 import grit.core.message.Cut
-import grit.core.store.{Conversation, ConversationStore, StoreError, Tx}
+import grit.core.store.{Conversation, ConversationStore, Origin, StoreError, Tx}
 
 /** The strands of the rooms a transaction reads ([[Strand.Digested]]). Each read takes each
   * strand's messages once, text and all, and keeps only their ids, count and lengths.
@@ -169,8 +169,13 @@ object StrandShelf {
           spoken.flatten.collect { case c if c.origin.asking.nonEmpty => c.id },
           until
         )
-        runs <- each(spoken.flatten.filter(_.origin.rolls))(c => runsOf(c, from, until, cut))
+        runs <- each(spoken.flatten.filter(_.origin match {
+          case Origin.Room(_, _) => true
+          case _ => false
+        }))(c => runsOf(c, from, until, cut))
       } yield (stitched ++ (threads ++ runs.flatten).filter(_.roomLabel == Tx.floor(tx)))
+        // A thread a legacy strand follows is read by both.
+        .distinctBy(_.id)
         .sortBy(_.touched)
 
     /** The runs `cut` makes of `c`'s messages, whose last is said from `from` and that are
