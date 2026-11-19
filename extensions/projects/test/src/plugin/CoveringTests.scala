@@ -60,6 +60,10 @@ object CoveringTests extends TestSuite {
     done(under(projects, store, "c", Some("b")))
   }
 
+  /** A claim's answer saying `said`, its brief kept. */
+  private def claimedKept(said: String): CommandOutcome =
+    CommandOutcome.Done(ujson.write(ujson.Obj("claimed" -> said, "brief" -> "kept")))
+
   private def refusedOver(side: String, mine: String, theirs: String, holder: String) =
     CommandOutcome.Refused(
       s"$mine is $side $theirs, which is claimed as manager for $holder by $by since $at; " +
@@ -81,9 +85,9 @@ object CoveringTests extends TestSuite {
       chain(projects, other)
       done(claimed(projects, other, "p/c", "manager", "h1"))
       val above = claimed(projects, other, "p/a", "manager", "h2")
-      (below, plain.isInstanceOf[CommandOutcome.Done], above) ==> (
+      (below, plain, above) ==> (
         refusedOver("under", "p/3 c", "p/1 a", "h1"),
-        true,
+        claimedKept("Claimed p/2 b (note, open) as reader for h3."),
         refusedOver("above", "p/1 a", "p/3 c", "h1")
       )
     }
@@ -92,7 +96,8 @@ object CoveringTests extends TestSuite {
       val store = covered()
       chain(projects, store)
       done(claimed(projects, store, "p/c", "reader", "h1"))
-      claimed(projects, store, "p/a", "manager", "h2").isInstanceOf[CommandOutcome.Done] ==> true
+      claimed(projects, store, "p/a", "manager", "h2") ==>
+        claimedKept("Claimed p/1 a (note, open) as manager for h2.")
     }
     test("a keep moving an artifact so two holders' covering claims overlap is refused") {
       val projects = plugin()
@@ -124,7 +129,8 @@ object CoveringTests extends TestSuite {
           at
         )
       ).isRight ==> true
-      under(projects, store, "d", Some("a")).isInstanceOf[CommandOutcome.Done] ==> true
+      under(projects, store, "d", Some("a")) ==>
+        CommandOutcome.Done("Kept p/4 d (note, open). Now at version 12.")
     }
   }
 }
