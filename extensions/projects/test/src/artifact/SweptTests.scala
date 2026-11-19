@@ -26,9 +26,9 @@ object SweptTests extends TestSuite {
     def ended(h: ArtifactHead): Boolean = h.state == done
     def blocks(a: Artifact): Boolean = !ended(a.head) || claimed.contains(a.head.key)
     def children(k: ArtifactKey): Vector[Artifact] =
-      artifacts.filter(_.head.parent.contains(k)).sortBy(_.head.key.value)
+      artifacts.filter(_.head.parent.contains(k)).sortBy(_.head.key)
     def citers(k: ArtifactKey): Vector[Artifact] =
-      artifacts.filter(a => blocks(a) && a.cites.contains(k)).sortBy(_.head.key.value)
+      artifacts.filter(a => blocks(a) && a.cites.contains(k)).sortBy(_.head.key)
 
     /** Due and ended: what the sweep is asked to withdraw. */
     val asked: Vector[Artifact] = artifacts.filter(a => due(a.head.key) && ended(a.head))
@@ -85,7 +85,7 @@ object SweptTests extends TestSuite {
       val wrong = cases.zipWithIndex.flatMap { (c, seed) =>
         val expected = c.asked
           .filterNot(a => c.gone(a.head.key))
-          .sortBy(_.head.key.value)
+          .sortBy(_.head.key)
           .map { a =>
             val k = a.head.key
             val why: Option[Stay] = c.claimed.get(k).map(Stay.Claimed(_)).orElse {
@@ -110,8 +110,8 @@ object SweptTests extends TestSuite {
         val left = c.swept.withdrawn.project
         val rewritten = c.artifacts
           .filter(a => !c.gone(a.head.key) && a.cites.exists(c.gone))
+          .sortBy(_.head.key)
           .map(a => (a.head.key.value, a.head.cites.filterNot(c.gone)))
-          .sortBy(_._1)
         val problems = Vector(
           Option.when(
             left.artifacts.map(_.head.key).toSet != c.artifacts.map(_.head.key).toSet -- c.gone

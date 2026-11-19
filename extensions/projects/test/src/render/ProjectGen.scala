@@ -45,14 +45,21 @@ object ProjectGen {
   private val hazards: Vector[String] = Vector("\\", "`", "[", "]", "<", "!", "*", "_")
   private val words: Vector[String] = Vector("plan", "the", "cache", "zoë", "x2", "ends")
 
-  /** The project of `seed`: one to six artifacts, a forest by parent, each citing others, of
-    * ranks that sometimes tie.
+  /** The project of `seed`: one to six artifacts, numbered with gaps (as withdrawals leave
+    * them), a forest by parent in which a parent's number may be above its child's (as a
+    * re-parent leaves it), each citing others, of ranks that sometimes tie.
     */
   def project(seed: Int): Project = {
     val r = new Random(seed)
     val key = right(ProjectKey.of(s"p${r.nextInt(100)}"))
     val n = 1 + r.nextInt(6)
-    val keys = Vector.tabulate(n)(i => ArtifactKey.of(key, right(ArtifactNumber.of(i + 1))))
+    val numbers = Vector.iterate(1 + r.nextInt(3), n)(_ + 1 + r.nextInt(3))
+    val keys = numbers.map(m => ArtifactKey.of(key, right(ArtifactNumber.of(m))))
+    // Parents are drawn in a shuffled order, each from those placed before it, so no cycle.
+    val placed = r.shuffle(keys)
+    val parents = placed.zipWithIndex.collect {
+      case (k, i) if i > 0 && r.nextInt(4) > 0 => k -> placed(r.nextInt(i))
+    }.toMap
     val artifacts = keys.zipWithIndex.map { (k, i) =>
       val others = keys.filterNot(_ == k)
       val head = ArtifactHead(
@@ -61,7 +68,7 @@ object ProjectGen {
         right(KindName.of(pick(r, Vector("change", "note")))),
         right(StateName.of(pick(r, Vector("open", "building", "done")))),
         line(r),
-        Option.when(i > 0 && r.nextBoolean())(keys(r.nextInt(i))),
+        parents.get(k),
         // Of a few ranks, so that siblings sometimes tie.
         right(Rank.of(pick(r, Vector("n", "c", "zb")))),
         others.filter(_ => r.nextInt(3) == 0),

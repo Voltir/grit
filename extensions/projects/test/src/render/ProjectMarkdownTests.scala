@@ -3,7 +3,15 @@ package grit.projects.render
 import grit.core.id.DocumentVersionId
 import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project, Rank}
 import grit.projects.method.MethodFixtures
-import grit.projects.name.{ArtifactKey, KindName, MethodName, Pin, ProjectKey, StateName}
+import grit.projects.name.{
+  ArtifactKey,
+  ArtifactNumber,
+  KindName,
+  MethodName,
+  Pin,
+  ProjectKey,
+  StateName
+}
 
 import utest.*
 
@@ -47,8 +55,21 @@ object ProjectMarkdownTests extends TestSuite {
     val files = ProjectMarkdown.render(project)
     val once = ProjectMarkdown.read(files)
     val twice = once.flatMap(q => ProjectMarkdown.read(ProjectMarkdown.render(q)))
+    val byKey = project.artifacts.map(a => a.head.key -> a.head).toMap
+    def numbers(h: ArtifactHead): Vector[Int] =
+      h.parent.flatMap(byKey.get).fold(Vector.empty)(numbers) :+ ArtifactNumber.value(h.key.number)
+    // Of numbers and parents alone, so a retitle or a new handle moves no file.
+    val filed = project.artifacts.map(a => numbers(a.head).mkString("", "/", ".md"))
     val why =
-      if (once.map(heads) != Right(heads(project))) Some(s"heads differ after one pass: $once")
+      if (files.map(_._1) != ProjectMarkdown.Index +: filed)
+        Some(s"not each at its parents' numbers: ${files.map(_._1)} != $filed")
+      else if (
+        ProjectMarkdown.read(files.reverse).map(q => heads(q).sortBy(_.key)) != Right(
+          heads(project).sortBy(_.key)
+        )
+      )
+        Some(s"read depends on the files' order: ${ProjectMarkdown.read(files.reverse)}")
+      else if (once.map(heads) != Right(heads(project))) Some(s"heads differ after one pass: $once")
       else if (once.map(links) != Right(links(project)))
         Some(s"links differ after one pass: ${once.map(links)} != ${links(project)}")
       else if (twice != once)
