@@ -12,8 +12,7 @@ import grit.projects.artifact.{
   Body,
   OldFormFixtures,
   Pin,
-  Project,
-  Rank
+  Project
 }
 import grit.projects.name.{Handle, MethodName, ProjectKey}
 
