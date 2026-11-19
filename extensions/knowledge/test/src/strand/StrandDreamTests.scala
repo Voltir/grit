@@ -4,7 +4,8 @@ import java.time.Instant
 
 import scala.concurrent.duration.*
 
-import grit.core.act.{Asked, Dreaming, MoveError, ScriptedDreaming}
+import grit.core.act.ScriptedMoves.Replied
+import grit.core.act.{Dreaming, MoveError, ScriptedDreaming}
 import grit.core.document.{DocLabel, DocText, DocWeight, Document, DocumentTerms, InMemoryDocuments}
 import grit.core.files.InMemoryPieces
 import grit.core.flow.TestTainted
@@ -104,7 +105,7 @@ object StrandDreamTests extends TestSuite {
         Dreaming.Reads(w.shelf, _ => needs, w.excerpts, documents, pieces),
         (system, messages) =>
           answer(heard.ask(system, messages.collect { case Message.User(t) => t }))
-            .map(v => Asked(TestTainted.at(v, Integrity.Member), floor)),
+            .map(v => Replied(v, floor)),
         documents = documents,
         at = Now,
         integrity = believed,

@@ -4,6 +4,7 @@ import java.time.{Instant, LocalTime, ZoneId}
 
 import scala.concurrent.duration.*
 
+import grit.core.act.ScriptedMoves.Replied
 import grit.core.act.{
   Asked,
   Called,
@@ -200,15 +201,12 @@ object SyncTests extends TestSuite {
       raised: Map[String, Label],
       system: String,
       messages: Vector[Message]
-  ): Either[MoveError, Asked[ujson.Value]] = {
+  ): Either[MoveError, Replied[ujson.Value]] = {
     val text = sent(system, messages)
     val label = raised.collectFirst { case (path, l) if text.contains(path) => l }.getOrElse(at)
-    def said(summary: String, terms: String*): Either[MoveError, Asked[ujson.Value]] =
+    def said(summary: String, terms: String*): Either[MoveError, Replied[ujson.Value]] =
       Right(
-        Asked(
-          TestTainted.authority(ujson.Obj("summary" -> summary, "terms" -> ujson.Arr.from(terms))),
-          label
-        )
+        Replied(ujson.Obj("summary" -> summary, "terms" -> ujson.Arr.from(terms)), label)
       )
     summaries match {
       case Summaries.Capped(path) if text.contains(path) => Left(MoveError.Capped)
@@ -343,7 +341,7 @@ object SyncTests extends TestSuite {
       (system, messages) => reply(summaries, at, summaryAt, system, messages),
       request =>
         judged.fold(Left(MoveError.Model("no judgment is asked in this run")))(p =>
-          Right(Asked(TestTainted.authority(request.questions.map(_ => Answer.YesNo(p))), at))
+          Right(Replied(request.questions.map(_ => Answer.YesNo(p)), at))
         ),
       documents,
       Instant.EPOCH,

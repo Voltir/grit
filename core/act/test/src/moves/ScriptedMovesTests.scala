@@ -2,8 +2,8 @@ package grit.act.moves
 
 import java.time.Instant
 
+import grit.core.act.ScriptedMoves.Replied
 import grit.core.act.{
-  Asked,
   Called,
   Dreaming,
   Keeping,
@@ -92,7 +92,7 @@ object ScriptedMovesTests extends MovesContract {
       ),
       (system, messages) => {
         shown.add(system, messages.collect { case Message.User(t) => t })
-        Right(Asked(TestTainted.at(Answered, Believed), Floor))
+        Right(Replied(Answered, Floor))
       },
       // Positional: a named argument lifts the capturing script into a val it cannot flow into.
       shelves.documents,
@@ -123,7 +123,7 @@ object ScriptedMovesTests extends MovesContract {
       MovesWorld.NotesTerms,
       _ =>
         if (broken) Left(MoveError.Store("down"))
-        else Right(Asked(TestTainted.authority(answer), Floor)),
+        else Right(Replied(answer, Floor)),
       (service, tool, _) =>
         if (service == Probe && tool == Tool)
           Right(
@@ -135,13 +135,13 @@ object ScriptedMovesTests extends MovesContract {
         else Right(Called.Failed("unadvertised")),
       (_, _) =>
         if (broken) Left(MoveError.Store("down"))
-        else Right(Asked(TestTainted.authority(replies.next()), Floor)),
+        else Right(Replied(replies.next(), Floor)),
       request =>
         if (broken) Left(MoveError.Store("down"))
         else
           judgment.fold(
             e => Left(MoveError.Model(ScriptedMoves.unanswered(e))),
-            j => Right(Asked(TestTainted.authority(request.questions.map(_ => j)), Floor))
+            j => Right(Replied(request.questions.map(_ => j), Floor))
           ),
       // Positional: a named argument here would bind the lambdas above to untyped temporaries.
       new InMemoryDocuments,
@@ -232,9 +232,9 @@ object ScriptedMovesTests extends MovesContract {
       request => {
         val n = asked.all.size
         asked.add(request)
-        Right(Asked(TestTainted.at(reply(n), Believed), Declassing))
+        Right(Replied(reply(n), Declassing))
       },
-      _ => Right(Asked(TestTainted.at(answers.next(), Believed), Declassing))
+      _ => Right(Replied(answers.next(), Declassing))
     )
     (use(moves), asked.all)
   }

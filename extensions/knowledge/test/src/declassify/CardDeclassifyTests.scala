@@ -4,7 +4,8 @@ import java.time.Instant
 
 import scala.concurrent.duration.*
 
-import grit.core.act.{Asked, Dreaming, MoveError, ScriptedDreaming}
+import grit.core.act.ScriptedMoves.Replied
+import grit.core.act.{Dreaming, MoveError, ScriptedDreaming}
 import grit.core.classify.Answer
 import grit.core.document.{
   Declassified,
@@ -250,7 +251,7 @@ object CardDeclassifyTests extends TestSuite {
         Recorded.Empty,
         _ => {
           counts.rewrite()
-          Right(Asked(TestTainted.at(reply, Integrity.Member), Floor))
+          Right(Replied(reply, Floor))
         },
         request => {
           val at = counts.checks
@@ -258,7 +259,7 @@ object CardDeclassifyTests extends TestSuite {
           val answers =
             if (screens.isEmpty) Vector.fill(request.questions.size)(Answer.YesNo(leak))
             else screens(at % screens.size).map(Answer.YesNo(_))
-          Right(Asked(TestTainted.at(answers, Integrity.Member), Floor))
+          Right(Replied(answers, Floor))
         },
         visibility
       )

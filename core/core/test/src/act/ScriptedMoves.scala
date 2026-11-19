@@ -7,31 +7,17 @@ import grit.core.place.Service
 import grit.core.provider.ModelRequest
 import grit.core.sanitise.IntegrityTree
 import grit.core.tool.ToolName
-import grit.core.visibility.Integrity
+import grit.core.visibility.{Integrity, Label}
 
-/** [[Moves]] for a job's tests: each text ask answered by `asks`; each JSON ask by `jsons`
-  * (of its system text and messages), the reply then checked by its schema, with no argument
-  * repair, and read, and when it does not read, `jsons` asked again up to
-  * [[Posed.Json.Repairs]] times, as the durable moves ask a model again (`jsons` is given the
-  * same system text and messages each time, not the refusal the model is told); each judgment
-  * by `judgments` (of what the classifier would be sent), the answers then read by its
-  * questions; each call by `calls`. A reply is believed as what it was posed from is, and a
-  * call's answer at the meet of what `calls` gives it and its arguments. A reply or answers
-  * that do not read are
-  * [[MoveError.Model]] in the durable moves' words. Under the rules every [[Moves]] keeps,
-  * which `grit.act.moves.MovesContract` holds it to beside the durable moves: a name made once,
-  * by either kind, is [[MoveError.Repeated]] after, whatever the move came to; past `limits`, a
-  * move is [[MoveError.OverLimit]]; a refused move is not made. It never diverges: it is one
-  * run, never rerun. An extraction is a JSON ask of [[Extraction]], its answer trusted at
-  * `integrity`, the run's, met with `Member`. [[made]] is each move made, in order.
-  */
+import ScriptedMoves.Replied
+
 class ScriptedMoves(
     limits: MoveLimits,
-    asks: ModelRequest -> Either[MoveError, Asked[Message.Assistant]],
+    asks: ModelRequest -> Either[MoveError, Replied[Message.Assistant]],
     calls: (Service, ToolName, ujson.Obj) -> Either[MoveError, Called],
-    jsons: (String, Vector[Message]) -> Either[MoveError, Asked[ujson.Value]] = (_, _) =>
+    jsons: (String, Vector[Message]) -> Either[MoveError, Replied[ujson.Value]] = (_, _) =>
       Left(MoveError.Model("no JSON reply scripted")),
-    judgments: Request -> Either[MoveError, Asked[Vector[Answer]]] = _ =>
+    judgments: Request -> Either[MoveError, Replied[Vector[Answer]]] = _ =>
       Left(MoveError.Model("no judgment scripted")),
     integrity: Integrity = Integrity.Authority
 ) extends Moves {
@@ -42,22 +28,22 @@ class ScriptedMoves(
 
   def ask[R](name: MoveName, posed: Tainted[Posed[R]]): Either[MoveError, Asked[R]] =
     unbelieved(name, Trusted.asIs(posed).extract).map(a =>
-      Asked(TestTainted.at(Trusted.asIs(a.reply).extract, posed.integrity), a.at)
+      Asked(TestTainted.at(a.reply, posed.integrity), a.at)
     )
 
-  /** The ask `name` of `posed`, its reply as the scripts believe it. */
-  private def unbelieved[R](name: MoveName, posed: Posed[R]): Either[MoveError, Asked[R]] =
+  /** The ask `name` of `posed`, its reply as the scripts give it. */
+  private def unbelieved[R](name: MoveName, posed: Posed[R]): Either[MoveError, Replied[R]] =
     posed match {
       case Posed.Text(request) => making(name, MoveKind.Ask, limits.asks)(asks(request))
       case Posed.Json(system, messages, reply) =>
-        def shaped(left: Int): Either[MoveError, Asked[R]] =
+        def shaped(left: Int): Either[MoveError, Replied[R]] =
           jsons(system, messages).flatMap { a =>
             reply.schema
-              .check(Trusted.asIs(a.reply).extract, Set.empty)
+              .check(a.reply, Set.empty)
               .left
               .map(m => s"its arguments do not match its schema: ${m.message}")
               .flatMap(reply.read(_).left.map(why => s"its arguments do not read: $why"))
-              .map(r => Asked(TestTainted.at(r, a.reply.integrity), a.at)) match {
+              .map(r => Replied(r, a.at)) match {
               case Left(_) if left > 0 => shaped(left - 1)
               case read => read.left.map(MoveError.Model(_))
             }
@@ -66,10 +52,10 @@ class ScriptedMoves(
       case Posed.Judgment(request, questions) =>
         making(name, MoveKind.Judge, limits.judgments)(judgments(request).flatMap { a =>
           questions
-            .read(Trusted.asIs(a.reply).extract)
+            .read(a.reply)
             .left
             .map(e => MoveError.Model(ScriptedMoves.unanswered(e)))
-            .map(r => Asked(TestTainted.at(r, a.reply.integrity), a.at))
+            .map(r => Replied(r, a.at))
         })
     }
 
@@ -134,6 +120,11 @@ class ScriptedMoves(
 }
 
 object ScriptedMoves {
+
+  /** What a script answers an ask with: its reply and the label it is at. The reply is believed
+    * as what it was posed from is, as every ask's is ([[Moves.ask]]).
+    */
+  final case class Replied[R](reply: R, at: Label)
 
   /** Why a classifier gave no answer that reads, in the durable moves' words: a `judgments`
     * script failing as a classifier would gives `MoveError.Model` of this; `MovesContract`

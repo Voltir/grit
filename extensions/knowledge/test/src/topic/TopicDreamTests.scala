@@ -4,7 +4,8 @@ import java.time.{Instant, LocalDate, ZoneOffset}
 
 import scala.concurrent.duration.*
 
-import grit.core.act.{Asked, Dreaming, MoveError, ScriptedDreaming}
+import grit.core.act.ScriptedMoves.Replied
+import grit.core.act.{Dreaming, MoveError, ScriptedDreaming}
 import grit.core.document.{
   DocLabel,
   DocRef,
@@ -131,13 +132,13 @@ object TopicDreamTests extends TestSuite {
         Plugin,
         Vector(Knowledge -> PluginReads(NoCache, documents.shelf(Knowledge)))
       )
-      val answer: (String, Vector[Message]) -> Either[MoveError, Asked[ujson.Value]] =
+      val answer: (String, Vector[Message]) -> Either[MoveError, Replied[ujson.Value]] =
         (system, messages) => {
           val shown = messages.collect { case Message.User(t) => t }.mkString
           val isAttach = system.startsWith("You sort")
           heard.ask(Ask(if (isAttach) "attach" else "write", system, shown))
           val reply = if (isAttach) attach(system, shown) else write(shown)
-          Right(Asked(TestTainted.at(reply, Integrity.Authority), Label.Public))
+          Right(Replied(reply, Label.Public))
         }
       val pieces = new InMemoryPieces
       val moves = new ScriptedDreaming(

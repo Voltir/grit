@@ -41,14 +41,14 @@ final class ScriptedDreaming(
     plugin: PluginName,
     terms: DocumentTerms,
     reads: Dreaming.Reads,
-    jsons: (String, Vector[Message]) -> Either[MoveError, Asked[ujson.Value]],
+    jsons: (String, Vector[Message]) -> Either[MoveError, ScriptedMoves.Replied[ujson.Value]],
     documents: InMemoryDocuments = new InMemoryDocuments,
     at: Instant = Instant.EPOCH,
     integrity: Integrity = Integrity.Authority,
     rooms: Recorded = Recorded.Empty,
-    asks: ModelRequest -> Either[MoveError, Asked[Message.Assistant]] = (_: ModelRequest) =>
-      Left(MoveError.Model("no text reply scripted")),
-    judgments: Request -> Either[MoveError, Asked[Vector[Answer]]] = (_: Request) =>
+    asks: ModelRequest -> Either[MoveError, ScriptedMoves.Replied[Message.Assistant]] =
+      (_: ModelRequest) => Left(MoveError.Model("no text reply scripted")),
+    judgments: Request -> Either[MoveError, ScriptedMoves.Replied[Vector[Answer]]] = (_: Request) =>
       Left(MoveError.Model("no judgment scripted")),
     visibility: Visibility = Visibility.Shipped
 ) extends ScriptedKeeping(

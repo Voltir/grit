@@ -43,11 +43,11 @@ class ScriptedKeeping(
     floor: Label,
     plugin: PluginName,
     terms: DocumentTerms,
-    asks: ModelRequest -> Either[MoveError, Asked[Message.Assistant]],
+    asks: ModelRequest -> Either[MoveError, ScriptedMoves.Replied[Message.Assistant]],
     calls: (Service, ToolName, ujson.Obj) -> Either[MoveError, Called],
-    jsons: (String, Vector[Message]) -> Either[MoveError, Asked[ujson.Value]] = (_, _) =>
-      Left(MoveError.Model("no JSON reply scripted")),
-    judgments: Request -> Either[MoveError, Asked[Vector[Answer]]] = _ =>
+    jsons: (String, Vector[Message]) -> Either[MoveError, ScriptedMoves.Replied[ujson.Value]] =
+      (_, _) => Left(MoveError.Model("no JSON reply scripted")),
+    judgments: Request -> Either[MoveError, ScriptedMoves.Replied[Vector[Answer]]] = _ =>
       Left(MoveError.Model("no judgment scripted")),
     documents: InMemoryDocuments = new InMemoryDocuments,
     at: Instant = Instant.EPOCH,
