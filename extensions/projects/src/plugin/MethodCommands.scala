@@ -8,7 +8,6 @@ import grit.core.claim.Claims
 import grit.core.document.{DocRef, DocText, Document, DocumentKeeper, DocumentShelf}
 import grit.core.id.DocKey
 import grit.core.need.PluginReads
-import grit.core.place.Place
 import grit.core.plugin.{CommandBy, CommandOutcome, KeepingCommand, ReadingCommand}
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Args, ArgsError, Field, ToolName, ToolSpec}
@@ -24,7 +23,7 @@ import grit.projects.method.{
 }
 import grit.projects.name.{CheckName, MethodName, StateName}
 
-import ProjectCommands.{Stop, answered, moverOf, parsed, refusal, refuse, stored, written}
+import ProjectCommands.{Stop, answered, keptEverywhere, moverOf, parsed, refusal, refuse, stored}
 import MethodCommands.{Asking, Declaring}
 
 /** `project_declare` and `project_methods`, and the method versions every other command reads:
@@ -233,19 +232,7 @@ private[plugin] final class MethodCommands(checks: Vector[TransitionCheck], meth
         DocText.of(s"Method ${MethodName.value(method.name)} version ${method.version}.")
       )
       refs <- refuse(MethodCommands.refs(method.name))
-      _ <- written(
-        own.write(
-          key,
-          methodsAt,
-          Tx.top,
-          Place.Everywhere,
-          text,
-          data,
-          None,
-          at,
-          refs
-        )
-      )
+      _ <- keptEverywhere(own, key, methodsAt, Tx.top, text, data, refs, at)
     } yield s"Declared the $named, digest ${method.digest.hex}."
   }
 

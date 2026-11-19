@@ -129,25 +129,12 @@ private[plugin] final class ProjectCommands(
       val named = args.method.getOrElse(default)
       for {
         method <- declaring.latest(own, named)
-        indexing <- refuse(ArtifactJson.indexing(args.project))
-        indexes <- stored(own.referring(indexing, 1))
-        _ <- Either.cond(indexes.isEmpty, (), Stop.Refused(s"project $p exists already"))
+        was <- indexOf(own, args.project)
+        _ <- Either.cond(was.isEmpty, (), Stop.Refused(s"project $p exists already"))
         pin <- refuse(Pin.of(method.name, method.version, method.digest))
         index <- refuse(ArtifactJson.index(args.project, pin, author(by)))
         (key, text, data, refs) = index
-        _ <- written(
-          own.write(
-            key,
-            Label.Public,
-            Tx.top,
-            Place.Everywhere,
-            text,
-            data,
-            None,
-            at,
-            refs
-          )
-        )
+        _ <- keptEverywhere(own, key, Label.Public, Tx.top, text, data, refs, at)
       } yield s"Started project $p under method ${MethodName.value(method.name)} version ${method.version}."
     }
   }
@@ -1478,19 +1465,7 @@ private[plugin] final class ProjectCommands(
           }
         rewritten <- refuse(ArtifactJson.index(args.project, done.project.pin, author(by)))
         (key, text, data, refs) = rewritten
-        _ <- written(
-          own.write(
-            key,
-            index._1.label,
-            Tx.top,
-            Place.Everywhere,
-            text,
-            data,
-            None,
-            at,
-            refs
-          )
-        )
+        _ <- keptEverywhere(own, key, index._1.label, Tx.top, text, data, refs, at)
       } yield AnswerText.migrated(args.project, done.project.pin, done.renamed, ListMost)
     }
   }
@@ -2103,15 +2078,38 @@ private[plugin] object ProjectCommands {
   private def pinned(own: DocumentShelf, project: ProjectKey)(using Tx^): Either[Stop, Pin] =
     indexed(own, project).map(_._2)
 
+  /** `project`'s index document as `own` holds it, if it is started. */
+  private def indexOf(own: DocumentShelf, project: ProjectKey)(using
+      Tx^
+  ): Either[Stop, Option[Document]] =
+    for {
+      indexing <- refuse(ArtifactJson.indexing(project))
+      indexes <- stored(own.referring(indexing, 1))
+    } yield indexes.headOption
+
+  /** As [[written]], `text`, `data` and `refs` kept through `own` under `key` at `label`, at
+    * every place and with no pointer, believed at `believed` as `own` believes it.
+    */
+  private[plugin] def keptEverywhere(
+      own: DocumentKeeper,
+      key: DocKey,
+      label: Label,
+      believed: Integrity,
+      text: DocText,
+      data: ujson.Value,
+      refs: Set[DocRef],
+      at: Instant
+  )(using Tx^): Either[Stop, Written] =
+    written(own.write(key, label, believed, Place.Everywhere, text, data, None, at, refs))
+
   /** `project`'s index document as `own` holds it, and the pin it holds, or why not. */
   private def indexed(own: DocumentShelf, project: ProjectKey)(using
       Tx^
   ): Either[Stop, (Document, Pin)] = {
     val p = ProjectKey.value(project)
     for {
-      indexing <- refuse(ArtifactJson.indexing(project))
-      indexes <- stored(own.referring(indexing, 1))
-      index <- indexes.headOption.toRight(
+      was <- indexOf(own, project)
+      index <- was.toRight(
         Stop.Refused(s"there is no project $p; start it with project_new")
       )
       pin <- refuse(ArtifactJson.pinOf(index).left.map(why => s"project $p cannot be read: $why"))
@@ -2638,21 +2636,18 @@ private[plugin] object ProjectCommands {
       )
       (text, data, refs) = document
       key <- refuse(DocKey.of(artifact.head.key.value))
-      write <- written(
-        own.write(
-          key,
-          before.fold(Label.Public)(_.label),
-          whose match {
-            case Whose.Caller => Tx.top
-            case Whose.Prior => DocumentKeeper.replacing(before)
-          },
-          Place.Everywhere,
-          text,
-          data,
-          None,
-          at,
-          refs
-        )
+      write <- keptEverywhere(
+        own,
+        key,
+        before.fold(Label.Public)(_.label),
+        whose match {
+          case Whose.Caller => Tx.top
+          case Whose.Prior => DocumentKeeper.replacing(before)
+        },
+        text,
+        data,
+        refs,
+        at
       )
     } yield write match {
       case Written.Unchanged(current, _) => current
