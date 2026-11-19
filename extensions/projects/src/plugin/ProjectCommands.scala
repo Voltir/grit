@@ -611,7 +611,9 @@ private[plugin] final class ProjectCommands(
             keys <- (a.key, a.keys) match {
               case (Some(k), None) => parsed("key", k, ArtifactKey.read).map(ShowKeys.One(_))
               case (None, Some(ks)) =>
-                each("keys", ks.toVector, ArtifactKey.read).map(ShowKeys.Several(_))
+                Traversal
+                  .traverse(ks.toVector)(parsed("keys", _, ArtifactKey.read))
+                  .map(ShowKeys.Several(_))
               case (Some(_), Some(_)) =>
                 Left(ArgsError.Refused("keys", "Give key or keys, not both."))
               case (None, None) => Left(ArgsError.Missing("key", "an artifact's key, or give keys"))
@@ -732,7 +734,8 @@ private[plugin] final class ProjectCommands(
         kept <- stored(own.documents.versions(where._1, where._2, HistoryMost))
         text <- args.diff match {
           case None =>
-            refuse(every(kept.map(listed))).map(AnswerText.versions(_, "No version is kept."))
+            refuse(Traversal.sequence(kept.map(listed)))
+              .map(AnswerText.versions(_, "No version is kept."))
           case Some((from, to)) =>
             def file(n: Long): Either[Stop, String] =
               kept
@@ -937,7 +940,7 @@ private[plugin] final class ProjectCommands(
         hits <- stored(own.documents.search(args.query, FoundAmong, at))
         // A project's index is no artifact: its key has no `/`.
         documents = hits.map(_.document).filter(d => ArtifactKey.read(DocKey.value(d.key)).isRight)
-        artifacts <- refuse(every(documents.map(readable)))
+        artifacts <- refuse(Traversal.sequence(documents.map(readable)))
         heads = artifacts
           .map(_.head)
           .filter(h => args.project.forall(_ == h.key.project))
@@ -1279,7 +1282,7 @@ private[plugin] final class ProjectCommands(
         .refine(a =>
           for {
             project <- parsed("project", a.project, ProjectKey.of)
-            kinds <- each("kinds", a.kinds.toVector, KindName.of)
+            kinds <- Traversal.traverse(a.kinds.toVector)(parsed("kinds", _, KindName.of))
             before <- parsed("before", a.before, day)
             // `show` reads only as one of the three `oneOf` names, each a group's.
             show = a.show
@@ -1720,7 +1723,9 @@ private[plugin] object ProjectCommands {
           else parsed("parent", p, ArtifactKey.read).map(k => Some(Some(k)))
         }
         cites <- cites
-          .fold(Right(None))(cs => each("cites", cs.toVector, ArtifactKey.read).map(Some(_)))
+          .fold(Right(None))(cs =>
+            Traversal.traverse(cs.toVector)(parsed("cites", _, ArtifactKey.read)).map(Some(_))
+          )
         version <- version.fold(Right(None))(v =>
           DocumentVersionId
             .of(v)
@@ -2074,7 +2079,7 @@ private[plugin] object ProjectCommands {
       pin <- pinned(own, project)
       holding <- refuse(ArtifactJson.holding(project))
       documents <- stored(own.referring(holding, Projects.Terms.bound))
-      artifacts <- refuse(every(documents.map(d => readable(d).map(d -> _))))
+      artifacts <- refuse(Traversal.sequence(documents.map(d => readable(d).map(d -> _))))
     } yield Loaded(pin, artifacts)
   }
 
@@ -2714,18 +2719,4 @@ private[plugin] object ProjectCommands {
       read: String => Either[String, A]
   ): Either[ArgsError, A] =
     read(value).left.map(ArgsError.Refused(field, _))
-
-  private def each[A](
-      field: String,
-      values: Vector[String],
-      read: String => Either[String, A]
-  ): Either[ArgsError, Vector[A]] =
-    values.foldLeft[Either[ArgsError, Vector[A]]](Right(Vector.empty)) { (acc, v) =>
-      acc.flatMap(as => parsed(field, v, read).map(as :+ _))
-    }
-
-  private def every[A](each: Vector[Either[String, A]]): Either[String, Vector[A]] =
-    each.foldLeft[Either[String, Vector[A]]](Right(Vector.empty)) { (acc, e) =>
-      acc.flatMap(as => e.map(as :+ _))
-    }
 }
