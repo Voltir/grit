@@ -815,7 +815,7 @@ object TopicDreamTests extends TestSuite {
       val _ = runs.run(
         day = Some(Day.plusDays(1)),
         now = StrandWorld.at(86400 + 3600),
-        attach = (_, _) => placed(Seq(group("1", Seq(1))))
+        sort = judging("1")
       )
       // A run whose day is `days` after Day, an hour into it.
       def after(days: Int) = runs.run(
