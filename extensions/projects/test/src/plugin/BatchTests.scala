@@ -5,7 +5,7 @@ import grit.core.tool.{ArgsError, ToolName}
 
 import utest.*
 
-/** `project_batch`: keeps and moves in order, all or none, and a dry run of them. */
+/** `project_batch`: keeps, edits and moves in order, all or none, and a dry run of them. */
 object BatchTests extends TestSuite {
   import CommandFixtures.*
 
@@ -21,6 +21,26 @@ object BatchTests extends TestSuite {
 
   private def move(key: String, state: String): ujson.Obj =
     ujson.Obj("command" -> "move", "key" -> key, "state" -> state)
+
+  /** An edit step of `key`, read at `version`, replacing `old` with `replaced`. */
+  private def edit(key: String, version: Long, old: String, replaced: String): ujson.Obj =
+    ujson.Obj(
+      "command" -> "edit",
+      "key" -> key,
+      "version" -> version,
+      "old" -> old,
+      "new" -> replaced
+    )
+
+  /** Why `answer` refused, or what it was when it did not. */
+  private def why(answer: CommandOutcome): String = answer match {
+    case CommandOutcome.Refused(why) => why
+    case other => other.toString
+  }
+
+  /** The version `project_history` lists first for `key`: its current one. */
+  private def current(projects: Projects, store: Store, key: String): Long =
+    done(ask(projects, store, "project_history", "key" -> key)).takeWhile(_ != ' ').toLong
 
   private def batch(projects: Projects, store: Store, steps: ujson.Obj*): CommandOutcome =
     ask(projects, store, "project_batch", "project" -> "p", "steps" -> ujson.Arr(steps*))
@@ -161,6 +181,98 @@ object BatchTests extends TestSuite {
         Some(
           ArgsError
             .Refused("steps", "A move takes key and state alone; step 1 gives title.")
+            .message
+        )
+      )
+    }
+
+    test(
+      "a batch's edit changes the body the steps before it left, its version that of the artifact before the batch"
+    ) {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "a", "note", "First.")
+      val read = current(projects, store, "p/a")
+      val answer = batch(
+        projects,
+        store,
+        keep("p/a", "First. Second.", "version" -> read),
+        edit("p/a", read, "Second.", "Third.")
+      )
+      (
+        answer,
+        shown(projects, store, "p/a").contains("First. Third."),
+        versions(projects, store, "p/a")
+      ) ==>
+        (
+          CommandOutcome.Done(
+            "Every step is done:\n1. Kept p/a (note, open).\n2. Kept p/a (note, open)."
+          ),
+          true,
+          2
+        )
+    }
+
+    test("a batch's edit refused as project_edit refuses it keeps nothing, naming the step") {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "a", "note", "First.")
+      val read = current(projects, store, "p/a")
+      val alone = ask(
+        projects,
+        store,
+        "project_edit",
+        "key" -> "p/a",
+        "version" -> read,
+        "old" -> "Absent.",
+        "new" -> "Here."
+      )
+      val inBatch =
+        batch(projects, store, move("p/a", "closed"), edit("p/a", read, "Absent.", "Here."))
+      (alone, inBatch, versions(projects, store, "p/a")) ==> (
+        CommandOutcome.Refused(why(alone)),
+        CommandOutcome.Refused(
+          s"Nothing was kept: step 2 of 2 (edit p/a) was refused: ${why(alone)}"
+        ),
+        1
+      )
+    }
+
+    test("a batch refuses an edit given a keep's or a move's fields, no version, or no change") {
+      val projects = plugin()
+      def steps(step: ujson.Obj) = ujson.Obj("project" -> "p", "steps" -> ujson.Arr(step))
+      val titled = edit("p/a", 1, "x", "y")
+      titled("title") = "T"
+      titled("state") = "closed"
+      val unversioned = edit("p/a", 1, "x", "y")
+      unversioned.value.remove("version")
+      val unchanged = ujson.Obj("command" -> "edit", "key" -> "p/a", "version" -> 1)
+      (
+        unread(projects, steps(titled)),
+        unread(projects, steps(unversioned)),
+        unread(
+          projects,
+          steps(unchanged)
+        )
+      ) ==> (
+        Some(
+          ArgsError
+            .Refused(
+              "steps",
+              "An edit takes key, version, and old and new or section and body; step 1 gives " +
+                "state, title."
+            )
+            .message
+        ),
+        Some(ArgsError.Refused("steps", "An edit needs its version; step 1 gives none.").message),
+        Some(
+          ArgsError
+            .Refused(
+              "steps",
+              "Step 1: " + ArgsError.Missing("old", "old and new, or section and body").message
+            )
             .message
         )
       )

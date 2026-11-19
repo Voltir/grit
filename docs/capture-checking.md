@@ -264,6 +264,14 @@ the caller's side: `args.read(json).map(_.edits.size)`, where `edits: Vector[…
 *"hides non-local value x$proxy"*), and the lambda's parameter type is too long to write out.
 `Field.each` reads a `List`, which has no array inside, so the lambda compiles.
 
+**An `Args.of` of twelve fields, passed to `Field.each`.**
+
+- *Symptom:* the outer `Args.of` is rejected, its `Found` the inner named tuple intersected
+  (`&`) with the same tuple unnamed, its `Required` the named tuple alone, every element
+  carrying a capture-set variable (`^'s1` … `^'s29`). Eleven fields compile.
+- *Fix:* give the inner `Args` value its named-tuple type explicitly (`project_batch`'s
+  `BatchStep`).
+
 **A class that holds a collection of capturing values.**
 
 - *Symptom:* `Local reach capability Toolbox.this.tools* leaks into capture scope of class
