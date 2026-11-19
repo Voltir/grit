@@ -1357,11 +1357,11 @@ private[plugin] final class ProjectCommands(
             planned.artifacts.map(a => a.before -> a.after.head.called),
           "re-key"
         )
-        _ <- planned.artifacts.foldLeft[Either[Stop, Unit]](Right(())) { (so, a) =>
-          so.flatMap(_ => kept(own, a.after, Some(a.before), Some(a.before), at).map(_ => ()))
-        }
-        _ <- planned.table.foldLeft[Either[Stop, Unit]](Right(())) { (so, t) =>
-          so.flatMap(_ =>
+        _ <- Traversal
+          .traverse(planned.artifacts)(a => kept(own, a.after, Some(a.before), Some(a.before), at))
+          .map(_ => ())
+        _ <- Traversal
+          .traverse(planned.table)(t =>
             for {
               there <- stored(own.current(t.key, t.label))
               _ <- there.fold(Right(()))(_ =>
@@ -1380,7 +1380,7 @@ private[plugin] final class ProjectCommands(
               _ <- keptEverywhere(own, t.key, t.label, Tx.top, text, t.data, Set.empty, at)
             } yield ()
           )
-        }
+          .map(_ => ())
         _ <- rewroteIndex(own, project, index, pin, planned.next, author(by), at)
       } yield rekeyAnswer(project, planned, dry = false)
 
@@ -1935,19 +1935,17 @@ private[plugin] final class ProjectCommands(
           )
           writer = Some(author(by))
           before = project.documents.map((d, a) => a.head.key -> d).toMap
-          _ <- done.project.artifacts
-            .filter(a => renamed(a.head.key))
-            .foldLeft[Either[Stop, Unit]](Right(())) { (so, a) =>
-              so.flatMap(_ =>
-                kept(
-                  own,
-                  Artifact(a.head.copy(by = writer), a.body),
-                  before.get(a.head.key),
-                  before.get(a.head.key),
-                  at
-                ).map(_ => ())
+          _ <- Traversal
+            .traverse(done.project.artifacts.filter(a => renamed(a.head.key)))(a =>
+              kept(
+                own,
+                Artifact(a.head.copy(by = writer), a.body),
+                before.get(a.head.key),
+                before.get(a.head.key),
+                at
               )
-            }
+            )
+            .map(_ => ())
           _ <- rewroteIndex(
             own,
             args.project,
@@ -3715,19 +3713,18 @@ private[plugin] object ProjectCommands {
   )(using Locked): Either[Stop, Unit] = {
     val writer = Some(author(by))
     for {
-      _ <- docs.uncited.foldLeft[Either[Stop, Unit]](Right(())) { case (so, (d, a)) =>
-        so.flatMap(_ =>
+      _ <- Traversal
+        .traverse(docs.uncited)((d, a) =>
           kept(own, Artifact(a.head.copy(by = writer), a.body), Some(d), Some(d), at)
-            .map(_ => ())
         )
-      }
-      _ <- docs.gone.foldLeft[Either[Stop, Unit]](Right(())) { case (so, (d, a)) =>
-        so.flatMap(_ =>
+        .map(_ => ())
+      _ <- Traversal
+        .traverse(docs.gone)((d, a) =>
           stored(own.withdraw(d.key, d.label, at)).flatMap(
-            _.toRight(Stop.Refused(s"${a.head.key.value} was withdrawn meanwhile")).map(_ => ())
+            _.toRight(Stop.Refused(s"${a.head.key.value} was withdrawn meanwhile"))
           )
         )
-      }
+        .map(_ => ())
     } yield ()
   }
 
