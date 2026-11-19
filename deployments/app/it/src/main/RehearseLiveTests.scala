@@ -29,17 +29,15 @@ import grit.core.plugin.Plugin
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.speech.{Limits, Reach, ReplyTo, Speaking}
 import grit.core.spend.{Budget, DailyCap}
-import grit.core.stitch.{StrandShelf, Tuning}
+import grit.core.stitch.Tuning
 import grit.core.store.{Origin, StoreError, Tx}
-import grit.core.visibility.{Integrity, Label, Subject, Visibility}
+import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Placer}
 import grit.kit.rehearse.{RehearsalRunner, Rehearse, Rehearsed, Situation, StandIns, Taps}
 import grit.kit.run.Launch
-import grit.knowledge.card.CardSummary
-import grit.knowledge.plugin.{StandingDocuments, StrandDocuments}
-import grit.knowledge.strand.StrandDocument
+import grit.knowledge.plugin.StandingDocuments
 import grit.models.{KeptCatalog, StubClassifier, StubProvider}
 import grit.turn.{Turn, TurnJudge, TurnLoop, TurnRelevance}
 
@@ -86,22 +84,6 @@ object RehearseLiveTests extends TestSuite {
 
   private val deployment: Deployment =
     deployed(Assembly.Retrieval(Tokens(8000), Tokens(2000)), Speaking.Off)
-
-  /** The strands plugin at public. */
-  private val strands: StrandDocuments =
-    StrandDocuments
-      .of(
-        PluginName.of("strands").fold(sys.error, identity),
-        Vector(Label.Public),
-        java.time.LocalTime.of(4, 30),
-        java.time.ZoneOffset.UTC,
-        Visibility.Shipped
-      )
-      .fold(sys.error, identity)
-
-  /** [[deployment]], with the strands plugin's documents. */
-  private val dreaming: Deployment =
-    deployed(Assembly.Retrieval(Tokens(8000), Tokens(2000)), Speaking.Off, Vector(strands))
 
   /** Drafting where it is not addressed, in shadow: a draft is judged and never posted. Its gate
     * reads `gap` alone, which the stand-in answers `asks`; the stub answers every yes/no alike,
@@ -477,117 +459,6 @@ object RehearseLiveTests extends TestSuite {
         Vector(Turn.Step.Judge),
         Some(RehearsalRunner.Came.Stopped(Turn.Step.RecordSpeech))
       )
-    }
-
-    test(
-      "a strand's document in its room is shown to the relevance judge and in the turn's window, under its label"
-    ) {
-      val config = TestPostgres.freshDatabase("rehearse_strand")
-      val clock = new SetClock(Now)
-      val seed = Taps.seed(dreaming.policy).fold(sys.error, identity)
-      val engine = LiveEngine.open(config, Turn.Epoch, clock = clock)
-      val summary = CardSummary
-        .of(
-          "Ana and Bo traced the flaky deploy pipeline to the shared test database; they agreed " +
-            "to give each suite its own.",
-          Vector("deploy pipeline", "shared database")
-        )
-        .fold(sys.error, identity)
-      val shown =
-        try {
-          val cleared = ClearedClassifier.of(StubClassifier.Service, new Asked)
-          Launch.asking(
-            engine,
-            dreaming,
-            Map.empty,
-            new Through(seed, engine, new Capturing),
-            cleared,
-            cleared,
-            Launch.area(
-              engine,
-              dreaming,
-              Launch
-                .filesDir(None, config, Launch.temp)
-            ),
-            _ => ()
-          )
-          val opened = Origin.Slack("T1", "C1", "1.0")
-          engine.inbox.hear(
-            opened,
-            SourceId("1.0"),
-            "the deploy pipeline failed again on the integration suite",
-            Account.Local,
-            Now,
-            Reach.Nowhere,
-            None
-          ) ==> Right(())
-          within(() => settled(config)) ==> true
-          def right[A](e: Either[StoreError, A]): A = e.fold(x => sys.error(x.toString), identity)
-          val root = right(engine.db.read(Subject.Public)(engine.conversations.find(opened)))
-            .getOrElse(sys.error("heard"))
-            .id
-          // The document a dream run writes for this strand, as its keep writes it, before the
-          // turn's message, as a nightly run's is: a document is drawn on once current.
-          right(engine.jot.write(Subject.Public) {
-            StrandShelf
-              .over(engine.stitches, engine.conversations)
-              .of(Vector(root), Now.plusSeconds(1))
-              .flatMap(_.headOption.toRight(StoreError.Invalid("no strand")))
-              .flatMap(seen =>
-                strands.documents
-                  .fold[Either[StoreError, Any]](Left(StoreError.Invalid("no documents")))(d =>
-                    engine
-                      .keeper(strands.name, d.terms)
-                      .write(
-                        StrandDocument.key(root),
-                        Label.Public,
-                        Integrity.Member,
-                        seen.room,
-                        StrandDocument.text(seen, summary),
-                        StrandDocument.data(seen),
-                        None,
-                        Now.minusSeconds(60)
-                      )
-                  )
-              )
-              .map(_ => ())
-          })
-          Rehearse
-            .dry(
-              config,
-              dreaming,
-              Situation.Said(
-                Origin.Slack("T1", "C1", "2.0"),
-                Account.Local,
-                "@grit what did we decide about the flaky deploy pipeline?"
-              ),
-              StandIns.Stubbed,
-              clock
-            )
-            .fold(sys.error, identity)
-        } finally engine.close()
-      val judged = shown.calls.collect {
-        case Rehearsed.Call(Some(step), _, _, Rehearsed.Input.Classifier(state, _), _)
-            if step.startsWith("ask:relevance") =>
-          state.objOpt
-            .flatMap(_.get("candidates"))
-            .flatMap(_.arrOpt)
-            .toVector
-            .flatten
-            .flatMap(_.strOpt)
-      }
-      val asked = shown.calls.collect {
-        case Rehearsed.Call(Some("ask:0"), _, _, Rehearsed.Input.Model(r), _) =>
-          r.messages.collect { case Message.User(t) => t }
-      }
-      val block = "[doc] room discussion, at slack:T1/C1, 2026-10-17:\n" +
-        "1 thread in this room, 1 message, from 2026-10-17 to 2026-10-17.\n\n" +
-        s"${summary.summary}\n\nTerms: deploy pipeline, shared database"
-      (
-        judged.flatten.filter(_.startsWith("[doc]")),
-        asked.flatten.filter(_.startsWith("[doc]"))
-      ) ==>
-        (Vector(block), Vector(block))
     }
   }
 }

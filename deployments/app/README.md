@@ -52,9 +52,7 @@ In dependency order:
     serve` serves, and over Drive's shared drives when `GRIT_DRIVE_SA_KEY` is set, carded at
     each label `GRIT_DRIVE_CARD_LABELS` lists (written forms, comma-separated, none below
     internal), synced through the Drive edge; refused at start with neither, or with a part
-    of either unset; `PluginChoices.knowledge`; `strands`, one document per strand of a room, dreamed
-    daily at 04:30 at each label `GRIT_STRAND_LABELS` lists, refused at start without one;
-    `PluginChoices.strands`; `topics`, one document per subject found across strands and cards,
+    of either unset; `PluginChoices.knowledge`; `topics`, one document per subject found across strands and cards,
     dreamed daily at 05:00 at each label `GRIT_TOPIC_LABELS` lists, reading the knowledge
     plugin's cards when `knowledge` is listed before it, each night through the day
     `GRIT_TOPICS_SEED_UNTIL` names offering the next batch of every card no run has placed;

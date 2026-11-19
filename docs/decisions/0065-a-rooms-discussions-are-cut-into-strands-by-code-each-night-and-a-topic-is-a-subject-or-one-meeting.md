@@ -11,7 +11,7 @@ best, and per-message units worse. The same replay found a confidence mark on
 the sort's choice cost more than it saved, and that a meeting talked about over several messages
 is one occurrence with a day, a start and people, not a subject.
 
-Turned down: stitching the top level live; the scan reading entries itself, which ADR 0042 keeps
+Turned down: stitching the top level live; the scan reading entries itself, which ADR 0066 keeps
 out of a job's code; and a mark under which a chosen topic is set aside.
 
 Decision:

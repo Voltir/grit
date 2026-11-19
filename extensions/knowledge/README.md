@@ -7,10 +7,6 @@ alone: a source is read through the MCP tools a deployment offers, never a clien
 Beside the cards, a second plugin keeps what each closed conversation settled as a document
 (`StandingDocuments`, over `standing`).
 
-Strand documents: by a third plugin in the same module, one short document per strand of a
-room's threads (ADR 0060), summarised from what its members said, so a window and the
-relevance judge see a topic spread over threads as one thing.
-
 Packages, in one-way order (each names only those before it):
 
 - **`ref`**: the names knowledge refers by: `Ref` (a strand, a topic, a Drive file, a GitHub
@@ -50,11 +46,6 @@ Packages, in one-way order (each names only those before it):
   of the least label dominating what its listing was read at. A file's pointer is `drive_read`
   with its id; its card is written at when it last changed, titled with its name. Imports
   `ref`, `card` and `sync`, never `github`.
-- **`strand`**: a strand's document (ADR 0042), one per strand root of three threads or more
-  with enough said, kept at its room's label: its key, text and data, and `StrandDream`, the
-  dreaming job `strands-dream`, which scans the strands of its run's rooms by ids and counts,
-  has core summarise each changed one from what its members said, and keeps or withdraws
-  their documents. Its code never holds a message's text. Imports `card`.
 - **`standing`**: `Standing`, what each earned closing settled as a document: the decisions
   and facts a person or a tool established at a conversation's close (its Standing lines),
   one document per close, with no model call; its terms, posting and data. Names core alone.
@@ -66,8 +57,8 @@ Packages, in one-way order (each names only those before it):
   with refs to what it was written from and links; and a topic's review as an edge posts it
   (`TopicPrompt`: its lead, whether the day opened it, that day's strands by root and its
   cards' titles) with the four verdicts a rater gives it (`TopicVerdict`). Its code never
-  holds a message's or a card's text. Imports `ref`, `card` and `grit.prose`; never `strand`,
-  `sync` or a source.
+  holds a message's or a card's text. Imports `ref`, `card` and `grit.prose`; never `sync` or a
+  source.
 - **`declassify`**: `CardDeclassify`, the dreaming job `cards-declassify`, which reads the
   current cards by their pointers and revisions, asks for each the application in force,
   withdraws in its scan every own document but its withholding that is not a rewrite of a card's
@@ -80,10 +71,10 @@ Packages, in one-way order (each names only those before it):
   rewrite's text. Imports `card`.
 - **`plugin`**: wiring only. `Knowledge`, the plugin over a deployment's sources: its
   documents' terms, the `Sync` job, each source's sync schedules (the keys in `Knowledge`'s
-  doc), and its export, a `CardShelf`; `StrandDocuments`, the strands plugin: the
-  `StrandDream` job on a daily schedule per label it is declared at, and its documents' terms;
-  `TopicDocuments`, the topics plugin, the same for `TopicDream`, needing the plugin that
-  exports its cards when given one (`DreamSchedules` holds what the two share);
+  doc), and its export, a `CardShelf`; `TopicDocuments`, the topics plugin: the `TopicDream`
+  job on a daily schedule per label it is declared at, and its documents' terms, needing the
+  plugin that exports its cards when given one (`DreamSchedules` holds what it shares with
+  `DeclassifiedCards`);
   `DeclassifiedCards`, the plugin of `CardDeclassify` on one schedule, needing that plugin,
   whose policies and their applications an operator sets by the SQL beside
   `grit.declassification_policies` and `grit.declassification_applications` in `schema.sql`; and

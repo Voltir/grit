@@ -23,7 +23,7 @@ Decision:
   derivation that reads raw messages only while they are kept, holds nothing back and is
   withdrawn as they age out does not meet that reason, and is allowed through core alone: a
   dreaming job sees strands by id and count while core summarises their messages for it
-  (ADR 0042), so its code never holds a message's text. Posting runs in a
+  (ADR 0066), so its code never holds a message's text. Posting runs in a
   durable workflow of its own, triggered by a close, outside the turn's steps, so a plugin
   can be swapped, disabled or rebuilt without a patch or an epoch. Its documents are either
   a cache, made from one closing, rebuilt from closings and dropped with them, or a ledger's,
@@ -36,7 +36,7 @@ Decision:
   the dependency exports, a trait over its own documents, handed over when the deployment is
   built: to its tools, and to its dreaming jobs' scans, in the scan's transaction (a command
   reaches no service: ADR 0053). No plugin reads or writes another's documents directly. Core alone shows a model another plugin's
-  documents for a dreaming job's summary (ADR 0042), and only those of the plugins the job's
+  documents for a dreaming job's summary (ADR 0066), and only those of the plugins the job's
   plugin needs, read under the transaction's labels and believed at the meet of what was read.
 - **`Deployment.of` refuses a plugin whose dependency is not among the deployment's
   plugins** (`PluginUnmet`), naming both.

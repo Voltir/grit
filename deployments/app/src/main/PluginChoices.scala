@@ -11,13 +11,7 @@ import grit.core.visibility.{Label, Visibility}
 import grit.digest.Digest
 import grit.knowledge.drive.DriveCards
 import grit.knowledge.github.GitHubCards
-import grit.knowledge.plugin.{
-  CardSource,
-  Knowledge,
-  StandingDocuments,
-  StrandDocuments,
-  TopicDocuments
-}
+import grit.knowledge.plugin.{CardSource, Knowledge, StandingDocuments, TopicDocuments}
 import grit.knowledge.sync.SyncSchedule
 import grit.mcp.drive.DriveTools
 import grit.remind.Reminders
@@ -34,8 +28,7 @@ private[main] object PluginChoices {
   /** The plugins `GRIT_PLUGINS` turns on, a comma-separated list of names; none when unset.
     * Those there are: `digest` ([[Digest]]), `remind` ([[Reminders]]), `knowledge`
     * ([[knowledge]], under `visibility`, its days beginning in `zone`, carding the Drive files
-    * `formats` reads), `strands`
-    * ([[strands]], likewise), `topics` ([[topics]], likewise, reading the knowledge plugin's
+    * `formats` reads), `topics` ([[topics]], likewise, reading the knowledge plugin's
     * cards when it is listed, which it must be before `topics`) and `standing` ([[StandingDocuments]], leaving out what a reminder
     * tool's result established).
     */
@@ -54,11 +47,6 @@ private[main] object PluginChoices {
               case "remind" => Right(done :+ new Reminders(name))
               case "knowledge" =>
                 knowledge(name, env, visibility, zone, formats)
-                  .map(done :+ _)
-                  .left
-                  .map(why => s"$PluginsVar: $why")
-              case "strands" =>
-                strands(name, env, visibility, zone)
                   .map(done :+ _)
                   .left
                   .map(why => s"$PluginsVar: $why")
@@ -84,34 +72,12 @@ private[main] object PluginChoices {
                 )
               case other =>
                 Left(
-                  s"$PluginsVar: no plugin $other; there are digest, remind, knowledge, strands, topics and standing"
+                  s"$PluginsVar: no plugin $other; there are digest, remind, knowledge, topics and standing"
                 )
             }
           }
         }
       }
-
-  /** The labels the strands plugin's schedules are declared at, written forms, comma-separated.
-    */
-  private[main] val StrandLabelsVar = "GRIT_STRAND_LABELS"
-
-  /** The strands plugin `name` ([[StrandDocuments]]), its runs daily at 04:30 in `zone`, one
-    * schedule at each label [[StrandLabelsVar]] names; or why not: the variable unset, blank,
-    * or naming no label, or [[StrandDocuments.of]]'s refusal under `visibility`.
-    */
-  private[main] def strands(
-      name: PluginName,
-      env: Map[String, String],
-      visibility: Visibility,
-      zone: java.time.ZoneId
-  ): Either[String, StrandDocuments] =
-    for {
-      labels <- labelsOf(env, StrandLabelsVar, "strands")
-      plugin <- StrandDocuments
-        .of(name, labels, java.time.LocalTime.of(4, 30), zone, visibility)
-        .left
-        .map(why => s"strands: $why")
-    } yield plugin
 
   /** The labels the topics plugin's schedules are declared at, written forms, comma-separated.
     */
@@ -123,7 +89,7 @@ private[main] object PluginChoices {
   private[main] val TopicSeedVar = "GRIT_TOPICS_SEED_UNTIL"
 
   /** The topics plugin `name` ([[TopicDocuments]]), its runs daily at 05:00 in `zone`, after
-    * the knowledge plugin's syncs and the strands', one schedule at each label
+    * the knowledge plugin's syncs, one schedule at each label
     * [[TopicLabelsVar]] names, reading `cards`' cards when given, seeding through the day
     * [[TopicSeedVar]] names; or why not: the labels' variable unset, blank, or naming no label,
     * the seed's not `yyyy-mm-dd`, or [[TopicDocuments.of]]'s refusal under `visibility`.

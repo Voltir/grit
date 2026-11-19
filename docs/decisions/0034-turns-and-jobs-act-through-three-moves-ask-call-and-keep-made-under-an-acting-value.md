@@ -50,7 +50,7 @@ Decision:
   permanent result.
 - **Whose a job is says what it may do**: a plain job asks and calls; a plugin's keeping job
   also keeps, under its plugin's document terms; a dreaming job's keeps may also read strands
-  by id and count, and core summarises one for its asks (ADR 0042). A deployment with either
+  by id and count, and core summarises one for its asks (ADR 0066). A deployment with either
   for a plugin declaring no documents is refused.
 - **Every result carries a bound on its content's label**: for now, its actor's floor. A label
   below it is a declassification (ADR 0036's `Downgrade`).

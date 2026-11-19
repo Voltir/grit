@@ -130,10 +130,16 @@ object PluginChoiceTests extends TestSuite {
       )
     }
 
-    test("a plugin grit does not have, or a name no plugin could have, is refused") {
+    test(
+      "a plugin grit does not have, strands since it was retired, or a name no plugin could have, is refused"
+    ) {
       choice(Map("GRIT_PLUGINS" -> "digest,wiki")) ==>
         Left(
-          "GRIT_PLUGINS: no plugin wiki; there are digest, remind, knowledge, strands, topics and standing"
+          "GRIT_PLUGINS: no plugin wiki; there are digest, remind, knowledge, topics and standing"
+        )
+      choice(Map("GRIT_PLUGINS" -> "strands", "GRIT_STRAND_LABELS" -> "public")) ==>
+        Left(
+          "GRIT_PLUGINS: no plugin strands; there are digest, remind, knowledge, topics and standing"
         )
       choice(Map("GRIT_PLUGINS" -> "Digest")) ==> Left(
         "GRIT_PLUGINS: a plugin's name is lowercase letters, digits and dashes, starting with a letter"
@@ -160,31 +166,6 @@ object PluginChoiceTests extends TestSuite {
               SlotRule.Daily(LocalTime.of(3, 0), zone),
               ujson.Obj("source" -> "github", "perRun" -> 30),
               Label.Public
-            )
-          )
-        )
-      )
-    }
-
-    test(
-      "strands, at the labels GRIT_STRAND_LABELS names, dreams daily at 04:30 at each, keyed by its label"
-    ) {
-      val env = Map("GRIT_PLUGINS" -> "strands", "GRIT_STRAND_LABELS" -> "public, internal")
-      (names(env), scheduled(env)) ==> (
-        Right(Vector(("StrandDocuments", "strands"))),
-        Right(
-          Vector(
-            (
-              "strands-dream-public",
-              SlotRule.Daily(LocalTime.of(4, 30), zone),
-              ujson.Obj("perRun" -> 5, "reach" -> "PT48H"),
-              Label.Public
-            ),
-            (
-              "strands-dream-internal",
-              SlotRule.Daily(LocalTime.of(4, 30), zone),
-              ujson.Obj("perRun" -> 5, "reach" -> "PT48H"),
-              Label.at(Level.Internal)
             )
           )
         )
@@ -270,23 +251,6 @@ object PluginChoiceTests extends TestSuite {
         Left(
           "GRIT_PLUGINS: topics reads the knowledge plugin's cards, so knowledge comes before it"
         )
-      )
-    }
-
-    test("strands with no label, or a label that does not read, is refused, naming its variable") {
-      (
-        choice(Map("GRIT_PLUGINS" -> "strands")),
-        choice(Map("GRIT_PLUGINS" -> "strands", "GRIT_STRAND_LABELS" -> " , ")),
-        choice(Map("GRIT_PLUGINS" -> "strands", "GRIT_STRAND_LABELS" -> "loud")).left
-          .map(_.startsWith("GRIT_PLUGINS: GRIT_STRAND_LABELS: loud"))
-      ) ==> (
-        Left(
-          "GRIT_PLUGINS: strands keeps documents at the labels GRIT_STRAND_LABELS names, and it is unset or blank"
-        ),
-        Left(
-          "GRIT_PLUGINS: strands keeps documents at the labels GRIT_STRAND_LABELS names, and it is unset or blank"
-        ),
-        Left(true)
       )
     }
 

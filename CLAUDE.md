@@ -48,7 +48,7 @@ area`, and the README in its folder (package order, and what the code cannot say
 | `grit.job` | `run`, `clock` | core, act | jobs (ADR 0029): a job's run, and the clock edge that starts it; names no `grit.turn` |
 | `grit.digest` | `grit.digest` | core | the hello-world plugin |
 | `grit.remind` | `grit.remind` | core | the reminders plugin |
-| `grit.knowledge` | `ref`, `card`, `sync`, `github`, `drive`, `strand`, `standing`, `topic`, `declassify`, `plugin` | core, prose | the plugin that keeps cards of a declared source (ADR 0028) |
+| `grit.knowledge` | `ref`, `card`, `sync`, `github`, `drive`, `standing`, `topic`, `declassify`, `plugin` | core, prose | the plugin that keeps cards of a declared source (ADR 0028) |
 | `grit.projects` | `name`, `artifact`, `method`, `render`, `plugin` | core, prose | the plugin that keeps a project's artifacts under its method (ADR 0049) |
 | `grit.models` | `grit.models` | core | `Provider`s and `Classifier`s |
 | `grit.formats` | `limits`, `tree`, `ooxml`, `google`, `pdf`, `choice` | core | the readers of PDF, Word, Excel and Google Slides files (ADR 0044), and PDFBox's quarantine |
