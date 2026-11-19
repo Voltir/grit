@@ -1,0 +1,990 @@
+{
+"ii": {
+"rows": [
+{
+"set": "SELF",
+"right": "topic:strand-01a15f10-4ea1-79b9-9f33-4e73f1aa68cf",
+"got": "topic:strand-01a15f10-4ea1-79b9-9f33-4e73f1aa68cf",
+"p": 0.95,
+"keys": 70,
+"tokens": 10260,
+"chars": 37343
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a15f52-f908-779d-8441-c595ec4b0537",
+"got": "topic:strand-01a15f52-f908-779d-8441-c595ec4b0537",
+"p": 1.0,
+"keys": 70,
+"tokens": 10409,
+"chars": 37883
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-8c4a-7e89-bb5e-912f8effaab7",
+"got": "topic:strand-01a17e05-8c4a-7e89-bb5e-912f8effaab7",
+"p": 1.0,
+"keys": 70,
+"tokens": 10292,
+"chars": 37503
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-9052-737b-bc61-5f52b6811f3e",
+"got": "topic:strand-01a17e05-9052-737b-bc61-5f52b6811f3e",
+"p": 0.59,
+"keys": 70,
+"tokens": 10307,
+"chars": 37548
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-9303-7ae2-ab1a-c193be7a4a71",
+"got": "topic:strand-01a17e05-9303-7ae2-ab1a-c193be7a4a71",
+"p": 0.58,
+"keys": 70,
+"tokens": 10365,
+"chars": 37758
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a1b2de-58fb-7346-a209-d66215a2d622",
+"got": "topic:strand-01a1b2de-58fb-7346-a209-d66215a2d622",
+"p": 1.0,
+"keys": 70,
+"tokens": 10298,
+"chars": 37521
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a1b2d6-c315-7ca2-9659-086984c7e0bf",
+"got": "topic:strand-01a1b2d6-c315-7ca2-9659-086984c7e0bf",
+"p": 1.0,
+"keys": 70,
+"tokens": 10591,
+"chars": 38221
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a154eb-92c9-7b3f-bcd7-571b6713d6e4",
+"got": "topic:strand-01a154eb-92c9-7b3f-bcd7-571b6713d6e4",
+"p": 1.0,
+"keys": 70,
+"tokens": 10370,
+"chars": 37873
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e58-837e-79e7-a975-c41c3c388148",
+"got": "topic:strand-01a17e58-837e-79e7-a975-c41c3c388148",
+"p": 0.55,
+"keys": 70,
+"tokens": 10251,
+"chars": 37320
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e34-fac9-74a6-92e5-455b0aa2ea6d",
+"got": "topic:strand-01a17e34-fac9-74a6-92e5-455b0aa2ea6d",
+"p": 0.99,
+"keys": 70,
+"tokens": 10527,
+"chars": 38493
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-dc08-72d4-be94-d182d05dee94",
+"got": "topic:strand-01a17e05-dc08-72d4-be94-d182d05dee94",
+"p": 0.6,
+"keys": 70,
+"tokens": 10266,
+"chars": 37381
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-e175-7d9f-b72a-1395ff4dc94b",
+"got": "topic:strand-01a17e05-e175-7d9f-b72a-1395ff4dc94b",
+"p": 0.98,
+"keys": 70,
+"tokens": 10253,
+"chars": 37351
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-e5d6-795b-b19b-1a2a9d793d1d",
+"got": "topic:strand-01a17e05-e5d6-795b-b19b-1a2a9d793d1d",
+"p": 1.0,
+"keys": 70,
+"tokens": 10265,
+"chars": 37379
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a1888e-645c-7ec2-94a2-8fc173f39722",
+"got": "topic:strand-01a1888e-645c-7ec2-94a2-8fc173f39722",
+"p": 1.0,
+"keys": 70,
+"tokens": 10308,
+"chars": 37573
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a1a3a5-0863-7802-a46c-fc94cf8cc6c1",
+"got": "topic:strand-01a1a3a5-0863-7802-a46c-fc94cf8cc6c1",
+"p": 1.0,
+"keys": 70,
+"tokens": 10416,
+"chars": 38051
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a16496-78eb-76c0-9cdc-f71eaa555553",
+"got": "topic:strand-01a16496-78eb-76c0-9cdc-f71eaa555553",
+"p": 0.87,
+"keys": 70,
+"tokens": 10271,
+"chars": 37401
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a164b4-8b95-705d-9259-90f8391d7f0e",
+"got": "topic:strand-01a164b4-8b95-705d-9259-90f8391d7f0e",
+"p": 0.65,
+"keys": 70,
+"tokens": 10258,
+"chars": 37338
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a16570-e7d5-7545-93cb-50daf4b135e8",
+"got": "topic:strand-01a16570-e7d5-7545-93cb-50daf4b135e8",
+"p": 1.0,
+"keys": 70,
+"tokens": 10590,
+"chars": 38753
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a169f0-8e77-722b-97c9-12a112955b05",
+"got": "topic:strand-01a169f0-8e77-722b-97c9-12a112955b05",
+"p": 0.99,
+"keys": 70,
+"tokens": 10503,
+"chars": 38391
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a16a04-147c-7c54-9c1e-edf0dc1977ca",
+"got": "topic:strand-01a16a04-147c-7c54-9c1e-edf0dc1977ca",
+"p": 1.0,
+"keys": 70,
+"tokens": 10441,
+"chars": 38119
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a18362-709b-769b-a6e1-69e25c19d337",
+"got": "topic:strand-01a18362-709b-769b-a6e1-69e25c19d337",
+"p": 1.0,
+"keys": 70,
+"tokens": 10289,
+"chars": 37490
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a1842e-1298-7b77-8330-766eaae4a7e9",
+"got": "topic:strand-01a1842e-1298-7b77-8330-766eaae4a7e9",
+"p": 0.96,
+"keys": 70,
+"tokens": 10261,
+"chars": 37357
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a1842e-507d-7ac7-8420-7de72c223d9a",
+"got": "topic:strand-01a1842e-507d-7ac7-8420-7de72c223d9a",
+"p": 1.0,
+"keys": 70,
+"tokens": 10352,
+"chars": 37711
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e06-1401-7c0e-9c1d-713b848ee1c7",
+"got": "topic:strand-01a17e06-1401-7c0e-9c1d-713b848ee1c7",
+"p": 0.96,
+"keys": 70,
+"tokens": 10260,
+"chars": 37359
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-c0e5-7b53-a3a9-19bb7d842180",
+"got": "topic:strand-01a17e05-c0e5-7b53-a3a9-19bb7d842180",
+"p": 1.0,
+"keys": 70,
+"tokens": 10377,
+"chars": 37848
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-9598-7e08-adc6-3057af214c6f",
+"got": "topic:strand-01a17e05-9598-7e08-adc6-3057af214c6f",
+"p": 1.0,
+"keys": 70,
+"tokens": 10332,
+"chars": 37606
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-9962-7c19-8bcb-6aeffcff9979",
+"got": "topic:strand-01a17e05-9962-7c19-8bcb-6aeffcff9979",
+"p": 0.98,
+"keys": 70,
+"tokens": 10360,
+"chars": 37679
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-a277-77b8-8921-f6d5cf3d4ae9",
+"got": "topic:strand-01a17e05-a277-77b8-8921-f6d5cf3d4ae9",
+"p": 0.87,
+"keys": 70,
+"tokens": 10273,
+"chars": 37405
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-cf59-7819-b9b8-fda91685cce0",
+"got": "topic:strand-01a17e05-cf59-7819-b9b8-fda91685cce0",
+"p": 0.95,
+"keys": 70,
+"tokens": 10283,
+"chars": 37446
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-d33b-7850-818b-bf0abb4a24a7",
+"got": "topic:strand-01a17e05-d33b-7850-818b-bf0abb4a24a7",
+"p": 1.0,
+"keys": 70,
+"tokens": 10433,
+"chars": 38115
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-cc8e-7587-baf7-26dd647c5cb1",
+"got": "topic:strand-01a17e05-cc8e-7587-baf7-26dd647c5cb1",
+"p": 1.0,
+"keys": 70,
+"tokens": 10420,
+"chars": 37906
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-d8e6-7f60-95c7-41fd3e24f69f",
+"got": "topic:strand-01a17e05-d8e6-7f60-95c7-41fd3e24f69f",
+"p": 0.98,
+"keys": 70,
+"tokens": 10317,
+"chars": 37605
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a15f72-e78f-7e2f-bfd0-8226d692b673",
+"got": "topic:strand-01a15f72-e78f-7e2f-bfd0-8226d692b673",
+"p": 1.0,
+"keys": 70,
+"tokens": 10348,
+"chars": 37725
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-db65-747d-97cd-cfb89fcf8748",
+"got": "topic:strand-01a17e05-db65-747d-97cd-cfb89fcf8748",
+"p": 1.0,
+"keys": 70,
+"tokens": 10302,
+"chars": 37528
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-f55c-7794-afb1-f6dc711ba2da",
+"got": "topic:strand-01a149e5-f0c0-7272-bc22-db4604ad2500",
+"p": 0.99,
+"keys": 70,
+"tokens": 10271,
+"chars": 37401
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-ae58-7413-942b-53e88650618e",
+"got": "topic:strand-01a17e05-ae58-7413-942b-53e88650618e",
+"p": 0.99,
+"keys": 70,
+"tokens": 10332,
+"chars": 37662
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-a55c-77a5-b936-1e483837b85b",
+"got": "topic:strand-01a17e05-a55c-77a5-b936-1e483837b85b",
+"p": 1.0,
+"keys": 70,
+"tokens": 10270,
+"chars": 37366
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-ae1d-7217-8f36-309c0079c621",
+"got": "topic:strand-01a17e05-ae1d-7217-8f36-309c0079c621",
+"p": 0.98,
+"keys": 70,
+"tokens": 10371,
+"chars": 37759
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-ad12-71e6-98d1-6a67499053b4",
+"got": "topic:strand-01a17e05-ad12-71e6-98d1-6a67499053b4",
+"p": 0.99,
+"keys": 70,
+"tokens": 10431,
+"chars": 38077
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-b97f-72f2-84d4-b1aada59afac",
+"got": "topic:strand-01a17e05-b97f-72f2-84d4-b1aada59afac",
+"p": 0.94,
+"keys": 70,
+"tokens": 10258,
+"chars": 37362
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-a5f0-70a3-bc4d-c72d131a9325",
+"got": "topic:strand-01a17e05-a5f0-70a3-bc4d-c72d131a9325",
+"p": 0.99,
+"keys": 70,
+"tokens": 10277,
+"chars": 37412
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-a5aa-722f-a43b-3ba3762ec7eb",
+"got": "topic:strand-01a17e05-a5aa-722f-a43b-3ba3762ec7eb",
+"p": 1.0,
+"keys": 70,
+"tokens": 10559,
+"chars": 38635
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-aa3d-748a-a377-ade7461bb4c5",
+"got": "topic:strand-01a17e05-aa3d-748a-a377-ade7461bb4c5",
+"p": 1.0,
+"keys": 70,
+"tokens": 10345,
+"chars": 37701
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a15f6b-2c27-7252-b87b-c2e2ee52a1b8",
+"got": "topic:strand-01a15f6b-2c27-7252-b87b-c2e2ee52a1b8",
+"p": 1.0,
+"keys": 70,
+"tokens": 10275,
+"chars": 37430
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e06-207a-7004-9fa1-a031c37512bd",
+"got": "topic:strand-01a17e06-207a-7004-9fa1-a031c37512bd",
+"p": 1.0,
+"keys": 70,
+"tokens": 10332,
+"chars": 37654
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-ff8a-7923-9eab-aa758516cce7",
+"got": "topic:strand-01a17e05-ff8a-7923-9eab-aa758516cce7",
+"p": 0.68,
+"keys": 70,
+"tokens": 10359,
+"chars": 37727
+},
+{
+"set": "CONT",
+"right": "topic:strand-01a18362-709b-769b-a6e1-69e25c19d337",
+"got": "topic:strand-01a15f10-4ea1-79b9-9f33-4e73f1aa68cf",
+"p": 0.79,
+"keys": 67,
+"tokens": 9709,
+"chars": 35224
+},
+{
+"set": "CONT",
+"right": "topic:strand-01a17e05-ae58-7413-942b-53e88650618e",
+"got": "topic:strand-01a17e05-ae58-7413-942b-53e88650618e",
+"p": 1.0,
+"keys": 15,
+"tokens": 2376,
+"chars": 7389
+},
+{
+"set": "CONT",
+"right": "topic:strand-01a17e05-a55c-77a5-b936-1e483837b85b",
+"got": "topic:strand-01a17e05-ae58-7413-942b-53e88650618e",
+"p": 0.45,
+"keys": 15,
+"tokens": 2330,
+"chars": 7203
+},
+{
+"set": "CONT",
+"right": "topic:strand-01a17e05-9052-737b-bc61-5f52b6811f3e",
+"got": "new",
+"p": 0.77,
+"keys": 3,
+"tokens": 902,
+"chars": 2266
+},
+{
+"set": "HIST-new",
+"right": "topic:strand-01a17e05-9052-737b-bc61-5f52b6811f3e",
+"got": "new",
+"p": 0.53,
+"keys": 7,
+"tokens": 1334,
+"chars": 3713
+},
+{
+"set": "HIST-new",
+"right": "topic:strand-01a17e05-ae58-7413-942b-53e88650618e",
+"got": "topic:strand-01a17e05-ae58-7413-942b-53e88650618e",
+"p": 0.99,
+"keys": 16,
+"tokens": 2536,
+"chars": 7998
+},
+{
+"set": "HIST-new",
+"right": "topic:strand-01a17e05-a55c-77a5-b936-1e483837b85b",
+"got": "topic:strand-01a17e05-ae58-7413-942b-53e88650618e",
+"p": 0.92,
+"keys": 16,
+"tokens": 2597,
+"chars": 8234
+},
+{
+"set": "HIST-new",
+"right": "topic:strand-01a18362-709b-769b-a6e1-69e25c19d337",
+"got": "topic:strand-01a15f10-4ea1-79b9-9f33-4e73f1aa68cf",
+"p": 0.79,
+"keys": 67,
+"tokens": 9709,
+"chars": 35224
+}
+],
+"stats": {
+"with messages": 2317,
+"fallback": 1109
+}
+},
+"iii": {
+"rows": [
+{
+"set": "SELF",
+"right": "topic:strand-01a15f10-4ea1-79b9-9f33-4e73f1aa68cf",
+"got": "topic:strand-01a15f10-4ea1-79b9-9f33-4e73f1aa68cf",
+"p": 0.93,
+"keys": 70,
+"tokens": 13606,
+"chars": 51198
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a15f52-f908-779d-8441-c595ec4b0537",
+"got": "topic:strand-01a15f52-f908-779d-8441-c595ec4b0537",
+"p": 1.0,
+"keys": 70,
+"tokens": 13755,
+"chars": 51738
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-8c4a-7e89-bb5e-912f8effaab7",
+"got": "topic:strand-01a17e05-8c4a-7e89-bb5e-912f8effaab7",
+"p": 1.0,
+"keys": 70,
+"tokens": 13638,
+"chars": 51358
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-9052-737b-bc61-5f52b6811f3e",
+"got": "topic:strand-01a17e05-9052-737b-bc61-5f52b6811f3e",
+"p": 0.99,
+"keys": 70,
+"tokens": 13653,
+"chars": 51403
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-9303-7ae2-ab1a-c193be7a4a71",
+"got": "topic:strand-01a17e05-9303-7ae2-ab1a-c193be7a4a71",
+"p": 0.93,
+"keys": 70,
+"tokens": 13711,
+"chars": 51613
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a1b2de-58fb-7346-a209-d66215a2d622",
+"got": "topic:strand-01a1b2de-58fb-7346-a209-d66215a2d622",
+"p": 1.0,
+"keys": 70,
+"tokens": 13644,
+"chars": 51376
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a1b2d6-c315-7ca2-9659-086984c7e0bf",
+"got": "topic:strand-01a1b2d6-c315-7ca2-9659-086984c7e0bf",
+"p": 1.0,
+"keys": 70,
+"tokens": 13937,
+"chars": 52076
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a154eb-92c9-7b3f-bcd7-571b6713d6e4",
+"got": "topic:strand-01a154eb-92c9-7b3f-bcd7-571b6713d6e4",
+"p": 1.0,
+"keys": 70,
+"tokens": 13716,
+"chars": 51728
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e58-837e-79e7-a975-c41c3c388148",
+"got": "topic:strand-01a17e58-837e-79e7-a975-c41c3c388148",
+"p": 0.9,
+"keys": 70,
+"tokens": 13597,
+"chars": 51175
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e34-fac9-74a6-92e5-455b0aa2ea6d",
+"got": "topic:strand-01a17e34-fac9-74a6-92e5-455b0aa2ea6d",
+"p": 1.0,
+"keys": 70,
+"tokens": 13873,
+"chars": 52348
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-dc08-72d4-be94-d182d05dee94",
+"got": "topic:strand-01a17e05-dc08-72d4-be94-d182d05dee94",
+"p": 0.66,
+"keys": 70,
+"tokens": 13612,
+"chars": 51236
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-e175-7d9f-b72a-1395ff4dc94b",
+"got": "topic:strand-01a17e05-e175-7d9f-b72a-1395ff4dc94b",
+"p": 0.98,
+"keys": 70,
+"tokens": 13599,
+"chars": 51206
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-e5d6-795b-b19b-1a2a9d793d1d",
+"got": "topic:strand-01a17e05-e5d6-795b-b19b-1a2a9d793d1d",
+"p": 0.99,
+"keys": 70,
+"tokens": 13611,
+"chars": 51234
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a1888e-645c-7ec2-94a2-8fc173f39722",
+"got": "topic:strand-01a1888e-645c-7ec2-94a2-8fc173f39722",
+"p": 1.0,
+"keys": 70,
+"tokens": 13654,
+"chars": 51428
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a1a3a5-0863-7802-a46c-fc94cf8cc6c1",
+"got": "topic:strand-01a1a3a5-0863-7802-a46c-fc94cf8cc6c1",
+"p": 1.0,
+"keys": 70,
+"tokens": 13762,
+"chars": 51906
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a16496-78eb-76c0-9cdc-f71eaa555553",
+"got": "topic:strand-01a16496-78eb-76c0-9cdc-f71eaa555553",
+"p": 0.99,
+"keys": 70,
+"tokens": 13617,
+"chars": 51256
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a164b4-8b95-705d-9259-90f8391d7f0e",
+"got": "topic:strand-01a164b4-8b95-705d-9259-90f8391d7f0e",
+"p": 0.94,
+"keys": 70,
+"tokens": 13604,
+"chars": 51193
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a16570-e7d5-7545-93cb-50daf4b135e8",
+"got": "topic:strand-01a16570-e7d5-7545-93cb-50daf4b135e8",
+"p": 1.0,
+"keys": 70,
+"tokens": 13936,
+"chars": 52608
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a169f0-8e77-722b-97c9-12a112955b05",
+"got": "topic:strand-01a169f0-8e77-722b-97c9-12a112955b05",
+"p": 0.99,
+"keys": 70,
+"tokens": 13849,
+"chars": 52246
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a16a04-147c-7c54-9c1e-edf0dc1977ca",
+"got": "topic:strand-01a16a04-147c-7c54-9c1e-edf0dc1977ca",
+"p": 0.99,
+"keys": 70,
+"tokens": 13787,
+"chars": 51974
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a18362-709b-769b-a6e1-69e25c19d337",
+"got": "topic:strand-01a18362-709b-769b-a6e1-69e25c19d337",
+"p": 1.0,
+"keys": 70,
+"tokens": 13635,
+"chars": 51345
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a1842e-1298-7b77-8330-766eaae4a7e9",
+"got": "topic:strand-01a1842e-1298-7b77-8330-766eaae4a7e9",
+"p": 0.93,
+"keys": 70,
+"tokens": 13607,
+"chars": 51212
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a1842e-507d-7ac7-8420-7de72c223d9a",
+"got": "topic:strand-01a1842e-507d-7ac7-8420-7de72c223d9a",
+"p": 1.0,
+"keys": 70,
+"tokens": 13698,
+"chars": 51566
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e06-1401-7c0e-9c1d-713b848ee1c7",
+"got": "topic:strand-01a17e06-1401-7c0e-9c1d-713b848ee1c7",
+"p": 0.91,
+"keys": 70,
+"tokens": 13606,
+"chars": 51214
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-c0e5-7b53-a3a9-19bb7d842180",
+"got": "topic:strand-01a17e05-c0e5-7b53-a3a9-19bb7d842180",
+"p": 1.0,
+"keys": 70,
+"tokens": 13723,
+"chars": 51703
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-9598-7e08-adc6-3057af214c6f",
+"got": "topic:strand-01a17e05-9598-7e08-adc6-3057af214c6f",
+"p": 1.0,
+"keys": 70,
+"tokens": 13678,
+"chars": 51461
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-9962-7c19-8bcb-6aeffcff9979",
+"got": "topic:strand-01a17e05-9962-7c19-8bcb-6aeffcff9979",
+"p": 1.0,
+"keys": 70,
+"tokens": 13706,
+"chars": 51534
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-a277-77b8-8921-f6d5cf3d4ae9",
+"got": "topic:strand-01a17e05-a277-77b8-8921-f6d5cf3d4ae9",
+"p": 0.91,
+"keys": 70,
+"tokens": 13619,
+"chars": 51260
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-cf59-7819-b9b8-fda91685cce0",
+"got": "topic:strand-01a17e05-cf59-7819-b9b8-fda91685cce0",
+"p": 0.97,
+"keys": 70,
+"tokens": 13629,
+"chars": 51301
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-d33b-7850-818b-bf0abb4a24a7",
+"got": "topic:strand-01a17e05-d33b-7850-818b-bf0abb4a24a7",
+"p": 1.0,
+"keys": 70,
+"tokens": 13779,
+"chars": 51970
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-cc8e-7587-baf7-26dd647c5cb1",
+"got": "topic:strand-01a17e05-cc8e-7587-baf7-26dd647c5cb1",
+"p": 1.0,
+"keys": 70,
+"tokens": 13766,
+"chars": 51761
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-d8e6-7f60-95c7-41fd3e24f69f",
+"got": "topic:strand-01a17e05-d8e6-7f60-95c7-41fd3e24f69f",
+"p": 0.99,
+"keys": 70,
+"tokens": 13663,
+"chars": 51460
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a15f72-e78f-7e2f-bfd0-8226d692b673",
+"got": "topic:strand-01a15f72-e78f-7e2f-bfd0-8226d692b673",
+"p": 1.0,
+"keys": 70,
+"tokens": 13694,
+"chars": 51580
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-db65-747d-97cd-cfb89fcf8748",
+"got": "topic:strand-01a17e05-db65-747d-97cd-cfb89fcf8748",
+"p": 1.0,
+"keys": 70,
+"tokens": 13648,
+"chars": 51383
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-f55c-7794-afb1-f6dc711ba2da",
+"got": "topic:strand-01a149e5-f0c0-7272-bc22-db4604ad2500",
+"p": 0.99,
+"keys": 70,
+"tokens": 13617,
+"chars": 51256
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-ae58-7413-942b-53e88650618e",
+"got": "topic:strand-01a17e05-ae58-7413-942b-53e88650618e",
+"p": 0.99,
+"keys": 70,
+"tokens": 13678,
+"chars": 51517
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-a55c-77a5-b936-1e483837b85b",
+"got": "topic:strand-01a17e05-a55c-77a5-b936-1e483837b85b",
+"p": 1.0,
+"keys": 70,
+"tokens": 13616,
+"chars": 51221
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-ae1d-7217-8f36-309c0079c621",
+"got": "topic:strand-01a17e05-ae1d-7217-8f36-309c0079c621",
+"p": 0.99,
+"keys": 70,
+"tokens": 13717,
+"chars": 51614
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-ad12-71e6-98d1-6a67499053b4",
+"got": "topic:strand-01a17e05-ad12-71e6-98d1-6a67499053b4",
+"p": 1.0,
+"keys": 70,
+"tokens": 13777,
+"chars": 51932
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-b97f-72f2-84d4-b1aada59afac",
+"got": "topic:strand-01a17e05-b97f-72f2-84d4-b1aada59afac",
+"p": 0.91,
+"keys": 70,
+"tokens": 13604,
+"chars": 51217
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-a5f0-70a3-bc4d-c72d131a9325",
+"got": "topic:strand-01a17e05-a5f0-70a3-bc4d-c72d131a9325",
+"p": 1.0,
+"keys": 70,
+"tokens": 13623,
+"chars": 51267
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-a5aa-722f-a43b-3ba3762ec7eb",
+"got": "topic:strand-01a17e05-a5aa-722f-a43b-3ba3762ec7eb",
+"p": 1.0,
+"keys": 70,
+"tokens": 13905,
+"chars": 52490
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-aa3d-748a-a377-ade7461bb4c5",
+"got": "topic:strand-01a17e05-aa3d-748a-a377-ade7461bb4c5",
+"p": 1.0,
+"keys": 70,
+"tokens": 13691,
+"chars": 51556
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a15f6b-2c27-7252-b87b-c2e2ee52a1b8",
+"got": "topic:strand-01a15f6b-2c27-7252-b87b-c2e2ee52a1b8",
+"p": 0.99,
+"keys": 70,
+"tokens": 13621,
+"chars": 51285
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e06-207a-7004-9fa1-a031c37512bd",
+"got": "topic:strand-01a17e06-207a-7004-9fa1-a031c37512bd",
+"p": 1.0,
+"keys": 70,
+"tokens": 13678,
+"chars": 51509
+},
+{
+"set": "SELF",
+"right": "topic:strand-01a17e05-ff8a-7923-9eab-aa758516cce7",
+"got": "topic:strand-01a17e05-ff8a-7923-9eab-aa758516cce7",
+"p": 0.98,
+"keys": 70,
+"tokens": 13705,
+"chars": 51582
+},
+{
+"set": "CONT",
+"right": "topic:strand-01a18362-709b-769b-a6e1-69e25c19d337",
+"got": "topic:strand-01a15f10-4ea1-79b9-9f33-4e73f1aa68cf",
+"p": 0.86,
+"keys": 67,
+"tokens": 12821,
+"chars": 48136
+},
+{
+"set": "CONT",
+"right": "topic:strand-01a17e05-ae58-7413-942b-53e88650618e",
+"got": "topic:strand-01a17e05-ae58-7413-942b-53e88650618e",
+"p": 0.99,
+"keys": 15,
+"tokens": 3384,
+"chars": 11536
+},
+{
+"set": "CONT",
+"right": "topic:strand-01a17e05-a55c-77a5-b936-1e483837b85b",
+"got": "topic:strand-01a17e05-ae58-7413-942b-53e88650618e",
+"p": 0.5,
+"keys": 15,
+"tokens": 3338,
+"chars": 11350
+},
+{
+"set": "CONT",
+"right": "topic:strand-01a17e05-9052-737b-bc61-5f52b6811f3e",
+"got": "new",
+"p": 0.85,
+"keys": 3,
+"tokens": 1098,
+"chars": 3158
+},
+{
+"set": "HIST-new",
+"right": "topic:strand-01a17e05-9052-737b-bc61-5f52b6811f3e",
+"got": "new",
+"p": 0.63,
+"keys": 7,
+"tokens": 1770,
+"chars": 5478
+},
+{
+"set": "HIST-new",
+"right": "topic:strand-01a17e05-ae58-7413-942b-53e88650618e",
+"got": "topic:strand-01a17e05-ae58-7413-942b-53e88650618e",
+"p": 0.99,
+"keys": 16,
+"tokens": 3616,
+"chars": 12460
+},
+{
+"set": "HIST-new",
+"right": "topic:strand-01a17e05-a55c-77a5-b936-1e483837b85b",
+"got": "topic:strand-01a17e05-ae58-7413-942b-53e88650618e",
+"p": 0.88,
+"keys": 16,
+"tokens": 3677,
+"chars": 12696
+},
+{
+"set": "HIST-new",
+"right": "topic:strand-01a18362-709b-769b-a6e1-69e25c19d337",
+"got": "topic:strand-01a15f10-4ea1-79b9-9f33-4e73f1aa68cf",
+"p": 0.86,
+"keys": 67,
+"tokens": 12821,
+"chars": 48136
+}
+],
+"stats": {
+"with messages": 2317,
+"fallback": 1109
+}
+}
+}

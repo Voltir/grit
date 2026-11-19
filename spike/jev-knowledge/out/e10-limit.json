@@ -1,0 +1,29 @@
+{
+"~30k": {
+"chars": 128000,
+"answer": {
+"noul": 0.98
+},
+"input_tokens": 30292
+},
+"~40k": {
+"chars": 168000,
+"answer": {
+"_error": {
+"status": 400,
+"detail": "{\"detail\":{\"error_type\":\"max_tokens_exceeded\"}}"
+}
+},
+"input_tokens": 0
+},
+"~60k": {
+"chars": 250000,
+"answer": {
+"_error": {
+"status": 400,
+"detail": "{\"detail\":{\"error_type\":\"max_tokens_exceeded\"}}"
+}
+},
+"input_tokens": 0
+}
+}

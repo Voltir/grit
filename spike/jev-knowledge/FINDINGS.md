@@ -1,7 +1,8 @@
 # Jev placement for the knowledge plugin: findings
 
-The spike ran on a snapshot of a deployment's database, taken 2026-11-19. Jev's spend was 20.52¢ over
-2,580 calls, counted from the API's reported input tokens (`spend.json`). No other model was called.
+The spike ran on a snapshot of a deployment's database, taken 2026-11-19. Jev's spend was 36.33¢ in total
+(20.52¢ through P2, E9 none, E10 11.35¢, E11 4.46¢), counted from the API's reported input tokens
+(`spend.json`). No other model was called.
 `out/` holds ids and probabilities only. The text-bearing case files and label sheets are in the
 untracked `data/`.
 
@@ -74,14 +75,20 @@ card-link side has no edges to follow.
 
 | Set | BM25, lead + passages | BM25, lead only | (b) structural | (c) recency |
 |---|---|---|---|---|
-| CONT + HIST-new (8) | 1, 1, 2, 3, 15, 15, 19, 22 | 1, 2, 24, 24, 188, 221, 827, 1033 | 1, 1, 1, 4, 5, 5, 5, 9 | 1, 1, 1, 4, 6, 6, 6, 9 |
+| CONT + HIST-new (8) | 1, 2, 2, 3, 15, 15, 22, 48 | 2, 2, 24, 24, 190, 221, 840, 1033 | 2, 3, 4, 5, 5, 5, 8, 9 | 2, 3, 4, 6, 6, 6, 8, 9 |
 | HIST-same (21) | 18 at rank 1; then 2, 8, 23 | as bad as rank 1,368 | all at rank 1 | at most 27 |
 | SELF (46) | 45 at rank 1; then 23 | as bad as rank 134 | 8 of 46 in its list (own discussion excluded) | spread 2–70 |
 
 Recall at k:
 
-- **BM25 over lead + passages** finds every case within 32 at every pool size, for every set:
-  CONT 4/4, HIST-new 4/4, HIST-same 21/21, SELF 46/46. At k=16 it gets 3/4, 3/4, 20/21 and 45/46.
+- **BM25 over lead + passages** finds every case within 64 at every pool size, for every set.
+  Within 32 it misses one: a continuation at rank 48 in the whole pool (CONT 3/4 at 32).
+  HIST-new is 4/4, HIST-same 21/21 and SELF 46/46 at 32. At k=16 it gets 3/4, 3/4, 20/21 and
+  45/46.
+- **Correction.** A first run counted which topics existed at a case's time using the backfill's
+  replayed day, so three CONT cases saw a single real topic. Counting by the run's wall-clock
+  instant (its slot) gives 3, 15, 15 and 67 real topics. The numbers here are from the corrected
+  run.
 - **BM25 over the lead alone** degrades as the pool grows. At k=64, CONT and HIST-new each fall
   from 4/4 (pool 69) to 2/4 (all), and SELF falls from 46/46 to 41/46.
 - **The share of cases whose right topic falls outside 64 (the false-`new` risk)** is 0 of 75
@@ -146,6 +153,99 @@ Index ranking + b ≤ 16 + c ≤ 8 is 29/29 at k=32 and 64, as is in-memory BM25
     nothing about a store of thousands.
   - The scale test grows the distractors, not the real topics: a pool of 2,000 real topics, with
     their near-duplicates, would be harder than 2,000 cards and pieces.
+
+## E10: should each topic show its last two messages, and when they were said?
+
+Run with `SPIKE_DB=<snapshot> python3 -I e10.py limit | run | run leaky`. Results are in
+`out/e10-limit.json`, `out/e10.json` and `out/e10-leaky.json`. It cost 11.35¢.
+
+**Jev's context limit.** The state was card and piece text, sent with one YesNo question.
+
+| Request | Result |
+|---|---|
+| 128,000 chars | Answered; the API reported **30,292** input tokens |
+| 168,000 chars (about 40k tokens) | HTTP 400 `{"detail":{"error_type":"max_tokens_exceeded"}}` |
+| 250,000 chars | the same HTTP 400 |
+
+An oversized request is refused, not truncated, and reports no tokens. The limit lies between
+30.3k and about 40k tokens, which fits the reported 32k.
+
+**Topic views.** The arm (a) Choice ran over every topic existing at the case's time, plus `new`
+and `aside`. The discussion carries its date (`said`).
+
+| View | SELF (46) | CONT (4) | HIST-new (4) | Tokens per request, SELF (70 keys) |
+|---|---|---|---|---|
+| (i) lead + passage head | 44/46 | 1/4 | 1/4 | 10,028 |
+| (ii) lead + last 2 dated messages | 44/46 | 1/4 | 1/4 | 10,338 |
+| (iii) lead + passage head + last 2 dated messages | 44/46 | 1/4 | 1/4 | 13,620 |
+
+- **The views make no difference.** Every case gets the same pick under all three views. Only the
+  probability moves: in one CONT error it is 0.88, 0.79 and 0.86.
+- **Purged messages.** 1,150 of the 3,426 topic views (34%) have no messages left, because they
+  were purged or, on SELF, were the discussion's own. Those views fall back to (i).
+- **Leakage.** Showing SELF's own messages in its topic's view lifts SELF from 44/46 to 45/46
+  (views ii and iii): 41 of the 46 topics gain their discussion's own lines. Excluding them costs
+  1 case.
+- **The real continuations are the hard part.** CONT and HIST-new are 2/8 under every view, and
+  the two sets overlap in their placements. The wrong picks go to a near-duplicate topic, and two
+  of them come with p ≥ 0.88.
+- **Budget at 64 topics.**
+  - Measured chars per token: 3.4–3.9, the lowest with messages shown.
+  - A 64-topic request with a 1,500-char discussion stays under 32k tokens at up to about **1,650
+    chars per topic** at 3.4 chars per token. About 1,500 leaves a 10% margin.
+  - View (iii) uses about 195 tokens, or 730 chars, per topic. At 64 topics that is about 12.5k
+    tokens.
+
+**What E10 decides.** Keep view (i). The dated last messages cost 3–35% more tokens and changed
+no pick.
+
+## E11: do many options or short, vague items cause miscategorising?
+
+Run with `SPIKE_DB=<snapshot> python3 -I e11.py cached | run`. Results are in
+`out/e11-cached.json` and `out/e11.json`. The new calls cost 4.46¢.
+
+**From the cached runs** (arm a; topics as lead + passage head unless noted):
+
+| Measure | Result |
+|---|---|
+| E0 accuracy by key count | 5: 40/40, 10: 39/40, 20: 39/40, 42: 39/40, 69: 38/40. All items 400–800 chars. |
+| SELF by length: <150 / 150–400 / 400–800 / >800 | **12/14** / 13/13 / 12/12 / 7/7. With lead only: 10/14 / 13/13 / 11/12 / 7/7. |
+| SELF's wrong picks | 2 of 2 at p ≥ 0.86 (lead + passage). With lead only: 2 at p ≥ 0.86 and 3 under. |
+| L1S agreement with Haiku by length: <150 / 150–400 / 400–800 / >800 | 3/23 / 5/16 / 8/19 / 8/18. Jev sets aside the short chatter Haiku opened topics for. |
+| L1S agreement with Haiku by keys: ≤10 / 11–20 / 21–42 | 10/17 / 7/23 / 7/36 |
+
+The fall-off with key count on L1S is confounded: the nights with more topics are the nights with
+more existing topics to attach to. On SELF, where the answer is known, nothing falls off with key
+count.
+
+**The shortlist rule at k = 16, 32, 64**, on SELF, CONT and HIST-new. The rule is structural (≤ 16)
+first, then the 8 newest, then BM25 over lead + passages to fill. Short means under 400 chars.
+
+| Shortlist | Short SELF (27) | Short real placements (5) | Long SELF (19) | Long real placements (3) | Tokens |
+|---|---|---|---|---|---|
+| k=32 | 25 right; 2 wrong, both p ≥ 0.86 | 2 right; 3 wrong, 2 of them p ≥ 0.86 | 19/19 | 0/3 | about 4.8k |
+| k=64 | 25 right; 2 wrong, both p ≥ 0.86 | 2/5 | 19/19 | 0/3 | about 9.3k |
+| Candidate rule: structural + text top 16, about 31 keys | 25 right; 2 wrong, both p ≥ 0.86 | 2/5 | 19/19 | 0/3 | about 4.6k |
+
+- **Accuracy on short items does not drop as the options grow** from 32 to 64.
+- **k=16 is not usable under this rule.** Structural's 16 plus the 8 newest already fill it (about
+  23 keys), so text gets no slot. The right topic was in the list for only 9/27 short and 7/19
+  long SELF items.
+- **Under the candidate rule's mark** (a pick under 0.86 is set aside):
+  - Short SELF items: 25 placed right, 1 placed wrong, 1 set aside.
+  - Short real placements: 2 right, 2 wrong, 1 set aside.
+  - The mark cannot catch confident errors. Every SELF error is at p ≥ 0.86, and so are half of
+    the errors on the real placements.
+
+**What E11 decides.**
+
+- **Where the errors are.** On SELF they sit under 150 chars: 12/14 there against 100% above it.
+  So "short" is better set at **under 150 chars** than at 400.
+- **Shortlist size.** For short items, structural plus the text top 16 (about 31 keys, about 4.6k
+  tokens) is as accurate as 64 at half the tokens. It can be adopted.
+- **The mark.** Setting aside picks under it, rather than opening a new topic, costs one right
+  placement in 27. It does not protect against confident wrong picks. Those come mostly from
+  near-duplicate topics, which merging duplicates would address, not a threshold.
 
 ## What it decides
 

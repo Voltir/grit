@@ -137,12 +137,15 @@ def p1_names():
 def cases():
     out = []
     for it in I.self_set():
-        out.append({"set": "SELF", "root": it["id"], "when": None, "day": ts(it["asOf"]), "text": c.item_text(it), "right": it["label"],
+        out.append({"set": "SELF", "root": it["id"], "when": None, "day": ts(it["slot"].split("@")[-1]), "said": it["asOf"][:10], "text": c.item_text(it), "right": it["label"],
                     "exclude_strand": it["id"], "override": None})
     for it in I.l1_strands():
         if it["label"].startswith("topic:"):
             shown = dict(it["topics"])
-            out.append({"set": "CONT", "root": it["id"], "when": ts(it["asOf"]), "text": c.item_text(it),
+            # Topics exist by wall-clock time: a backfill's asOf is the day it replays, but the
+            # topics it saw were written when it ran (its slot's instant).
+            out.append({"set": "CONT", "root": it["id"], "when": ts(it["slot"].split("@")[-1]), "said": it["asOf"][:10],
+                        "text": c.item_text(it),
                         "right": it["label"], "exclude_strand": None,
                         "override": {it["label"]: shown[it["label"]]} if it["label"] in shown else None})
     for k, vs in VERSIONS.items():

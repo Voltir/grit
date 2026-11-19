@@ -136,7 +136,7 @@
 46
 ],
 "SELF|mem pool=all|rrf1:2|32": [
-29,
+25,
 46
 ],
 "SELF|mem pool=all|rrf1:2|64": [
@@ -224,7 +224,7 @@
 46
 ],
 "SELF|mem, topics+cards|rrf2:1|32": [
-46,
+45,
 46
 ],
 "SELF|mem, topics+cards|rrf2:1|64": [

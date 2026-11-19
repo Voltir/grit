@@ -12,6 +12,66 @@
    "errors": 0,
    "tokens": 34565
   },
+  "E10-i": {
+   "calls": 53,
+   "cents": 2.0288,
+   "errors": 0,
+   "tokens": 483049
+  },
+  "E10-ii": {
+   "calls": 95,
+   "cents": 3.9142,
+   "errors": 0,
+   "tokens": 931945
+  },
+  "E10-iii": {
+   "calls": 95,
+   "cents": 5.1719,
+   "errors": 0,
+   "tokens": 1231397
+  },
+  "E10-limit-~30k": {
+   "calls": 2,
+   "cents": 0.2301,
+   "errors": 0,
+   "tokens": 54791
+  },
+  "E10-limit-~40k": {
+   "calls": 1,
+   "cents": 0.0,
+   "errors": 1,
+   "tokens": 0
+  },
+  "E10-limit-~60k": {
+   "calls": 1,
+   "cents": 0.0,
+   "errors": 1,
+   "tokens": 0
+  },
+  "E11-e9-16": {
+   "calls": 53,
+   "cents": 0.7475,
+   "errors": 0,
+   "tokens": 177970
+  },
+  "E11-e9-32": {
+   "calls": 47,
+   "cents": 0.959,
+   "errors": 0,
+   "tokens": 228336
+  },
+  "E11-e9-64": {
+   "calls": 47,
+   "cents": 1.8389,
+   "errors": 0,
+   "tokens": 437845
+  },
+  "E11-short-None": {
+   "calls": 47,
+   "cents": 0.9144,
+   "errors": 0,
+   "tokens": 217704
+  },
   "E2-a": {
    "calls": 199,
    "cents": 2.2115,
@@ -145,8 +205,8 @@
    "tokens": 444
   }
  },
- "calls": 2580,
- "cents": 20.5226,
- "tokens": 4886323,
- "usd": 0.20522556600000003
+ "calls": 3021,
+ "cents": 36.3273,
+ "tokens": 8649360,
+ "usd": 0.36327312
 }

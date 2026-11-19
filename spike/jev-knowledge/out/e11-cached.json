@@ -1,0 +1,362 @@
+{
+"E0 | len | 400-800": [
+195,
+200
+],
+"E0 | keys | 5": [
+40,
+40
+],
+"E0 | keys | 10": [
+39,
+40
+],
+"E0 | keys | 20": [
+39,
+40
+],
+"E0 | keys | 42": [
+39,
+40
+],
+"E0 | keys | 69": [
+38,
+40
+],
+"firstline-whole-title+summary arm a L1S | len | <150": [
+2,
+23
+],
+"firstline-whole-title+summary arm a L1S | keys | <=10": [
+11,
+17
+],
+"firstline-whole-title+summary arm a L1S | len | 400-800": [
+5,
+19
+],
+"firstline-whole-title+summary arm a L1S | len | 150-400": [
+5,
+16
+],
+"firstline-whole-title+summary arm a L1S | keys | 21-42": [
+3,
+36
+],
+"firstline-whole-title+summary arm a L1S | len | >800": [
+6,
+18
+],
+"firstline-whole-title+summary arm a L1S | keys | 11-20": [
+4,
+23
+],
+"firstline-whole-title+summary arm a L1C | len | 150-400": [
+10,
+12
+],
+"firstline-whole-title+summary arm a L1C | keys | 21-42": [
+17,
+25
+],
+"firstline-whole-title+summary arm a L1C | keys | <=10": [
+25,
+26
+],
+"firstline-whole-title+summary arm a L1C | len | 400-800": [
+49,
+68
+],
+"firstline-whole-title+summary arm a L1C | keys | 11-20": [
+17,
+29
+],
+"firstline-whole-title+summary arm a SELF | len | <150": [
+10,
+14
+],
+"firstline-whole-title+summary arm a SELF | keys | >42": [
+41,
+46
+],
+"firstline-whole-title+summary arm a SELF | len | 400-800": [
+12,
+12
+],
+"firstline-whole-title+summary arm a SELF | len | 150-400": [
+12,
+13
+],
+"firstline-whole-title+summary arm a SELF wrong | confident | p<0.86": [
+3,
+3
+],
+"firstline-whole-title+summary arm a SELF | len | >800": [
+7,
+7
+],
+"firstline-whole-title+summary arm a SELF wrong | confident | p>=0.86": [
+2,
+2
+],
+"lead+passage-whole-title+summary arm a L1S | len | <150": [
+3,
+23
+],
+"lead+passage-whole-title+summary arm a L1S | keys | <=10": [
+10,
+17
+],
+"lead+passage-whole-title+summary arm a L1S | len | 400-800": [
+8,
+19
+],
+"lead+passage-whole-title+summary arm a L1S | len | 150-400": [
+5,
+16
+],
+"lead+passage-whole-title+summary arm a L1S | keys | 21-42": [
+7,
+36
+],
+"lead+passage-whole-title+summary arm a L1S | len | >800": [
+8,
+18
+],
+"lead+passage-whole-title+summary arm a L1S | keys | 11-20": [
+7,
+23
+],
+"lead+passage-whole-title+summary arm a L1C | len | 150-400": [
+10,
+12
+],
+"lead+passage-whole-title+summary arm a L1C | keys | 21-42": [
+19,
+25
+],
+"lead+passage-whole-title+summary arm a L1C | keys | <=10": [
+25,
+26
+],
+"lead+passage-whole-title+summary arm a L1C | len | 400-800": [
+53,
+68
+],
+"lead+passage-whole-title+summary arm a L1C | keys | 11-20": [
+19,
+29
+],
+"lead+passage-whole-title+summary arm a SELF | len | <150": [
+12,
+14
+],
+"lead+passage-whole-title+summary arm a SELF | keys | >42": [
+44,
+46
+],
+"lead+passage-whole-title+summary arm a SELF | len | 400-800": [
+12,
+12
+],
+"lead+passage-whole-title+summary arm a SELF | len | 150-400": [
+13,
+13
+],
+"lead+passage-whole-title+summary arm a SELF | len | >800": [
+7,
+7
+],
+"lead+passage-whole-title+summary arm a SELF wrong | confident | p>=0.86": [
+2,
+2
+],
+"lead-cut800-title+summary arm a L1S | len | <150": [
+1,
+23
+],
+"lead-cut800-title+summary arm a L1S | keys | <=10": [
+10,
+17
+],
+"lead-cut800-title+summary arm a L1S | len | 400-800": [
+12,
+37
+],
+"lead-cut800-title+summary arm a L1S | len | 150-400": [
+5,
+16
+],
+"lead-cut800-title+summary arm a L1S | keys | 21-42": [
+2,
+36
+],
+"lead-cut800-title+summary arm a L1S | keys | 11-20": [
+6,
+23
+],
+"lead-cut800-title+summary arm a SELF | len | <150": [
+10,
+14
+],
+"lead-cut800-title+summary arm a SELF | keys | >42": [
+41,
+46
+],
+"lead-cut800-title+summary arm a SELF | len | 400-800": [
+18,
+19
+],
+"lead-cut800-title+summary arm a SELF | len | 150-400": [
+13,
+13
+],
+"lead-cut800-title+summary arm a SELF wrong | confident | p<0.86": [
+3,
+3
+],
+"lead-cut800-title+summary arm a SELF wrong | confident | p>=0.86": [
+2,
+2
+],
+"lead-ends-title+summary arm a L1S | len | <150": [
+3,
+25
+],
+"lead-ends-title+summary arm a L1S | keys | <=10": [
+9,
+17
+],
+"lead-ends-title+summary arm a L1S | len | 150-400": [
+6,
+24
+],
+"lead-ends-title+summary arm a L1S | keys | 21-42": [
+3,
+36
+],
+"lead-ends-title+summary arm a L1S | len | 400-800": [
+7,
+27
+],
+"lead-ends-title+summary arm a L1S | keys | 11-20": [
+4,
+23
+],
+"lead-ends-title+summary arm a SELF | len | <150": [
+12,
+16
+],
+"lead-ends-title+summary arm a SELF | keys | >42": [
+40,
+46
+],
+"lead-ends-title+summary arm a SELF | len | 150-400": [
+15,
+16
+],
+"lead-ends-title+summary arm a SELF | len | 400-800": [
+13,
+14
+],
+"lead-ends-title+summary arm a SELF wrong | confident | p<0.86": [
+4,
+4
+],
+"lead-ends-title+summary arm a SELF wrong | confident | p>=0.86": [
+2,
+2
+],
+"lead-whole-title+summary arm a L1S | len | <150": [
+1,
+23
+],
+"lead-whole-title+summary arm a L1S | keys | <=10": [
+10,
+17
+],
+"lead-whole-title+summary arm a L1S | len | 400-800": [
+6,
+19
+],
+"lead-whole-title+summary arm a L1S | len | 150-400": [
+5,
+16
+],
+"lead-whole-title+summary arm a L1S | keys | 21-42": [
+2,
+36
+],
+"lead-whole-title+summary arm a L1S | len | >800": [
+4,
+18
+],
+"lead-whole-title+summary arm a L1S | keys | 11-20": [
+4,
+23
+],
+"lead-whole-title+summary arm a L1C | len | 150-400": [
+10,
+12
+],
+"lead-whole-title+summary arm a L1C | keys | 21-42": [
+17,
+25
+],
+"lead-whole-title+summary arm a L1C | keys | <=10": [
+25,
+26
+],
+"lead-whole-title+summary arm a L1C | len | 400-800": [
+51,
+68
+],
+"lead-whole-title+summary arm a L1C | keys | 11-20": [
+19,
+29
+],
+"lead-whole-title+summary arm a SELF | len | <150": [
+10,
+14
+],
+"lead-whole-title+summary arm a SELF | keys | >42": [
+41,
+46
+],
+"lead-whole-title+summary arm a SELF | len | 400-800": [
+11,
+12
+],
+"lead-whole-title+summary arm a SELF | len | 150-400": [
+13,
+13
+],
+"lead-whole-title+summary arm a SELF wrong | confident | p<0.86": [
+3,
+3
+],
+"lead-whole-title+summary arm a SELF | len | >800": [
+7,
+7
+],
+"lead-whole-title+summary arm a SELF wrong | confident | p>=0.86": [
+2,
+2
+],
+"lead-whole-title arm a L1C | len | <150": [
+48,
+80
+],
+"lead-whole-title arm a L1C | keys | 21-42": [
+7,
+25
+],
+"lead-whole-title arm a L1C | keys | <=10": [
+25,
+26
+],
+"lead-whole-title arm a L1C | keys | 11-20": [
+16,
+29
+]
+}
