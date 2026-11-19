@@ -26,7 +26,9 @@ import grit.std.either.Proven
   * topics, each by a judgment of its own (`sort-{i}`, [[grit.core.act.Dreaming.sort]]), setting
   * aside (`aside`) for at most `asideFor` those it puts in none; then, for
   * each topic touched, at most `perRun` and at most `perRunMost`, new topics first, asks once
-  * (`write-{i}`) for its new lead and the day's passage and keeps it (`keep-{i}`). It puts up at
+  * (`write-{i}`) for its new lead and the day's passage and keeps it (`keep-{i}`); then sorts at
+  * most `merges` topics of one discussion against the floor's others (`merge-{i}`), replying
+  * the folds it would make and making none. It puts up at
   * most [[TopicDream.Reviewed]] of the topics it writes for review, new first. What it scans and
   * withdraws, what each ask is shown, how a reply is read and what a topic's version refers to:
   * the module's README, "A topics run". Replies [[Gathered.line]], which holds no
@@ -43,7 +45,9 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
   // 5: strands and cards are placed by sorts, a judgment each, not by one attach ask.
   // 6: a passage is withdrawn past keepFor or for its room's label, no longer for its strand's
   // messages gone (its scan's step reads no strands to prune).
-  val version: Int = 6
+  // 7: after its writes, its topics of one discussion are sorted to merge (`merge-{i}`) and set
+  // aside (`merge-aside`); its scan records them and its params `merges`.
+  val version: Int = 7
 
   def write(params: TopicParams): ujson.Value = TopicParams.write(params)
 
@@ -87,7 +91,8 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
           0,
           0,
           Vector.empty,
-          None
+          None,
+          Vector.empty
         )
         val (placed, done) = attach(run, moves, scan, begun)
         // Each topic takes the cards its strands link, wherever those strands went.
@@ -108,25 +113,32 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
                 (TopicScan.Holding(Vector.empty), done.copy(unwritten = done.unwritten :+ why))
               case Right(h) => (h, done)
             }
-        now.zipWithIndex
-          .foldLeft((read.copy(left = read.left + TopicDream.items(later)), 0)) {
-            case ((g, reviewed), (t, i)) =>
-              written(
-                run,
-                moves,
-                day,
-                t,
-                scan.of(t.strands)._1,
-                holds.of(t.key),
-                i,
-                reviewed < TopicDream.Reviewed,
-                g
-              ) match {
-                case (next, up) => (next, if (up) reviewed + 1 else reviewed)
-              }
+        val (wrote, _, versions) = now.zipWithIndex
+          .foldLeft(
+            (
+              read.copy(left = read.left + TopicDream.items(later)),
+              0,
+              Vector.empty[(TopicKey, DocumentVersionId)]
+            )
+          ) { case ((g, reviewed, versions), (t, i)) =>
+            val review = reviewed < TopicDream.Reviewed
+            written(
+              run,
+              moves,
+              day,
+              t,
+              scan.of(t.strands)._1,
+              holds.of(t.key),
+              i,
+              review,
+              g
+            ) match {
+              case (next, Some(v)) =>
+                (next, if (review) reviewed + 1 else reviewed, versions :+ (t.key, v))
+              case (next, None) => (next, reviewed, versions)
+            }
           }
-          ._1
-          .line
+        merged(run, moves, scan, versions, wrote).line
     }
   }
 
@@ -252,8 +264,8 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
     )
   }
 
-  /** `t`'s write ask, shown besides the cards it `holds`, and keep, the `i`th; whether it was
-    * put up for review.
+  /** `t`'s write ask, shown besides the cards it `holds`, and keep, the `i`th, put up for
+    * review when `review`; the version kept, when it was.
     */
   private def written(
       run: Trusted[JobRun[TopicParams]],
@@ -265,7 +277,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
       i: Int,
       review: Boolean,
       g: Gathered
-  ): (Gathered, Boolean) = {
+  ): (Gathered, Option[DocumentVersionId]) = {
     val name = TopicKey.value(t.key)
     val summary = Dreaming.Summary(
       TopicDream.writeSystem(day),
@@ -280,29 +292,96 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
       t.version.toVector ++ (t.cards.map(_.version) ++ holds).distinct,
       run.tainted.map(_ => summary)
     ) match {
-      case Left(e) => (g.copy(unwritten = g.unwritten :+ (name, MoveError.said(e))), false)
-      case Right(None) => (g.copy(left = g.left + TopicDream.items(Vector(t))), false)
+      case Left(e) => (g.copy(unwritten = g.unwritten :+ (name, MoveError.said(e))), None)
+      case Right(None) => (g.copy(left = g.left + TopicDream.items(Vector(t))), None)
       case Right(Some(s)) if t.version.exists(v => !s.shown.contains(v)) =>
-        (g.copy(left = g.left + TopicDream.items(Vector(t))), false)
+        (g.copy(left = g.left + TopicDream.items(Vector(t))), None)
       case Right(Some(s)) =>
         val shownCards = t.cards.filter(c => s.shown.contains(c.version))
         val touch = t.copy(cards = shownCards)
         moves.keep(CardMoves.numbered("keep", i), s.asked.reply)((w, keeper, at) =>
           TopicDream.kept(touch, units, day, w, review, keeper, at)
         ) match {
-          case Left(e) => (g.copy(unwritten = g.unwritten :+ (name, MoveError.said(e))), false)
-          case Right(Kept(None, _)) => (g.copy(left = g.left + TopicDream.items(Vector(t))), false)
-          case Right(Kept(Some(_), skipped)) =>
+          case Left(e) => (g.copy(unwritten = g.unwritten :+ (name, MoveError.said(e))), None)
+          case Right(Kept(None, _)) => (g.copy(left = g.left + TopicDream.items(Vector(t))), None)
+          case Right(Kept(Some(v), skipped)) =>
             (
               g.copy(
                 written = g.written + 1,
                 opened = g.opened + (if (t.opened) 1 else 0),
                 skipped = g.skipped + skipped
               ),
-              review
+              Some(v)
             )
         }
     }
+  }
+
+  /** Each of `scan`'s topics of one discussion ([[Scanned.single]]) not written this run (not
+    * among `wrote`), oldest first, sorted (`merge-{i}`, numbered from 0 in that order) as a
+    * document against the floor's other topics at their versions now (`wrote`'s for those
+    * written this run), the [[TopicDream.sortTopic]] most its text matches best, but those an
+    * earlier sort of the run proposed to fold away; a topic proposed as another's keeper, or
+    * with no other topic to be shown, is not sorted. A yes at [[TopicDream.FoldAt]] or more
+    * for the likeliest proposes folding the topic into it, held in `g`'s `proposed`; nothing is
+    * withdrawn. Each topic sorted, and each proposed as a keeper, is set aside at its version
+    * (`merge-aside`), so no run sorts it again within `asideFor` unless it is written; a sort or
+    * that keep refused is named in `g` as not written.
+    */
+  private def merged(
+      run: Trusted[JobRun[TopicParams]],
+      moves: Dreaming^,
+      scan: Scanned,
+      wrote: Vector[(TopicKey, DocumentVersionId)],
+      g: Gathered
+  ): Gathered = {
+    val now = scan.topics.map((k, v) => wrote.find(_._1 == k).getOrElse((k, v))) ++
+      wrote.filterNot((k, _) => scan.topics.exists(_._1 == k))
+    val sorting = run.tainted.map(_ => TopicDream.sortTopic)
+    type Merging = (Vector[Gathered.Fold], Tainted[Vector[Lineage.Tag]], Vector[(String, String)])
+    val (proposed, aside, refused) = scan.single
+      .filterNot((k, _) => wrote.exists(_._1 == k))
+      .zipWithIndex
+      .foldLeft[Merging]((Vector.empty, run.tainted.map(_ => Vector.empty), Vector.empty)) {
+        case (m @ (folds, aside, refused), ((k, v), i)) =>
+          val pool = now.collect {
+            case (c, cv) if c != k && !folds.exists(_.from == c) =>
+              (new TopicDream.Placed.Into(c, cv), cv)
+          }
+          if (pool.isEmpty || folds.exists(_.into == k)) m
+          else {
+            val name = CardMoves.numbered("merge", i)
+            val among = Sorting.Among(Vector.empty, pool, TopicDream.sortTopic.most)
+            moves.sort(name, Dreaming.Item.Document(v), among, sorting) match {
+              case Left(e) => (folds, aside, refused :+ (MoveName.value(name), MoveError.said(e)))
+              case Right(None) => m
+              case Right(Some(sorted)) =>
+                def set(tags: Lineage.Tag*) =
+                  aside.zip(sorted.asked.reply).map((a, _) => a ++ tags)
+                Trusted.asIs(sorted.asked.reply).extract.headOption match {
+                  case Some(Decision.Weight(TopicDream.Placed.Into(into, iv), p))
+                      if p >= TopicDream.FoldAt =>
+                    // Its keeper would hold two discussions once folded, so it is set aside too.
+                    (
+                      folds :+ Gathered.Fold(k, into, p),
+                      set(Lineage.Tag.Topic(v), Lineage.Tag.Topic(iv)),
+                      refused
+                    )
+                  case _ => (folds, set(Lineage.Tag.Topic(v)), refused)
+                }
+            }
+          }
+      }
+    val kept =
+      if (Trusted.asIs(aside).extract.isEmpty) Vector.empty
+      else
+        moves.keep(TopicDream.MergeAside, aside.map(_.distinct))((tags, keeper, at) =>
+          Aside.setAside(keeper, tags, at)
+        ) match {
+          case Left(e) => Vector((MoveName.value(TopicDream.MergeAside), MoveError.said(e)))
+          case Right(_) => Vector.empty
+        }
+    g.copy(proposed = proposed, unwritten = g.unwritten ++ refused ++ kept)
   }
 }
 
@@ -326,6 +405,8 @@ object TopicDream {
 
   private val SetAside: MoveName = MoveName.literal("aside")
 
+  private val MergeAside: MoveName = MoveName.literal("merge-aside")
+
   private val Holds: MoveName = MoveName.literal("holds")
 
   /** Where a sort may put a strand or a card: into a topic shown, by key and version; `Opened`,
@@ -341,6 +422,12 @@ object TopicDream {
     * replaced, until a person marks a night's card placements.
     */
   private[topic] val CardAt: Double = 0.72
+
+  /** 0.90: the least probability of yes at which a topic of one discussion would fold into the
+    * topic its merge sort finds likeliest the same subject; below it, the topic is set aside at
+    * its version. Provisional, until a person marks a night's proposals.
+    */
+  private[topic] val FoldAt: Double = 0.90
 
   /** 0.86: the least probability at which a strand joins the topic chosen for it; below it, the
     * strand is set aside, counted unsure, at its digest, so it is offered again once its thread
@@ -414,18 +501,34 @@ object TopicDream {
   /** How a card is sorted: a yes/no for each of the 8 topics shown whose text its own matches
     * best, each topic and the card as their text's head within [[SortChars]].
     */
-  private[topic] val sortCard: Sorting[Placed, Vector[Decision.Weight[Placed]]] = Proven.right(
-    Sorting.each(
-      // Draft wording, for Nick.
-      "Is this file about this topic's matter?",
-      "It documents, specifies or holds data for the matter.",
-      "It is about something else, or shares only a project or a word with it.",
-      AttachChars,
-      SortChars,
-      // 8, within Sorting.Most.
-      8
-    )
+  private[topic] val sortCard: Sorting[Placed, Vector[Decision.Weight[Placed]]] = yesNo(
+    // Draft wording, for Nick.
+    "Is this file about this topic's matter?",
+    "It documents, specifies or holds data for the matter.",
+    "It is about something else, or shares only a project or a word with it."
   )
+
+  /** How a topic of one discussion is sorted to merge: a yes/no for each of the 8 other topics
+    * shown whose text its own matches best, each topic as its text's head within [[SortChars]].
+    */
+  private[topic] val sortTopic: Sorting[Placed.Into, Vector[Decision.Weight[Placed.Into]]] =
+    yesNo(
+      // Draft wording, for Nick.
+      "Is this document about the same subject as this topic, so one page should hold both?",
+      "They are one subject: a reader of either needs what the other says.",
+      "They are different subjects, or share only a project, a person or a word."
+    )
+
+  /** A yes/no sort asking `instructions` of the 8 candidates its item's text matches best,
+    * each and the item as their text's head within [[SortChars]].
+    */
+  private def yesNo[C <: caps.Pure](
+      instructions: String,
+      yes: String,
+      no: String
+  ): Sorting[C, Vector[Decision.Weight[C]]] =
+    // 8, within Sorting.Most.
+    Proven.right(Sorting.each(instructions, yes, no, AttachChars, SortChars, 8))
 
   /** How many strands and cards `ts` attach. */
   private def items(ts: Vector[Touch]): Int = ts.map(t => t.strands.size + t.cards.size).sum

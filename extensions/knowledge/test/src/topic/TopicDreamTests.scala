@@ -26,7 +26,7 @@ import grit.core.job.JobRun
 import grit.core.message.Message
 import grit.core.need.{Exported, Needs, PluginDocs, PluginReads}
 import grit.core.place.Place
-import grit.core.stitch.StrandWorld
+import grit.core.stitch.{StrandDigest, StrandWorld}
 import grit.core.store.{Conversation, StoreError, Tx}
 import grit.core.tool.ToolName
 import grit.core.visibility.{Clearance, Integrity, Label, Level, Recorded, TestLabels, Visibility}
@@ -112,8 +112,8 @@ object TopicDreamTests extends TestSuite {
 
     /** One run for `day`, made `now`, of `perRun`, by a job writing at most `most`, kept at
       * `floor`; its sorts judged by `sort`, its write asks answered by `write`; its rooms
-      * labelled as `rooms` records them; its asks reading no document `unread` holds to: its
-      * reply.
+      * labelled as `rooms` records them; its asks reading no document `unread` holds to; sorting
+      * at most `merges` topics to merge, none unless a test of merges says: its reply.
       */
     def run(
         perRun: Int = 10,
@@ -126,7 +126,8 @@ object TopicDreamTests extends TestSuite {
         write: String -> ujson.Value = _ => wrote(Lead, Passage),
         unread: Document -> Boolean = _ => false,
         floor: Label = Label.Public,
-        asideFor: FiniteDuration = TopicParams.AsideFor
+        asideFor: FiniteDuration = TopicParams.AsideFor,
+        merges: Int = 0
     ): String = {
       val dream = new TopicDream(most, ZoneOffset.UTC, Some(Cards))
       heard.run()
@@ -161,7 +162,20 @@ object TopicDreamTests extends TestSuite {
       )
       dream.run(
         TestTainted.trusted(
-          JobRun(TopicParams(perRun, 2.days, 2.days, day, seedUntil, asideFor), now, now),
+          JobRun(
+            TopicParams(
+              perRun,
+              2.days,
+              2.days,
+              day,
+              seedUntil,
+              asideFor,
+              TopicParams.KeepFor,
+              merges
+            ),
+            now,
+            now
+          ),
           believed
         ),
         moves
@@ -218,16 +232,27 @@ object TopicDreamTests extends TestSuite {
     def referring(r: Ref): Vector[String] =
       ok(documents.shelf(Plugin).referring(right(Ref.written(r)), 10)).map(d => DocKey.value(d.key))
 
-    /** A topic of [[Lead]], not opened by any strand here, kept at `floor` with one passage of
-      * [[Day]] written from nothing, so a run at `floor` sorts among it.
+    /** A topic of `lead` keyed by the strand `name`, not opened by any strand here, kept at
+      * `floor` with one passage of [[Day]] written from strands of the roots `from` (none by
+      * default), so a run at `floor` sorts among it.
       */
-    def topic(floor: Label = Label.Public): Unit = {
+    def topic(
+        floor: Label = Label.Public,
+        name: String = "held",
+        lead: String = Lead,
+        from: Vector[String] = Vector.empty
+    ): Unit = {
+      val tags = from.map(r =>
+        Lineage.Tag.Strand(
+          ConversationId(r),
+          right(Place.read("slack:T/C1")),
+          right(StrandDigest.read("0123456789abcdef"))
+        )
+      )
       val held = TopicWrite.Held(
         Topic.of(
-          TopicWrite.prose(Lead),
-          Vector(
-            grit.knowledge.topic.Passage(Day, Lineage.of(Vector.empty), TopicWrite.prose(Passage))
-          )
+          TopicWrite.prose(lead),
+          Vector(grit.knowledge.topic.Passage(Day, Lineage.of(tags), TopicWrite.prose(Passage)))
         ),
         Vector.empty,
         None
@@ -235,7 +260,7 @@ object TopicDreamTests extends TestSuite {
       val _ = ok(
         TopicWrite.kept(
           documents.keeper(Plugin, Terms),
-          right(TopicKey.strand(ConversationId("held"))),
+          right(TopicKey.strand(ConversationId(name))),
           floor,
           held,
           Now.minusSeconds(3600)
@@ -1409,6 +1434,96 @@ object TopicDreamTests extends TestSuite {
         (Vector(a.id), 1, Some(Integrity.Outside)),
         (Vector(a.id), Vector()),
         Some(Integrity.Outside)
+      )
+    }
+
+    test(
+      "a topic of one discussion not written that night is sorted against the floor's others; a yes at FoldAt or more is proposed, nothing withdrawn, and it is not sorted again"
+    ) {
+      val w = new StrandWorld
+      val a = strand(w, "C1", "deploy pipeline")
+      val b = strand(w, "C2", "deploy pipeline rollback")
+      val runs = new Runs(w)
+      val fold = judging("new", yes = TopicDream.FoldAt)
+      val m = TopicParams.Merges
+      val _ = runs.run(sort = fold, merges = m)
+      val opened = runs.asked.size
+      val proposed = runs.run(now = Now.plusSeconds(600), sort = fold, merges = m)
+      val sorted = runs.asked.size
+      val again = runs.run(now = Now.plusSeconds(1200), sort = fold, merges = m)
+      (
+        runs.asked.take(opened).map(_.kind),
+        runs.asked.slice(opened, sorted).map(x => (x.kind, counted(x))),
+        proposed,
+        again,
+        runs.asked.size - sorted,
+        runs.kept.map(_._1)
+      ) ==> (
+        // Both topics are written the night they open, so neither is sorted to merge then.
+        Vector("sort", "sort", "write", "write"),
+        // The older is sorted against the other; the other, its proposed keeper, is not.
+        Vector(("sort", (0, 1, 1))),
+        "topics: 0 written (0 opened), 0 withdrawn, 2 unchanged, 0 set aside, 0 left for the next run" +
+          s"; would fold ${key(a)} into ${key(b)} (0.90)",
+        "topics: 0 written (0 opened), 0 withdrawn, 2 unchanged, 0 set aside, 0 left for the next run",
+        0,
+        Vector(key(a), key(b))
+      )
+    }
+
+    test(
+      "a topic its merge sort says yes to below FoldAt is set aside at its version, and sorted again only past asideFor"
+    ) {
+      val w = new StrandWorld
+      val runs = new Runs(w)
+      runs.topic(name = "one", lead = "The deploy pipeline, first.", from = Vector("s-1"))
+      runs.topic(name = "two", lead = "The deploy pipeline, second.", from = Vector("s-2"))
+      val unsure = judging("new", yes = TopicDream.FoldAt - 0.01)
+      def run(now: Instant) =
+        runs.run(now = now, sort = unsure, asideFor = 1.hour, merges = TopicParams.Merges)
+      val first = run(Now)
+      val sorted = runs.asked.size
+      val _ = run(Now.plusSeconds(600))
+      val within = runs.asked.size - sorted
+      val _ = run(Now.plusSeconds(7200))
+      (first, sorted, within, runs.asked.size - sorted) ==> (
+        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
+        2,
+        0,
+        2
+      )
+    }
+
+    test(
+      "a topic of two discussions is never sorted to merge, though a topic of one may be proposed into it"
+    ) {
+      val w = new StrandWorld
+      val runs = new Runs(w)
+      runs.topic(name = "two", lead = "The deploy pipeline, twice.", from = Vector("s-1", "s-2"))
+      runs.topic(name = "one", lead = "The deploy pipeline, once.", from = Vector("s-3"))
+      val reply = runs.run(sort = judging("new", yes = 0.95), merges = TopicParams.Merges)
+      (
+        reply,
+        runs.asked.map(x => (x.kind, counted(x))),
+        runs.asked.flatMap(_.shown.linesIterator.toVector.headOption)
+      ) ==> (
+        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run" +
+          "; would fold topic:strand-one into topic:strand-two (0.95)",
+        Vector(("sort", (0, 1, 1))),
+        Vector("The deploy pipeline, once.")
+      )
+    }
+
+    test("a merge sort is shown only topics of its run's floor") {
+      val w = new StrandWorld
+      val runs = new Runs(w)
+      runs.topic(floor = Internal, name = "one", lead = "The deploy pipeline, inside.")
+      runs.topic(name = "public", lead = "The deploy pipeline, outside.")
+      val reply =
+        runs.run(sort = judging("new", yes = 0.95), floor = Internal, merges = TopicParams.Merges)
+      (reply, runs.asked) ==> (
+        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
+        Vector()
       )
     }
   }
