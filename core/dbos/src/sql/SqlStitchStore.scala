@@ -5,7 +5,8 @@ import java.time.{Instant, ZoneOffset}
 
 import scala.util.Using
 
-import grit.core.id.{ConversationId, EntryId}
+import grit.core.id.{ConversationId, EntryId, SourceId}
+import grit.core.inbox.InboundId
 import grit.core.place.Place
 import grit.core.stitch.{Link, Placed, Said, StitchJson, StitchStore}
 import grit.core.store.{StoreError, Tx}
@@ -123,7 +124,9 @@ final class SqlStitchStore extends StitchStore {
       ps.setObject(SqlClearance.Params + 2, until.atOffset(ZoneOffset.UTC))
     }(readSaid)
 
-  def asked(id: EntryId)(using tx: Tx^): Either[StoreError, Option[Said]] =
+  def asked(conversation: ConversationId, source: SourceId)(using
+      tx: Tx^
+  ): Either[StoreError, Option[Said]] =
     cleared(
       s"""WITH ${SqlClearance.With}
          |SELECT $SaidColumns
@@ -134,7 +137,7 @@ final class SqlStitchStore extends StitchStore {
          |        e.payload -> 'message' ->> 'role' = 'user'))
          |   AND ${SqlClearance.entry("e")}""".stripMargin
     ) { ps =>
-      ps.setString(SqlClearance.Params + 1, EntryId.value(id))
+      ps.setString(SqlClearance.Params + 1, EntryId.value(InboundId.of(conversation, source)))
     }(readSaid).map(_.headOption)
 
   def openings(conversations: Vector[ConversationId])(using

@@ -2,7 +2,8 @@ package grit.core.stitch
 
 import java.time.Instant
 
-import grit.core.id.{CloseRef, ConversationId, EntryId, TurnRef}
+import grit.core.id.{CloseRef, ConversationId, EntryId, SourceId, TurnRef}
+import grit.core.inbox.InboundId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, Probability, TestClosings}
 import grit.core.place.{Namespace, Place}
@@ -61,11 +62,19 @@ abstract class StitchContract extends TestSuite {
   /** `payload` as `c`'s next turn, said `seconds` after `At`, its period opened as the inbox
     * opens one.
     */
-  private def say(c: ConversationId, payload: Payload, seconds: Long): Entry = transaction {
+  private def say(
+      c: ConversationId,
+      payload: Payload,
+      seconds: Long,
+      source: Option[String] = None
+  ): Entry = transaction {
     val next = right(entries.lockNext(c))
     right(periods.openFor(c, next.turnSeq, At.plusSeconds(seconds)))
     val e = Entry(
-      EntryId(s"${ConversationId.value(c)}:${next.seq}"),
+      // Kept under its inbound id when it has a source, as the inbox keeps it.
+      source.fold(EntryId(s"${ConversationId.value(c)}:${next.seq}"))(s =>
+        InboundId.of(c, SourceId(s))
+      ),
       c,
       next.turnSeq,
       None,
@@ -136,10 +145,10 @@ abstract class StitchContract extends TestSuite {
       val top = conversation(Origin.Room("T", "in-rooms"))
       val under = conversation(Origin.Thread("T", "in-rooms", "1.0"))
       val legacy = thread("in-rooms", "2.0")
-      val post = say(top, Payload.Posted("The nightly report."), 10)
-      val answered = say(under, Payload.Message(reply), 30)
-      val heard = say(top, Payload.Heard("who is on call?"), 20)
-      val asked = say(under, Payload.Message(Message.User("me, until six")), 40)
+      val post = say(top, Payload.Posted("The nightly report."), 10, Some("1.0"))
+      val answered = say(under, Payload.Message(reply), 30, Some("3.0"))
+      val heard = say(top, Payload.Heard("who is on call?"), 20, Some("2.0"))
+      val asked = say(under, Payload.Message(Message.User("me, until six")), 40, Some("4.0"))
       say(under, Payload.Draft(reply), 50)
       say(legacy, Payload.Heard("a legacy thread"), 25)
       val ours = Set(top, under, legacy)
@@ -149,9 +158,9 @@ abstract class StitchContract extends TestSuite {
       right(transaction(stitches.inRooms(At.plusSeconds(20), At.plusSeconds(40))))
         .filter(s => ours.contains(s.conversation))
         .map(_.entry) ==> Vector(heard, answered)
-      Vector(heard, asked, post, answered).map(e =>
-        right(transaction(stitches.asked(e.id))).map(_.entry)
-      ) ==> Vector(Some(heard), Some(asked), None, None)
+      Vector((top, "2.0"), (under, "4.0"), (top, "1.0"), (under, "3.0"), (top, "9.0")).map((c, s) =>
+        right(transaction(stitches.asked(c, SourceId(s)))).map(_.entry)
+      ) ==> Vector(Some(heard), Some(asked), None, None, None)
     }
 
     test("grit's post a thread begins with is its opening, said there and in its room") {

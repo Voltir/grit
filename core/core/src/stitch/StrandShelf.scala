@@ -3,7 +3,6 @@ package grit.core.stitch
 import java.time.Instant
 
 import grit.core.id.{ConversationId, Href}
-import grit.core.inbox.InboundId
 import grit.core.message.Cut
 import grit.core.store.{Conversation, ConversationStore, StoreError, Tx}
 
@@ -107,7 +106,7 @@ object StrandShelf {
               .find(top)
               .flatMap(
                 _.fold[Either[StoreError, Option[Said]]](Right(None))(c =>
-                  stitches.asked(InboundId.of(c.id, source))
+                  stitches.asked(c.id, source)
                 )
               )
         }

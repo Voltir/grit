@@ -2,7 +2,7 @@ package grit.core.stitch
 
 import java.time.Instant
 
-import grit.core.id.{ConversationId, EntryId}
+import grit.core.id.{ConversationId, EntryId, SourceId}
 import grit.core.place.Place
 import grit.core.store.{StoreError, Tx}
 
@@ -51,10 +51,13 @@ trait StitchStore {
     */
   def inRooms(from: Instant, until: Instant)(using Tx^): Either[StoreError, Vector[Said]]
 
-  /** The person's message `id` names, heard or said to grit, when its transaction reads it;
+  /** The person's message `conversation` holds from `source` (kept under its inbound id,
+    * [[grit.core.inbox.InboundId]]), heard or said to grit, when its transaction reads it;
     * `None` for grit's own reply or post, any other entry, or none.
     */
-  def asked(id: EntryId)(using Tx^): Either[StoreError, Option[Said]]
+  def asked(conversation: ConversationId, source: SourceId)(using
+      Tx^
+  ): Either[StoreError, Option[Said]]
 
   /** Every link begun by, or naming as its root, any of `conversations`. */
   def links(conversations: Vector[ConversationId])(using Tx^): Either[StoreError, Vector[Link]]

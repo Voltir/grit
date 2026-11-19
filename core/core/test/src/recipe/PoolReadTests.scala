@@ -13,7 +13,7 @@ import grit.core.document.{
   InMemoryDocuments
 }
 import grit.core.either.Got.got
-import grit.core.id.{ConversationId, DocKey, EntryId, PluginName, PrincipalId}
+import grit.core.id.{ConversationId, DocKey, EntryId, PluginName, PrincipalId, SourceId}
 import grit.core.identity.{Account, TestAccounts}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.place.{Namespace, Place}
@@ -375,7 +375,7 @@ object PoolReadTests extends TestSuite {
         Left(error)
       def openings(conversations: Vector[ConversationId])(using Tx^) = Left(error)
       def inRooms(from: Instant, until: Instant)(using Tx^) = Left(error)
-      def asked(id: EntryId)(using Tx^) = Left(error)
+      def asked(conversation: ConversationId, source: SourceId)(using Tx^) = Left(error)
       def links(conversations: Vector[ConversationId])(using
           Tx^
       ): Either[StoreError, Vector[Link]] =

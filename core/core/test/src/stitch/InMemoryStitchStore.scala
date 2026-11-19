@@ -2,7 +2,8 @@ package grit.core.stitch
 
 import java.time.Instant
 
-import grit.core.id.{ConversationId, EntryId}
+import grit.core.id.{ConversationId, EntryId, SourceId}
+import grit.core.inbox.InboundId
 import grit.core.message.Message
 import grit.core.place.Place
 import grit.core.store.{Entry, InMemoryEntryStore, Origin, Payload, StoreError, Tx}
@@ -72,11 +73,13 @@ final class InMemoryStitchStore(entries: InMemoryEntryStore, origin: Conversatio
         .map(said)
     )
 
-  def asked(id: EntryId)(using Tx^): Either[StoreError, Option[Said]] =
+  def asked(conversation: ConversationId, source: SourceId)(using
+      Tx^
+  ): Either[StoreError, Option[Said]] =
     Right(
       entries.readable
         .find(e =>
-          e.id == id && (e.payload match {
+          e.id == InboundId.of(conversation, source) && (e.payload match {
             case Payload.Heard(_) | Payload.Message(Message.User(_)) => true
             case _ => false
           })
