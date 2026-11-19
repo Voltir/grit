@@ -29,6 +29,9 @@ object KindName {
   def of(s: String): Either[String, KindName] =
     Slug.check("a kind's name", s, Some(Longest), leadingDigit = true)
   def value(n: KindName): String = n
+
+  /** `section`: the kind of each artifact a split cuts out of another. */
+  val Section: KindName = "section"
 }
 
 /** The name of a state an artifact of some kind may be in. */
