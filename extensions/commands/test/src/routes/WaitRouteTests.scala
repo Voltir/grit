@@ -202,7 +202,7 @@ object WaitRouteTests extends TestSuite {
       )
     }
     test(
-      "a holding watch reads its body through the caller's commands: it waits on what one answers, and a command's error is answered as the command's"
+      "a holding watch reads its body through the caller's commands"
     ) {
       val script = new ScriptedWatch.Script
       val version = script.hold(Plugin, got(DocKey.of("grit/7")), Set(Review), Now)
