@@ -622,7 +622,7 @@ object ProjectsLiveTests extends TestSuite {
           val first = Future(
             keep(commands, desk, "m", "The note, grown. " * 300, "cites" -> ujson.Arr("p/c"))
           )
-          val stopped = scala.util.Try(Await.ready(first, 1.second)).isFailure
+          val stopped = LiveDb.waiting(config)
           val second = Future(
             ran(
               commands,
@@ -635,7 +635,7 @@ object ProjectsLiveTests extends TestSuite {
               "body" -> "How work is run, grown. " * 210
             )
           )
-          val waited = scala.util.Try(Await.ready(second, 1.second)).isFailure
+          val waited = LiveDb.waiting(config, sessions = 2)
           go.countDown()
           val (held, kept, refused) = (
             Await.result(brief, 30.seconds),
@@ -735,7 +735,7 @@ object ProjectsLiveTests extends TestSuite {
           }
           holding.await(30, TimeUnit.SECONDS)
           val keeping = Future(keep(commands, desk, "c", "Cited, rewritten."))
-          val waited = scala.util.Try(Await.ready(keeping, 1.second)).isFailure
+          val waited = LiveDb.waiting(config)
           go.countDown()
           val (ended, kept) = (Await.result(other, 30.seconds), Await.result(keeping, 30.seconds))
           val rendered = ran(
@@ -768,7 +768,7 @@ object ProjectsLiveTests extends TestSuite {
         given ExecutionContext = ExecutionContext.fromExecutorService(pool)
         val (holding, go) = (new CountDownLatch(1), new CountDownLatch(1))
         try {
-          // A batch's transaction, mid-way: it holds the project's lock and has kept p/m
+          // A batch's transaction, mid-way: it holds the project's lock and has kept p/2 (m)
           // rewritten, through the plugin's own claims and keeper, and has not yet ended.
           val internal = Label.at(Level.Internal)
           val batch = Future {
@@ -781,7 +781,7 @@ object ProjectsLiveTests extends TestSuite {
                 key <- DocKey.of("p/2").left.map(StoreError.Invalid(_))
                 was <- keeper
                   .current(key, internal)
-                  .flatMap(_.toRight(StoreError.Invalid("no p/m")))
+                  .flatMap(_.toRight(StoreError.Invalid("no p/2")))
                 data = ujson.read(
                   was.data.render().replace("The manager's note.", "The manager's note, rewritten.")
                 )
@@ -820,7 +820,7 @@ object ProjectsLiveTests extends TestSuite {
               "holder" -> "coder-opus/abc"
             ).map(_.getClass)
           )
-          val waited = scala.util.Try(Await.ready(claiming, 1.second)).isFailure
+          val waited = LiveDb.waiting(config)
           go.countDown()
           val (ended, claimed) =
             (Await.result(batch, 30.seconds), Await.result(claiming, 30.seconds))

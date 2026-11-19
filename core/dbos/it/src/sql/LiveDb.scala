@@ -49,6 +49,26 @@ object LiveDb {
         } catch { case e: Throwable => conn.rollback(); throw e }
     }
 
+  /** Whether, within 10 seconds, at least `sessions` sessions on `config`'s database wait on a
+    * lock another holds.
+    */
+  def waiting(config: DbConfig, sessions: Int = 1): Boolean = {
+    val deadline = System.nanoTime() + 10_000_000_000L
+    def blocked: Boolean = transaction(config) { (tx: Tx^) ?=>
+      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+      Using.resource(conn.createStatement()) { st =>
+        Using.resource(
+          st.executeQuery("SELECT count(DISTINCT pid) FROM pg_locks WHERE NOT granted")
+        ) { rs =>
+          rs.next()
+          rs.getLong(1) >= sessions
+        }
+      }
+    }
+    while (!blocked && System.nanoTime() < deadline) Thread.sleep(10)
+    blocked
+  }
+
   /** `body` given a connection to `config`'s database in a transaction of its own, rolled back
     * after.
     */
