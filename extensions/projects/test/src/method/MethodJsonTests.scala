@@ -255,7 +255,7 @@ object MethodJsonTests extends TestSuite {
             m.name,
             m.version,
             m.kinds,
-            m.transitions.map(_.copy(movers = Movers.People)),
+            m.transitions.map(_.copy(movers = Movers.Person)),
             m.views,
             TransitionChecks.all
           )

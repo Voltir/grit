@@ -59,7 +59,7 @@ object MethodJson {
           "movers",
           t.movers match {
             case Movers.Anyone => None
-            case Movers.People => Some(PeopleMove)
+            case Movers.Person => Some(PeopleMove)
           }
         )
       }),
@@ -232,7 +232,7 @@ object MethodJson {
       named <- f.addedStr("movers")
       movers <- named match {
         case None | Some(AnyoneMoves) => Right(Movers.Anyone)
-        case Some(PeopleMove) => Right(Movers.People)
+        case Some(PeopleMove) => Right(Movers.Person)
         case Some(other) =>
           Left(s"${f.what}'s movers $other is neither $AnyoneMoves nor $PeopleMove")
       }

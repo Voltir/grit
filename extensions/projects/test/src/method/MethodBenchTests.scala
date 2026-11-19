@@ -86,7 +86,7 @@ object MethodBenchTests extends TestSuite {
             method,
             1,
             Vector(change, note),
-            transitions.map(t => t.copy(movers = Movers.People)),
+            transitions.map(t => t.copy(movers = Movers.Person)),
             views,
             TransitionChecks.all
           )

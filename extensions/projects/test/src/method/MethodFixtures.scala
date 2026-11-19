@@ -133,7 +133,7 @@ object MethodFixtures {
 
   /** [[transitions]], a change made done only by people. */
   val peopleFinish: Vector[Transition] =
-    transitions.map(t => if (t.to == state("done")) t.copy(movers = Movers.People) else t)
+    transitions.map(t => if (t.to == state("done")) t.copy(movers = Movers.Person) else t)
 
   val views: Vector[RoleView] = Vector(right(RoleView.of(role("builder"), Set(change.name), 1)))
 
