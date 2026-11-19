@@ -1393,25 +1393,7 @@ private[plugin] final class ProjectCommands(
             } yield ()
           )
         }
-        rewritten <- refuse(
-          ArtifactJson.index(
-            project,
-            pin,
-            ArtifactJson.startedBy(index).getOrElse(author(by)),
-            planned.next
-          )
-        )
-        (key, text, data, refs) = rewritten
-        _ <- keptEverywhere(
-          own,
-          key,
-          index.label,
-          DocumentKeeper.replacing(Some(index)),
-          text,
-          data,
-          refs,
-          at
-        )
+        _ <- rewroteIndex(own, project, index, pin, planned.next, author(by), at)
       } yield rekeyAnswer(project, planned, dry = false)
 
   /** A re-key's counts: `<project>: <n> artifacts, <n> body links, <n> head cites, <n> handles
@@ -1955,11 +1937,10 @@ private[plugin] final class ProjectCommands(
           done <- refuse(
             target.migrated(whole, Remap(args.kinds, args.states, artifacts.toMap))
           )
-          index <- indexed(own, args.project)
           _ <- unclaimed(claims, project.documents, at)
           renamed = done.renamed.toSet
           _ <- atTheirLabels(
-            (index._1 -> s"project $p") +: project.documents.collect {
+            (project.index -> s"project $p") +: project.documents.collect {
               case (d, a) if renamed(a.head.key) => d -> a.head.key.value
             },
             "migrate"
@@ -1979,11 +1960,15 @@ private[plugin] final class ProjectCommands(
                 ).map(_ => ())
               )
             }
-          rewritten <- refuse(
-            ArtifactJson.index(args.project, done.project.pin, author(by), project.next)
+          _ <- rewroteIndex(
+            own,
+            args.project,
+            project.index,
+            done.project.pin,
+            project.next,
+            author(by),
+            at
           )
-          (key, text, data, refs) = rewritten
-          _ <- keptEverywhere(own, key, index._1.label, Tx.top, text, data, refs, at)
         } yield AnswerText.migrated(args.project, done.project.pin, done.renamed, ListMost)
       }
     }
@@ -2885,6 +2870,35 @@ private[plugin] object ProjectCommands {
   )(using Tx^)(using Locked): Either[Stop, Written] =
     written(own.write(key, label, believed, Place.Everywhere, text, data, None, at, refs))
 
+  /** Project `project`'s index, `index`, kept again holding `pin` and `next`: who started the
+    * project kept (`by`, when it names no one), believed at no more than `index` was.
+    */
+  private def rewroteIndex(
+      own: DocumentKeeper,
+      project: ProjectKey,
+      index: Document,
+      pin: Pin,
+      next: ArtifactNumber,
+      by: String,
+      at: Instant
+  )(using Tx^)(using Locked): Either[Stop, Unit] =
+    for {
+      rewritten <- refuse(
+        ArtifactJson.index(project, pin, ArtifactJson.startedBy(index).getOrElse(by), next)
+      )
+      (key, text, data, refs) = rewritten
+      _ <- keptEverywhere(
+        own,
+        key,
+        index.label,
+        DocumentKeeper.replacing(Some(index)),
+        text,
+        data,
+        refs,
+        at
+      )
+    } yield ()
+
   /** `project`'s index document as `own` holds it, and the pin it holds, or why not. */
   private def indexed(own: DocumentShelf, project: ProjectKey)(using
       Tx^
@@ -3428,8 +3442,7 @@ private[plugin] object ProjectCommands {
   /** Keeps each artifact `steps` changed through `own`, once, as they left it ([[kept]]): wholly
     * its caller's when a step wrote every word of it, else carrying the document of the words it
     * carries (its own, or for a [[Whose.Part]], the one it was cut from); and the
-    * project's index, when a step minted an id, its `next` moved on and who started it kept
-    * (`by`, when it names no one), believed at no more than its version before, nor its caller.
+    * project's index, when a step minted an id, its `next` moved on ([[rewroteIndex]]).
     */
   private def wrote(
       own: DocumentKeeper,
@@ -3459,27 +3472,7 @@ private[plugin] object ProjectCommands {
       _ <-
         if (steps.next == project.next) Right(())
         else
-          for {
-            index <- refuse(
-              ArtifactJson.index(
-                project.key,
-                project.pin,
-                ArtifactJson.startedBy(project.index).getOrElse(by),
-                steps.next
-              )
-            )
-            (key, text, data, refs) = index
-            _ <- keptEverywhere(
-              own,
-              key,
-              project.index.label,
-              DocumentKeeper.replacing(Some(project.index)),
-              text,
-              data,
-              refs,
-              at
-            )
-          } yield ()
+          rewroteIndex(own, project.key, project.index, project.pin, steps.next, by, at)
     } yield versions.toMap
 
   /** Nothing, or a refusal when `read`, the version a keep of `key` was read at, is not that of

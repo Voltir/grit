@@ -149,6 +149,29 @@ object MigrateTests extends TestSuite {
       done(migrated(store, noteToMemo))
       (believedOf(store, "p/1"), believedOf(store, "p/2")) ==> (Some("member"), Some("authority"))
     }
+    test("a migration keeps who started the project, its index believed no more than before") {
+      val store = Store()
+      holding(store)
+      // A member's new artifact moves the index's next on, so it is believed at member.
+      done(
+        askBelieved(Integrity.Member)(
+          both,
+          store,
+          "project_keep",
+          "project" -> "p",
+          "kind" -> "note",
+          "title" -> "D",
+          "body" -> "A member's words."
+        )
+      )
+      def startedBy: Option[String] = inTx(
+        store.keeper.current(MethodFixtures.right(DocKey.of("p")), Label.Public)
+      ).fold(e => throw new java.lang.AssertionError(e.toString), identity)
+        .flatMap(grit.projects.artifact.ArtifactJson.startedBy)
+      val before = (startedBy, believedOf(store, "p"))
+      done(migrated(store, noteToMemo))
+      (startedBy, believedOf(store, "p")) ==> before
+    }
 
     test("what a migration leaves exports and reads back under the new version, renamed") {
       val store = Store()
