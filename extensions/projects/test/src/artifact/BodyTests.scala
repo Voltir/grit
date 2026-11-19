@@ -14,7 +14,7 @@ object BodyTests extends TestSuite {
   val tests: Tests = Tests {
 
     test(
-      "a section is its `##` heading and what follows, up to the next of rank 2 or less, as markdown"
+      "a section is its `##` heading and what follows, up to the next of level 2 or less, as markdown"
     ) {
       val b = body(
         "Lead.\n\n## Decision: adopt\n\n- By: Ana\n\n### Why\n\nCheaper.\n\n## Contrast\n\nMore."
@@ -77,7 +77,7 @@ object BodyTests extends TestSuite {
         Right("Lead.\n\n## Goal\n\nNew, citing [b](artifact:p/2).\n\n## Reads\n\nKept."),
         Right("Lead.\n\n## Goal\n\n## Reads\n\nKept."),
         Left(
-          "a section's new body holds a heading of rank 2 or less, which would start another " +
+          "a section's new body holds a heading of level 2 or less, which would start another " +
             "section: \"Smuggled\""
         ),
         Left("a link names no artifact: artifact:nokey (an artifact's key has no '/': nokey)")

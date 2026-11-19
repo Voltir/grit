@@ -98,7 +98,7 @@ object Body {
   def sections(b: Body): Vector[String] = sectionsOf(b.blocks).flatMap(_.title)
 
   /** Its `##` section titled `title` as [[markdown]] writes it: the heading, then what follows up
-    * to the next heading of rank 2 or less; or why not: no section has that title, naming those
+    * to the next heading of level 2 or less; or why not: no section has that title, naming those
     * there are, or several do, naming which of its sections they are.
     */
   def section(b: Body, title: String): Either[String, String] =
@@ -111,7 +111,7 @@ object Body {
     case Text(old: String, now: String)
 
     /** What follows the heading of the `##` section titled `title`, up to the next heading of
-      * rank 2 or less, made the blocks `markdown` holds (none when blank), the heading kept.
+      * level 2 or less, made the blocks `markdown` holds (none when blank), the heading kept.
       */
     case Section(title: String, markdown: String)
   }
@@ -119,7 +119,7 @@ object Body {
   /** Its markdown with `edit` made, for [[read]] to read, which bounds its size; or why not: the
     * old text held other than once, the section refused as [[section]] refuses it, or a
     * section's new markdown holding a link [[read]] would refuse under `resolve` or a heading of
-    * rank 2 or less.
+    * level 2 or less.
     */
   def edited(
       b: Body,
@@ -149,7 +149,7 @@ object Body {
           case Vector() => Right(())
           case titles =>
             Left(
-              "a section's new body holds a heading of rank 2 or less, which would start " +
+              "a section's new body holds a heading of level 2 or less, which would start " +
                 s"another section: ${titles.map(t => s"\"$t\"").mkString(", ")}"
             )
         }
@@ -212,7 +212,7 @@ object Body {
   val Delta: String = "Delta: "
 
   /** `into` with each of `deltas`' delta sections merged in, in order: a section is a `##`
-    * heading and the blocks up to the next heading of rank 2 or less, and a delta, headed
+    * heading and the blocks up to the next heading of level 2 or less, and a delta, headed
     * `Delta: <name>`, replaces `into`'s section `<name>` or is added after its last; or why not:
     * a merged stored form over [[StoredMost]]. `into` itself when `deltas` holds none.
     */
@@ -231,8 +231,8 @@ object Body {
     if (changes.isEmpty) Right(into) else checked(Doc(doc))
   }
 
-  /** Blocks from a heading of rank 2 or less up to the next, or those before the first;
-    * `title`, the heading's when it is of rank 2.
+  /** Blocks from a heading of level 2 or less up to the next, or those before the first;
+    * `title`, the heading's when it is of level 2.
     */
   private final case class Section(title: Option[String], blocks: Vector[Block[ArtifactKey]])
       extends caps.Pure
@@ -240,7 +240,7 @@ object Body {
   /** A delta: the section it replaces or adds, and the blocks under it. */
   private final case class Change(name: String, blocks: Vector[Block[ArtifactKey]])
 
-  /** `blocks` cut before each heading of rank 2 or less. */
+  /** `blocks` cut before each heading of level 2 or less. */
   private def sectionsOf(blocks: Vector[Block[ArtifactKey]]): Vector[Section] =
     blocks.foldLeft(Vector.empty[Section]) { (cut, block) =>
       block match {
