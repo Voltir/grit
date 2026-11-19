@@ -101,15 +101,14 @@ private[dbos] final class SqlPluginCommands(
       case Left(e) => Left(CommandError.Unread(name, e.message))
       case Right(a) =>
         transaction(by, room, name, keeps = !command.onlyReads) { (person, tx) =>
-          val most = Tx.visibility(tx).believedIn(room, believed)
           KeepingCommand.run(
             command,
             a,
-            CommandBy.Direct(person, most),
+            CommandBy.Direct(person, Tx.visibility(tx).believedIn(room, believed)),
             keeper(plugin, terms),
             claims(plugin),
             room,
-            most,
+            believed,
             at
           )(using
             tx
