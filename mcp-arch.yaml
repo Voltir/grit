@@ -57,10 +57,9 @@ ignore:
   # import (`grit.core.route`) resolves into a module's probes and the law reports false breaches.
   - "**/probes/**"
 
-  # Working documents this checkout keeps out of git. They yield no intent (every intent fact
-  # comes from enola-intent.yaml), only heading symbols that moved the snapshot on every edit,
-  # and a baseline pinned here would differ from one pinned in a clean clone.
-  - "roadmap/**"
+  # A person's local instructions, which a checkout keeps out of git. They yield no intent (every
+  # intent fact comes from enola-intent.yaml), only heading symbols that moved the snapshot on
+  # every edit, and a baseline pinned here would differ from one pinned in a clean clone.
   - "CLAUDE.local.md"
 
   # The enola binary itself (51MB, extensionless). Excluded by kind anyway; named here
