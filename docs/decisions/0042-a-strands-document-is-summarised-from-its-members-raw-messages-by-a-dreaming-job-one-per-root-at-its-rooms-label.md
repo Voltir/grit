@@ -36,8 +36,11 @@ Decision:
   reads the item and each candidate itself, as a summary's does, and asks the deployment's
   classifier: one choice over the candidates and the job's fixed criteria (`Sorting.choice`),
   or a yes/no for each of the nearest by their words (`Sorting.each`, at most 40). The job
-  names the candidates by version and is handed back its own values for them, each with a
-  probability; the text stays in the step. Its record holds ids, a digest and the answers, and
+  names the candidates by version, those it must show and a pool, and the step fills from the
+  pool those whose text best matches the item's by the documents' index, never reading every
+  candidate's text; it is handed back its own values for them, each with a probability; the
+  text stays in the step. A request never passes the classifier's limit (Jev refuses one over
+  32,000 tokens): each candidate's text is cut evenly only when it would. Its record holds ids, a digest and the answers, and
   its answer is believed at the meet of everything read. A judgment costs a fraction of a
   model's ask and reads no prompt a model could be steered by, so placing moves off the
   summary model; the job's model asks only write.
