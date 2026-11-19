@@ -1194,7 +1194,7 @@ private[plugin] final class ProjectCommands(
           case Left(store) => Left(store)
         }
       }
-    } yield if (lines.isEmpty) "No project is left to re-key." else lines.mkString("\n")
+    } yield if (lines.isEmpty) Projects.NothingToRekey else lines.mkString("\n")
 
   /** 5: the most reasons a refused re-key names. */
   private val RekeyReasonsMost: Int = 5
