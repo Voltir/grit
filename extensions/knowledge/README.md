@@ -124,8 +124,10 @@ directory is reached.
 
 `TopicDream` scans its topics, the strands of rooms at its floor spoken in within `recent`, and
 the cards changed within `cardRecent` (`TopicParams.SeedReach` on a night up to its
-`seedUntil`). It withdraws from a topic each passage naming a strand it no longer reads at its
-floor (its room at another label now, or its messages gone), the topic itself when none is left.
+`seedUntil`). It withdraws from a topic each passage naming a strand whose room is at another
+label than its floor now, and each dated more than `keepFor` (`TopicParams.KeepFor` unless its
+schedule says) before its day, the topic itself when none is left. A passage outlives the
+messages it was written from, as a closing does: their purge withdraws nothing.
 It attaches each strand or card a topic already refers to (a card by the unit its pointer reads,
 which a topic refers to when it was written from that card, links it, or a strand of it links
 it); pairs each card a strand it takes up links (`TopicScan.Linked`, read whatever its age or

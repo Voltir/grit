@@ -41,7 +41,9 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
 
   // 4: its asks are shown discussions and documents fenced, and told so (their digests moved).
   // 5: strands and cards are placed by sorts, a judgment each, not by one attach ask.
-  val version: Int = 5
+  // 6: a passage is withdrawn past keepFor or for its room's label, no longer for its strand's
+  // messages gone (its scan's step reads no strands to prune).
+  val version: Int = 6
 
   def write(params: TopicParams): ujson.Value = TopicParams.write(params)
 
@@ -63,6 +65,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
         if (seeding) p.copy(cardRecent = TopicParams.SeedReach) else p,
         most,
         if (end.isBefore(at)) end else at,
+        day,
         shelf,
         keeper,
         strands,

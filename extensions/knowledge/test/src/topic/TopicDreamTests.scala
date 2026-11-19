@@ -783,6 +783,56 @@ object TopicDreamTests extends TestSuite {
       )
     }
 
+    test("a passage whose strand's messages are gone is kept while within keepFor") {
+      val w = new StrandWorld
+      val root = w.thread("C1", "1.0")
+      val first = w.say(root, "deploy pipeline", 0)
+      val reply = w.say(w.thread("C1", "2.0"), "reply on deploy pipeline", 10)
+      w.follow(reply, root)
+      val runs = new Runs(w)
+      val _ = runs.run()
+      val opened = runs.kept
+      w.purge(first, 86400)
+      w.purge(reply, 86400)
+      val later = StrandWorld.at(86400 + 3600)
+      val read = w.of(root, later)(using TestTx.fake)
+      val purged = runs.run(day = Some(Day.plusDays(1)), now = later)
+      (read, purged, runs.kept) ==> (
+        Vector(),
+        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
+        opened
+      )
+    }
+
+    test(
+      "a passage dated more than keepFor before the run's day is withdrawn, and a topic left with none goes"
+    ) {
+      val w = new StrandWorld
+      val a = strand(w, "C1", "deploy pipeline")
+      val runs = new Runs(w)
+      val _ = runs.run()
+      val _ = strand(w, "C2", "deploy rollback", 86400)
+      val _ = runs.run(
+        day = Some(Day.plusDays(1)),
+        now = StrandWorld.at(86400 + 3600),
+        attach = (_, _) => placed(Seq(group("1", Seq(1))))
+      )
+      // A run whose day is `days` after Day, an hour into it.
+      def after(days: Int) = runs.run(
+        day = Some(Day.plusDays(days.toLong)),
+        now = StrandWorld.at(86400L * days + 3600)
+      )
+      val firstOld = after(91)
+      val left = runs.kept
+      val bothOld = after(92)
+      (firstOld, left, bothOld, runs.kept) ==> (
+        "topics: 0 written (0 opened), 1 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
+        Vector(key(a) -> s"$Lead\n\n## 2026-10-13\n\n$Passage"),
+        "topics: 0 written (0 opened), 1 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
+        Vector()
+      )
+    }
+
     test(
       "a topic whose data no longer reads, an earlier version's, is withdrawn and opened afresh"
     ) {

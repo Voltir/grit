@@ -1,6 +1,6 @@
 package grit.knowledge.topic
 
-import java.time.Instant
+import java.time.{Instant, LocalDate}
 
 import grit.core.document.{DocRef, Document, DocumentKeeper}
 import grit.core.durable.Journaled
@@ -92,9 +92,11 @@ private[topic] object TopicScan {
   /** 20: the most cards a topic holds that its write ask is shown besides those attached. */
   val Holds: Int = 20
 
-  /** The scan at `until`: its floor's topics read, one whose data is refused withdrawn and one of
-    * a later version left as it is ([[Topic.Unread]]); from each, the passages naming a strand `strands` no longer reads at the floor (its room at
-    * another label now, or its messages gone) withdrawn, the topic itself when none is left;
+  /** The scan at `until`, for the run's `day`: its floor's topics read, one whose data is refused
+    * withdrawn and one of a later version left as it is ([[Topic.Unread]]); from each, the
+    * passages naming a strand whose room is at another label now, or dated more than `keepFor`
+    * before `day`, withdrawn, the topic itself when none is left (a passage whose strand's
+    * messages are gone is kept);
     * then the strands at the floor spoken in within `recent` before `until`, and the cards
     * changed within `cardRecent` before `until`: the floor's [[Aside]] kept to those among them at
     * the digest or version set aside, and set aside within `asideFor` before `until`; each already in a topic's lineage or the aside at its
@@ -110,6 +112,7 @@ private[topic] object TopicScan {
       params: TopicParams,
       most: Int,
       until: Instant,
+      day: LocalDate,
       cards: Option[Exported[CardShelf]],
       keeper: DocumentKeeper,
       strands: StrandShelf,
@@ -119,7 +122,7 @@ private[topic] object TopicScan {
     val floor = Tx.floor(tx)
     val shelf = cards.flatMap(e => needs.of(e).toOption)
     held(keeper, floor, at).flatMap((read: (Vector[Found], Int, Set[TopicKey])) =>
-      pruned(keeper, strands, read._1, floor, until, at).flatMap((kept: Vector[Pruned]) =>
+      pruned(keeper, read._1, floor, day.minusDays(params.keepFor.toDays), at).flatMap((kept: Vector[Pruned]) =>
         strands
           .atFloor(until.minusSeconds(params.recent.toSeconds), until)
           .flatMap((recent: Vector[Strand.Digested]) =>
@@ -300,42 +303,35 @@ private[topic] object TopicScan {
         )
     }
 
-  /** Each of `found` with its passages naming a strand `strands` does not read at `floor` as
-    * of `until` withdrawn, the topic itself when none is left.
+  /** Each of `found` with its passages dated before `since`, or naming a strand of a room whose
+    * label is not `floor` now, withdrawn, the topic itself when none is left.
     */
   private def pruned(
       keeper: DocumentKeeper,
-      strands: StrandShelf,
       found: Vector[Found],
       floor: Label,
-      until: Instant,
+      since: LocalDate,
       at: Instant
-  )(using Tx^): Either[StoreError, Vector[Pruned]] = {
-    val roots = found
-      .flatMap(_.held.topic.passages.flatMap(_.from.tags))
-      .collect { case Lineage.Tag.Strand(root, _, _) => root }
-      .distinct
-    strands.of(roots, until).flatMap { (read: Vector[Strand.Digested]) =>
-      val present = read.filter(_.roomLabel == floor).map(_.root).toSet
-      each(found) { (f: Found) =>
-        val passages = f.held.topic.passages
-        val gone = passages.filter(_.from.tags.exists {
-          case Lineage.Tag.Strand(root, _, _) => !present.contains(root)
+  )(using Tx^): Either[StoreError, Vector[Pruned]] =
+    each(found) { (f: Found) =>
+      val passages = f.held.topic.passages
+      val gone = passages.filter(p =>
+        p.day.isBefore(since) || p.from.tags.exists {
+          case Lineage.Tag.Strand(_, room, _) => Tx.roomLabel(room) != floor
           case _ => false
-        })
-        if (gone.isEmpty) Right(Pruned(Some((f.key, f.document.version, f.held)), 0))
-        else if (gone.size == passages.size)
-          keeper.withdraw(f.document.key, floor, at).map(_ => Pruned(None, gone.size))
-        else {
-          val left = f.held.copy(topic = Topic.of(f.held.topic.lead, passages.diff(gone)))
-          TopicWrite
-            .kept(keeper, f.key, floor, left, at)
-            .flatMap(_ => keeper.current(f.document.key, floor))
-            .map(now => Pruned(now.map(n => (f.key, n.version, left)), gone.size))
         }
+      )
+      if (gone.isEmpty) Right(Pruned(Some((f.key, f.document.version, f.held)), 0))
+      else if (gone.size == passages.size)
+        keeper.withdraw(f.document.key, floor, at).map(_ => Pruned(None, gone.size))
+      else {
+        val left = f.held.copy(topic = Topic.of(f.held.topic.lead, passages.diff(gone)))
+        TopicWrite
+          .kept(keeper, f.key, floor, left, at)
+          .flatMap(_ => keeper.current(f.document.key, floor))
+          .map(now => Pruned(now.map(n => (f.key, n.version, left)), gone.size))
       }
     }
-  }
 
   /** The cards changed from `since` until `until`, up to the `n`th `counts` holds to, through
     * `shelf`; none when there is none (no such plugin, or it is not among the needs).

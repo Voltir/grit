@@ -2,10 +2,10 @@ package grit.core.stitch
 
 import java.time.Instant
 
-import grit.core.id.{ConversationId, EntryId}
+import grit.core.id.{CloseRef, ConversationId, EntryId, TurnRef}
 import grit.core.identity.TestAccounts
 import grit.core.message.{Tokens, Usage}
-import grit.core.period.Probability
+import grit.core.period.{CloseReason, Probability, TestClosings}
 import grit.core.store.{
   Conversation,
   Entry,
@@ -81,6 +81,25 @@ final class StrandWorld(start: Instant = StrandWorld.At) {
       Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, None)
     )
     right(stitches.record(first.id, placed, first.createdAt)(using TestTx.fake))
+  }
+
+  /** The period `said` is in sealed and purged `seconds` after `start`, as raw retention purges
+    * it: its messages gone.
+    */
+  def purge(said: Entry, seconds: Long): Unit = {
+    given Tx = TestTx.fake
+    val period = right(periods.of(TurnRef(said.conversationId, said.turnSeq)))
+      .map(_.ref)
+      .getOrElse(throw new java.lang.AssertionError(s"no period holds ${said.id}"))
+    val _ = right(
+      periods.seal(
+        CloseRef(period, said.turnSeq, at(seconds)),
+        CloseReason.Lapsed,
+        TestClosings.prose("purged"),
+        at(seconds)
+      )
+    )
+    val _ = right(periods.purge(period, at(seconds)))
   }
 
   def of(root: Conversation, asOf: Instant)(using Tx): Vector[Strand.Digested] =
