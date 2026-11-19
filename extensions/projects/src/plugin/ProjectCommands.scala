@@ -391,7 +391,7 @@ private[plugin] final class ProjectCommands(
         case Some(a) =>
           Left(
             Stop.Refused(
-              s"${headed(a.head)} is kept already; a proposal is a new artifact: give a key the " +
+              s"${AnswerText.named(a.head)} is kept already; a proposal is a new artifact: give a key the " +
                 "project does not have"
             )
           )
@@ -1085,7 +1085,7 @@ private[plugin] final class ProjectCommands(
           .toRight(Stop.Refused(s"$key has no brief as ${RoleName.value(args.role)}"))
           .flatMap(briefed(own, _, document.place, after, at))
       } yield AnswerText.claimed(
-        s"Claimed ${headed(a.head)} as ${RoleName.value(args.role)} for $holder.",
+        s"Claimed ${AnswerText.named(a.head)} as ${RoleName.value(args.role)} for $holder.",
         unkept
       )
     }
@@ -2253,7 +2253,7 @@ private[plugin] object ProjectCommands {
             case (Some(a), Some(k)) if k != a.head.kind =>
               Left(
                 Stop.Refused(
-                  s"${headed(a.head)} keeps its kind; it cannot become ${KindName.value(k)}"
+                  s"${AnswerText.named(a.head)} keeps its kind; it cannot become ${KindName.value(k)}"
                 )
               )
             case (Some(a), _) => Right((a.head.kind, a.head.state))
@@ -2297,7 +2297,7 @@ private[plugin] object ProjectCommands {
             }
           )
           _ <- refuse(Project.of(args.key.project, project.pin, next.artifacts))
-        } yield (next, s"Kept ${headed(artifact.head)}.")
+        } yield (next, s"Kept ${AnswerText.named(artifact.head)}.")
       case Step.Move(args) =>
         for {
           _ <- Either.cond(
@@ -2316,8 +2316,8 @@ private[plugin] object ProjectCommands {
           merged = done.changed.map(c => Artifact(c.head.copy(by = Some(writer)), c.body))
         } yield (
           changing(moved +: merged.toVector),
-          s"Moved ${headed(moved.head)}." +
-            merged.fold("")(c => s" Merged its deltas into ${headed(c.head)}.")
+          s"Moved ${AnswerText.named(moved.head)}." +
+            merged.fold("")(c => s" Merged its deltas into ${AnswerText.named(c.head)}.")
         )
     }
   }
@@ -2683,15 +2683,12 @@ private[plugin] object ProjectCommands {
     if (held.isEmpty) PrincipalId.value(person.id) else held.mkString(", ")
   }
 
-  private[plugin] def headed(h: ArtifactHead): String =
-    s"${h.key.value} (${KindName.value(h.kind)}, ${StateName.value(h.state)})"
-
   /** Why a move was refused, in words its mover can act on. */
   private[plugin] def refusal(r: MoveRefusal): String = r match {
     case MoveRefusal.Missing(key) =>
       s"project ${ProjectKey.value(key.project)} has no artifact ${key.value}"
     case MoveRefusal.NoTransition(head, to, may) =>
-      s"${headed(head)} cannot move to ${StateName.value(to)}; " +
+      s"${AnswerText.named(head)} cannot move to ${StateName.value(to)}; " +
         (if (may.isEmpty) "nothing moves it on"
          else s"it may move to ${may.map(StateName.value).mkString(", ")}")
     case MoveRefusal.Unheld(head, to, failed) =>

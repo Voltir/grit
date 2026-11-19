@@ -136,6 +136,10 @@ object AnswerText {
     s"Their history stays readable for ${readable.toDays} days: project_show with an `at` " +
       "before now, and project_history."
 
+  /** `<key> (<kind>, <state>)`: an artifact named in a sentence about it. */
+  def named(h: ArtifactHead): String =
+    s"${h.key.value} (${KindName.value(h.kind)}, ${StateName.value(h.state)})"
+
   /** `<key> (<kind>, <state>): <title>`, the kind and the state each only when asked for, the
     * parentheses only when either is.
     */
@@ -259,13 +263,11 @@ object AnswerText {
   ): String = {
     val gone = swept.withdrawn.gone
     val uncited = swept.withdrawn.uncited
-    def other(h: ArtifactHead): String =
-      s"${h.key.value} (${KindName.value(h.kind)}, ${StateName.value(h.state)})"
     def why(s: Project.Stay): String = s match {
       case Project.Stay.Claimed(holder) => s"claimed for ${ClaimHolder.value(holder)}"
       case Project.Stay.Cited(first, rest) =>
-        s"cited by ${(first +: rest).map(other).mkString(", ")}"
-      case Project.Stay.Above(child) => s"${other(child)} under it stays"
+        s"cited by ${(first +: rest).map(named).mkString(", ")}"
+      case Project.Stay.Above(child) => s"${named(child)} under it stays"
     }
     def reason(s: Project.Stay): String = s match {
       case _: Project.Stay.Claimed => "claimed"
