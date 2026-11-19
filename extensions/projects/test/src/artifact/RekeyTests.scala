@@ -21,7 +21,6 @@ object RekeyTests extends TestSuite {
 
   private val p: ProjectKey = right(ProjectKey.of("p"))
   private val pin: Pin = right(Pin.read(right(MethodName.of("m")), 1, "0f" * 32))
-  private val first: ArtifactNumber = ArtifactNumber.First
   private val t0 = Instant.parse("2026-10-01T12:00:00Z")
 
   /** The old form's data of an artifact titled `title`, under `parent`, citing `cites` in its
@@ -99,7 +98,7 @@ object RekeyTests extends TestSuite {
 
   private def planned(legacy: Rekey.Old*): Rekey.Planned =
     Rekey
-      .plan(p, pin, first, Vector.empty, legacy.toVector)
+      .plan(p, pin, legacy.toVector)
       .fold(why => throw new java.lang.AssertionError(why.mkString("; ")), identity)
 
   /** Three milestones, out of order by title, a note citing two of them and one under the first. */
@@ -142,50 +141,14 @@ object RekeyTests extends TestSuite {
         ) ==>
         Right(Vector("p/4 m9", "p/2 m10", "p/1 notes"))
     }
-    test("a second plan over what the first left is empty, and numbers from the next") {
+    test("a second plan over what the first left is empty") {
       val once = planned(roadmap*)
+      val leftOld = left(once).map(_._1).filter(ArtifactJson.isOldForm).map(Rekey.Old(_, t0))
       (
         once.next,
-        Rekey
-          .plan(p, pin, once.next, left(once), Vector.empty)
-          .map(again => (again.artifacts, again.table, again.next))
-      ) ==> (
-        right(ArtifactNumber.of(5)),
-        Right((Vector.empty, Vector.empty, right(ArtifactNumber.of(5))))
-      )
-    }
-    test(
-      "a later plan, cleared higher, numbers what is left from the next and cites by store key"
-    ) {
-      val secret = grit.core.visibility.TestLabels.Trial
-      val high = old(
-        "p/hidden",
-        "Hidden",
-        0,
-        parent = Some("p/m9"),
-        cites = Vector("p/step"),
-        label = secret
-      )
-      val once = planned(roadmap*)
-      val again = Rekey
-        .plan(p, pin, once.next, left(once), Vector(high))
-        .fold(why => throw new java.lang.AssertionError(why.mkString("; ")), identity)
-      again.artifacts.map(a =>
-        (
-          a.after.head.called,
-          a.after.head.parent.map(_.value),
-          Body.markdown(a.after.body),
-          Rank.value(a.after.head.rank)
-        )
-      ) ==>
-        Vector(
-          (
-            "p/5 hidden",
-            Some("p/4"),
-            "See [step](artifact:p/3).",
-            Rank.value(right(Rank.between(Some(Rank.spread(1).head), None)))
-          )
-        )
+        leftOld,
+        Rekey.plan(p, pin, leftOld).map(again => (again.artifacts, again.table))
+      ) ==> (right(ArtifactNumber.of(5)), Vector.empty, Right((Vector.empty, Vector.empty)))
     }
     test("a key led by a digit takes the handle k-<key>, listed as carried") {
       val got = planned(old("p/0042-x", "Digits", 0))
@@ -199,8 +162,6 @@ object RekeyTests extends TestSuite {
       Rekey.plan(
         p,
         pin,
-        first,
-        Vector.empty,
         Vector(old("p/a", "A", 0, cites = Vector("p/gone")))
       ) ==>
         Left(
@@ -213,8 +174,6 @@ object RekeyTests extends TestSuite {
       Rekey.plan(
         p,
         pin,
-        first,
-        Vector.empty,
         Vector(old("p/k-1x", "A", 0), old("p/1x", "B", 1))
       ) ==>
         Left(

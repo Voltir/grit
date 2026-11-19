@@ -35,37 +35,29 @@ object Rekey {
   /** `k-`: what a handle is led by in place of a name led by a digit, which no handle may be. */
   val Carried: String = "k-"
 
-  /** The old-form documents of `project` this transaction reads, numbered from `next`, handled,
+  /** The old-form documents of `project` this transaction reads, numbered from 1, handled,
     * ranked and re-cited, or every reason not. A key with a leading digit takes the handle
     * `k-<key>`.
     *
-    * `current` is the project's artifacts of the new form, with their documents; `legacy`, its
-    * documents of the old form. Numbered by when each oldest kept version was written, ties by
-    * key (retention keeps a document's newest versions, [[grit.core.document.DocumentTerms]]).
-    * Ranked among their siblings: those titled `M<n>` first, by `n`, ties by number, then the rest
-    * by number, after any sibling of `current`, whose ranks stay. Each reference, in a head or a body, names a store key of
-    * `legacy` or `current`. Refused, naming the document: a key not of `project`; a name no
-    * handle may be; a reference to no document either holds (one this transaction does not read);
-    * data that is not an old-form artifact's; or what [[Project.of]] refuses of `current` and the
-    * re-keyed together, such as a handle taken twice.
+    * Numbered by when each oldest kept version was written, ties by key (retention keeps a
+    * document's newest versions, [[grit.core.document.DocumentTerms]]). Ranked among their
+    * siblings: those titled `M<n>` first, by `n`, ties by number, then the rest by number. Each
+    * reference, in a head or a body, names a store key of `legacy`. Refused, naming the document:
+    * a key not of `project`; a name no handle may be; a reference to no document of `legacy` (one
+    * this transaction does not read); data that is not an old-form artifact's; or what
+    * [[Project.of]] refuses of the re-keyed, such as a handle taken twice.
     */
-  def plan(
-      project: ProjectKey,
-      pin: Pin,
-      next: ArtifactNumber,
-      current: Vector[(Document, Artifact)],
-      legacy: Vector[Old]
-  ): Either[Vector[String], Planned] = {
+  def plan(project: ProjectKey, pin: Pin, legacy: Vector[Old]): Either[Vector[String], Planned] = {
     val p = ProjectKey.value(project)
     val ordered = legacy.sortWith((a, b) =>
       a.first.isBefore(b.first) ||
         (a.first == b.first && DocKey.value(a.document.key) < DocKey.value(b.document.key))
     )
-    val numbers = Iterator.iterate(next)(ArtifactNumber.after).take(legacy.size + 1).toVector
+    val numbers =
+      Iterator.iterate(ArtifactNumber.First)(ArtifactNumber.after).take(legacy.size + 1).toVector
     val numbered = ordered.zip(numbers).map((o, n) => o.document -> ArtifactKey.of(project, n))
     val ids: Map[String, ArtifactKey] =
-      numbered.map((d, k) => DocKey.value(d.key) -> k).toMap ++
-        current.map((d, a) => DocKey.value(d.key) -> a.head.key)
+      numbered.map((d, k) => DocKey.value(d.key) -> k).toMap
     val reference: String -> Either[String, ArtifactKey] = s =>
       ids.get(s).toRight(s"it cites $s, which this transaction reads no artifact under")
     val read: Vector[Either[String, (Document, Artifact, Option[Handle])]] = numbered.map {
@@ -84,62 +76,44 @@ object Rekey {
     val (refused, artifacts) = read.partitionMap(identity)
     if (refused.nonEmpty) Left(refused)
     else {
-      val ranked = ranks(artifacts.map(_._2), current.map(_._2))
-      val (unranked, ranks_) = ranked.partitionMap(identity)
-      if (unranked.nonEmpty) Left(unranked)
-      else {
-        val after = artifacts.zip(ranks_).map { case ((d, a, _), r) =>
-          (before = d, after = Artifact(a.head.copy(rank = r), a.body))
-        }
-        for {
-          _ <- Project
-            .of(project, pin, current.map(_._2) ++ after.map(_.after))
-            .left
-            .map(why => Vector(s"project $p cannot be re-keyed: $why"))
-          table <- tableOf(project, after).left.map(Vector(_))
-        } yield Planned(
-          after,
-          table,
-          numbers.lastOption.getOrElse(next),
-          artifacts.collect { case (d, _, Some(h)) => (was = d.key, handle = h) }
-        )
+      val after = artifacts.zip(ranks(artifacts.map(_._2))).map { case ((d, a, _), r) =>
+        (before = d, after = Artifact(a.head.copy(rank = r), a.body))
       }
+      for {
+        _ <- Project
+          .of(project, pin, after.map(_.after))
+          .left
+          .map(why => Vector(s"project $p cannot be re-keyed: $why"))
+        table <- tableOf(project, after).left.map(Vector(_))
+      } yield Planned(
+        after,
+        table,
+        numbers.lastOption.getOrElse(ArtifactNumber.First),
+        artifacts.collect { case (d, _, Some(h)) => (was = d.key, handle = h) }
+      )
     }
   }
 
   /** A title's leading `M<n>`, as a milestone is titled. */
   private val Milestone = """^M(\d{1,9})\b""".r
 
-  /** Each of `rekeyed`'s rank, in their order: among the re-keyed children of one parent, those
-    * titled `M<n>` first by `n`, then the rest by number; spread over the ranks when the parent
-    * has no child in `current`, else each after the last; or why not, naming the parent.
+  /** Each of `rekeyed`'s rank, in their order: among the children of one parent, those titled
+    * `M<n>` first by `n`, then the rest by number, spread over the ranks.
     */
-  private def ranks(
-      rekeyed: Vector[Artifact],
-      current: Vector[Artifact]
-  ): Vector[Either[String, Rank]] = {
-    val byKey: Map[ArtifactKey, Either[String, Rank]] =
+  private def ranks(rekeyed: Vector[Artifact]): Vector[Rank] = {
+    val byKey: Map[ArtifactKey, Rank] =
       rekeyed
         .groupBy(_.head.parent)
         .toVector
-        .flatMap { (parent: Option[ArtifactKey], children: Vector[Artifact]) =>
+        .flatMap { (_: Option[ArtifactKey], children: Vector[Artifact]) =>
           val order = children.sortBy { a =>
             val m = Milestone.findPrefixMatchOf(a.head.title).map(_.group(1).toInt)
             (m.isEmpty, m.getOrElse(0), ArtifactNumber.value(a.head.key.number))
           }
-          current.filter(_.head.parent == parent).map(_.head.rank).maxOption match {
-            case None => order.map(_.head.key).zip(Rank.spread(order.size).map(Right(_)))
-            case Some(last) =>
-              order
-                .scanLeft[(Option[ArtifactKey], Either[String, Rank])]((None, Right(last))) {
-                  case ((_, so), a) =>
-                    (Some(a.head.key), so.flatMap(r => Rank.between(Some(r), None)))
-                }
-                .collect { case (Some(k), r) => k -> r }
-          }
+          order.map(_.head.key).zip(Rank.spread(order.size))
         }
         .toMap
-    rekeyed.map(a => byKey.getOrElse(a.head.key, Right(Rank.Middle)))
+    rekeyed.map(a => byKey.getOrElse(a.head.key, Rank.Middle))
   }
 
   /** [[Rekeyed]]'s documents for `after`: one per table document and label of what it maps. */
