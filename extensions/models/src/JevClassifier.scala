@@ -54,6 +54,5 @@ final class JevClassifier(config: JevConfig) extends Classifier {
 object JevClassifier {
 
   /** The service its states go to, `service:jev`: the party a deployment clears it as. */
-  val Service: grit.core.place.Service =
-    grit.core.place.Service.of("jev").fold(e => throw new IllegalStateException(e), identity)
+  val Service: grit.core.place.Service = grit.core.place.Service.literal("jev")
 }

@@ -15,6 +15,7 @@ import grit.core.plugin.{DocumentPosting, Documents, Exports, PluginRun, PluginT
 import grit.core.store.{ClosedPeriod, Origin, Reads, StoreError, Tx}
 import grit.core.tool.{Args, Believed, Field, Gate, Hosted, Outcome, ToolName, ToolSpec}
 import grit.core.visibility.Integrity
+import grit.std.either.Proven
 
 /** The digest (ADR 0011's hello-world plugin, kept as documents, ADR 0028): one document per
   * room ([[grit.core.store.Origin.room]]) where conversations closed and per label those
@@ -56,12 +57,15 @@ object Digest {
     * 1000 documents, every room's and label's together.
     */
   val Terms: DocumentTerms =
-    // Literals both constructors accept, read when the object is first used: every test of
-    // the digest throws here if not.
-    (for {
-      label <- DocLabel.of("digest: conversations closed here most recently")
-      terms <- DocumentTerms.of(label, DocWeight.Unscaled, 30.days, 1000)
-    } yield terms).fold(why => throw new IllegalStateException(why), identity)
+    // 30 days is a minute or more, and 1000 at least 1: DocumentTerms.of takes them.
+    Proven.right(
+      DocumentTerms.of(
+        DocLabel.literal("digest: conversations closed here most recently"),
+        DocWeight.Unscaled,
+        30.days,
+        1000
+      )
+    )
 
   /** Its documents, under [[Terms]], each room's posted [[Posted]]. */
   private object Kept extends Documents {

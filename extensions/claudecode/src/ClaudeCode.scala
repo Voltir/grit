@@ -7,8 +7,7 @@ import grit.core.id.Harness
 /** Claude Code's adapter for the commands edge (ADR 0062). */
 object ClaudeCode {
 
-  private val Named: Harness =
-    Harness.of("claude-code").fold(why => throw new IllegalStateException(why), identity)
+  private val Named: Harness = Harness.literal("claude-code")
 
   /** For the harness `claude-code`. Its join script, run in a git checkout as `bash -s --
     * <edge's address> [--credential <file>] [--mcp-name <name>] [--retire <dir>]…`, or `bash -s

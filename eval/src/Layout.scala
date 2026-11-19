@@ -25,6 +25,7 @@ import grit.core.place.{Directory, Namespace, Place}
 import grit.core.store.{ConversationStore, Entry, EntryStore, Jot, Origin, Payload, PeriodStore}
 import grit.core.visibility.Integrity
 import grit.core.visibility.{Label, Subject}
+import grit.std.either.Proven
 
 /** A case as written, or with [[Variant.FillerPerGap]] filler turns after each of its turns. */
 enum Variant {
@@ -248,18 +249,21 @@ object Load {
   /** The plugin a case's documents are written as: `digest`, whose documents the eval's
     * cases are written as (the eval names no plugin's module).
     */
-  val Plugin: PluginName =
-    PluginName.of("digest").fold(why => throw new IllegalStateException(why), identity)
+  val Plugin: PluginName = PluginName.literal("digest")
 
   /** The terms a case's documents are kept and drawn on under, at `weight`: the digest's label,
     * kept 30 days, at most 1000.
     */
   def terms(weight: DocWeight): DocumentTerms =
-    // Literals both constructors accept; the weight is a DocWeight already.
-    (for {
-      label <- DocLabel.of("digest: conversations closed here most recently")
-      terms <- DocumentTerms.of(label, weight, 30.days, 1000)
-    } yield terms).fold(why => throw new IllegalStateException(why), identity)
+    // 30 days is a minute or more, and 1000 at least 1: DocumentTerms.of takes them.
+    Proven.right(
+      DocumentTerms.of(
+        DocLabel.literal("digest: conversations closed here most recently"),
+        weight,
+        30.days,
+        1000
+      )
+    )
 
   /** What loading a case wrote: the turn it asks in, and its documents' versions, in the order
     * laid out.

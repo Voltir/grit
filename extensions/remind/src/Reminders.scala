@@ -79,9 +79,7 @@ object Reminders {
     * Parameters it cannot read (no text, or text no [[Reminder]] holds) are refused.
     */
   object Remind extends PlainJob[Reminder] {
-    val name: JobName =
-      // A literal of the job name's grammar: every test of the job throws here if not.
-      JobName.of("remind").fold(why => throw new IllegalStateException(why), identity)
+    val name: JobName = JobName.literal("remind")
 
     val version: Int = 1
 

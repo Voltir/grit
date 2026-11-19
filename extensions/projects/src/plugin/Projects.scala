@@ -10,6 +10,7 @@ import grit.core.visibility.Label
 import grit.projects.artifact.ArtifactJson
 import grit.projects.method.{Method, MethodRefusal, TransitionCheck}
 import grit.projects.name.{ArtifactKey, MethodName, StateName}
+import grit.std.either.Proven
 
 /** The projects plugin (ADR 0049): projects held to versions of methods declared through
   * `project_declare`, kept under [[Projects.Terms]] and changed only by its commands, each of
@@ -35,28 +36,24 @@ final class Projects private (
 object Projects {
 
   /** `projects`: the plugin's name, which keys its documents. */
-  val Name: PluginName =
-    // A literal PluginName.of accepts.
-    PluginName.of("projects").fold(e => sys.error(e), identity)
+  val Name: PluginName = PluginName.literal("projects")
 
   /** Retention 180 days; the last 20 versions of each live key kept whatever their age; at most
     * 20,000 current documents, a write of a new key past them refused.
     */
   val Terms: DocumentTerms =
-    // Literals DocLabel.of and DocumentTerms.of accept.
-    DocLabel
-      .of("project artifacts")
-      .flatMap(
-        DocumentTerms.of(
-          _,
-          DocWeight.Unscaled,
-          180.days,
-          bound = 20_000,
-          keepLast = 20,
-          full = DocumentTerms.Full.Refuse
-        )
+    // 180 days is a minute or more, 20,000 at least 1 and 20 at least 0: DocumentTerms.of
+    // takes them.
+    Proven.right(
+      DocumentTerms.of(
+        DocLabel.literal("project artifacts"),
+        DocWeight.Unscaled,
+        180.days,
+        bound = 20_000,
+        keepLast = 20,
+        full = DocumentTerms.Full.Refuse
       )
-      .fold(e => sys.error(e), identity)
+    )
 
   /** The words `project_declare`'s answer holds when the version it was given is declared
     * already under the same digest, and so it kept nothing; no other answer of it holds them.

@@ -34,9 +34,7 @@ private[main] object Clearances {
   /** The group [[AdminsVar]] declares, the deployment's administrators
     * ([[grit.core.visibility.Visibility.administrators]]).
     */
-  private[main] val Administrators: GroupName =
-    // A group's name by GroupName.of's rule, so the Left is never taken.
-    GroupName.of("administrators").fold(why => throw new IllegalStateException(why), identity)
+  private[main] val Administrators: GroupName = GroupName.literal("administrators")
 
   /** The Slack users `env` names administrators ([[AdminsVar]]), none when unset; why not,
     * naming the variable, at the first that is not a Slack user's id (`U…` or `W…`).

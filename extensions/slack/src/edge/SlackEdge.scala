@@ -1008,9 +1008,7 @@ object SlackEdge {
   /** The service place `slack_post` is served at: `service:slack`. A deployment links
     * conversations to it with [[grit.core.place.Reaches]].
     */
-  val PostsAt: Service =
-    // "slack" is a service's name by Service.of's rule, so the Left is never taken.
-    Service.of("slack").fold(why => throw new IllegalStateException(why), identity)
+  val PostsAt: Service = Service.literal("slack")
 
   /** What a person can no longer have done when the posting tool is withheld. */
   val PostsAction: String = "post to channels"
