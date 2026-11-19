@@ -117,8 +117,8 @@ object TopicDreamTests extends TestSuite {
       * at most `merges` topics to merge, none unless a test of merges says: its reply.
       */
     def run(
-        perRun: Int = 10,
-        most: Int = 10,
+        perRun: Int = 64,
+        most: Int = 64,
         day: Option[LocalDate] = Some(Day),
         seedUntil: Option[LocalDate] = None,
         now: Instant = Now,
@@ -407,7 +407,7 @@ object TopicDreamTests extends TestSuite {
   private final case class Judge(answers: Vector[Question] -> Vector[Judged])
 
   /** Every sort judged alike: a discussion's choice `choice` (a topic's number from 1, `new` or
-    * `aside`) at `p`, the rest on `new` (on `aside` when `choice` is `new`); each topic a card is
+    * `aside`) at `p`, the rest on `new_topic` (on `aside` when `choice` is `new_topic`); each topic a card is
     * asked about, yes at `yes`.
     */
   private def judging(
@@ -417,7 +417,7 @@ object TopicDreamTests extends TestSuite {
   ): Judge = Judge(qs =>
     qs.map {
       case c: Question.Choice =>
-        val rest = if (choice == "new") "aside" else "new"
+        val rest = if (choice == "new_topic") "aside" else "new_topic"
         Judged.Choice(
           choice,
           c.keys.map(k =>
@@ -430,7 +430,7 @@ object TopicDreamTests extends TestSuite {
   )
 
   /** Each discussion in a topic of its own, each card in none. */
-  private val everyNew: Judge = judging("new")
+  private val everyNew: Judge = judging("new_topic")
 
   /** Each discussion and card set aside. */
   private val asideAll: Judge = judging("aside")
@@ -447,13 +447,13 @@ object TopicDreamTests extends TestSuite {
   private val Internal: Label = Label.at(Level.Internal)
 
   val tests = Tests {
-    test("a discussion joins the topic chosen at 0.86 or more") {
+    test("a chosen topic is joined at any probability") {
       val w = new StrandWorld
       val a = strand(w, "C1", "deploy pipeline")
       val runs = new Runs(w)
       val first = runs.run()
       val b = strand(w, "C2", "deploy rollback", 100)
-      val second = runs.run(now = Now.plusSeconds(600), sort = judging("1", TopicDream.TopicAt))
+      val second = runs.run(now = Now.plusSeconds(600), sort = judging("1", 0.55))
       (
         first,
         second,
@@ -480,7 +480,7 @@ object TopicDreamTests extends TestSuite {
       val runs = new Runs(w)
       val _ = runs.run()
       val b = strand(w, "C2", "lunch order", 100)
-      val second = runs.run(now = Now.plusSeconds(600), sort = judging("new", 0.9))
+      val second = runs.run(now = Now.plusSeconds(600), sort = judging("new_topic", 0.9))
       (second, runs.kept.map(_._1), runs.referring(Ref.Strand(b.id))) ==> (
         "topics: 1 written (1 opened), 0 withdrawn, 1 unchanged, 0 set aside, 0 left for the next run",
         Vector(key(a), key(b)).sorted,
@@ -497,28 +497,7 @@ object TopicDreamTests extends TestSuite {
       (reply, runs.kept.map(_._1), runs.asked.map(_.kind)) ==> (
         "topics: 2 written (2 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
         Vector(key(a), key(b)).sorted,
-        Vector("sort", "sort", "write", "write")
-      )
-    }
-
-    test(
-      "a topic chosen below the mark sets the discussion aside, counted unsure, until its thread grows"
-    ) {
-      val w = new StrandWorld
-      val a = strand(w, "C1", "deploy pipeline")
-      val runs = new Runs(w)
-      val _ = runs.run()
-      val b = strand(w, "C2", "deploy rollback", 100)
-      val second = runs.run(now = Now.plusSeconds(600), sort = judging("1", 0.85))
-      val again = runs.run(now = Now.plusSeconds(700), sort = judging("1", 0.85))
-      w.say(b, "the rollback is scripted now", 800)
-      val grown = runs.run(now = Now.plusSeconds(900), sort = judging("1"))
-      (second, again, grown, runs.kept.map(_._1), runs.referring(Ref.Strand(b.id))) ==> (
-        "topics: 0 written (0 opened), 0 withdrawn, 1 unchanged, 1 set aside, 0 left for the next run; 1 set aside unsure",
-        "topics: 0 written (0 opened), 0 withdrawn, 2 unchanged, 0 set aside, 0 left for the next run",
-        "topics: 1 written (0 opened), 0 withdrawn, 1 unchanged, 0 set aside, 0 left for the next run",
-        Vector(key(a)),
-        Vector(key(a))
+        Vector("sort", "write", "sort", "write")
       )
     }
 
@@ -529,7 +508,7 @@ object TopicDreamTests extends TestSuite {
       val _ = runs.run()
       val newer = TopicDream.Newest + 2
       (1 to newer).foreach(i => strand(w, s"N$i", s"matter $i", 20))
-      val _ = runs.run(perRun = newer, most = newer, now = Now.plusSeconds(300))
+      val _ = runs.run(perRun = 2 * newer, most = 2 * newer, now = Now.plusSeconds(300))
       val b = w.thread("C1", "3.0")
       val _ = w.say(b, "lunch " * 40, 100)
       w.follow(w.say(w.thread("C1", "4.0"), "lunch " * 40, 110), b)
@@ -546,7 +525,7 @@ object TopicDreamTests extends TestSuite {
       val runs = new Runs(w)
       val topics = TopicDream.Fill + 4
       (1 to topics).foreach(i => strand(w, s"N$i", s"matter $i", 20))
-      val _ = runs.run(perRun = topics, most = topics)
+      val _ = runs.run(perRun = 2 * topics, most = 2 * topics)
       val _ = strand(w, "C0", "the deploy pipeline breaks " * 8, 100)
       val _ = runs.run(now = Now.plusSeconds(600), sort = asideAll)
       counted(runs.asked.filter(_.kind == "sort").last) ==> (1, TopicDream.Fill, 0)
@@ -559,7 +538,7 @@ object TopicDreamTests extends TestSuite {
       val runs = new Runs(w)
       val topics = TopicDream.ShortFill + 4
       (1 to topics).foreach(i => strand(w, s"N$i", s"matter $i", 20))
-      val _ = runs.run(perRun = topics, most = topics)
+      val _ = runs.run(perRun = 2 * topics, most = 2 * topics)
       val _ = strand(w, "C0", "lunch", 100)
       val _ = strand(w, "C9", "the deploy", 110)
       val _ = runs.run(now = Now.plusSeconds(600), sort = asideAll)
@@ -608,7 +587,7 @@ object TopicDreamTests extends TestSuite {
       val runs = new Runs(w)
       runs.topic()
       val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
-      val reply = runs.run(sort = judging("new", yes = TopicDream.CardAt))
+      val reply = runs.run(sort = judging("new_topic", yes = TopicDream.CardAt))
       (
         reply,
         runs.asked.map(x => (x.kind, counted(x))),
@@ -627,7 +606,7 @@ object TopicDreamTests extends TestSuite {
       val runs = new Runs(w)
       runs.topic()
       val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
-      val reply = runs.run(sort = judging("new", yes = 0.71))
+      val reply = runs.run(sort = judging("new_topic", yes = 0.71))
       (reply, runs.asked.map(_.kind), runs.aside._2.size) ==> (
         "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 1 set aside, 0 left for the next run",
         Vector("sort"),
@@ -639,7 +618,7 @@ object TopicDreamTests extends TestSuite {
       val w = new StrandWorld
       val runs = new Runs(w)
       val _ = runs.card("plan1", "The deploy plan.", Now.minusSeconds(60))
-      val reply = runs.run(sort = judging("new", yes = 1.0))
+      val reply = runs.run(sort = judging("new_topic", yes = 1.0))
       (reply, runs.asked, runs.aside._2) ==> (
         "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 1 left for the next run",
         Vector(),
@@ -655,7 +634,7 @@ object TopicDreamTests extends TestSuite {
       // More newer topics than the text fills, so a's is shown first for its ref alone.
       val newer = TopicDream.ShortFill + 4
       (1 to newer).foreach(i => strand(w, s"N$i", s"matter $i", 20))
-      val _ = runs.run(perRun = newer, most = newer, now = Now.plusSeconds(300))
+      val _ = runs.run(perRun = 2 * newer, most = 2 * newer, now = Now.plusSeconds(300))
       w.say(a, "the rollback works now", 50)
       val b = strand(w, "C2", "deploy rollback", 100)
       val reply = runs.run(
@@ -733,7 +712,7 @@ object TopicDreamTests extends TestSuite {
       val runs = new Runs(w)
       val _ = runs.run()
       val _ = runs.card("runbook", "The rollback runbook.", Now.plusSeconds(60))
-      val _ = runs.run(now = Now.plusSeconds(300), sort = judging("new", yes = 1.0))
+      val _ = runs.run(now = Now.plusSeconds(300), sort = judging("new_topic", yes = 1.0))
       w.say(a, "the rollback works now", 50)
       val _ = runs.run(now = Now.plusSeconds(600))
       runs.asked.map(x => (x.kind, x.shown.contains("The rollback runbook."))) ==>
@@ -775,7 +754,7 @@ object TopicDreamTests extends TestSuite {
       val reply = runs.run()
       (reply, runs.asked.map(_.kind), runs.kept) ==> (
         "topics: 2 written (2 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
-        Vector("sort", "sort", "write", "write"),
+        Vector("sort", "write", "sort", "write"),
         Vector(key(a), key(b)).sorted.map(_ -> s"$Lead\n\n## 2026-10-12\n\n$Passage")
       )
     }
@@ -1015,15 +994,118 @@ object TopicDreamTests extends TestSuite {
       )
     }
 
-    test("past perRun, the rest are left and counted") {
+    test("opens take at most half of perRun; the left are counted") {
       val w = new StrandWorld
       val roots = (1 to 3).map(i => strand(w, s"C$i", s"subject $i", i * 100L))
       val runs = new Runs(w)
-      val reply = runs.run(perRun = 2)
-      (reply, runs.kept.map(_._1)) ==> (
-        "topics: 2 written (2 opened), 0 withdrawn, 0 unchanged, 0 set aside, 1 left for the next run",
-        roots.take(2).map(key).toVector
+      val reply = runs.run(perRun = 4)
+      // Two opens; the third is left, not set aside, and offered again the next night.
+      val again = runs.run(perRun = 4, now = Now.plusSeconds(600))
+      (reply, again, runs.kept.map(_._1)) ==> (
+        "topics: 2 written (2 opened), 0 withdrawn, 0 unchanged, 0 set aside, 1 left for the next run; 1 left past the opens a run makes",
+        "topics: 1 written (1 opened), 0 withdrawn, 2 unchanged, 0 set aside, 0 left for the next run",
+        roots.map(key).toVector
       )
+    }
+
+    test("new_meeting opens a proposed meeting") {
+      val w = new StrandWorld
+      val a = strand(w, "C1", "a call on the budget, monday or tuesday?")
+      val b = strand(w, "C2", "the review, tuesday at nine", 100)
+      val runs = new Runs(w)
+      val planned = ujson.Obj(
+        "lead" -> Lead,
+        "passage" -> Passage,
+        "meeting" -> ujson.Obj(
+          "state" -> "planned",
+          "day" -> "2026-10-13",
+          "start" -> "09:00",
+          "who" -> ujson.Arr("Ana", "Ben")
+        )
+      )
+      val reply = runs.run(
+        sort = judging("new_meeting"),
+        write = shown => if (shown.contains("review")) planned else wrote(Lead, Passage)
+      )
+      (
+        reply,
+        runs.kept.map((k, text) => (k, text.linesIterator.next())),
+        runs.asked.filter(_.kind == "write").map(_.system.contains("This topic is one meeting."))
+      ) ==> (
+        "topics: 2 written (2 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
+        Vector(
+          (key(a), "Meeting, proposed, its day not yet known."),
+          (key(b), "Meeting, planned for Tuesday 2026-10-13 at 09:00, with Ana and Ben.")
+        ),
+        Vector(true, true)
+      )
+    }
+
+    test("a topic opened tonight is a candidate for the next unit") {
+      val w = new StrandWorld
+      val a = strand(w, "C1", "deploy pipeline")
+      val _ = strand(w, "C2", "deploy rollback", 100)
+      val runs = new Runs(w)
+      // The first opens its own; the second is shown it, and chooses it.
+      val first = Judge(qs =>
+        qs.map {
+          case c: Question.Choice if c.keys.exists(_.name == "1") =>
+            Judged.Choice(
+              "1",
+              c.keys.map(k => Judged.Weight(k.name, if (k.name == "1") 1.0 else 0.0)),
+              1.0
+            )
+          case c: Question.Choice =>
+            Judged.Choice(
+              "new_topic",
+              c.keys.map(k => Judged.Weight(k.name, if (k.name == "new_topic") 1.0 else 0.0)),
+              1.0
+            )
+          case _ => Judged.YesNo(0.0)
+        }
+      )
+      val reply = runs.run(sort = first)
+      (
+        reply,
+        runs.asked.map(x => (x.kind, counted(x)._2)),
+        runs.kept.map(_._1)
+      ) ==> (
+        "topics: 2 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
+        Vector(("sort", 0), ("write", 0), ("sort", 1), ("write", 0)),
+        Vector(key(a))
+      )
+    }
+
+    test("a subject ignores a meeting object") {
+      val w = new StrandWorld
+      val a = strand(w, "C1", "deploy pipeline")
+      val runs = new Runs(w)
+      val _ = runs.run(write =
+        _ =>
+          ujson.Obj(
+            "lead" -> Lead,
+            "passage" -> Passage,
+            "meeting" -> ujson.Obj("state" -> "held", "day" -> "2026-10-12")
+          )
+      )
+      (
+        runs.kept.map((k, text) => (k, text.linesIterator.next())),
+        runs.asked.filter(_.kind == "write").map(_.system.contains("Give `meeting` null."))
+      ) ==> (Vector((key(a), Lead)), Vector(true))
+    }
+
+    test("joins take the writes opens leave") {
+      val w = new StrandWorld
+      val roots = (1 to 3).map(i => strand(w, s"C$i", s"subject $i", i * 100L))
+      val runs = new Runs(w)
+      val _ = runs.run(perRun = 6)
+      (1 to 3).foreach(i =>
+        w.follow(w.say(w.thread(s"C$i", "8.0"), s"and $i", 950L + i), roots(i - 1))
+      )
+      // Each grown strand attaches by ref: none opens, so both writes go to joins.
+      val again = runs.run(perRun = 2, now = Now.plusSeconds(1200))
+      again ==>
+        "topics: 2 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 1 left for the next run"
     }
 
     test("at most Reviewed of the topics written are put up for review, new ones first") {
@@ -1119,7 +1201,7 @@ object TopicDreamTests extends TestSuite {
         .map(a =>
           (a.kind, a.shown.contains("The deploy plan."), a.shown.contains("The lunch menu."))
         ) ==>
-        Vector(("sort", false, false), ("sort", true, false), ("write", false, false))
+        Vector(("sort", false, false), ("write", false, false), ("sort", true, false))
     }
 
     test("a link too long to keep as a ref is counted, and stays in the topic's text") {
@@ -1172,7 +1254,7 @@ object TopicDreamTests extends TestSuite {
       val _ = runs.run(floor = Internal, rooms = labelled(Internal, "C1"))
       val said = Seq("The deploy plan.", "The lunch menu.", "The budget.")
       runs.asked.map(x => (x.kind, said.filter(x.shown.contains))) ==>
-        Vector(("sort", Seq()), ("sort", Seq("The budget.")), ("write", Seq("The deploy plan.")))
+        Vector(("sort", Seq()), ("write", Seq("The deploy plan.")), ("sort", Seq("The budget.")))
     }
 
     test("a card kept below a run's label attaches by ref to a topic that refers to it") {
@@ -1271,7 +1353,9 @@ object TopicDreamTests extends TestSuite {
       )
     }
 
-    test("a card opens no topic, though a new discussion beside it does") {
+    test(
+      "a card opens no topic, though a new discussion beside it does, and is sorted against it"
+    ) {
       val w = new StrandWorld
       val a = strand(w, "C1", "deploy pipeline")
       val runs = new Runs(w)
@@ -1279,10 +1363,10 @@ object TopicDreamTests extends TestSuite {
       val reply =
         runs.run(sort = everyNew)
       (reply, runs.kept.map(_._1), runs.aside._2.size, runs.asked.map(_.kind)) ==> (
-        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 1 left for the next run",
+        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 1 set aside, 0 left for the next run",
         Vector(key(a)),
-        0,
-        Vector("sort", "write")
+        1,
+        Vector("sort", "write", "sort")
       )
     }
 
@@ -1473,7 +1557,7 @@ object TopicDreamTests extends TestSuite {
       val a = strand(w, "C1", "deploy pipeline")
       val _ = runs.run()
       runs.card("plan1", "The deploy plan.", Now.plusSeconds(60), Integrity.Outside)
-      val reply = runs.run(now = Now.plusSeconds(600), sort = judging("new", yes = 1.0))
+      val reply = runs.run(now = Now.plusSeconds(600), sort = judging("new_topic", yes = 1.0))
       (reply, runs.topics.map(d => (DocKey.value(d.key), d.integrity))) ==> (
         "topics: 1 written (0 opened), 0 withdrawn, 1 unchanged, 0 set aside, 0 left for the next run",
         Vector((key(a), Integrity.Outside))
@@ -1486,7 +1570,7 @@ object TopicDreamTests extends TestSuite {
       val a = strand(w, "C1", "deploy pipeline", integrity = TestLabels.Endorsed)
       val _ = runs.run()
       runs.card("plan1", "The deploy plan.", Now.plusSeconds(60), TestLabels.Endorsed)
-      val reply = runs.run(now = Now.plusSeconds(600), sort = judging("new", yes = 1.0))
+      val reply = runs.run(now = Now.plusSeconds(600), sort = judging("new_topic", yes = 1.0))
       (reply, runs.topics.map(d => (DocKey.value(d.key), d.integrity))) ==> (
         "topics: 1 written (0 opened), 0 withdrawn, 1 unchanged, 0 set aside, 0 left for the next run",
         Vector((key(a), TestLabels.Endorsed))
@@ -1539,7 +1623,7 @@ object TopicDreamTests extends TestSuite {
       val a = strand(w, "C1", "deploy pipeline")
       val b = strand(w, "C2", "deploy pipeline rollback")
       val runs = new Runs(w)
-      val fold = judging("new", yes = TopicDream.FoldAt)
+      val fold = judging("new_topic", yes = TopicDream.FoldAt)
       val m = TopicParams.Merges
       val _ = runs.run(sort = fold, merges = m)
       val opened = runs.asked.size
@@ -1555,7 +1639,7 @@ object TopicDreamTests extends TestSuite {
         runs.kept.map(_._1)
       ) ==> (
         // Both topics are written the night they open, so neither is sorted to merge then.
-        Vector("sort", "sort", "write", "write"),
+        Vector("sort", "write", "sort", "write"),
         // The older is sorted against the other; the other, its proposed keeper, is not.
         Vector(("sort", (0, 1, 1))),
         "topics: 0 written (0 opened), 0 withdrawn, 2 unchanged, 0 set aside, 0 left for the next run" +
@@ -1573,7 +1657,7 @@ object TopicDreamTests extends TestSuite {
       val runs = new Runs(w)
       runs.topic(name = "one", lead = "The deploy pipeline, first.", from = Vector("s-1"))
       runs.topic(name = "two", lead = "The deploy pipeline, second.", from = Vector("s-2"))
-      val unsure = judging("new", yes = TopicDream.FoldAt - 0.01)
+      val unsure = judging("new_topic", yes = TopicDream.FoldAt - 0.01)
       def run(now: Instant) =
         runs.run(now = now, sort = unsure, asideFor = 1.hour, merges = TopicParams.Merges)
       val first = run(Now)
@@ -1596,7 +1680,7 @@ object TopicDreamTests extends TestSuite {
       val runs = new Runs(w)
       runs.topic(name = "two", lead = "The deploy pipeline, twice.", from = Vector("s-1", "s-2"))
       runs.topic(name = "one", lead = "The deploy pipeline, once.", from = Vector("s-3"))
-      val reply = runs.run(sort = judging("new", yes = 0.95), merges = TopicParams.Merges)
+      val reply = runs.run(sort = judging("new_topic", yes = 0.95), merges = TopicParams.Merges)
       (
         reply,
         runs.asked.map(x => (x.kind, counted(x))),
@@ -1668,7 +1752,11 @@ object TopicDreamTests extends TestSuite {
       runs.topic(floor = Internal, name = "one", lead = "The deploy pipeline, inside.")
       runs.topic(name = "public", lead = "The deploy pipeline, outside.")
       val reply =
-        runs.run(sort = judging("new", yes = 0.95), floor = Internal, merges = TopicParams.Merges)
+        runs.run(
+          sort = judging("new_topic", yes = 0.95),
+          floor = Internal,
+          merges = TopicParams.Merges
+        )
       (reply, runs.asked) ==> (
         "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
         Vector()

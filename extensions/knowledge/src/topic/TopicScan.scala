@@ -16,13 +16,14 @@ import grit.knowledge.ref.{CardKey, Ref, TopicKey}
 private[topic] object TopicScan {
 
   /** A topic a run attaches to: its `key`, its current `version` (`None` for one this run
-    * opens), and the `strands` and `cards` attached.
+    * opens), the `strands` and `cards` attached, and the `kind` it opens as.
     */
   final case class Touch(
       key: TopicKey,
       version: Option[DocumentVersionId],
       strands: Vector[Strand.Digested],
-      cards: Vector[CardShelf.Seen]
+      cards: Vector[CardShelf.Seen],
+      kind: Topic.Kind = Topic.Kind.Subject
   ) extends caps.Pure {
     def opened: Boolean = version.isEmpty
   }
