@@ -36,6 +36,15 @@ trait DocumentSearch {
       Tx^
   ): Either[StoreError, Vector[DocumentSearch.Hit]]
 
+  /** Of `versions`, those still kept, holding something, read by its transaction and matching
+    * `query`, ranked as [[search]] ranks: best first, at most `limit`, equally good matches
+    * latest written first. Empty when nothing matches, `query` is blank, `limit` is not
+    * positive or `versions` is empty. A document holding a [[DocRef.brief]] is never found.
+    */
+  def rank(versions: Vector[DocumentVersionId], query: String, limit: Int)(using
+      Tx^
+  ): Either[StoreError, Vector[DocumentSearch.Hit]]
+
   /** The newest document of an enabled plugin current at `at` holding [[DocRef.brief]] of
     * `holder` that its transaction reads; `None` when there is none.
     */

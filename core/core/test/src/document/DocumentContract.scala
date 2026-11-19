@@ -1047,6 +1047,35 @@ abstract class DocumentContract extends TestSuite {
       texts(transaction(ok(search.read(qs)))) ==> Vector("one", "two")
     }
 
+    test(
+      "rank orders the named versions that match, best first, ties latest first, at most limit"
+    ) {
+      val k = keeper(name("doc-rank"), terms())
+      val b = put(k, "b", "apple pear plum", 1)
+      val a = put(k, "a", "apple apple pear", 1)
+      val c = put(k, "c", "apple pear plum", 2)
+      val none = put(k, "none", "nothing like it", 1)
+      put(k, "unnamed", "apple apple apple", 1)
+      val named = Vector(b, none, c, a)
+      keys(transaction(ok(search.rank(named, "apple", 5))).map(_.document)) ==>
+        Vector("a", "c", "b")
+      keys(transaction(ok(search.rank(named, "apple", 2))).map(_.document)) ==> Vector("a", "c")
+    }
+
+    test("rank finds nothing for a blank query, a limit under one or no versions") {
+      val k = keeper(name("doc-rank-none"), terms())
+      val a = put(k, "a", "apple", 1)
+      transaction(
+        ok(
+          for {
+            blank <- search.rank(Vector(a), " ", 5)
+            under <- search.rank(Vector(a), "apple", 0)
+            empty <- search.rank(Vector(), "apple", 5)
+          } yield (blank, under, empty)
+        )
+      ) ==> (Vector(), Vector(), Vector())
+    }
+
     test("search reads a document's text, never its key, place or data") {
       val p = name("doc-search-text")
       val k = keeper(p, terms())

@@ -618,6 +618,21 @@ final class InMemoryDocuments extends DocumentStore {
   /** Of `candidates`, those whose text holds a word of `query`, scored by how often, best first,
     * ties latest written first, at most `limit`.
     */
+  def rank(versions: Vector[DocumentVersionId], query: String, limit: Int)(using
+      Tx^
+  ): Either[StoreError, Vector[DocumentSearch.Hit]] = {
+    val named = versions.map(DocumentVersionId.value).toSet
+    Right(
+      ranked(
+        rows.toVector.filter((v, r) =>
+          named.contains(v) && reads(r) && !r.refs.exists(_.kind == DocRef.Brief)
+        ),
+        query,
+        limit
+      )
+    )
+  }
+
   private def ranked(
       candidates: Vector[(Long, Row)],
       query: String,

@@ -263,6 +263,9 @@ object RetrievalAssemblerTests extends TestSuite {
             .sortBy(-_.score)
         )
     }
+    def rank(versions: Vector[grit.core.id.DocumentVersionId], query: String, limit: Int)(using
+        Tx^
+    ): Either[StoreError, Vector[DocumentSearch.Hit]] = under.rank(versions, query, limit)
     def briefOf(holder: grit.core.id.ClaimHolder, at: Instant)(using
         Tx^
     ): Either[StoreError, Option[Document]] = under.briefOf(holder, at)

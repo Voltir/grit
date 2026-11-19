@@ -337,6 +337,9 @@ object PoolReadTests extends TestSuite {
       )(using
           Tx^
       ) = Left(error)
+      def rank(versions: Vector[grit.core.id.DocumentVersionId], query: String, limit: Int)(using
+          Tx^
+      ) = Left(error)
       def briefOf(holder: grit.core.id.ClaimHolder, at: Instant)(using Tx^) = Left(error)
       def read(versions: Vector[grit.core.id.DocumentVersionId])(using Tx^) = Left(error)
     }

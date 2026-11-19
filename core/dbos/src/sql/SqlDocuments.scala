@@ -60,6 +60,10 @@ final class SqlDocuments(tombstones: Tombstones) extends DocumentStore {
       Tx^
   ): Either[StoreError, Vector[DocumentSearch.Hit]] = reads.search(shelves, query, limit, at)
 
+  def rank(versions: Vector[DocumentVersionId], query: String, limit: Int)(using
+      Tx^
+  ): Either[StoreError, Vector[DocumentSearch.Hit]] = reads.rank(versions, query, limit)
+
   def briefOf(holder: ClaimHolder, at: Instant)(using
       Tx^
   ): Either[StoreError, Option[Document]] = reads.briefOf(holder, at)
@@ -256,6 +260,10 @@ private[sql] object SqlDocuments {
        |                  WHERE d.plugin = r.p
        |                    AND d.place = ARRAY(SELECT jsonb_array_elements_text(r.place)))
        |     AND ${SqlKept.currentAt("d")}""".stripMargin)
+
+  /** [[ranked]] over the versions a JSON parameter names, as [[numbers]] writes them. */
+  val RankedAmong: String =
+    ranked("d.version IN (SELECT v::bigint FROM jsonb_array_elements_text(?::jsonb) AS e(v))")
 
   def utc(at: Instant): OffsetDateTime = at.atOffset(ZoneOffset.UTC)
 

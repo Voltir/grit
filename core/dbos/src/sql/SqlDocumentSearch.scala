@@ -79,6 +79,17 @@ final class SqlDocumentSearch extends DocumentSearch {
       }(rs => document(rs).map(DocumentSearch.Hit(_, -rs.getDouble("s"))))
     }
 
+  def rank(versions: Vector[DocumentVersionId], query: String, limit: Int)(using
+      tx: Tx^
+  ): Either[StoreError, Vector[DocumentSearch.Hit]] =
+    if (query.isBlank || limit <= 0 || versions.isEmpty) Right(Vector.empty)
+    else
+      cleared(RankedAmong) { ps =>
+        ps.setString(SqlClearance.Params + 1, query)
+        ps.setString(SqlClearance.Params + 2, numbers(versions))
+        ps.setInt(SqlClearance.Params + 3, limit)
+      }(rs => document(rs).map(DocumentSearch.Hit(_, -rs.getDouble("s"))))
+
   def briefOf(holder: ClaimHolder, at: Instant)(using
       tx: Tx^
   ): Either[StoreError, Option[Document]] = {
