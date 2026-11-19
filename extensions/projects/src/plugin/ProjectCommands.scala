@@ -2769,7 +2769,7 @@ private[plugin] object ProjectCommands {
   /** Keeps each artifact `steps` changed through `own`, once, as they left it ([[kept]]): wholly
     * its caller's when a step wrote every word of it, else carrying its document's; and the
     * project's index, when a step minted an id, its `next` moved on and who started it kept
-    * (`by`, when it names no one), believed at no more than its version before.
+    * (`by`, when it names no one), believed at no more than its version before, nor its caller.
     */
   private def wrote(
       own: DocumentKeeper,
