@@ -125,10 +125,8 @@ object MethodTests extends TestSuite {
     }
 
     test("a transition only people make refuses an agent's move and allows a person's") {
-      val people =
-        transitions.map(t => if (t.to == state("done")) t.copy(movers = Movers.People) else t)
       val m = right(
-        Method.of(method, 1, kinds, people, views, TransitionChecks.all).left.map(_.toString)
+        Method.of(method, 1, kinds, peopleFinish, views, TransitionChecks.all).left.map(_.toString)
       )
       val h = head("p/why", change, "building")
       val why = Vector(artifact(h, "## Why\n\nBecause."))

@@ -47,12 +47,6 @@ object DeclareTests extends TestSuite {
     )
   }
 
-  /** What a declaration answers when its caller is not believed at Authority, giving it directly. */
-  private val byAuthority =
-    "A method is declared only by a caller believed at Authority, giving the command directly; " +
-      "never through a turn, or by a session believed lower. Ask a person to declare it from " +
-      "the method's file."
-
   /** What a command answers over a project whose method no longer reads here. */
   private val unreadable =
     "grit@1 is declared but does not read: check sections-present is compiled at version 2, not 1"
@@ -101,7 +95,7 @@ object DeclareTests extends TestSuite {
         askBy(turn)(plugin(), store, "project_declare", declaring(method())),
         askBy(member)(plugin(), store, "project_declare", declaring(method())),
         store.count
-      ) ==> (CommandOutcome.Refused(byAuthority), CommandOutcome.Refused(byAuthority), 0)
+      ) ==> (CommandOutcome.Refused(declareRefused), CommandOutcome.Refused(declareRefused), 0)
     }
     test("a version declared again under its digest changes nothing; under another is refused") {
       val store = Store()

@@ -18,7 +18,7 @@ import grit.core.tool.ToolName
 import grit.core.visibility.Integrity
 import grit.core.visibility.{Clearance, Label, Level}
 import grit.dbos.sql.LiveDb
-import grit.projects.method.{ArtifactKind, Method, MethodFixtures, Movers, TransitionChecks}
+import grit.projects.method.{ArtifactKind, Method, MethodFixtures, TransitionChecks}
 import grit.projects.plugin.{CommandFixtures, Projects}
 
 import utest.*
@@ -173,13 +173,8 @@ object ProjectsLiveTests extends TestSuite {
             ujson.Obj(CommandFixtures.declaring(CommandFixtures.method())),
             at
           )
-          val lower = CommandOutcome.Refused(
-            "A method is declared only by a caller believed at Authority, giving the command " +
-              "directly; never through a turn, or by a session believed lower. Ask a person to " +
-              "declare it from the method's file."
-          )
           (declare(desk, Integrity.Member), kept(config, engine, Projects.Name)) ==> (
-            Right(lower),
+            Right(CommandOutcome.Refused(CommandFixtures.declareRefused)),
             Vector()
           )
           declared(commands)
@@ -218,12 +213,7 @@ object ProjectsLiveTests extends TestSuite {
       "a move only people make is refused for a session believed below Authority, and made at it"
     ) {
       CommandRooms.commanding("projects_people", _ => Vector(atInternal)) { (_, _, commands) =>
-        declared(
-          commands,
-          CommandFixtures.method(MethodFixtures.transitions.map { t =>
-            if (t.to == MethodFixtures.state("done")) t.copy(movers = Movers.People) else t
-          })
-        )
+        declared(commands, CommandFixtures.method(MethodFixtures.peopleFinish))
         def move(believed: Integrity, to: String) = commands.run(
           ann,
           desk,
@@ -251,13 +241,7 @@ object ProjectsLiveTests extends TestSuite {
           move(Integrity.Authority, "done")
         ) ==> (
           Right(CommandOutcome.Done("Moved p/a (change, building).")),
-          Right(
-            CommandOutcome.Refused(
-              "p/a cannot move to done here: that move is made only by someone believed at " +
-                "Authority giving the command directly, never through a turn or a session " +
-                "believed lower; ask the person to make it"
-            )
-          ),
+          Right(CommandOutcome.Refused(CommandFixtures.personOnlyMove)),
           Right(CommandOutcome.Done("Moved p/a (change, done)."))
         )
       }
@@ -267,9 +251,7 @@ object ProjectsLiveTests extends TestSuite {
       "a person-only move or a declaration is refused for a caller believed at Authority in a room capped below it, and made in an uncapped one"
     ) {
       CommandRooms.commanding("projects_capped", _ => Vector(atInternal)) { (_, _, commands) =>
-        val people = CommandFixtures.method(MethodFixtures.transitions.map { t =>
-          if (t.to == MethodFixtures.state("done")) t.copy(movers = Movers.People) else t
-        })
+        val people = CommandFixtures.method(MethodFixtures.peopleFinish)
         def declare(room: Place) = commands.run(
           ann,
           room,
@@ -286,16 +268,8 @@ object ProjectsLiveTests extends TestSuite {
           ujson.Obj("key" -> "p/a", "state" -> "done"),
           at
         )
-        val declareRefused = CommandOutcome.Refused(
-          "A method is declared only by a caller believed at Authority, giving the command " +
-            "directly; never through a turn, or by a session believed lower. Ask a person to " +
-            "declare it from the method's file."
-        )
-        val moveRefused = CommandOutcome.Refused(
-          "p/a cannot move to done here: that move is made only by someone believed at " +
-            "Authority giving the command directly, never through a turn or a session " +
-            "believed lower; ask the person to make it"
-        )
+        val declareRefused = CommandOutcome.Refused(CommandFixtures.declareRefused)
+        val moveRefused = CommandOutcome.Refused(CommandFixtures.personOnlyMove)
         declare(team) ==> Right(declareRefused)
         declared(commands, people)
         (

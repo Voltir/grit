@@ -9,7 +9,7 @@ import grit.core.plugin.{CommandBy, CommandOutcome}
 import grit.core.tool.{ArgsError, ToolName}
 import grit.core.visibility.Integrity
 import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
-import grit.projects.method.{MethodFixtures, Movers}
+import grit.projects.method.MethodFixtures
 import grit.projects.name.{ArtifactKey, Pin, ProjectKey}
 import grit.projects.render.{Brief, ProjectMarkdown}
 
@@ -18,22 +18,14 @@ import utest.*
 object ProjectCommandsTests extends TestSuite {
 
   import CommandFixtures.*
-  import MethodFixtures.{note, right, state, transitions}
+  import MethodFixtures.{note, right, state}
 
   /** The fixtures' plugin, its turns proposing changes alone. */
   private def proposing(): Projects =
     plugin(TurnCommands.Proposing(MethodFixtures.change.name))
 
   /** The fixtures' method, a change made done only by people. */
-  private val peopleFinish = method(transitions.map { t =>
-    if (t.to == state("done")) t.copy(movers = Movers.People) else t
-  })
-
-  /** What a move only people make answers when it is not a person's. */
-  private val peopleOnly =
-    "p/a cannot move to done here: that move is made only by someone believed at Authority " +
-      "giving the command directly, never through a turn or a session believed lower; ask the " +
-      "person to make it"
+  private val peopleFinish = method(MethodFixtures.peopleFinish)
 
   /** Keeps note `p/<local>`, titled `Title <local>`, under `parent`. */
   private def under(projects: Projects, store: Store, local: String, parent: String): Unit =
@@ -127,7 +119,7 @@ object ProjectCommandsTests extends TestSuite {
           .contains("state: done")
       ) ==> (
         classOf[CommandOutcome.Done],
-        (CommandOutcome.Refused(peopleOnly), CommandOutcome.Refused(peopleOnly)),
+        (CommandOutcome.Refused(personOnlyMove), CommandOutcome.Refused(personOnlyMove)),
         true,
         classOf[CommandOutcome.Done],
         true
@@ -151,7 +143,7 @@ object ProjectCommandsTests extends TestSuite {
       )
       (refused, shown(projects, store, "p/a").contains("state: proposed")) ==> (
         CommandOutcome.Refused(
-          s"Nothing was kept: step 2 of 2 (move p/a to done) was refused: $peopleOnly"
+          s"Nothing was kept: step 2 of 2 (move p/a to done) was refused: $personOnlyMove"
         ),
         true
       )
