@@ -239,7 +239,9 @@ object WithdrawTests extends TestSuite {
         lastShown(projects, store, "p/h", None)
       ) ==> (
         (
-          CommandOutcome.Refused("p/6 h is claimed for slot: release it first"),
+          CommandOutcome.Refused(
+            "p/6 h is claimed for slot: release it with project_release first"
+          ),
           before,
           "See [b](artifact:p/2)."
         )
@@ -266,7 +268,10 @@ object WithdrawTests extends TestSuite {
       (
         withdrawnAt(2)(projects, store, "key" -> "p/a"),
         lastShown(projects, store, "p/a", None)
-      ) ==> ((CommandOutcome.Refused("p/1 a is claimed for slot: release it first"), "One."))
+      ) ==> ((
+        CommandOutcome.Refused("p/1 a is claimed for slot: release it with project_release first"),
+        "One."
+      ))
     }
   }
 }

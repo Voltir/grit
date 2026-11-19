@@ -1524,11 +1524,10 @@ private[plugin] final class ProjectCommands(
               Left(
                 Stop.Refused(
                   other.fold(
-                    s"$holder works another artifact already; release it with project_release first"
+                    s"$holder works another artifact already; ${releaseFirst("it")}"
                   )(c =>
                     s"$holder works ${subjectOf(project, c)} already, claimed since ${c.made}; " +
-                      s"it lapses at ${c.lapses} unless they keep working; " +
-                      "release it with project_release first"
+                      s"it lapses at ${c.lapses} unless they keep working; ${releaseFirst("it")}"
                   )
                 )
               )
@@ -3570,6 +3569,11 @@ private[plugin] object ProjectCommands {
   private def lacking(key: ArtifactKey): Stop =
     Stop.Refused(s"project ${ProjectKey.value(key.project)} has no artifact ${key.value}")
 
+  /** How a refusal over claims says to release `what` first: `release <what> with project_release
+    * first`.
+    */
+  private def releaseFirst(what: String): String = s"release $what with project_release first"
+
   /** Nothing, or a refusal naming each of `changed` that a claim live at `at` holds, at any
     * label, and the holder it is claimed for.
     */
@@ -3581,8 +3585,8 @@ private[plugin] object ProjectCommands {
         s"${artifact.head.called} is claimed for ${ClaimHolder.value(holder)}"
       ) match {
         case Vector() => Right(())
-        case Vector(one) => Left(Stop.Refused(s"$one: release it first"))
-        case many => Left(Stop.Refused(s"${many.mkString("; ")}: release them first"))
+        case Vector(one) => Left(Stop.Refused(s"$one: ${releaseFirst("it")}"))
+        case many => Left(Stop.Refused(s"${many.mkString("; ")}: ${releaseFirst("them")}"))
       }
     }
 
@@ -3685,7 +3689,7 @@ private[plugin] object ProjectCommands {
           Stop.Refused(
             s"${calledIn(after, lower.key)} would sit under ${calledIn(after, upper.key)}, and " +
               s"their covering claims, ${as(lower.claim)} and ${as(upper.claim)}, would overlap; " +
-              "release one first with project_release"
+              releaseFirst("one")
           )
         )
     }
