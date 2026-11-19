@@ -71,6 +71,14 @@ enum TransitionAction extends caps.Pure {
     * no artifact of kind `into`, when it cites several, or when the merged body is over its cap.
     */
   case MergeDeltas(into: KindName)
+
+  /** How [[Method.digest]] names it, fixed whatever its Scala spelling: `Nothing`, or
+    * `MergeDeltas(<into>)`.
+    */
+  def digested: String = this match {
+    case Nothing => "Nothing"
+    case MergeDeltas(into) => s"MergeDeltas(${KindName.value(into)})"
+  }
 }
 
 /** What `role` is shown working on an artifact: it, and what it cites to `depth` links, of

@@ -212,7 +212,7 @@ final case class Method private (
           field(StateName.value(t.from)),
           field(StateName.value(t.to)),
           names(t.checks.map(CheckName.value)),
-          field(t.action.toString)
+          field(t.action.digested)
         ).mkString + (t.movers match {
           case Movers.Anyone => ""
           case Movers.People => field("people")
