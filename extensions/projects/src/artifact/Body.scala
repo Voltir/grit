@@ -9,6 +9,7 @@ import grit.prose.form.{Block, Doc, Level, Mark, Span, Text}
 import grit.prose.index.IndexText
 import grit.prose.json.ProseJson
 import grit.prose.markdown.Markdown
+import grit.std.collect.Collect
 
 /** What an artifact says: prose, its references to other artifacts as notes on their spans, so
   * a rename or a move of what it cites breaks no sentence; non-empty, its stored form within
@@ -115,13 +116,13 @@ object Body {
   def edited(b: Body, edit: Edit): Either[String, String] = edit match {
     case Edit.Text(old, now) =>
       val text = markdown(b)
-      val at = text.indexOf(old)
-      Iterator.iterate(at)(i => text.indexOf(old, i + 1)).takeWhile(_ >= 0).size match {
-        case 0 => Left("it does not hold the old text; show it again and copy the text exactly")
-        case 1 => Right(text.take(at) + now + text.drop(at + old.length))
-        case n =>
+      Collect.positions(text, old) match {
+        case Vector() =>
+          Left("it does not hold the old text; show it again and copy the text exactly")
+        case Vector(at) => Right(text.take(at) + now + text.drop(at + old.length))
+        case all =>
           Left(
-            s"it holds the old text $n times; give more of the text around it, so it is held once"
+            s"it holds the old text ${all.size} times; give more of the text around it, so it is held once"
           )
       }
     case Edit.Section(title, under) =>

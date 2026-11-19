@@ -1,5 +1,7 @@
 package grit.core.host
 
+import grit.std.collect.Collect.positions
+
 /** One edit to a file: its passage `oldText`, replaced by `newText`. */
 final case class Replace(oldText: String, newText: String)
 
@@ -79,13 +81,6 @@ object Replace {
   private final case class Found(index: Int, at: Int, edit: Replace)
 
   private def lf(s: String): String = s.replace("\r\n", "\n").replace('\r', '\n')
-
-  /** Every index where `needle` starts in `hay`, overlapping ones included. */
-  private def positions(hay: String, needle: String): Vector[Int] =
-    Iterator
-      .iterate(hay.indexOf(needle))(i => hay.indexOf(needle, i + 1))
-      .takeWhile(_ >= 0)
-      .toVector
 }
 
 /** Where a file's edits landed: the line, counting from 1, on which each replacement starts

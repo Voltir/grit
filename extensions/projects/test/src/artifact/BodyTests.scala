@@ -53,6 +53,11 @@ object BodyTests extends TestSuite {
       )
     }
 
+    test("an edit of no old text is refused as not held") {
+      Body.edited(body("One."), Body.Edit.Text("", "x")) ==>
+        Left("it does not hold the old text; show it again and copy the text exactly")
+    }
+
     test("an edit replaces a section's blocks whole, its heading kept, its neighbours untouched") {
       val b = body("Lead.\n\n## Goal\n\nOld.\n\n### Detail\n\nGone.\n\n## Reads\n\nKept.")
       (
