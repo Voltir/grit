@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.claim.{Claim, ClaimRole, Claimed, Claims}
 import grit.core.document.{DocRef, DocText, Document, DocumentKeeper}
-import grit.core.id.{ClaimHolder, DocKey}
+import grit.core.id.{ClaimHolder, DocKey, DocumentVersionId}
 import grit.core.identity.Principal
 import grit.core.place.Place
 import grit.core.plugin.CommandOutcome
@@ -344,7 +344,9 @@ object KeptBriefTests extends TestSuite {
         store.claims
       )(projects, store, "project_keep", "key" -> "p/b", "title" -> "Title b", "body" -> "New.")
       (answer, before, versions(store)) ==> (
-        CommandOutcome.Done("Kept p/b (note, open). Now at version 8."),
+        CommandOutcome.Done(
+          s"Kept p/b (note, open). Now at version ${versionOf(projects, store, "p/b")}."
+        ),
         1,
         1
       )
@@ -408,14 +410,16 @@ object KeptBriefTests extends TestSuite {
         "body" -> "Kept above public, citing p/m.",
         "cites" -> ujson.Arr("p/m")
       )
+      val above = grit.dbos.sql.TestTx.fake(Clearance.of(TestLabels.Trial))
+      val keptAt = store.keeper
+        .current(right(DocKey.of("p/x")), TestLabels.Trial)(using above)
+        .fold(failed, _.fold(0L)(d => DocumentVersionId.value(d.version)))
       (
         answer,
-        store.keeper
-          .labels(briefKey)(using grit.dbos.sql.TestTx.fake(Clearance.of(TestLabels.Trial)))
-          .fold(failed, identity),
+        store.keeper.labels(briefKey)(using above).fold(failed, identity),
         versions(store)
       ) ==> (
-        CommandOutcome.Done("Kept p/x (note, open). Now at version 8."),
+        CommandOutcome.Done(s"Kept p/x (note, open). Now at version $keptAt."),
         Vector(Label.Public),
         1
       )
@@ -426,7 +430,13 @@ object KeptBriefTests extends TestSuite {
       done(ask(projects, store, "project_release", "key" -> "p/m"))
       val answer = keptAfter(projects, store, read)
       (answer, liveNow(store), current(store)) ==>
-        (CommandOutcome.Done("Kept p/m (note, open). Now at version 9."), Vector(), None)
+        (
+          CommandOutcome.Done(
+            s"Kept p/m (note, open). Now at version ${versionOf(projects, store, "p/m")}."
+          ),
+          Vector(),
+          None
+        )
     }
 
     test("a claim released and made again after a keep read it is left as it was made") {
@@ -438,7 +448,9 @@ object KeptBriefTests extends TestSuite {
       val answer = keptAfter(projects, store, read)
       (answer, again.map(_.made), liveNow(store)) ==>
         (
-          CommandOutcome.Done("Kept p/m (note, open). Now at version 10."),
+          CommandOutcome.Done(
+            s"Kept p/m (note, open). Now at version ${versionOf(projects, store, "p/m")}."
+          ),
           Vector(at.plusSeconds(30)),
           again
         )
