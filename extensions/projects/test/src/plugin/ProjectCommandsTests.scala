@@ -246,10 +246,11 @@ object ProjectCommandsTests extends TestSuite {
           "body" -> "x"
         )
       val taken = rename("process")
+      val now = versionOf(projects, store, "p/1")
       val carried =
         "p/1 process keeps its handle: the brief of role manager carries the artifact named process"
-      (taken.getClass, rename("rules"), rename("")) ==> (
-        classOf[CommandOutcome.Done],
+      (taken, rename("rules"), rename("")) ==> (
+        CommandOutcome.Done(s"Kept p/1 process (note, open). Now at version $now."),
         CommandOutcome.Refused(carried),
         CommandOutcome.Refused(carried)
       )
@@ -1042,6 +1043,8 @@ object ProjectCommandsTests extends TestSuite {
       // d first; c tied with b, after it by number; f before e.
       done(ask(projects, store, "project_reorder", "artifact" -> "p/d", "before" -> "p/b"))
       rankedAt(store, "p/3", "n")
+      // p/2 written again after p/3, so only the tie by number lists it first.
+      rankedAt(store, "p/2", "n")
       done(ask(projects, store, "project_reorder", "artifact" -> "p/f", "before" -> "p/e"))
       def listed(depth: Int): Vector[String] =
         done(
