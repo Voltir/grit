@@ -243,11 +243,11 @@ object BatchTests extends TestSuite {
       )
       val inBatch =
         batch(projects, store, move("p/a", "closed"), edit("p/a", read, "Absent.", "Here."))
+      val refused =
+        "p/1 a cannot be edited: it does not hold the old text; show it again and copy the text exactly"
       (alone, inBatch, versions(projects, store, "p/a")) ==> (
-        CommandOutcome.Refused(why(alone)),
-        CommandOutcome.Refused(
-          s"Nothing was kept: step 2 of 2 (edit p/a) was refused: ${why(alone)}"
-        ),
+        CommandOutcome.Refused(refused),
+        CommandOutcome.Refused(s"Nothing was kept: step 2 of 2 (edit p/a) was refused: $refused"),
         1
       )
     }
