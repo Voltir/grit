@@ -329,6 +329,35 @@ object CommandFixtures {
     }.fold(e => throw new java.lang.AssertionError(e.toString), identity)
   }
 
+  /** The artifact kept under `key` at public kept instead at `label`, as a re-key leaves an
+    * artifact the old form kept above its project's label, and the public one withdrawn.
+    */
+  def keptAbove(store: Store, key: String, label: Label): Unit = {
+    val docKey = DocKey.of(key).fold(why => throw new java.lang.AssertionError(why), identity)
+    {
+      given Tx = TestTx.fake(Clearance.of(label))
+      for {
+        was <- store.keeper.current(docKey, Label.Public)
+        d <- was.toRight(StoreError.Invalid(s"nothing kept under $key"))
+        written <- Artifact.of(d).flatMap(ArtifactJson.write).left.map(StoreError.Invalid(_))
+        (text, data, refs) = written
+        _ <- store.keeper.write(
+          docKey,
+          label,
+          d.integrity,
+          d.place,
+          text,
+          data,
+          d.pointer,
+          at,
+          refs
+        )
+      } yield ()
+    }.fold(e => throw new java.lang.AssertionError(e.toString), identity)
+    inTx(store.keeper.withdraw(docKey, Label.Public, at))
+      .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+  }
+
   def kept(
       projects: Projects,
       store: Store,
