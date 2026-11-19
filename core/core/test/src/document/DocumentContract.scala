@@ -1985,6 +1985,30 @@ abstract class DocumentContract extends TestSuite {
       )
     }
 
+    test("through a capped keeper, a declassified rewrite is believed as its believing says") {
+      val p = name("doc-declassified-capped")
+      val k = DocumentKeeper.believedAtMost(keeper(p, terms()), Integrity.Outside)
+      val team = over("dkc-team")
+      val card = file("dkc-card")
+      val source = Label.at(Level.Internal, TestLabels.compartment("dkc-team"))
+      policy(team, 1, revoked = false)
+      application(card, 1, Some(team))
+      val confidential = Clearance.of(Label.at(Level.Confidential))
+      opened(confidential) {
+        val applied = ok(k.declassifying(source, card))
+          .map(_.applied)
+          .getOrElse(throw new java.lang.AssertionError("no application"))
+        ok(k.declassified(declassified("the gist", source, card, applied), Integrity.Member, at(1)))
+      }
+      (
+        opened(confidential)(
+          ok(shelf(p).current(key(s"cards:${ShortHash.of("card")}"), Label.at(Level.Internal)))
+            .map(_.integrity)
+        ),
+        k.believing(Integrity.Member)
+      ) ==> (Some(Integrity.Outside), Integrity.Outside)
+    }
+
     test(
       "a declassified rewrite whose policy or application version is no longer current is refused, writing nothing"
     ) {
