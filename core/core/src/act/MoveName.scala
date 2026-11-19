@@ -1,7 +1,8 @@
 package grit.core.act
 
-import scala.compiletime.ops.string.Matches
-import scala.compiletime.{constValue, constValueOpt, error}
+import scala.quoted.{Expr, Quotes}
+
+import grit.std.literal.Literal
 
 /** A move's name within its run, and its steps': `ask:{name}`, `call:{name}` or `keep:{name}`,
   * then each with `:{phase}` after it. 1 to 200 characters, none a control character or `:`.
@@ -18,16 +19,13 @@ object MoveName {
       Left("a move's name holds no ':' and no control character")
     else Right(text)
 
-  /** The literal `name`, which [[of]] would read: a literal it would refuse, or a name that is
-    * not a literal, does not compile.
+  /** [[of]]'s value for the constant `text`. Text [[of]] refuses does not compile, with
+    * [[of]]'s reason; nor does text that is not a constant.
     */
-  inline def apply[N <: String & Singleton](inline name: N): MoveName =
-    inline constValueOpt[N] match {
-      case None => error("a move's name is a literal; MoveName.of reads one made at run time")
-      case Some(_) =>
-        inline if (constValue[Matches[N, "[^:\\p{Cc}]{1,200}"]]) name
-        else error("a move's name is 1 to 200 characters, none of them ':' or a control character")
-    }
+  inline def literal(inline text: String): MoveName = ${ literalOf('text) }
+
+  private def literalOf(text: Expr[String])(using Quotes): Expr[MoveName] =
+    Literal.checked(text, of)
 
   def value(name: MoveName): String = name
 }

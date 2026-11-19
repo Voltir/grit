@@ -34,7 +34,7 @@ object Shadow {
   private val asked
       : Flow[ShadowEnv, ShadowRef, Nothing, Judging.Judged[Either[String, (EntryId, Shadowed)]]] =
     Judging.flow[ShadowEnv, ShadowRef, Either[String, (EntryId, Shadowed)]](
-      MoveName("shadow"),
+      MoveName.literal("shadow"),
       ref =>
         Judging.Charged(
           TurnRef(ref.triage.period.conversationId, ref.triage.turn),

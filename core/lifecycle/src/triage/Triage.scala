@@ -66,7 +66,7 @@ object Triage {
   private val asked
       : Flow[TriageEnv, Waited, Nothing, Judging.Judged[Either[String, (EntryId, Tags)]]] =
     Judging.flow[TriageEnv, Waited, Either[String, (EntryId, Tags)]](
-      MoveName("triage"),
+      MoveName.literal("triage"),
       w =>
         Judging.Charged(
           TurnRef(w.ref.period.conversationId, w.ref.turn),

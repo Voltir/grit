@@ -108,7 +108,7 @@ private[turn] object TurnAssembly {
   /** `ask:needs`: the needs gate's verdict on the placed message ([[TurnNeeds]]). */
   private def needs: Flow[Env, Placed, Nothing, (Placed, Verdict)] =
     Judging
-      .flow[Env, Placed, Verdict](MoveName("needs"), charged)(
+      .flow[Env, Placed, Verdict](MoveName.literal("needs"), charged)(
         r => r.env.moves,
         r => r.env.routing.budget
       )(r => p => needing(r.env, p))
@@ -156,7 +156,7 @@ private[turn] object TurnAssembly {
       : Flow[Env, (Placed, Boolean), Nothing, (Placed, Either[TurnFailure, Querying])] =
     Judging
       .flow[Env, (Placed, Boolean), Either[TurnFailure, Querying]](
-        MoveName("query"),
+        MoveName.literal("query"),
         (p, _) => charged(p)
       )(
         r => r.env.moves,
@@ -218,7 +218,7 @@ private[turn] object TurnAssembly {
   private def batch(n: Int): Flow[Env, Sifting, Nothing, Sifting] =
     Judging
       .flow[Env, Sifting, Verdicts](
-        TurnRelevance.Names.lift(n).getOrElse(MoveName("relevance")),
+        TurnRelevance.Names.lift(n).getOrElse(MoveName.literal("relevance")),
         s => charged(s.at)
       )(
         r => r.env.moves,

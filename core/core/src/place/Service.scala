@@ -1,9 +1,14 @@
 package grit.core.place
 
+import scala.annotation.publicInBinary
+import scala.quoted.{Expr, Quotes}
+
+import grit.std.literal.Literal
+
 /** An outside service's place: `service:{name}`, `name` a lowercase letter, then lowercase
   * letters, digits or `_`.
   */
-final case class Service private (name: String) {
+final case class Service @publicInBinary private (name: String) {
 
   def place: Place = Place.under(Namespace.Service, Vector(name))
 }
@@ -17,6 +22,16 @@ object Service {
       name.forall(c => (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_')
     ) Right(new Service(name))
     else Left(s"a service's name is a lowercase letter, then lowercase letters, digits or _: $name")
+
+  /** [[of]]'s service for the constant `name`. A name [[of]] refuses does not compile, with
+    * [[of]]'s reason; nor does a name that is not a constant.
+    */
+  inline def literal(inline name: String): Service = ${ literalOf('name) }
+
+  private def literalOf(name: Expr[String])(using Quotes): Expr[Service] = {
+    val checked = Literal.checked(name, of(_).map(_.name))
+    '{ new Service($checked) }
+  }
 }
 
 /** Conversations within `within` that have no directory work in `service`: their hosted

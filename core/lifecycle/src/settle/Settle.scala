@@ -55,7 +55,7 @@ object Settle {
 
   private val asked: Flow[SettleEnv, Asking, Nothing, Judging.Judged[Judgement]] =
     Judging.flow[SettleEnv, Asking, Judgement](
-      MoveName("settle"),
+      MoveName.literal("settle"),
       a =>
         Judging.Charged(
           TurnRef(a.ref.period.conversationId, a.ref.last),

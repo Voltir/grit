@@ -39,16 +39,16 @@ object CardMoves {
   def vet(key: CardKey, window: Int): MoveName = known(s"vet/${CardKey.value(key)}/$window")
 
   /** `held`: the keep reading the cards a run holds. */
-  val Held: MoveName = MoveName("held")
+  val Held: MoveName = MoveName.literal("held")
 
   /** `drop`: the keep withdrawing the cards of units gone. */
-  val Drop: MoveName = MoveName("drop")
+  val Drop: MoveName = MoveName.literal("drop")
 
   /** `drop-pieces`: the piece move withdrawing the pieces of the files gone. */
-  val DropPieces: MoveName = MoveName("drop-pieces")
+  val DropPieces: MoveName = MoveName.literal("drop-pieces")
 
   /** `due-pieces`: the piece move finding the held files whose pieces are due. */
-  val DuePieces: MoveName = MoveName("due-pieces")
+  val DuePieces: MoveName = MoveName.literal("due-pieces")
 
   /** `{kind}-{i}`: a dreaming run's `i`th move of `kind`, lower-case words joined by `-`. */
   private[knowledge] def numbered(kind: String, i: Int): MoveName = known(s"$kind-$i")

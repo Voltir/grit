@@ -2,14 +2,18 @@ package grit.core.review
 
 import java.time.{Instant, LocalDate}
 
+import scala.annotation.publicInBinary
+import scala.quoted.{Expr, Quotes}
+
 import grit.core.document.Document
 import grit.core.id.{DocKey, DocumentVersionId, PluginName}
 import grit.core.identity.Account
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.Label
+import grit.std.literal.Literal
 
 /** A verdict word a plugin's review keeps: lower-case words joined by `-`. */
-final case class ReviewWord private (word: String) extends caps.Pure
+final case class ReviewWord @publicInBinary private (word: String) extends caps.Pure
 
 object ReviewWord {
 
@@ -20,6 +24,16 @@ object ReviewWord {
       new ReviewWord(word),
       s"a verdict word is lower-case words joined by '-': $word"
     )
+
+  /** [[of]]'s verdict word for the constant `word`. A word [[of]] refuses does not compile,
+    * with [[of]]'s reason; nor does a word that is not a constant.
+    */
+  inline def literal(inline word: String): ReviewWord = ${ literalOf('word) }
+
+  private def literalOf(word: Expr[String])(using Quotes): Expr[ReviewWord] = {
+    val checked = Literal.checked(word, of(_).map(_.word))
+    '{ new ReviewWord($checked) }
+  }
 
   private val Word = "[a-z]+(-[a-z]+)*".r
 }

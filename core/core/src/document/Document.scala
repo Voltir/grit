@@ -2,9 +2,12 @@ package grit.core.document
 
 import java.time.Instant
 
+import scala.quoted.{Expr, Quotes}
+
 import grit.core.id.{DocKey, DocumentVersionId, PluginName}
 import grit.core.place.Place
 import grit.core.visibility.{Integrity, Label}
+import grit.std.literal.Literal
 
 /** What a document says: not blank, at most [[DocText.Most]] bytes as UTF-8. */
 opaque type DocText = String
@@ -21,6 +24,13 @@ object DocText {
     else if (bytes > Most) Left(s"a document's text is at most $Most bytes as UTF-8, not $bytes")
     else Right(text)
   }
+
+  /** [[of]]'s value for the constant `text`. Text [[of]] refuses does not compile, with
+    * [[of]]'s reason; nor does text that is not a constant.
+    */
+  inline def literal(inline text: String): DocText = ${ literalOf('text) }
+
+  private def literalOf(text: Expr[String])(using Quotes): Expr[DocText] = Literal.checked(text, of)
 
   def value(t: DocText): String = t
 }

@@ -1,6 +1,9 @@
 package grit.core.document
 
 import scala.concurrent.duration.*
+import scala.quoted.{Expr, Quotes}
+
+import grit.std.literal.Literal
 
 /** What heads a plugin's documents where a window shows one: one line, not blank. */
 opaque type DocLabel = String
@@ -13,6 +16,14 @@ object DocLabel {
     else if (text.exists(_.isControl))
       Left("a document label is one line, with no control character")
     else Right(text)
+
+  /** [[of]]'s value for the constant `text`. Text [[of]] refuses does not compile, with
+    * [[of]]'s reason; nor does text that is not a constant.
+    */
+  inline def literal(inline text: String): DocLabel = ${ literalOf('text) }
+
+  private def literalOf(text: Expr[String])(using Quotes): Expr[DocLabel] =
+    Literal.checked(text, of)
 
   def value(l: DocLabel): String = l
 }

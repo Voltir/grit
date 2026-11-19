@@ -124,7 +124,7 @@ object CardDeclassify {
   /** 1,000: the most current cards one run reads to find those a policy is applied to. */
   val Cards: Int = 1000
 
-  private val Scan: MoveName = MoveName("scan")
+  private val Scan: MoveName = MoveName.literal("scan")
 
   /** The scan, at its transaction's floor: each card in force (its version, revision and
     * application), every own document but the withholding that reads as no rewrite standing

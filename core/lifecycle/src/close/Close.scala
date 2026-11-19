@@ -98,7 +98,7 @@ object Close {
     )
 
   private val gated: Flow[CloseEnv, Attempt, Nothing, Judging.Judged[(Asked, Option[String])]] =
-    Judging.flow[CloseEnv, Attempt, (Asked, Option[String])](MoveName("gate"), charged)(
+    Judging.flow[CloseEnv, Attempt, (Asked, Option[String])](MoveName.literal("gate"), charged)(
       _.moves,
       _.budget
     )(env => at => gate(env, at))
@@ -123,7 +123,7 @@ object Close {
     )
 
   private val summary: Flow[CloseEnv, Gated, Nothing, Judging.Judged[Summarised]] =
-    Judging.flow[CloseEnv, Gated, Summarised](MoveName("summary"), g => charged(g.at))(
+    Judging.flow[CloseEnv, Gated, Summarised](MoveName.literal("summary"), g => charged(g.at))(
       _.moves,
       _.budget
     )(env => g => summarise(env, g.at.ref, g.at.first, g.asked, g.at.known, g.at.cap, g.at.reason))

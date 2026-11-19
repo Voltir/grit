@@ -116,7 +116,7 @@ object StrandDream {
   /** 6,000: the most characters of a strand a summary is asked of. */
   val Chars: Int = 6000
 
-  private val Scan: MoveName = MoveName("scan")
+  private val Scan: MoveName = MoveName.literal("scan")
 
   /** What the summary model is told, before the strand. */
   private val System: String =

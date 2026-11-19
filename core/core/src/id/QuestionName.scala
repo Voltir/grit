@@ -1,5 +1,9 @@
 package grit.core.id
 
+import scala.quoted.{Expr, Quotes}
+
+import grit.std.literal.Literal
+
 /** A question's name in a question set, kept with its answer: a lowercase letter, then
   * lowercase letters, digits or `-`; or a question asked once per corpus,
   * `<prefix>:<source>` ([[QuestionName.per]]), which no declared name can be.
@@ -34,6 +38,14 @@ object QuestionName {
           source <- CorpusName.of(text.drop(i + 1))
         } yield per(prefix, source)
     }
+
+  /** [[of]]'s value for the constant `text`. Text [[of]] refuses does not compile, with
+    * [[of]]'s reason; nor does text that is not a constant.
+    */
+  inline def literal(inline text: String): QuestionName = ${ literalOf('text) }
+
+  private def literalOf(text: Expr[String])(using Quotes): Expr[QuestionName] =
+    Literal.checked(text, of)
 
   def value(name: QuestionName): String = name
 }

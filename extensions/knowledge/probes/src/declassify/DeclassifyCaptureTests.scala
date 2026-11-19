@@ -25,26 +25,26 @@ object DeclassifyCaptureTests extends TestSuite {
 
   private val control =
     """def f(m: Dreaming^, v: DocumentVersionId, a: PolicyApplication) =
-      |  (m.declassify(MoveName("d"), v, "r1", a), m.bench(MoveName("b"), a.policy))
+      |  (m.declassify(MoveName.literal("d"), v, "r1", a), m.bench(MoveName.literal("b"), a.policy))
       |""".stripMargin
   private val textRead = "def f(d: Declassified) = d.text"
   private val raiseReached =
     "def f(m: Dreaming^) = m.declassifier"
   private val primitiveCalled =
     """def f(m: Dreaming^, v: DocumentVersionId, a: PolicyApplication) =
-      |  m.rewrite(MoveName("d"), v, "r1", a, None)
+      |  m.rewrite(MoveName.literal("d"), v, "r1", a, None)
       |""".stripMargin
   private val screenCalled =
     """def f(m: Dreaming^, v: DocumentVersionId, a: PolicyApplication, t: DocText) =
-      |  m.screen(MoveName("d"), v, "r1", a, t, Declassified.Attempt.First)
+      |  m.screen(MoveName.literal("d"), v, "r1", a, t, Declassified.Attempt.First)
       |""".stripMargin
   private val baselineCalled =
     """def f(m: Dreaming^, v: DocumentVersionId, a: PolicyApplication) =
-      |  m.baseline(MoveName("d"), v, "r1", a)
+      |  m.baseline(MoveName.literal("d"), v, "r1", a)
       |""".stripMargin
   private val exampleCalled =
     """def f(m: Dreaming^, p: DeclassificationPolicy) =
-      |  m.example(MoveName("b-0"), p, 0)
+      |  m.example(MoveName.literal("b-0"), p, 0)
       |""".stripMargin
 
   private lazy val compiled = Probes.batch(

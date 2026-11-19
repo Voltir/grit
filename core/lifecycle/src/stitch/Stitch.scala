@@ -35,7 +35,7 @@ object Stitch {
     Either[String, Option[(EntryId, Placed)]]
   ]] =
     Judging.flow[StitchEnv, StitchRef, Either[String, Option[(EntryId, Placed)]]](
-      MoveName("stitch"),
+      MoveName.literal("stitch"),
       ref => Judging.Charged(ref.turn, ref.workflowId, subject(ref))
     )(_.moves, _.budget)(env => ref => placing(env, ref))
 

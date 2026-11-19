@@ -146,5 +146,9 @@ object TurnRelevance {
 
   /** The name of each batch's move, in order: as many as [[Judged]] / [[PerCall]]. */
   private[turn] val Names: Vector[MoveName] =
-    Vector(MoveName("relevance-0"), MoveName("relevance-1"), MoveName("relevance-2"))
+    Vector(
+      MoveName.literal("relevance-0"),
+      MoveName.literal("relevance-1"),
+      MoveName.literal("relevance-2")
+    )
 }

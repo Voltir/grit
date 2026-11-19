@@ -1,5 +1,9 @@
 package grit.core.id
 
+import scala.quoted.{Expr, Quotes}
+
+import grit.std.literal.Literal
+
 /** What runs a working session: grit itself, or a harness beside it (`claude-code`). Not an
   * [[EdgeName]], which names the edge a message arrives through: a grit turn's session has the
   * harness [[Harness.Grit]] whatever edge its conversation is on.
@@ -17,6 +21,13 @@ object Harness {
   /** `s` as a harness's name, or why not ([[Slug.check]], at most [[Longest]] characters). */
   def of(s: String): Either[String, Harness] =
     Slug.check("a harness's name", s, Some(Longest), leadingDigit = false)
+
+  /** [[of]]'s value for the constant `text`. Text [[of]] refuses does not compile, with
+    * [[of]]'s reason; nor does text that is not a constant.
+    */
+  inline def literal(inline text: String): Harness = ${ literalOf('text) }
+
+  private def literalOf(text: Expr[String])(using Quotes): Expr[Harness] = Literal.checked(text, of)
 
   def value(h: Harness): String = h
 }

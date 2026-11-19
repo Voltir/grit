@@ -286,12 +286,12 @@ object TopicDream {
     */
   val LeadChars: Int = 400
 
-  private val Scan: MoveName = MoveName("scan")
+  private val Scan: MoveName = MoveName.literal("scan")
 
-  private val Attach: MoveName = MoveName("attach")
+  private val Attach: MoveName = MoveName.literal("attach")
 
   /** The attach ask again, made only when its reply placed nothing it was shown. */
-  private val AttachAgain: MoveName = MoveName("attach-again")
+  private val AttachAgain: MoveName = MoveName.literal("attach-again")
 
   /** What the attach ask asked again is told besides. */
   private val Again: String =
@@ -304,7 +304,7 @@ object TopicDream {
     "its reply placed nothing shown: each it named was named twice, or not shown, " +
       "or in a topic not shown"
 
-  private val SetAside: MoveName = MoveName("aside")
+  private val SetAside: MoveName = MoveName.literal("aside")
 
   /** How many strands and cards `ts` attach. */
   private def items(ts: Vector[Touch]): Int = ts.map(t => t.strands.size + t.cards.size).sum

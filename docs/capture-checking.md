@@ -384,6 +384,29 @@ of the same build.
 - *Fix:* re-export by hand: `type Variable = grit.core.secret.Variable` and `val Variable:
   grit.core.secret.Variable.type = grit.core.secret.Variable` (core's `edge` package).
 
+## Macros
+
+grit's one macro is a type's `literal` (`grit.std.literal.Literal.checked`, called from each
+type's private `literalOf`): it runs the type's own `of` on a string constant in the compiler.
+What Scala 3.9.0 and zinc do with it:
+
+- **A splice takes no function argument.** `${ Literal.checked('text, of) }` is "Malformed
+  macro parameter": a splice is a call to a static method with quoted arguments only. So each
+  type has its two-line `literalOf`, which may pass `of`.
+- **A macro is usable in its own module.** The compiler suspends a file calling a macro defined
+  in the same run and compiles it once the macro's classes exist, with no warning. The
+  exception is a cycle: a `literal` called from a file the reader itself needs at expansion
+  (the type's own file, or `Slug`'s or `Bounded`'s, which several readers call) does not
+  compile. `Harness.Grit` is such a constant.
+- **A quote that builds a private constructor needs `@publicInBinary`** on it ("Private
+  constructors used in inline methods require @publicInBinary"); source visibility is unchanged
+  (`grit.core.id.LiteralTests` pins it).
+- **Zinc recompiles a `literal`'s callers when its reader changes**, directly or through a
+  helper the reader calls, in the module and downstream. It does **not** when
+  `Literal.checked`'s own body changes: callers keep their old expansion until something else
+  recompiles them. After changing it, `./mill clean <module>.compile` each module holding a
+  macro or a call (`grit.std.test`, `grit.core`, `grit.knowledge` and every caller's).
+
 ## Testing that something does not compile
 
 utest's `assertCompileError` (`scala.compiletime.testing`) never reports capture- or

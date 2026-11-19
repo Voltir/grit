@@ -1,6 +1,9 @@
 package grit.core.visibility
 
+import scala.quoted.{Expr, Quotes}
+
 import grit.core.identity.{Account, Realm}
+import grit.std.literal.Literal
 
 /** A group's name, as a deployment or a membership source names it. */
 opaque type GroupName = String
@@ -12,6 +15,14 @@ object GroupName {
     val trimmed = name.trim
     if (trimmed.isEmpty) Left("a group's name is blank") else Right(trimmed)
   }
+
+  /** [[of]]'s value for the constant `text`. Text [[of]] refuses does not compile, with
+    * [[of]]'s reason; nor does text that is not a constant.
+    */
+  inline def literal(inline text: String): GroupName = ${ literalOf('text) }
+
+  private def literalOf(text: Expr[String])(using Quotes): Expr[GroupName] =
+    Literal.checked(text, of)
 
   def value(name: GroupName): String = name
 
