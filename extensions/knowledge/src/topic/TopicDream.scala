@@ -632,7 +632,8 @@ object TopicDream {
           Topic.of(
             t.key,
             TopicWrite.prose(w.lead),
-            Topic.joined(passages, passage)((_, now) => now)
+            Topic.joined(passages, passage)((_, now) => now),
+            old.fold[Topic.Kind](Topic.Kind.Subject)(_.topic.kind)
           ),
           (old.fold(Vector.empty[Ref])(_.units) ++ t.cards.flatMap(_.unit) ++ units).distinct,
           Some(

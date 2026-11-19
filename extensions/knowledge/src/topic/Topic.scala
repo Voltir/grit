@@ -10,7 +10,11 @@ import grit.prose.form.Doc
 /** A topic: its `lead`, what it is about now, and its `passages`, oldest first, each one day's
   * addition, at most [[Topic.Passages]]. Notes hold its links and claims.
   */
-final case class Topic private (lead: Doc[TopicNote], passages: Vector[Passage]) extends caps.Pure
+final case class Topic private (
+    lead: Doc[TopicNote],
+    passages: Vector[Passage],
+    kind: Topic.Kind
+) extends caps.Pure
 
 object Topic {
 
@@ -20,16 +24,25 @@ object Topic {
   /** `lead` and `passages` by day, oldest first (one day's in the order given), the oldest past
     * [[Passages]] dropped.
     */
-  def of(lead: Doc[TopicNote], passages: Vector[Passage]): Topic =
-    new Topic(lead, passages.sortBy(_.day.toEpochDay).takeRight(Passages))
+  def of(lead: Doc[TopicNote], passages: Vector[Passage], kind: Kind = Kind.Subject): Topic =
+    new Topic(lead, passages.sortBy(_.day.toEpochDay).takeRight(Passages), kind)
 
-  /** Its data, `{"v":2, "lead", "passages"}`, each doc as [[grit.prose.json.ProseJson]] stores
-    * it.
+  /** What a topic tracks, fixed when it opens: a subject the team comes back to, or one
+    * meeting, its head refined as later talk is written into it.
+    */
+  enum Kind extends caps.Pure {
+    case Subject
+    case Meeting(head: grit.knowledge.topic.Meeting)
+  }
+
+  /** Its data, `{"v":3, "kind", "lead", "passages"}`, its kind `"subject"` or `{"meeting": …}`,
+    * each doc as [[grit.prose.json.ProseJson]] stores it.
     */
   def write(t: Topic): ujson.Value = TopicJson.write(t)
 
-  /** The topic of `key` that `v` holds, or why not: data of a later version than this reader's
-    * ([[Unread.Later]]), or [[Unread.Refused]]: an earlier version, no version, no lead, data
+  /** The topic of `key` that `v` holds, a v2 topic read as a subject, or why not: data of a
+    * later version than this reader's ([[Unread.Later]]), or [[Unread.Refused]]: version 1, no
+    * version, no lead, a kind that is none, data
     * that is no topic's, two different claims of one id, or a claim relation naming a claim of
     * this topic that it does not hold. Passages past [[Passages]] are dropped, as [[of]] drops
     * them.
@@ -89,15 +102,20 @@ object Topic {
             )
           )((a, b) => Doc(a.blocks ++ b.blocks))
       }
-    of(key, into.lead.map(followed(true)), passages)
+    of(key, into.lead.map(followed(true)), passages, into.kind)
   }
 
   /** The topic of `key` from `lead` and `passages`, as [[of]] makes it, each relation to a
     * claim of `key` it does not hold dropped (one of a passage past [[Passages]], say), so it
     * reads back under `key` ([[read]]) unless two different claims share an id.
     */
-  private[topic] def of(key: TopicKey, lead: Doc[TopicNote], passages: Vector[Passage]): Topic = {
-    val t = of(lead, passages)
+  private[topic] def of(
+      key: TopicKey,
+      lead: Doc[TopicNote],
+      passages: Vector[Passage],
+      kind: Kind
+  ): Topic = {
+    val t = of(lead, passages, kind)
     val held = claims(t).map(_.id).toSet
     def kept(n: TopicNote): TopicNote = n match {
       case TopicNote.Claimed(c) =>
@@ -106,7 +124,7 @@ object Topic {
         )
       case link => link
     }
-    new Topic(t.lead.map(kept), t.passages.map(p => p.copy(body = p.body.map(kept))))
+    new Topic(t.lead.map(kept), t.passages.map(p => p.copy(body = p.body.map(kept))), kind)
   }
 
   /** Every claim `t` holds, each once. */
@@ -129,7 +147,8 @@ object Topic {
     }
   }
 
-  /** Its document's text: `lead` first, so a reader that cuts the head keeps the lead whole
+  /** Its document's text: a meeting's head line first, then `lead`, so a reader that cuts the
+    * head keeps them whole
     * while it fits, then each passage newest first under its day as a heading, notes lowered
     * (a link as a link to its topic's key, a claim as its span's text); or why not: blank.
     */

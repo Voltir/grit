@@ -15,7 +15,7 @@ import grit.prose.markdown.Markdown
 import grit.std.collect.Collect.firstRepeat
 import grit.std.either.Traversal.traverse
 
-/** [[Topic]]'s data and text. Version 2: its lead and each passage's body stored as
+/** [[Topic]]'s data and text. Version 3: its kind, its lead and each passage's body stored as
   * [[ProseJson]] writes prose, a note `{"link": key}` or `{"claim": …}`, each written once per
   * doc. Version 1, a doc keyed block by block, is not read.
   */
@@ -26,9 +26,24 @@ private object TopicJson {
   def write(t: Topic): ujson.Value =
     ujson.Obj(
       "v" -> Version,
+      "kind" -> (t.kind match {
+        case Topic.Kind.Subject => ujson.Str("subject")
+        case Topic.Kind.Meeting(m) => ujson.Obj("meeting" -> Meeting.write(m))
+      }),
       "lead" -> doc(t.lead),
       "passages" -> ujson.Arr.from(t.passages.map(passage))
     )
+
+  private def readKind(v: Option[ujson.Value]): Read[Topic.Kind] = v match {
+    case Some(ujson.Str("subject")) => Right(Topic.Kind.Subject)
+    case Some(o) =>
+      o.objOpt
+        .flatMap(_.get("meeting"))
+        .toRight("a topic's kind is none it can be")
+        .flatMap(Meeting.read)
+        .map(Topic.Kind.Meeting(_))
+    case None => Left("a topic with no kind")
+  }
 
   def read(key: TopicKey, v: ujson.Value): Either[Topic.Unread, Topic] =
     v.objOpt.flatMap(_.get("v")).flatMap(_.numOpt) match {
@@ -36,27 +51,33 @@ private object TopicJson {
       case _ =>
         (for {
           o <- obj(v, "a topic")
-          _ <- o.get("v").flatMap(_.numOpt) match {
-            case Some(n) if n == Version => Right(())
+          kind <- o.get("v").flatMap(_.numOpt) match {
+            case Some(n) if n == Version => readKind(o.get("kind"))
+            // Version 2 had no kinds: every topic was a subject.
+            case Some(n) if n == 2 => Right(Topic.Kind.Subject)
             case Some(n) => Left(s"a topic of version ${n.toLong}, which this reader does not know")
             case None => Left("a topic with no version")
           }
           lead <- o.get("lead").toRight("a topic with no lead").flatMap(readDoc)
           passages <- array(o.get("passages"), "a topic's passages")
             .flatMap(traverse(_)(readPassage))
-          t = Topic.of(lead, passages)
+          t = Topic.of(lead, passages, kind)
           _ <- checked(key, t)
         } yield t).left.map(Topic.Unread.Refused(_))
     }
 
-  /** 2: the version of the data [[write]] writes. */
-  private val Version: Int = 2
+  /** 3: the version of the data [[write]] writes. */
+  private val Version: Int = 3
 
   def text(t: Topic): Read[DocText] = {
+    val head = t.kind match {
+      case Topic.Kind.Subject => Vector.empty
+      case Topic.Kind.Meeting(m) => Vector(Block.Paragraph(Text.plain(Meeting.head(m))))
+    }
     val passages = t.passages.reverse.flatMap(p =>
       Block.Heading(Level.of(2), Text.plain(p.day.toString)) +: lowered(p.body).blocks
     )
-    DocText.of(Markdown.write(Doc(lowered(t.lead).blocks ++ passages)))
+    DocText.of(Markdown.write(Doc(head ++ lowered(t.lead).blocks ++ passages)))
   }
 
   /** `d` with a link note as a link to its topic's key where its span is no link already. */

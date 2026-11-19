@@ -79,7 +79,81 @@ object TopicCodecTests extends TestSuite {
       Topic.read(key, Topic.write(topic)) ==> Right(topic)
     }
 
-    test("a topic is version 2, each doc stored prose, a claim on two spans written once") {
+    test("v2 reads as a subject") {
+      val v2 = Topic.write(topic)
+      v2("v") = 2
+      v2.obj.remove("kind")
+      Topic.read(key, v2).map(_.kind) ==> Right(Topic.Kind.Subject)
+    }
+
+    test("a meeting round-trips") {
+      val held = Meeting.of(Meeting.State.Held(LocalDate.of(2026, 11, 16)), Vector("Ana"))
+      val planned = Meeting.of(
+        Meeting.State.Planned(
+          Meeting.When(LocalDate.of(2026, 11, 18), Some(java.time.LocalTime.of(9, 30)))
+        ),
+        Vector("Ana", "Ben")
+      )
+      Vector(Meeting.Opened, held, planned)
+        .map(m => Topic.of(lead, Vector(monday), Topic.Kind.Meeting(m)))
+        .foreach(t => Topic.read(key, Topic.write(t)) ==> Right(t))
+    }
+
+    test("a meeting's text opens with its head line") {
+      val m = Meeting.of(
+        Meeting.State.Planned(
+          Meeting.When(LocalDate.of(2026, 11, 16), Some(java.time.LocalTime.of(9, 30)))
+        ),
+        Vector("Ana", "Ben", "Cy")
+      )
+      DocText
+        .value(right(Topic.text(Topic.of(lead, Vector(monday), Topic.Kind.Meeting(m)))))
+        .linesIterator
+        .take(3)
+        .toVector ==> Vector(
+        "Meeting, planned for Monday 2026-11-16 at 09:30, with Ana, Ben and Cy.",
+        "",
+        s"The release **ships Friday**, see [the docs](${TopicKey.value(other)})"
+      )
+    }
+
+    test("of leaves out a 13th name") {
+      val names = (1 to 13).toVector.map(n => s"Person $n")
+      Meeting.of(Meeting.State.Proposed(None), names :+ " " :+ ("x" * 81)).who ==> names.take(12)
+    }
+
+    val day = LocalDate.of(2026, 11, 19)
+    def reply(fields: (String, ujson.Value)*) = Some(ujson.Obj.from(fields))
+
+    test("refined drops a day 3 days back") {
+      Meeting.refined(
+        Meeting.Opened,
+        reply("state" -> "planned", "day" -> "2026-11-16", "who" -> ujson.Arr("Ana")),
+        day,
+        90
+      ) ==> Meeting.of(Meeting.State.Proposed(None), Vector("Ana"))
+      Meeting
+        .refined(Meeting.Opened, reply("state" -> "planned", "day" -> "2026-11-17"), day, 90)
+        .state ==> Meeting.State.Planned(Meeting.When(LocalDate.of(2026, 11, 17), None))
+    }
+
+    test("held stays held") {
+      val held = Meeting.of(Meeting.State.Held(LocalDate.of(2026, 11, 18)), Vector("Ana"))
+      Meeting.refined(
+        held,
+        reply("state" -> "proposed", "day" -> "2026-11-25", "who" -> ujson.Arr("Ben")),
+        day,
+        90
+      ) ==> held
+    }
+
+    test("a held on a later day becomes planned") {
+      Meeting
+        .refined(Meeting.Opened, reply("state" -> "held", "day" -> "2026-11-20"), day, 90)
+        .state ==> Meeting.State.Planned(Meeting.When(LocalDate.of(2026, 11, 20), None))
+    }
+
+    test("a topic is version 3, each doc stored prose, a claim on two spans written once") {
       val twice = Topic.of(
         Doc(
           Vector(
@@ -95,7 +169,7 @@ object TopicCodecTests extends TestSuite {
       val lead = v("lead").objOpt
       val notes = lead.flatMap(_.get("notes")).flatMap(_.arrOpt).map(_.map(_.obj.keys.toVector))
       (v("v"), lead.flatMap(_.get("v")), notes) ==> (
-        ujson.Num(2),
+        ujson.Num(3),
         Some(ujson.Num(1)),
         Some(Vector(Vector("claim")))
       )
@@ -115,8 +189,8 @@ object TopicCodecTests extends TestSuite {
     // A topic a later reader kept: told apart from a refused one, so a run leaves it be.
     test("a topic of a later version is not refused but read as a later reader's") {
       val v3 = Topic.write(topic)
-      v3("v") = 3
-      Topic.read(key, v3) ==> Left(Topic.Unread.Later(3))
+      v3("v") = 4
+      Topic.read(key, v3) ==> Left(Topic.Unread.Later(4))
     }
 
     test("a topic with no lead is refused, naming it") {

@@ -899,7 +899,7 @@ object TopicDreamTests extends TestSuite {
       // version does: data this reader must not wipe.
       runs.topics.foreach { d =>
         val later = ujson.copy(d.data)
-        later("v") = 3
+        later("v") = 4
         val _ = ok(
           runs.documents
             .keeper(Plugin, Terms)
@@ -920,7 +920,7 @@ object TopicDreamTests extends TestSuite {
       (reply, runs.asked.map(_.kind), runs.topics.map(_.data("v").num)) ==> (
         "topics: 0 written (0 opened), 0 withdrawn, 1 unchanged, 0 set aside, 0 left for the next run, 1 of a later version left",
         Vector("sort", "write"),
-        Vector(3.0)
+        Vector(4.0)
       )
     }
 
