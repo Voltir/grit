@@ -23,7 +23,17 @@ import grit.projects.method.{
 }
 import grit.projects.name.{CheckName, MethodName, StateName}
 
-import ProjectCommands.{Stop, answered, keptEverywhere, moverOf, parsed, refusal, refuse, stored}
+import ProjectCommands.{
+  PersonOnlyBy,
+  Stop,
+  answered,
+  keptEverywhere,
+  moverOf,
+  parsed,
+  refusal,
+  refuse,
+  stored
+}
 import MethodCommands.{Asking, Declaring}
 
 /** `project_declare` and `project_methods`, and the method versions every other command reads:
@@ -208,9 +218,8 @@ private[plugin] final class MethodCommands(checks: Vector[TransitionCheck], meth
     case Mover.Agent =>
       Left(
         Stop.Refused(
-          "A method is declared only by a caller believed at Authority, giving the command " +
-            "directly; never through a turn, or by a session believed lower. Ask a person to " +
-            "declare it from the method's file."
+          s"A method is declared only by $PersonOnlyBy. Ask a person to declare it from the " +
+            "method's file."
         )
       )
   }
@@ -302,10 +311,10 @@ private[plugin] final class MethodCommands(checks: Vector[TransitionCheck], meth
       case Example.Expect.Allowed => "allowed"
       case Example.Expect.RefusedBy(check) => s"refused by ${CheckName.value(check)}"
       case Example.Expect.RefusedPersonOnly =>
-        "refused as a move made only by a caller believed at Authority"
+        s"refused as a move made only by $PersonOnlyBy"
     }
     s"example \"${failed.example}\", move ${failed.at} (${failed.move.key.value} to " +
-      s"${StateName.value(failed.move.to)}) expected $expected, " +
+      s"${StateName.value(failed.move.to)}) expected $expected; " +
       failed.met.fold("but allowed")(r => s"but ${refusal(r)}")
   }
 }

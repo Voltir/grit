@@ -71,7 +71,7 @@ object DeclareTests extends TestSuite {
       ) ==> (
         CommandOutcome.Refused(
           "The method grit version 1 is refused: its worked examples come out otherwise than " +
-            "they say: example \"a bare change is done\", move 2 (p/a to done) expected allowed, " +
+            "they say: example \"a bare change is done\", move 2 (p/a to done) expected allowed; " +
             "but p/a cannot move to done: sections-present: its body lacks ## Why."
         ),
         0

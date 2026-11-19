@@ -57,15 +57,15 @@ object CommandFixtures {
     * not giving the command directly.
     */
   val declareRefused: String =
-    "A method is declared only by a caller believed at Authority, giving the command directly; " +
-      "never through a turn, or by a session believed lower. Ask a person to declare it from " +
-      "the method's file."
+    "A method is declared only by a caller believed at Authority giving the command directly, " +
+      "never through a turn or by a session believed lower. Ask a person to declare it from the " +
+      "method's file."
 
   /** What moving `p/a` to done answers when only people make that move and its mover is not one. */
   val personOnlyMove: String =
-    "p/a cannot move to done here: that move is made only by someone believed at Authority " +
-      "giving the command directly, never through a turn or a session believed lower; ask the " +
-      "person to make it"
+    "p/a cannot move to done here: that move is made only by a caller believed at Authority " +
+      "giving the command directly, never through a turn or by a session believed lower; ask " +
+      "the person to make it"
 
   /** Version `version` of [[methodName]], of `kinds`, `moves` and `roles`: by default version 1
     * of change and note, their moves and a builder of changes ([[MethodFixtures]]), checked by

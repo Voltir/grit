@@ -2666,6 +2666,11 @@ private[plugin] object ProjectCommands {
     case _ => Mover.Agent
   }
 
+  /** Who [[moverOf]] moves as a person, in the words of every refusal that names the rule. */
+  private[plugin] val PersonOnlyBy: String =
+    "a caller believed at Authority giving the command directly, never through a turn or by a " +
+      "session believed lower"
+
   /** Who `person` is, as a claim or a writer names them: each of their accounts, sorted. */
   private def accounts(person: Principal.Person): String = {
     val held = person.accounts.toVector.map(h => Account.written(h.account)).sorted
@@ -2695,8 +2700,7 @@ private[plugin] object ProjectCommands {
         s"${into.key.value} would be too long ($why)"
     case MoveRefusal.PersonOnly(head, to) =>
       s"${head.key.value} cannot move to ${StateName.value(to)} here: that move is made only by " +
-        "someone believed at Authority giving the command directly, never through a turn or a " +
-        "session believed lower; ask the person to make it"
+        s"$PersonOnlyBy; ask the person to make it"
   }
 
   private[plugin] def parsed[A](
