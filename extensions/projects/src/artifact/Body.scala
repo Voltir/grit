@@ -131,6 +131,28 @@ object Body {
   def section(b: Body, title: String): Either[String, String] =
     addressed(sectionsOf(b.blocks), title).map(a => markdown(Doc(a.section.blocks)))
 
+  /** The title of its `##` section whose text, heading included, holds the most of `query`'s
+    * words, each matched whole and ignoring case, the first of those tied; none when no section
+    * holds one, or when what sits above its first `##` heading holds as many.
+    */
+  def matching(b: Body, query: String): Option[String] = {
+    def words(text: String): Set[String] =
+      text.toLowerCase(java.util.Locale.ROOT).split("[^\\p{L}\\p{N}]+").toSet - ""
+    val wanted = words(query)
+    def held(blocks: Vector[Block[ArtifactKey]]): Int =
+      words(IndexText.render(Doc(blocks).unnoted)).count(wanted)
+    val (lead, rest) = sectionsOf(b.blocks).span(_.title.isEmpty)
+    val above = held(lead.flatMap(_.blocks))
+    rest
+      .collect {
+        case Section(Some(title), blocks) if held(blocks) > above => (title, held(blocks))
+      }
+      .foldLeft(Option.empty[(String, Int)]) { (best, next) =>
+        best.filter(_._2 >= next._2).orElse(Some(next))
+      }
+      .map(_._1)
+  }
+
   /** It cut at its `##` headings, each section titled one of `kept`, or a delta ([[Delta]]),
     * staying in it; or why not: it has no `##` section, a heading of level 1 sits below one, or
     * of the sections that would move, none is left, one's title is blank, two share a title,

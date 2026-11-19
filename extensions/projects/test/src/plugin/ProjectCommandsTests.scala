@@ -1180,6 +1180,31 @@ object ProjectCommandsTests extends TestSuite {
         done(askAt(at.plusSeconds(1))(projects, store, "project_find", "query" -> "cache"))
       assert(found == "p/1 a (note, open): Title a")
     }
+    test(
+      "project_find names the section holding most of the query's words, the first of a tie, none when what sits above holds as many"
+    ) {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      kept(
+        projects,
+        store,
+        "a",
+        "note",
+        "Lead.\n\n## Goal\n\nWarm it.\n\n## Cache\n\nThe cache is cold."
+      )
+      kept(projects, store, "b", "note", "The cache is cold.\n\n## Goal\n\nWarm the cache.")
+      kept(projects, store, "c", "note", "The cache is cold.")
+      kept(projects, store, "d", "note", "## One\n\nA cold cache.\n\n## Two\n\nCold, the cache.")
+      done(
+        askAt(at.plusSeconds(1))(projects, store, "project_find", "query" -> "cold cache")
+      ).linesIterator.toVector.sorted ==> Vector(
+        "p/1 a (note, open): Title a § Cache",
+        "p/2 b (note, open): Title b",
+        "p/3 c (note, open): Title c",
+        "p/4 d (note, open): Title d § One"
+      )
+    }
     test("project_find finds an artifact a re-key left under its name, by its id") {
       val projects = plugin()
       val store = Store()

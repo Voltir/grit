@@ -14,11 +14,19 @@ import grit.prose.words.Words
 /** What the projects plugin's commands answer, the same for every edge that asks. */
 object AnswerText {
 
-  /** One line per head, in the order given: `<key> (<kind>, <state>): <title>`; `none` when
-    * there is no head.
+  /** One line per head, in the order given: `<key> (<kind>, <state>): <title>`, then
+    * ` § <section>` when `section` names one for it; `none` when there is no head.
     */
-  def heads(heads: Vector[ArtifactHead], none: String): String =
-    if (heads.isEmpty) none else heads.map(head(_, kind = true, state = true)).mkString("\n")
+  def heads(
+      heads: Vector[ArtifactHead],
+      none: String,
+      section: ArtifactHead -> Option[String] = _ => None
+  ): String =
+    if (heads.isEmpty) none
+    else
+      heads
+        .map(h => head(h, kind = true, state = true) + section(h).fold("")(t => s" § $t"))
+        .mkString("\n")
 
   /** What a [[listed]] line shows besides its key, its title, its size and the day it changed:
     * its kind and its state when `kind` and `state` (false when the asker fixed it), its parent

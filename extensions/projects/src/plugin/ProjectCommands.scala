@@ -1096,7 +1096,10 @@ private[plugin] final class ProjectCommands(
     val spec: ToolSpec[Finding] = ToolSpec(
       ToolName("project_find"),
       s"Finds the artifacts whose titles and bodies best match some words, best first, at " +
-        s"most $Found, one line each: only one project's, when given. Leaves out ended " +
+        s"most $Found, one line each: only one project's, when given. A line ends with " +
+        "`§ <heading>`, naming the artifact's `##` section that holds the most of the words, " +
+        "spelled as given, when it holds more than what sits above its first `##` heading: " +
+        "project_show gives that section alone. Leaves out ended " +
         s"artifacts ($EndedWords) unless " +
         "`ended` is true. Pass `ended: true` when asking what was tried before, what was " +
         "decided against, or why something was decided: dropped notes and ended milestones " +
@@ -1145,9 +1148,8 @@ private[plugin] final class ProjectCommands(
             )
           )
         artifacts <- refuse(Traversal.sequence(documents.map(readable)))
-        heads = artifacts
-          .map(_.head)
-          .filter(h => args.project.forall(_ == h.key.project))
+        among = artifacts.filter(a => args.project.forall(_ == a.head.key.project))
+        heads = among.map(_.head)
         ends <-
           if (args.ended) Right(Map.empty[ProjectKey, ArtifactHead -> Boolean])
           else
@@ -1164,7 +1166,8 @@ private[plugin] final class ProjectCommands(
               }
       } yield AnswerText.heads(
         heads.filterNot(h => ends.get(h.key.project).exists(_(h))).take(Found),
-        "Nothing matches."
+        "Nothing matches.",
+        h => among.find(_.head.key == h.key).flatMap(a => Body.matching(a.body, args.query))
       )
     }
   }
