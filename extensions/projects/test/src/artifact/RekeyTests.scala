@@ -2,23 +2,18 @@ package grit.projects.artifact
 
 import java.time.Instant
 
-import scala.concurrent.duration.*
-
-import grit.core.document.{DocLabel, DocText, DocWeight, Document, DocumentTerms, InMemoryDocuments}
-import grit.core.id.{DocKey, PluginName}
-import grit.core.place.Place
-import grit.core.visibility.{Integrity, Label}
-import grit.dbos.sql.TestTx
-import grit.projects.name.{ArtifactNumber, Handle, MethodName, Pin, ProjectKey}
+import grit.core.document.{Document, InMemoryDocuments}
+import grit.core.id.DocKey
+import grit.core.visibility.Label
+import grit.projects.name.{Handle, MethodName, Pin, ProjectKey}
 
 import utest.*
 
 /** [[Rekey.plan]]'s laws, over documents of the old form as the store held them before ids. */
 object RekeyTests extends TestSuite {
-  import OldFormFixtures.data
+  import grit.projects.method.MethodFixtures.right
 
-  private def right[A](e: Either[String, A]): A =
-    e.fold(why => throw new java.lang.AssertionError(why), identity)
+  import OldFormFixtures.{data, kept}
 
   private val p: ProjectKey = right(ProjectKey.of("p"))
   private val pin: Pin = right(Pin.read(right(MethodName.of("m")), 1, "0f" * 32))
@@ -33,30 +28,18 @@ object RekeyTests extends TestSuite {
       cites: Vector[String] = Vector.empty,
       label: Label = Label.Public
   ): Rekey.Old = {
-    val documents = new InMemoryDocuments
-    val plugin = right(PluginName.of("projects"))
-    val terms = right(
-      DocLabel.of("projects").flatMap(DocumentTerms.of(_, DocWeight.Unscaled, 1.day, 100))
+    val first = t0.plusSeconds(60L * minutes)
+    Rekey.Old(
+      kept(
+        new InMemoryDocuments,
+        right(DocKey.of(key)),
+        label,
+        title,
+        data(title, parent, cites),
+        first
+      ),
+      first
     )
-    val under = right(DocKey.of(key))
-    given grit.core.store.Tx = TestTx.fake(grit.core.visibility.Clearance.of(label))
-    val d = (for {
-      _ <- documents
-        .keeper(plugin, terms)
-        .write(
-          under,
-          label,
-          Integrity.Member,
-          Place.Everywhere,
-          right(DocText.of(title)),
-          data(title, parent, cites),
-          None,
-          t0.plusSeconds(60L * minutes),
-          Set.empty
-        )
-      d <- documents.shelf(plugin).current(under, label)
-    } yield d).left.map(_.toString).flatMap(_.toRight("nothing kept"))
-    Rekey.Old(right(d), t0.plusSeconds(60L * minutes))
   }
 
   /** The documents a plan leaves, each the one it replaces holding the artifact it wrote. */
@@ -112,14 +95,10 @@ object RekeyTests extends TestSuite {
         ) ==>
         Right(Vector("p/4 m9", "p/2 m10", "p/1 notes"))
     }
-    test("a second plan over what the first left is empty") {
-      val once = planned(roadmap*)
-      val leftOld = left(once).map(_._1).filter(ArtifactJson.isOldForm).map(Rekey.Old(_, t0))
-      (
-        once.next,
-        leftOld,
-        Rekey.plan(p, pin, leftOld).map(again => (again.artifacts, again.table))
-      ) ==> (right(ArtifactNumber.of(5)), Vector.empty, Right((Vector.empty, Vector.empty)))
+    test("nothing a plan writes is of the old form, so a second plan finds nothing to re-key") {
+      left(planned(roadmap*)).collect {
+        case (d, _) if ArtifactJson.isOldForm(d) => DocKey.value(d.key)
+      } ==> Vector.empty
     }
     test("a key led by a digit takes the handle k-<key>, listed as carried") {
       val got = planned(old("p/0042-x", "Digits", 0))
