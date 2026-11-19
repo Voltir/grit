@@ -1008,6 +1008,16 @@ object TopicDreamTests extends TestSuite {
       )
     }
 
+    test("a job writing at most 0 opens nothing; the new strand is left") {
+      val w = new StrandWorld
+      strand(w, "C1", "subject 1")
+      val runs = new Runs(w)
+      (runs.run(most = 0), runs.kept) ==> (
+        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 1 left for the next run; 1 left past the opens a run makes",
+        Vector()
+      )
+    }
+
     test("new_meeting opens a proposed meeting") {
       val w = new StrandWorld
       val a = strand(w, "C1", "a call on the budget, monday or tuesday?")

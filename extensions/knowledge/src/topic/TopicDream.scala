@@ -99,8 +99,9 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
           None,
           Vector.empty
         )
-        // Opens take at most half the run's writes, at least one; joins take the rest.
-        val (placed, opened, done) = attach(run, moves, scan, day, (most / 2).max(1), begun)
+        // Opens take at most half the run's writes, at least one of any; joins take the rest.
+        val opens = if (most == 0) 0 else (most / 2).max(1)
+        val (placed, opened, done) = attach(run, moves, scan, day, opens, begun)
         val meetings = scan.meetings.map(_.key).toSet ++ opened.collect {
           case (k, _, Topic.Kind.Meeting(_)) => k
         }
