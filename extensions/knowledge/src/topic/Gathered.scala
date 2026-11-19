@@ -33,9 +33,10 @@ final case class Gathered(
   /** `topics: {written} written ({opened} opened), {withdrawn} withdrawn, {unchanged}
     * unchanged, {aside} set aside, {left} left for the next run`, then, when some were, `,
     * {unreadable} unreadable withdrawn`, then, when some were, `, {later} of a later version
-    * left`, then, when some were, `; {budget} left past the opens a run makes`, then, when some were, `; {n} refs
-    * too long to keep`, then, when some were, `; would fold {from} into {into} ({p})` for each
-    * proposed, separated by `, `, `p` to two decimals, then `; not written: {name} ({why})` for at most [[NotWritten.Shown]] of
+    * left`, then, when some were, `; {budget} new topics left for the next run` (those past the
+    * opens a run makes), then, when some were, `; {n} refs too long to keep`, then, when some
+    * were, `; would fold {from} into {into} ({p})` for each proposed, separated by `, `, `p` to
+    * two decimals, then `; not written: {name} ({why})` for at most [[NotWritten.Shown]] of
     * them, separated by `, `, and `and {n} more` for the rest; then, when it stopped, `;
     * stopped: {why}`.
     */
@@ -44,8 +45,7 @@ final case class Gathered(
       s"$unchanged unchanged, $aside set aside, $left left for the next run" +
       (if (unreadable == 0) "" else s", $unreadable unreadable withdrawn") +
       (if (later == 0) "" else s", $later of a later version left")
-    // Draft wording, for Nick.
-    val doubted = if (budget == 0) "" else s"; $budget left past the opens a run makes"
+    val doubted = if (budget == 0) "" else s"; $budget new topics left for the next run"
     val refs =
       if (skipped == 0) ""
       else if (skipped == 1) "; 1 ref too long to keep"

@@ -131,6 +131,12 @@ object TopicCodecTests extends TestSuite {
         "",
         s"The release **ships Friday**, see [the docs](${TopicKey.value(other)})"
       )
+      Vector(Vector("Ana", "Raj"), Vector()).map(who =>
+        Meeting.head(Meeting.of(Meeting.State.Proposed(None), who))
+      ) ==> Vector(
+        "Meeting: proposed, day not yet known; with Ana and Raj.",
+        "Meeting: proposed, day not yet known."
+      )
     }
 
     test("of leaves out a 13th name") {

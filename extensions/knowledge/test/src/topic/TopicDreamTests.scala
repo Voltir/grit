@@ -1002,7 +1002,7 @@ object TopicDreamTests extends TestSuite {
       // Two opens; the third is left, not set aside, and offered again the next night.
       val again = runs.run(perRun = 4, now = Now.plusSeconds(600))
       (reply, again, runs.kept.map(_._1)) ==> (
-        "topics: 2 written (2 opened), 0 withdrawn, 0 unchanged, 0 set aside, 1 left for the next run; 1 left past the opens a run makes",
+        "topics: 2 written (2 opened), 0 withdrawn, 0 unchanged, 0 set aside, 1 left for the next run; 1 new topics left for the next run",
         "topics: 1 written (1 opened), 0 withdrawn, 2 unchanged, 0 set aside, 0 left for the next run",
         roots.map(key).toVector
       )
@@ -1013,7 +1013,7 @@ object TopicDreamTests extends TestSuite {
       strand(w, "C1", "subject 1")
       val runs = new Runs(w)
       (runs.run(most = 0), runs.kept) ==> (
-        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 1 left for the next run; 1 left past the opens a run makes",
+        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 1 left for the next run; 1 new topics left for the next run",
         Vector()
       )
     }
@@ -1044,7 +1044,7 @@ object TopicDreamTests extends TestSuite {
       ) ==> (
         "topics: 2 written (2 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
         Vector(
-          (key(a), "Meeting, proposed, its day not yet known."),
+          (key(a), "Meeting: proposed, day not yet known."),
           (key(b), "Meeting, planned for Tuesday 2026-10-13 at 09:00, with Ana and Ben.")
         ),
         Vector(true, true)

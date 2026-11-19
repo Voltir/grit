@@ -139,21 +139,20 @@ object Meeting {
   }
 
   /** Its head line, the first line of its document's text. */
-  // Draft wording, for Nick: the meeting head line.
   private[topic] def head(m: Meeting): String = {
     def at(w: When) =
       s"${w.day.getDayOfWeek.toString.toLowerCase.capitalize} ${w.day}" +
         w.start.fold("")(s => s" at $s")
-    val state = m.state match {
-      case State.Proposed(None) => "proposed, its day not yet known"
-      case State.Proposed(Some(w)) => s"proposed for ${at(w)}"
-      case State.Planned(w) => s"planned for ${at(w)}"
-      case State.Held(d) => s"held ${at(When(d, None))}"
+    val names =
+      if (m.who.size <= 1) m.who.mkString
+      else s"${m.who.init.mkString(", ")} and ${m.who.last}"
+    def who(sep: String) = if (m.who.isEmpty) "" else s"$sep with $names"
+    m.state match {
+      // Its own comma would blur a comma before `with`.
+      case State.Proposed(None) => s"Meeting: proposed, day not yet known${who(";")}."
+      case State.Proposed(Some(w)) => s"Meeting, proposed for ${at(w)}${who(",")}."
+      case State.Planned(w) => s"Meeting, planned for ${at(w)}${who(",")}."
+      case State.Held(d) => s"Meeting, held ${at(When(d, None))}${who(",")}."
     }
-    val who =
-      if (m.who.isEmpty) ""
-      else if (m.who.size == 1) s", with ${m.who.mkString}"
-      else s", with ${m.who.init.mkString(", ")} and ${m.who.last}"
-    s"Meeting, $state$who."
   }
 }

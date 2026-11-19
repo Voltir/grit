@@ -528,9 +528,9 @@ object TopicDream {
   private[topic] val sortDiscussion: Sorting[Placed, Decision[Placed]] = Proven.right(
     Sorting
       .choice(
-        // Draft wording, for Nick (W2, as a replay of two labelled rooms measured it).
-        "Which document does this conversation from a team's chat room belong to? A topic is " +
-          "an ongoing subject of work. A meeting is one planned occurrence: a call or " +
+        // W2, as a replay of two labelled rooms measured it.
+        "Which document does this conversation from a team's chat room belong to? Each " +
+          "document is a topic or a meeting. A topic is an ongoing subject of work. A meeting is one planned occurrence: a call or " +
           "get-together on a particular day. Talk that plans, moves, or reports on a specific " +
           "meeting belongs to that meeting, not to the topic it will discuss.",
         AttachChars,
@@ -626,13 +626,13 @@ object TopicDream {
   /** What a write ask is told, before what it is shown: of a `meeting`, how to give its head. */
   private def writeSystem(day: LocalDate, meeting: Boolean): String =
     writeTopic(day) + " " + (if (meeting) {
-                               // Draft wording, for Nick: the meeting instruction.
                                "This topic is one meeting. Give `meeting`: its `state`, " +
                                  "`proposed` until a day is agreed, `planned` once it is, " +
                                  "`held` once the messages say it took place; its `day` " +
                                  "(yyyy-mm-dd) and `start` (HH:MM) when the messages fix " +
-                                 "them, else null; and `who`, the names of those taking part " +
-                                 "as the messages write them, else null."
+                                 "them, else null; and `who`: everyone taking part, those " +
+                                 "the topic already names included, as the messages write " +
+                                 "them, else null."
                              } else "Give `meeting` null.")
 
   private def writeTopic(day: LocalDate): String =
