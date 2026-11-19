@@ -283,13 +283,17 @@ object OldFormTests extends TestSuite {
       )
       (
         done(ask(projects, store, "project_rekey", "project" -> "p")),
-        ask(projects, store, "project_show", "key" -> "p/k-0042-x", "head" -> true)
-          .isInstanceOf[CommandOutcome.Done]
+        done(ask(projects, store, "project_show", "key" -> "p/k-0042-x", "head" -> true))
+          .linesIterator
+          .take(3)
+          .toVector,
+        refusedArgs(projects, "project_show", "key" -> "p/0042-x")
       ) ==> (
         "p: 3 artifacts, 1 body links, 1 head cites, 1 handles carried\n" +
           "It gave ids p/1 to p/3; the next new artifact is p/4.\n" +
           "p/1 k-0042-x was p/0042-x, a name a handle cannot be: that key no longer names it.",
-        true
+        Vector("---", "id: p/1", "handle: k-0042-x"),
+        Some("an artifact's number is digits alone: 0042-x")
       )
     }
     test("a re-key is refused to a caller believed lower than a person's own word") {
