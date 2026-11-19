@@ -13,6 +13,7 @@ import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
 import grit.core.visibility.{Clearance, Integrity, Label, Visibility}
 import grit.dbos.sql.TestTx
+import grit.projects.artifact.{Artifact, ArtifactJson}
 import grit.projects.method.{
   ArtifactKind,
   Example,
@@ -269,6 +270,34 @@ object CommandFixtures {
 
   def started(projects: Projects, store: Store): Unit =
     done(ask(projects, store, "project_new", "project" -> "p"))
+
+  /** As a re-key leaves an artifact: the one kept under `from` at public kept instead under `to`,
+    * the key it had before it had an id, and `from` withdrawn.
+    */
+  def storedUnder(store: Store, from: String, to: String): Unit = {
+    def key(k: String): DocKey =
+      DocKey.of(k).fold(why => throw new java.lang.AssertionError(why), identity)
+    inTx {
+      for {
+        was <- store.keeper.current(key(from), Label.Public)
+        d <- was.toRight(StoreError.Invalid(s"nothing kept under $from"))
+        written <- Artifact.of(d).flatMap(ArtifactJson.write).left.map(StoreError.Invalid(_))
+        (text, data, refs) = written
+        _ <- store.keeper.write(
+          key(to),
+          Label.Public,
+          d.integrity,
+          d.place,
+          text,
+          data,
+          None,
+          at,
+          refs
+        )
+        _ <- store.keeper.withdraw(d.key, Label.Public, at)
+      } yield ()
+    }.fold(e => throw new java.lang.AssertionError(e.toString), identity)
+  }
 
   def kept(
       projects: Projects,
