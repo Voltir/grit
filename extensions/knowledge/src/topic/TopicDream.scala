@@ -130,7 +130,10 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
       scan: Scanned,
       g: Gathered
   ): (Vector[Touch], Gathered) = {
-    val topics = scan.leads.map((k, v) => (TopicDream.Placed.Into(k, v), v))
+    val leads = scan.leads.map((k, v) => (TopicDream.Placed.Into(k, v), v))
+    val topics = Sorting.Among(leads, Vector.empty, 0)
+    // A card's nearest topics are those of the leads its text matches best.
+    val near = Sorting.Among(Vector.empty, leads, Sorting.Most)
     // Where each goes decides only which topics are written; each written topic is believed
     // as its own write ask's reply is, so a sort's answer need not be checked.
     type Sorted = (Vector[Touch], Tainted[Vector[Lineage.Tag]], Gathered)
@@ -177,13 +180,13 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
     }
     val card = run.tainted.map(_ => TopicDream.sortCard)
     val (touches, aside, sorted) =
-      if (topics.isEmpty) strands match {
+      if (leads.isEmpty) strands match {
         case (ts, aside, g) => (ts, aside, g.copy(left = g.left + scan.cards.size))
       }
       else
         scan.cards.zipWithIndex.foldLeft[Sorted](strands) { case (s @ (ts, aside, g), (c, j)) =>
           val name = CardMoves.numbered("sort", scan.strands.size + j)
-          moves.sort(name, Dreaming.Item.Document(c.version), topics, card) match {
+          moves.sort(name, Dreaming.Item.Document(c.version), near, card) match {
             case Left(e) => failed(s, name, Some(e))
             case Right(None) => failed(s, name, None)
             case Right(Some(sorted)) =>
@@ -328,6 +331,7 @@ object TopicDream {
           "same project or the same people.",
         AttachChars,
         SortChars,
+        Sorting.Chosen,
         Criterion(
           Placed.Opened,
           "new",
@@ -341,9 +345,7 @@ object TopicDream {
           Some("Too slight to keep: a greeting, a test, a one-off question already answered.")
         )
       )
-      // `new` and `aside` are two keys, neither a number.
-      .left
-      .map(_.toString)
+      // `new` and `aside` are two keys, neither a number, and Chosen is within its bounds.
   )
 
   /** How a card is sorted: a yes/no for each of the 8 topics shown whose text its own matches

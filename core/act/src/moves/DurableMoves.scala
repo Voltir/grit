@@ -184,13 +184,12 @@ object DurableMoves {
     def sort[C <: caps.Pure, R](
         name: MoveName,
         item: Dreaming.Item,
-        among: Vector[(C, DocumentVersionId)],
+        among: Sorting.Among[C],
         sorting: Tainted[Sorting[C, R]]
     ): Either[MoveError, Option[Dreaming.Sorted[R]]] =
       refused(name, MoveKind.Judge).toLeft(()).flatMap { _ =>
         val sorts = Trusted.asIs(sorting).extract
-        val versions = among.map(_._2)
-        val digest = MovesJournal.sorting(item, versions, sorts)
+        val digest = MovesJournal.sorting(item, among, sorts)
         val asked = made(
           Act.ask(Act.sort[C, R]),
           Act.Sort(
@@ -205,7 +204,7 @@ object DurableMoves {
             digest
           )
         )
-        val same = MovesJournal.sameSorting(asked.made.digest, item, versions, sorts)
+        val same = MovesJournal.sameSorting(asked.made.digest, item, among, sorts)
         asked.made match {
           case AskMade.Refused(AskMade.Kind.StrandChanged | AskMade.Kind.Unsorted, _, _, _)
               if same =>
@@ -214,9 +213,7 @@ object DurableMoves {
             settled(name, asked, same) {
               case AskMade.Judged(_, written, at, _, Some(AskMade.Sorted(level, _))) =>
                 // A version the record names that `among` does not hold diverges.
-                sequence(
-                  shown.map(v => among.collectFirst { case (c, u) if u == v => c }.toRight(()))
-                ).toOption
+                sequence(shown.map(v => among.of(v).toRight(()))).toOption
                   .flatMap(cs => Sorting.reading(sorts, cs))
                   .map(qs =>
                     judgedBack(qs, written)

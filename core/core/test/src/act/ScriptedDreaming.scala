@@ -111,7 +111,7 @@ final class ScriptedDreaming(
   def sort[C <: caps.Pure, R](
       name: MoveName,
       item: Dreaming.Item,
-      among: Vector[(C, DocumentVersionId)],
+      among: Sorting.Among[C],
       sorting: Tainted[Sorting[C, R]]
   ): Either[MoveError, Option[Dreaming.Sorted[R]]] =
     Sorting.read(

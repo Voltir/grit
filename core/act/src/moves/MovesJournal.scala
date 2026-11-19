@@ -347,14 +347,15 @@ object MovesJournal {
   }
 
   /** The digest of a sort of `item` among `among` by `sorting`, v1: its item (a strand's root,
-    * [[grit.core.stitch.StrandDigest]] and `asOf`, or a document's version), the versions of
-    * `among` in order, then the sorting: its kind, instructions, `chars` and `documentChars`,
-    * and a choice's fixed criteria's keys and descriptions in order, or a yes/no's meanings and
-    * how many it asks. What it read is not in it: the digests and versions stand for that.
+    * [[grit.core.stitch.StrandDigest]] and `asOf`, or a document's version), the versions
+    * `among` pins in order, those of its pool in order, and its fill, then the sorting: its
+    * kind, instructions, `chars`, `documentChars` and how many it asks at most, and a choice's
+    * fixed criteria's keys and descriptions in order, or a yes/no's meanings. What it read is
+    * not in it: the digests and versions stand for that.
     */
   def sorting(
       item: Dreaming.Item,
-      among: Vector[DocumentVersionId],
+      among: Sorting.Among[?],
       sorting: Sorting[?, ?]
   ): String = v1(sortingForm(item, among, sorting))
 
@@ -362,7 +363,7 @@ object MovesJournal {
   def sameSorting(
       recorded: String,
       item: Dreaming.Item,
-      among: Vector[DocumentVersionId],
+      among: Sorting.Among[?],
       sorting: Sorting[?, ?]
   ): Boolean = recorded match {
     case s"v1:$_" => recorded == this.sorting(item, among, sorting)
@@ -372,18 +373,20 @@ object MovesJournal {
   /** v1's canonical form of a sort, which [[sorting]] hashes. */
   private[moves] def sortingForm(
       item: Dreaming.Item,
-      among: Vector[DocumentVersionId],
+      among: Sorting.Among[?],
       sorting: Sorting[?, ?]
   ): String = {
     def version(v: DocumentVersionId) = text(DocumentVersionId.value(v).toString)
+    def versions(vs: Vector[(?, DocumentVersionId)]) =
+      count(vs.size) + vs.map(p => version(p._2)).mkString
     "sort" + (item match {
       case Dreaming.Item.Discussion(s) =>
         "d" + text(ConversationId.value(s.root)) + text(StrandDigest.value(s.digest)) +
           text(s.asOf.toString)
       case Dreaming.Item.Document(v) => "v" + version(v)
-    }) + count(among.size) + among.map(version).mkString + (sorting match {
+    }) + versions(among.pinned) + versions(among.pool) + count(among.fill) + (sorting match {
       case c: Sorting.Choosing[?] =>
-        "c" + text(c.instructions) + count(c.chars) + count(c.documentChars) +
+        "c" + text(c.instructions) + count(c.chars) + count(c.documentChars) + count(c.most) +
           count(c.fixed.size) + c.fixed.map(f => text(f.key) + optional(f.description)).mkString
       case e: Sorting.Each[?] =>
         "e" + text(e.instructions) + text(e.yes) + text(e.no) + count(e.chars) +

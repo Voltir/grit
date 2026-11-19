@@ -1,7 +1,9 @@
 package grit.core.act
 
+import scala.annotation.tailrec
+
 import grit.core.classify.{Answer, Ask, ClassifierError, Criterion, Decision, Request, StateJson}
-import grit.core.document.{DocText, DocumentSearch}
+import grit.core.document.{DocText, Document, DocumentSearch}
 import grit.core.id.{DocumentVersionId, PluginName}
 import grit.core.message.Cut
 import grit.core.stitch.StrandExcerpts
@@ -19,13 +21,14 @@ sealed trait Sorting[C <: caps.Pure, R] extends caps.Pure {
   /** The most characters of a discussion shown. */
   def chars: Int
 
-  /** The most characters of a document's text shown, its head cut at a word. */
+  /** The most characters of a document's text shown, its head cut at a word: the item's, and
+    * each candidate's, cut further only when the request would otherwise pass
+    * [[Request.MostChars]] ([[Sorting.fitted]]).
+    */
   def documentChars: Int
 
-  /** The candidates asked about, by their place in `texts` (each candidate's text as read), in
-    * the order asked, given `item`, the item's text.
-    */
-  private[act] def nearest(item: String, texts: Vector[String]): Vector[Int]
+  /** The most candidates one sort by it asks about. */
+  def most: Int
 
   /** The questions about `asked`, each candidate with its text, in the order asked; `None` when
     * `asked` is empty. Their answers read without the texts: a recorded answer reads back by
@@ -36,35 +39,64 @@ sealed trait Sorting[C <: caps.Pure, R] extends caps.Pure {
 
 object Sorting {
 
+  /** 64: the most candidates one choice is asked over. */
+  val Chosen: Int = 64
+
   /** 40: the most questions one sort asks together. */
   val Most: Int = 40
 
-  /** One choice among the candidates read, each keyed by its number from 1 in the order read
-    * and described by its text's head, then `first`, `second` and `rest`: a [[Decision]] over
-    * all of them. `Left` when two of `first`, `second`, `rest` share a key or one is a number.
+  /** What a sort is asked among, each candidate by its plugin's value and its document's
+    * version: the `pinned`, in order, then at most `fill` of `pool`, those whose text best
+    * matches the item's by the documents' index ([[DocumentSearch.rank]]); in all, at most
+    * the sorting's [[Sorting.most]], the pinned first. Of either, only a document the sort
+    * reads is asked about; none of `pool` when `fill` is not positive.
+    */
+  final case class Among[C <: caps.Pure](
+      pinned: Vector[(C, DocumentVersionId)],
+      pool: Vector[(C, DocumentVersionId)],
+      fill: Int
+  ) extends caps.Pure {
+
+    /** The value of the candidate whose document is `version`, the pinned first. */
+    def of(version: DocumentVersionId): Option[C] =
+      (pinned ++ pool).collectFirst { case (c, v) if v == version => c }
+  }
+
+  /** One choice among at most `most` candidates, each keyed by its number from 1 in the order
+    * asked and described by its text's head, then `first`, `second` and `rest`: a [[Decision]]
+    * over all of them. `Left` when `most` is under 1 or over [[Chosen]], or when two of
+    * `first`, `second`, `rest` share a key or one is a number.
     */
   def choice[C <: caps.Pure](
       instructions: String,
       chars: Int,
       documentChars: Int,
+      most: Int,
       first: Criterion[C],
       second: Criterion[C],
       rest: Criterion[C]*
-  ): Either[Ask.DuplicateKey, Sorting[C, Decision[C]]] = {
+  ): Either[String, Sorting[C, Decision[C]]] = {
     val fixed = first +: second +: rest.toVector
-    fixed
-      .find(c => numbered(c.key))
-      .map(c => Ask.DuplicateKey(c.key))
-      .toLeft(())
-      .flatMap(_ => Ask.choice[Shown, C](instructions, first, second, rest*))
-      .map(_ => Choosing(instructions, chars, documentChars, fixed))
+    for {
+      _ <- Either.cond(
+        most >= 1 && most <= Chosen,
+        (),
+        s"a choice is among 1 to $Chosen, not $most"
+      )
+      _ <- fixed
+        .find(c => numbered(c.key))
+        .map(c => Ask.DuplicateKey(c.key))
+        .toLeft(())
+        .flatMap(_ => Ask.choice[Shown, C](instructions, first, second, rest*))
+        .left
+        .map(d => s"a choice's fixed key ${d.key} is a number or repeats another")
+    } yield Choosing(instructions, chars, documentChars, most, fixed)
   }
 
-  /** A yes/no per candidate, in one request, asked of the `nearest` candidates read whose text
-    * the item's matches best (BM25 over the candidates read, ties in their order): each
-    * question `instructions`, a blank line, then the candidate's text's head; `yes` and `no`
-    * what each answer means. Read as each asked candidate with its probability of yes,
-    * likeliest first. `Left` when `nearest` is under 1 or over [[Most]].
+  /** A yes/no per candidate, in one request, asked of at most `nearest`: each question
+    * `instructions`, a blank line, then the candidate's text's head; `yes` and `no` what each
+    * answer means. Read as each asked candidate with its probability of yes, likeliest first,
+    * ties in the order asked. `Left` when `nearest` is under 1 or over [[Most]].
     */
   def each[C <: caps.Pure](
       instructions: String,
@@ -85,11 +117,9 @@ object Sorting {
       instructions: String,
       chars: Int,
       documentChars: Int,
+      most: Int,
       fixed: Vector[Criterion[C]]
   ) extends Sorting[C, Decision[C]] {
-    private[act] def nearest(item: String, texts: Vector[String]): Vector[Int] =
-      texts.indices.toVector
-
     private[act] def questions(asked: Vector[(C, String)]): Option[Ask[Shown, Decision[C]]] = {
       val all = asked.zipWithIndex.map { case ((c, text), i) =>
         Criterion(c, (i + 1).toString, Some(text))
@@ -113,9 +143,6 @@ object Sorting {
       documentChars: Int,
       most: Int
   ) extends Sorting[C, Vector[Decision.Weight[C]]] {
-    private[act] def nearest(item: String, texts: Vector[String]): Vector[Int] =
-      Bm25.ranked(item, texts).take(most)
-
     private[act] def questions(
         asked: Vector[(C, String)]
     ): Option[Ask[Shown, Vector[Decision.Weight[C]]]] =
@@ -165,13 +192,13 @@ object Sorting {
 
   /** What a sort of `item` among `among` by `sorting` reads in its transaction, starting from
     * `integrity`: the item through `excerpts` (a discussion within `chars`) or `documents` (a
-    * document's head within `documentChars`), and each of `among` that `documents` reads and
-    * whose plugin is one of `readable`, its head within `documentChars`; why it asks nothing,
-    * when it does not.
+    * document's head within `documentChars`), then the candidates [[Among]] names that
+    * `documents` reads and whose plugin is one of `readable`, each its text's head as
+    * [[fitted]] cuts it; why it asks nothing, when it does not.
     */
   private[grit] def read[C <: caps.Pure, R](
       item: Dreaming.Item,
-      among: Vector[(C, DocumentVersionId)],
+      among: Among[C],
       sorting: Sorting[C, R],
       excerpts: StrandExcerpts,
       documents: DocumentSearch,
@@ -195,33 +222,70 @@ object Sorting {
               (Shown("document", head(d.text)), d.integrity)
           }.toRight(Unasked.Unread))
     }
+    def valued(ds: Vector[Document], of: Vector[(C, DocumentVersionId)]) =
+      ds.filter(d => readable.contains(d.plugin))
+        .flatMap(d => of.collectFirst { case (c, v) if v == d.version => (c, d) })
     shown.flatMap {
       case Left(why) => Right(Left(why))
       case Right((it, believed)) =>
-        documents.labelled(among.map(_._2)).map { ds =>
-          val read = ds.collect {
-            case (d, _) if readable.contains(d.plugin) =>
-              among.collectFirst { case (c, v) if v == d.version => (c, d) }
-          }.flatten
-          val asked = sorting.nearest(it.text, read.map((_, d) => head(d.text))).flatMap(read.lift)
-          sorting
-            .questions(asked.map((c, d) => (c, head(d.text))))
-            .map(qs =>
-              Posing(
-                it,
-                qs,
-                asked.map(_._2.version),
-                asked.map(_._2.integrity).foldLeft(integrity.meet(believed))(_.meet(_))
-              )
+        for {
+          labelled <- documents.labelled(among.pinned.map(_._2))
+          pinned = valued(labelled.map(_._1), among.pinned).take(sorting.most)
+          room = among.fill.min(sorting.most - pinned.size)
+          named = among.pinned.map(_._2).toSet
+          pool = among.pool.filterNot((_, v) => named.contains(v))
+          hits <-
+            if (room < 1) Right(Vector.empty)
+            else documents.rank(pool.map(_._2), it.text, room)
+        } yield {
+          val asked = pinned ++ valued(hits.map(_.document), pool)
+          fitted(sorting, it, asked.map((c, d) => (c, head(d.text)))).map(qs =>
+            Posing(
+              it,
+              qs,
+              asked.map(_._2.version),
+              asked.map(_._2.integrity).foldLeft(integrity.meet(believed))(_.meet(_))
             )
-            .toRight(Unasked.Unread)
+          )
         }
     }
   }
 
+  /** The questions `sorting` asks about `shown` and `asked`, each candidate's text as given
+    * unless it passes an equal share of what [[Request.MostChars]] leaves once the request
+    * without them is counted ([[Request.size]]), as JSON escapes it; one that passes is cut to
+    * that share. So the request never holds more, and one within the limit is sent as it is.
+    * `Unread` when `sorting` asks nothing of `asked`, or there is no room left for one
+    * character of each.
+    */
+  private[act] def fitted[C <: caps.Pure, R](
+      sorting: Sorting[C, R],
+      shown: Shown,
+      asked: Vector[(C, String)]
+  ): Either[Unasked, Ask[Shown, R]] =
+    sorting.questions(asked.map((c, _) => (c, ""))).toRight(Unasked.Unread).flatMap { bare =>
+      val share =
+        if (asked.isEmpty) 0
+        else (Request.MostChars - Request.size(Request.of(shown, bare))) / asked.size
+      if (asked.nonEmpty && share < 1) Left(Unasked.Unread)
+      else
+        sorting.questions(asked.map((c, t) => (c, cut(t, share)))).toRight(Unasked.Unread)
+    }
+
+  /** `text`'s head, as [[Cut.head]] cuts it, within `share` characters as JSON escapes it. */
+  private def cut(text: String, share: Int): String = {
+    def escaped(t: String) = ujson.Str(t).render().length - 2
+    @tailrec def within(t: String): String = escaped(t) - share match {
+      case over if over > 0 => within(Cut.head(t, t.length - over))
+      case _ => t
+    }
+    within(Cut.head(text, share))
+  }
+
   /** Why a sort asks nothing: its item's messages are not the ones its scan digested
     * (`Changed`), or its item is a document not read, or no candidate is left to ask about
-    * while its sorting asks of candidates alone (`Unread`).
+    * while its sorting asks of candidates alone, or no room is left for their text within the
+    * classifier's limit (`Unread`).
     */
   private[grit] enum Unasked {
     case Changed, Unread
@@ -235,51 +299,4 @@ object Sorting {
 
   /** Whether `key` is all digits, as a candidate's is. */
   private def numbered(key: String): Boolean = key.nonEmpty && key.forall(_.isDigit)
-
-  /** Okapi BM25 (k1 1.2, b 0.75) of a query over a few texts, as the spike that chose sorting
-    * measured it: words are runs of letters and digits, lower-cased, of two characters or more,
-    * and not [[Stop]] words.
-    */
-  private object Bm25 {
-
-    /** Each of `texts`' places, best match of `query` first, ties in their order. */
-    def ranked(query: String, texts: Vector[String]): Vector[Int] = {
-      val docs = texts.map(words)
-      val counts = docs.map(_.groupMapReduce(identity)(_ => 1)(_ + _))
-      val n = docs.size.toDouble
-      val mean = if (docs.isEmpty) 1.0 else (docs.map(_.size).sum.toDouble / n).max(1.0)
-      val df = counts.flatMap(_.keys).groupMapReduce(identity)(_ => 1)(_ + _)
-      val q = words(query)
-      counts
-        .zip(docs.map(_.size))
-        .map { (c, length) =>
-          q.map(w =>
-            c.get(w).fold(0.0) { f =>
-              val d = df.getOrElse(w, 0).toDouble
-              val idf = math.log(1 + (n - d + 0.5) / (d + 0.5))
-              idf * f * (K1 + 1) / (f + K1 * (1 - B + B * length / mean))
-            }
-          ).sum
-        }
-        .zipWithIndex
-        .sortBy((score, _) => -score)
-        .map(_._2)
-    }
-
-    private val K1 = 1.2
-    private val B = 0.75
-
-    private def words(text: String): Vector[String] =
-      "[\\p{L}\\p{N}]+".r
-        .findAllIn(text.toLowerCase)
-        .filter(w => w.length > 1 && !Stop.contains(w))
-        .toVector
-
-    private val Stop: Set[String] =
-      ("a an the and or of to in on for with at by from is are was were be been it its this that " +
-        "these those as but not no we i you he she they them our your their his her has have had " +
-        "do does did so if then than there here what which who whom when where why how all any " +
-        "each can could will would should may might just also about into over after before up " +
-        "down out more most some such only own same very s t").split(' ').toSet
-  }
 }

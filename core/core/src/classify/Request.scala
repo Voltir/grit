@@ -27,6 +27,21 @@ object Request {
   def json(r: Request): ujson.Value =
     ujson.Obj("state" -> r.state, "questions" -> ujson.Arr.from(r.questions.map(question)))
 
+  /** 32,000: the most tokens a classifier reads of one request. Jev refuses a request over it
+    * (HTTP 400 `max_tokens_exceeded`) and never cuts one: measured, about 30,000 was answered
+    * and about 40,000 refused.
+    */
+  val MostTokens: Int = 32000
+
+  /** 95,200: the most characters of a request as [[json]] renders it ([[size]]) that stays
+    * within [[MostTokens]], at 3.4 characters a token, as measured of English prose, less a
+    * margin of 4,000 tokens for what that estimate and the classifier's own framing miss.
+    */
+  val MostChars: Int = (MostTokens - 4000) * 17 / 5
+
+  /** How many characters `r` holds as [[json]] renders it, compactly. */
+  def size(r: Request): Int = json(r).render().length
+
   private def question(q: Question): ujson.Value = q match {
     case c: Question.Choice =>
       ujson.Obj(

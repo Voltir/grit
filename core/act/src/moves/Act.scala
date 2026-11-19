@@ -179,7 +179,7 @@ private[moves] object Act {
       name: MoveName,
       acting: Acting,
       item: Dreaming.Item,
-      among: Vector[(C, DocumentVersionId)],
+      among: Sorting.Among[C],
       sorting: Sorting[C, R],
       excerpts: StrandExcerpts,
       documents: DocumentSearch,

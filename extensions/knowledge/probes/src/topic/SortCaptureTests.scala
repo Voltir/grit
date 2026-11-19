@@ -30,10 +30,10 @@ object SortCaptureTests extends TestSuite {
       |  case Open
       |  case Aside
       |}
-      |def sorting: Either[grit.core.classify.Ask.DuplicateKey, Sorting[To, Decision[To]]] =
-      |  Sorting.choice("q", 1, 1, Criterion(To.Open, "new", None), Criterion(To.Aside, "aside", None))
-      |def placed(m: Dreaming^, item: Dreaming.Item, among: Vector[(To, DocumentVersionId)], s: grit.core.flow.Tainted[Sorting[To, Decision[To]]]) =
-      |  m.sort(MoveName.literal("sort-0"), item, among, s)
+      |def sorting: Either[String, Sorting[To, Decision[To]]] =
+      |  Sorting.choice("q", 1, 1, 64, Criterion(To.Open, "new", None), Criterion(To.Aside, "aside", None))
+      |def placed(m: Dreaming^, item: Dreaming.Item, pinned: Vector[(To, DocumentVersionId)], pool: Vector[(To, DocumentVersionId)], s: grit.core.flow.Tainted[Sorting[To, Decision[To]]]) =
+      |  m.sort(MoveName.literal("sort-0"), item, Sorting.Among(pinned, pool, 64), s)
       |""".stripMargin
 
   /** A candidate of TopicKey's shape, declared pure, holding the scan's transaction. */
@@ -49,10 +49,16 @@ object SortCaptureTests extends TestSuite {
       |def sorting = Sorting.each[Holder]("q", "y", "n", 1, 1, 8)
       |""".stripMargin
 
+  /** Candidates to sort among of a class not declared pure, holding a transaction. */
+  private val impureAmong =
+    """final class Holder(val tx: Tx^)
+      |def among(h: Holder, v: DocumentVersionId) = Sorting.Among[Holder](Vector(h -> v), Vector(), 0)
+      |""".stripMargin
+
   private lazy val compiled = Probes.batch(prelude, List(sortsTopics, candidateHoldsTx))
 
-  /** Compiled apart: the typer rejects it, which ends a run before capture checking. */
-  private lazy val typed = Probes.batch(prelude, List(impureCandidates))
+  /** Compiled apart: the typer rejects them, which ends a run before capture checking. */
+  private lazy val typed = Probes.batch(prelude, List(impureCandidates, impureAmong))
 
   private val unchecked = options.filterNot(_.startsWith("-language:experimental."))
 
@@ -76,6 +82,12 @@ object SortCaptureTests extends TestSuite {
     test("a sorting over candidates not declared pure is rejected by its bound") {
       typed.errors(impureCandidates) ==> List(
         "Type argument grit.knowledge.probe.Probe0.Holder does not conform to upper bound scala.caps.Pure"
+      )
+    }
+
+    test("candidates to sort among not declared pure are rejected by its bound") {
+      typed.errors(impureAmong) ==> List(
+        "Type argument grit.knowledge.probe.Probe1.Holder does not conform to upper bound scala.caps.Pure"
       )
     }
   }

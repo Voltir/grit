@@ -889,7 +889,53 @@ abstract class MovesContract extends TestSuite {
     }
 
     test(
-      "a yes/no sort asks of the candidates whose text the item's words match best, at most its nearest, each with its text, read likeliest first"
+      "a sort asks its pinned candidates first, then those of its pool the index ranks best for the item, a pinned one once, at most its sorting's most"
+    ) {
+      val shelves = Shelves(needed = Vector(Cards))
+      declared(shelves)
+      val item = put(shelves, Cards.name, "i", "the deploy is stuck", Integrity.Member)
+      val pinned = put(shelves, Cards.name, "p", "the lunch menu", Integrity.Member)
+      val once = put(shelves, Cards.name, "o", "deploy deploy stuck", Integrity.Member)
+      val best = put(shelves, Cards.name, "b", "stuck deploy stuck", Integrity.Member)
+      val next = put(shelves, Cards.name, "n", "the deploy", Integrity.Member)
+      val none = put(shelves, Cards.name, "x", "nothing alike", Integrity.Member)
+      val pool =
+        Vector(Pick("p") -> pinned, Pick("x") -> none, Pick("n") -> next, Pick("b") -> best)
+      val (w, _) = strand()
+      val (got, sent) =
+        sorting(limits(1, 0), w, shelves = shelves)(m =>
+          Seen(
+            Vector(
+              sorted(
+                m,
+                "s",
+                Dreaming.Item.Document(item),
+                Vector(Pick("p") -> pinned, Pick("o") -> once),
+                ChoosingOf(4),
+                pool = pool,
+                fill = 10
+              )(_.choice.of)
+            )
+          )
+        )
+      (got, asked(sent).map(_.split(" \\| ").drop(1).mkString)) ==> (
+        Seen(
+          Vector(
+            Right(
+              "p at member among " +
+                Vector(pinned, once, best, next).map(DocumentVersionId.value).mkString(",")
+            )
+          )
+        ),
+        Vector(
+          "Which topic is this discussion part of? [1: the lunch menu] [2: deploy deploy stuck]" +
+            " [3: stuck deploy stuck] [4: the deploy] [new: A matter none of these covers.] [aside]"
+        )
+      )
+    }
+
+    test(
+      "a yes/no sort asks of the candidates of its pool whose text the item's words match best, at most its nearest, each with its text, read likeliest first"
     ) {
       val (w, root) = strand()
       val seen =
@@ -903,9 +949,15 @@ abstract class MovesContract extends TestSuite {
       val (got, sent) = sorting(limits(1, 0), w, shelves = shelves)(m =>
         Seen(
           Vector(
-            sorted(m, "s", Dreaming.Item.Discussion(seen), among, Nearest(2))(
-              _.map(x => s"${x.value.of}:${x.probability}").mkString(",")
-            )
+            sorted(
+              m,
+              "s",
+              Dreaming.Item.Discussion(seen),
+              Vector(),
+              Nearest(2),
+              pool = among,
+              fill = Sorting.Most
+            )(_.map(x => s"${x.value.of}:${x.probability}").mkString(","))
           )
         )
       )
@@ -1727,34 +1779,40 @@ object MovesContract {
   /** A choice among the candidates, then `new` and `aside`: a discussion shown within 30
     * characters, a document within [[DocumentChars]].
     */
-  val Choosing: Sorting[Pick, Decision[Pick]] = Sorting
+  val Choosing: Sorting[Pick, Decision[Pick]] = ChoosingOf(Sorting.Chosen)
+
+  /** [[Choosing]] among at most `most` candidates. */
+  def ChoosingOf(most: Int): Sorting[Pick, Decision[Pick]] = Sorting
     .choice(
       "Which topic is this discussion part of?",
       30,
       DocumentChars,
+      most,
       Criterion(Pick("new"), "new", Some("A matter none of these covers.")),
       Criterion(Pick("aside"), "aside", None)
     )
-    .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+    .fold(e => throw new java.lang.AssertionError(e), identity)
 
   /** A yes/no of the `n` nearest candidates, shown as [[Choosing]] shows them. */
   def Nearest(n: Int): Sorting[Pick, Vector[Decision.Weight[Pick]]] = Sorting
     .each[Pick]("Is this file about this topic?", "It is.", "It is not.", 30, DocumentChars, n)
     .fold(e => throw new java.lang.AssertionError(e), identity)
 
-  /** The sort `n` of `item` among `among` through `m`, by `sorting` believed at `believed`: its
-    * answer as `show` writes it, what it is believed at, and the versions it asked about; or
-    * "none" when nothing was asked.
+  /** The sort `n` of `item` among `pinned`, then at most `fill` of `pool`, through `m`, by
+    * `sorting` believed at `believed`: its answer as `show` writes it, what it is believed at,
+    * and the versions it asked about; or "none" when nothing was asked.
     */
   def sorted[R](
       m: Dreaming^,
       n: String,
       item: Dreaming.Item,
-      among: Vector[(Pick, DocumentVersionId)],
+      pinned: Vector[(Pick, DocumentVersionId)],
       sorting: Sorting[Pick, R],
-      believed: Integrity = Believed
+      believed: Integrity = Believed,
+      pool: Vector[(Pick, DocumentVersionId)] = Vector(),
+      fill: Int = 0
   )(show: R -> String): Either[MoveError, String] =
-    m.sort(name(n), item, among, TestTainted.at(sorting, believed))
+    m.sort(name(n), item, Sorting.Among(pinned, pool, fill), TestTainted.at(sorting, believed))
       .map(
         _.fold("none")(s =>
           s"${show(replied(s.asked))} at ${Integrity.written(s.asked.reply.integrity)} among " +

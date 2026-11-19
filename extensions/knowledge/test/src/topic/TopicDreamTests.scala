@@ -581,7 +581,7 @@ object TopicDreamTests extends TestSuite {
       val sorted = runs.asked.filter(_.kind == "sort").last
       (reply, counted(sorted), runs.referring(Ref.Strand(b.id))) ==> (
         s"topics: 1 written (0 opened), 0 withdrawn, ${TopicScan.Leads} unchanged, 0 set aside, 0 left for the next run",
-        (1, TopicScan.Leads + 1, 0),
+        (1, grit.core.act.Sorting.Chosen, 0),
         Vector(key(a))
       )
     }
