@@ -343,22 +343,30 @@ object CommandFixtures {
       _.copy(rank = Rank.of(rank).fold(why => throw new java.lang.AssertionError(why), identity))
     )
 
-  /** The artifact kept under `key` at public given the head `change` makes of it, in place, as no
-    * command would write it.
+  /** The artifact kept under `key` at public given the head `change` makes of it, kept at
+    * `label`, as no command would write it.
     */
-  def rewritten(store: Store, key: String, change: ArtifactHead => ArtifactHead): Unit = {
+  def rewritten(
+      store: Store,
+      key: String,
+      change: ArtifactHead => ArtifactHead,
+      label: Label = Label.Public
+  ): Unit = {
     val docKey = DocKey.of(key).fold(why => throw new java.lang.AssertionError(why), identity)
-    inTx {
+    {
+      given Tx = TestTx.fake(Clearance.of(label))
       for {
         was <- store.keeper.current(docKey, Label.Public)
         d <- was.toRight(StoreError.Invalid(s"nothing kept under $key"))
         a <- Artifact.of(d).left.map(StoreError.Invalid(_))
-        moved = Artifact(change(a.head), a.body)
-        written <- ArtifactJson.write(moved).left.map(StoreError.Invalid(_))
+        written <- ArtifactJson
+          .write(Artifact(change(a.head), a.body))
+          .left
+          .map(StoreError.Invalid(_))
         (text, data, refs) = written
         _ <- store.keeper.write(
           docKey,
-          Label.Public,
+          label,
           d.integrity,
           d.place,
           text,
@@ -375,28 +383,14 @@ object CommandFixtures {
     * artifact the old form kept above its project's label, and the public one withdrawn.
     */
   def keptAbove(store: Store, key: String, label: Label): Unit = {
-    val docKey = DocKey.of(key).fold(why => throw new java.lang.AssertionError(why), identity)
-    {
-      given Tx = TestTx.fake(Clearance.of(label))
-      for {
-        was <- store.keeper.current(docKey, Label.Public)
-        d <- was.toRight(StoreError.Invalid(s"nothing kept under $key"))
-        written <- Artifact.of(d).flatMap(ArtifactJson.write).left.map(StoreError.Invalid(_))
-        (text, data, refs) = written
-        _ <- store.keeper.write(
-          docKey,
-          label,
-          d.integrity,
-          d.place,
-          text,
-          data,
-          d.pointer,
-          at,
-          refs
-        )
-      } yield ()
-    }.fold(e => throw new java.lang.AssertionError(e.toString), identity)
-    inTx(store.keeper.withdraw(docKey, Label.Public, at))
+    rewritten(store, key, identity, label)
+    inTx(
+      store.keeper.withdraw(
+        DocKey.of(key).fold(why => throw new java.lang.AssertionError(why), identity),
+        Label.Public,
+        at
+      )
+    )
       .fold(e => throw new java.lang.AssertionError(e.toString), identity)
   }
 
