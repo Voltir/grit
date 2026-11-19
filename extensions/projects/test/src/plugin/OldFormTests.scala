@@ -136,6 +136,33 @@ object OldFormTests extends TestSuite {
         "Kept p/3 (note, open)."
       )
     }
+    test(
+      "project_stored gives the key an artifact is kept under: a re-keyed one's old key, a new one's id"
+    ) {
+      val (projects, store) = oldProject()
+      done(ask(projects, store, "project_rekey", "project" -> "p"))
+      done(
+        ask(
+          projects,
+          store,
+          "project_keep",
+          "project" -> "p",
+          "handle" -> "c",
+          "kind" -> "note",
+          "title" -> "C",
+          "body" -> "c"
+        )
+      )
+      Vector("p/1", "p/a", "p/3", "p/c", "p/9").map(k =>
+        ask(projects, store, "project_stored", "key" -> k)
+      ) ==> Vector(
+        CommandOutcome.Done("p/a"),
+        CommandOutcome.Done("p/a"),
+        CommandOutcome.Done("p/3"),
+        CommandOutcome.Done("p/3"),
+        CommandOutcome.Refused("project p has no artifact p/9 (its highest is p/3)")
+      )
+    }
     test("a re-keyed artifact's history and show-at read its versions from before the re-key") {
       val (projects, store) = oldProject()
       val later = at.plusSeconds(60)

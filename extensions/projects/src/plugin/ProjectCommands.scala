@@ -83,6 +83,7 @@ private[plugin] final class ProjectCommands(
       Reorder,
       Batch,
       Show,
+      Stored,
       History,
       List,
       Find,
@@ -771,6 +772,30 @@ private[plugin] final class ProjectCommands(
             }
             .map(_.mkString)
       }
+    }
+  }
+
+  /** `project_stored`. */
+  object Stored extends ReadingCommand[Releasing] {
+    override def shown(args: Releasing): String = args.key.value
+
+    val spec: ToolSpec[Releasing] = ToolSpec(
+      ToolName("project_stored"),
+      "Answers the key an artifact is stored under, which a wait on it watches: a re-keyed " +
+        "artifact's key from before its id, any other's id. Keeps nothing. Refused as " +
+        "project_show refuses the key.",
+      Args
+        .of((key = Field.text("The artifact's id or handle, `<project>/<id or handle>`.")))
+        .refine(a => parsed("key", a.key, ArtifactRef.read).map(Releasing(_)))
+    )
+
+    def run(args: Releasing, by: CommandBy, own: PluginReads, at: Instant)(using
+        Tx^
+    ): Either[StoreError, CommandOutcome] = answered {
+      for {
+        project <- loaded(own.documents, args.key.project)
+        where <- recorded(own.documents, project, args.key)
+      } yield DocKey.value(where._1)
     }
   }
 

@@ -4,7 +4,7 @@ import java.time.Instant
 
 import scala.concurrent.duration.*
 
-import grit.commands.declare.HoldingWatch
+import grit.commands.declare.{HoldingWatch, Ran}
 import grit.commands.machine.{MachineName, Worktrees}
 import grit.core.edge.{EdgeWatch, WatchError, WatchFor, Watched}
 import grit.core.id.ClaimHolder
@@ -21,15 +21,18 @@ private[commands] object Waited {
     *   - `{"commit": {"worktree": "<absolute path>"}}`: a commit in that directory on `machine`
     *     ([[Worktrees.at]]), or `{"commit": {"holder": "<holder>"}}`: one by a session working
     *     as the holder; either at or after `since` (an ISO-8601 instant), by default `now`;
-    *   - anything else, as `holding` reads it, when there is one.
-    * A key the watch it names does not read is refused, naming it.
+    *   - anything else, as `holding` reads it, lent `ran`, when there is one.
+    * A key the watch it names does not read is refused, naming it, before `holding` reads it;
+    * each refusal is a status and its text, 400 but where `holding` answers as a command's
+    * error ([[RouteReply.command]]).
     */
   def watchOf(
       body: ujson.Obj,
       machine: MachineName,
       holding: Option[HoldingWatch],
+      ran: Ran,
       now: Instant
-  ): Either[String, (WatchFor, FiniteDuration)] = {
+  ): Either[(Status, String), (WatchFor, FiniteDuration)] = {
     val o = body.value
     val within: Either[String, FiniteDuration] = o.get("within") match {
       case None => Right(Routes.Within)
@@ -39,9 +42,9 @@ private[commands] object Waited {
           .map(s => EdgeWatch.bounded(s.min(EdgeWatch.Longest.toSeconds.toDouble).toLong.seconds))
           .toRight("within is whole seconds, 0 or more")
     }
-    val what: Either[String, WatchFor] = o.get("commit") match {
+    def what: Either[(Status, String), WatchFor] = o.get("commit") match {
       case Some(c) =>
-        for {
+        (for {
           by <- c.objOpt.map(_.value.toMap) match {
             case Some(m) if m.keySet == Set("worktree") =>
               m.get("worktree")
@@ -64,11 +67,17 @@ private[commands] object Waited {
                 .flatMap(t => scala.util.Try(Instant.parse(t)).toOption)
                 .toRight("since is an ISO-8601 instant")
           }
-        } yield WatchFor.Committed(by, since)
+        } yield WatchFor.Committed(by, since)).left.map(Status.BadRequest -> _)
       case None =>
         holding
-          .flatMap(_.read(body))
-          .getOrElse(Left("a watch names a commit, or what this edge's holding watch reads"))
+          .fold(Right(None))(_.read(ran, body))
+          .left
+          .map(e => RouteReply.command(Left(e)))
+          .flatMap(
+            _.toRight(
+              Status.BadRequest -> "a watch names a commit, or what this edge's holding watch reads"
+            )
+          )
     }
     val reads: Set[String] =
       if (o.contains("commit")) Set("commit", "since", "within")
@@ -77,7 +86,11 @@ private[commands] object Waited {
       .find(k => !reads.contains(k))
       .map(k => s"this watch reads no $k: only ${reads.toVector.sorted.mkString(", ")}")
       .toLeft(())
-    for { w <- what; _ <- known; d <- within } yield (w, d)
+    for {
+      _ <- known.left.map(Status.BadRequest -> _)
+      d <- within.left.map(Status.BadRequest -> _)
+      w <- what
+    } yield (w, d)
   }
 
   /** What a watch for `what`, waiting `within`, answers when it came to `came`: 200 saying what

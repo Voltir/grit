@@ -6,8 +6,8 @@ import utest.*
 
 /** What capture checking rejects of what a deployment declares to the commands edge, pinned by
   * compiling probe sources against the module with its own flags: an own command's `run` and a
-  * holding watch's functions are pure, so an own command reaches the store only through the `ran`
-  * each request lends it, which it cannot keep past the request, even in a global var whose
+  * holding watch's functions are pure, so an own command or a holding watch reaches the store only
+  * through the `ran` each request lends it, which it cannot keep past the request, even in a global var whose
   * captures go untracked, and neither through the edge's stores or its listener captured where
   * it was declared.
   */
@@ -59,17 +59,37 @@ object DeclaredPurityTests extends TestSuite {
       |""".stripMargin
 
   private val watchReading =
-    """def f() = HoldingWatch(Set.empty, _ => None, (h, held) => s"held at ${held.version}")
+    """def f() = HoldingWatch(
+      |  Set.empty,
+      |  (ran, body) => ran(ToolName("theirs"), body).map(_ => None),
+      |  (h, held) => s"held at ${held.version}"
+      |)
       |""".stripMargin
 
   private val watchHoldingStores =
     """def f(stores: EdgeStores^) =
-      |  HoldingWatch(Set.empty, _ => None, (h, held) => s"held among ${stores.commands.offered.size}")
+      |  HoldingWatch(Set.empty, (_, _) => Right(None), (h, held) => s"held among ${stores.commands.offered.size}")
+      |""".stripMargin
+
+  private val watchStashingRan =
+    """object Kept {
+      |  @caps.unsafe.untrackedCaptures var kept: Option[grit.commands.declare.Ran] = None // so ran alone refuses
+      |}
+      |def f() =
+      |  HoldingWatch(Set.empty, (ran, body) => { Kept.kept = Some(ran); Right(None) }, (h, held) => "held")
       |""".stripMargin
 
   private lazy val compiled = Probes.batch(
     prelude,
-    List(lent, holdingStores, holdingListener, stashingRan, watchReading, watchHoldingStores)
+    List(
+      lent,
+      holdingStores,
+      holdingListener,
+      stashingRan,
+      watchReading,
+      watchHoldingStores,
+      watchStashingRan
+    )
   )
 
   val tests = Tests {
@@ -99,8 +119,18 @@ object DeclaredPurityTests extends TestSuite {
       )
     }
 
-    test("a holding watch that reads only what it is given compiles") {
+    test(
+      "a holding watch that reads only what it is given, and runs through what it is lent, compiles"
+    ) {
       assert(compiled.errors(watchReading).isEmpty)
+    }
+
+    test("a holding watch that stashes what it is lent in a global is refused") {
+      val errs = compiled.errors(watchStashingRan)
+      assert(
+        errs.nonEmpty,
+        errs.exists(_.contains("capability `ran` cannot flow into capture set {any}"))
+      )
     }
 
     test("a holding watch holding the edge's stores is refused") {

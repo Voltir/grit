@@ -5,11 +5,21 @@ import scala.concurrent.duration.*
 import grit.commands.declare.HoldingWatch
 import grit.commands.machine.Worktrees
 import grit.core.document.DocRef
-import grit.core.edge.{EdgeContracts, EdgeWatch, ScriptedWatch, WatchError, WatchFor}
+import grit.core.edge.{
+  CommandError,
+  EdgeContracts,
+  EdgeWatch,
+  ScriptedWatch,
+  WatchError,
+  WatchFor,
+  Watched
+}
 import grit.core.either.Got.got
 import grit.core.id.{ClaimHolder, DocKey, Harness, PluginName, SessionId}
 import grit.core.place.Directory
+import grit.core.plugin.CommandOutcome
 import grit.core.session.Event
+import grit.core.tool.ToolName
 import grit.edge.http.{Status, Verb}
 
 import utest.*
@@ -24,15 +34,47 @@ object WaitRouteTests extends TestSuite {
   /** Reads `{"document": "<key>"}` as a wait for it to hold [[Review]]. */
   private val holding = HoldingWatch(
     Set("document"),
-    body =>
-      body.value.get("document").map { d =>
-        d.strOpt
-          .toRight("document is a key")
-          .flatMap(DocKey.of)
-          .flatMap(WatchFor.Holding.of(Plugin, _, Set(Review)))
+    (_, body) =>
+      body.value.get("document") match {
+        case None => Right(None)
+        case Some(d) =>
+          d.strOpt
+            .toRight("document is a key")
+            .flatMap(DocKey.of)
+            .flatMap(WatchFor.Holding.of(Plugin, _, Set(Review)))
+            .map(Some(_))
+            .left
+            .map(CommandError.Unread(Resolve, _))
       },
-    (h, held) =>
-      s"${DocKey.value(h.key)} holds ${held.refs.map(_.ref).mkString} at version ${held.version}"
+    met
+  )
+
+  private def met(h: WatchFor.Holding, held: Watched.Held): String =
+    s"${DocKey.value(h.key)} holds ${held.refs.map(_.ref).mkString} at version ${held.version}"
+
+  private val Resolve = ToolName("resolve")
+
+  /** Reads `{"named": "<name>"}` as a wait for the key `resolve` answers it with to hold
+    * [[Review]]; `resolve` refusing, unread, saying why.
+    */
+  private val resolving = HoldingWatch(
+    Set("named"),
+    (ran, body) =>
+      body.value.get("named") match {
+        case None => Right(None)
+        case Some(n) =>
+          ran(Resolve, ujson.Obj("text" -> n)).flatMap {
+            case CommandOutcome.Done(key) =>
+              DocKey
+                .of(key)
+                .flatMap(WatchFor.Holding.of(Plugin, _, Set(Review)))
+                .map(Some(_))
+                .left
+                .map(CommandError.Unread(Resolve, _))
+            case CommandOutcome.Refused(why) => Left(CommandError.Unread(Resolve, why))
+          }
+      },
+    met
   )
 
   private def waiting(script: ScriptedWatch.Script, vouched: Boolean = true): Routes^ =
@@ -127,7 +169,8 @@ object WaitRouteTests extends TestSuite {
         (Status.BadRequest, "this watch reads no sinse: only commit, since, within"),
         (Status.BadRequest, "this watch reads no since: only document, within"),
         (Status.BadRequest, "document is a key"),
-        (Status.BadRequest, "a watch names a commit, or what this edge's holding watch reads")
+        // Its keys are read before the holding watch is, which may run a command.
+        (Status.BadRequest, "this watch reads no nothing: only document, within")
       )
       script.asked ==> Vector.empty
     }
@@ -156,6 +199,31 @@ object WaitRouteTests extends TestSuite {
           s"committed 0123456789ab feat: a thing in machine:desktop/work/c, on session s1 at $Now"
         ),
         (Status.Ok, s"grit/plan holds review at version $version")
+      )
+    }
+    test(
+      "a holding watch reads its body through the caller's commands: it waits on what one answers, and a command's error is answered as the command's"
+    ) {
+      val script = new ScriptedWatch.Script
+      val version = script.hold(Plugin, got(DocKey.of("grit/7")), Set(Review), Now)
+      val r = routed(
+        commands = scripted(Vector(listed("resolve", reads = true))) { (_, args) =>
+          args.obj.get("text").flatMap(_.strOpt) match {
+            case Some("grit/plan") => Right(CommandOutcome.Done("grit/7"))
+            case Some("grit/gone") => Left(CommandError.Unavailable("the database is down"))
+            case other =>
+              Right(CommandOutcome.Refused(s"project grit has no artifact ${other.getOrElse("")}"))
+          }
+        },
+        watch = new ScriptedWatch(Set(Owner.account), script),
+        holding = Some(resolving)
+      )
+      Vector("grit/plan", "grit/none", "grit/gone").map(n =>
+        waited(r, ujson.Obj("named" -> n, "within" -> 0))
+      ) ==> Vector(
+        (Status.Ok, s"grit/7 holds review at version $version"),
+        (Status.BadRequest, "project grit has no artifact grit/none"),
+        (Status.Unavailable, "the database is unavailable: the database is down")
       )
     }
 

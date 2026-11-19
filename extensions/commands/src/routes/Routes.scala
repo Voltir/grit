@@ -149,8 +149,10 @@ private[commands] final class Routes private (
     only(request, Verb.Post, "post a watch; nothing else waits") {
       Routes
         .arguments(request.body)
-        .flatMap(Waited.watchOf(_, caller.machine, holding, clock.now())) match {
-        case Left(why) => Response.text(Status.BadRequest, why)
+        .left
+        .map(Status.BadRequest -> _)
+        .flatMap(Waited.watchOf(_, caller.machine, holding, ran(caller), clock.now())) match {
+        case Left((status, why)) => Response.text(status, why)
         case Right((what, within)) =>
           val (status, text) = Waited.watched(
             what,
