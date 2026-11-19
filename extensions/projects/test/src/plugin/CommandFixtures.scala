@@ -14,6 +14,7 @@ import grit.core.tool.ToolName
 import grit.core.visibility.{Clearance, Integrity, Label, Visibility}
 import grit.dbos.sql.TestTx
 import grit.projects.method.{
+  ArtifactKind,
   Example,
   Method,
   MethodFixtures,
@@ -52,33 +53,35 @@ object CommandFixtures {
 
   val methodName: MethodName = MethodFixtures.method
 
-  def method(moves: Vector[grit.projects.method.Transition] = transitions): Method =
+  /** Version `version` of [[methodName]], of `kinds`, `moves` and `roles`: by default version 1
+    * of change and note, their moves and a builder of changes ([[MethodFixtures]]), checked by
+    * every check grit has.
+    */
+  def method(
+      moves: Vector[grit.projects.method.Transition] = transitions,
+      version: Int = 1,
+      kinds: Vector[ArtifactKind] = Vector(change, note),
+      roles: Vector[RoleView] = views
+  ): Method =
     Method
-      .of(methodName, 1, Vector(change, note), moves, views, TransitionChecks.all)
+      .of(methodName, version, kinds, moves, roles, TransitionChecks.all)
       .fold(why => throw new java.lang.AssertionError(why.toString), identity)
 
   /** [[method]]'s kinds and moves, its one role a manager, shown notes to depth 1 and always
     * carrying `<project>/process`.
     */
-  val managing: Method = Method
-    .of(
-      methodName,
-      1,
-      Vector(change, note),
-      transitions,
-      Vector(
-        MethodFixtures.right(
-          RoleView.of(
-            MethodFixtures.role("manager"),
-            Set(note.name),
-            1,
-            Set(MethodFixtures.right(LocalKey.of("process")))
-          )
+  val managing: Method = method(roles =
+    Vector(
+      MethodFixtures.right(
+        RoleView.of(
+          MethodFixtures.role("manager"),
+          Set(note.name),
+          1,
+          Set(MethodFixtures.right(LocalKey.of("process")))
         )
-      ),
-      TransitionChecks.all
+      )
     )
-    .fold(why => throw new java.lang.AssertionError(why.toString), identity)
+  )
 
   /** The brief kept for `holder`, as a window would find it at `when`. */
   def briefOf(store: Store, holder: String, when: Instant = at.plusSeconds(1)): Option[Document] = {

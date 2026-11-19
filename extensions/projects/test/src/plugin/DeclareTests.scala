@@ -29,19 +29,7 @@ object DeclareTests extends TestSuite {
   private val changed = method(transitions :+ MethodFixtures.move(note, "open", "closed"))
 
   /** [[changed]]'s kinds and moves as version 2. */
-  private val second = right(
-    grit.projects.method.Method
-      .of(
-        methodName,
-        2,
-        Vector(MethodFixtures.change, note),
-        transitions :+ MethodFixtures.move(note, "open", "closed"),
-        MethodFixtures.views,
-        TransitionChecks.all
-      )
-      .left
-      .map(_.toString)
-  )
+  private val second = method(transitions :+ MethodFixtures.move(note, "open", "closed"), 2)
 
   /** A change kept bare, then moved to building and to done, expected allowed throughout. */
   private val bareDone = {

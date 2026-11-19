@@ -79,18 +79,11 @@ object KeptBriefTests extends TestSuite {
     done(ask(projects, store, "project_brief", "key" -> key, "role" -> role, "chars" -> 9500))
 
   /** [[managing]], with a reviewer shown notes to depth 1 and carrying nothing. */
-  private val reviewing: Method = Method
-    .of(
-      managing.name,
-      managing.version,
-      managing.kinds,
-      managing.transitions,
-      managing.views :+ right(
-        RoleView.of(MethodFixtures.role("reviewer"), Set(MethodFixtures.note.name), 1)
-      ),
-      managing.checks
+  private val reviewing: Method = method(roles =
+    managing.views :+ right(
+      RoleView.of(MethodFixtures.role("reviewer"), Set(MethodFixtures.note.name), 1)
     )
-    .fold(why => throw new java.lang.AssertionError(why.toString), identity)
+  )
 
   /** The claims live in `store` at [[at]]. */
   private def liveNow(store: Store): Vector[Claim] =

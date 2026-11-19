@@ -5,7 +5,7 @@ import java.time.Instant
 import grit.core.id.{DocKey, DocumentVersionId}
 import grit.core.plugin.CommandOutcome
 import grit.core.visibility.{Clearance, Integrity, Label, TestLabels}
-import grit.projects.method.{ArtifactKind, Method, MethodFixtures, TransitionChecks}
+import grit.projects.method.{ArtifactKind, Method, MethodFixtures}
 import grit.projects.name.KindName
 import grit.projects.render.ProjectMarkdown
 
@@ -14,7 +14,7 @@ import utest.*
 /** `project_migrate` over a project of the method's version 1, to its version 2. */
 object MigrateTests extends TestSuite {
   import CommandFixtures.*
-  import MethodFixtures.{change, note, transitions, views}
+  import MethodFixtures.{change, note}
 
   /** A kind version 2 declares that version 1 does not. */
   private val memo = ArtifactKind(
@@ -25,9 +25,7 @@ object MigrateTests extends TestSuite {
     Vector()
   )
 
-  private val version2: Method = Method
-    .of(methodName, 2, Vector(change, note, memo), transitions, views, TransitionChecks.all)
-    .fold(why => throw new java.lang.AssertionError(why.toString), identity)
+  private val version2: Method = method(version = 2, kinds = Vector(change, note, memo))
 
   /** The plugin, its store declaring both versions once [[holding]] has started `p`. */
   private val both: Projects = plugin()
