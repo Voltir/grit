@@ -1,0 +1,1202 @@
+{
+"SELF|mem pool=69|text|32": [
+46,
+46
+],
+"SELF|mem pool=69|text|64": [
+46,
+46
+],
+"SELF|mem pool=69|newest8|32": [
+46,
+46
+],
+"SELF|mem pool=69|newest8|64": [
+46,
+46
+],
+"SELF|mem pool=69|newest16|32": [
+25,
+46
+],
+"SELF|mem pool=69|newest16|64": [
+46,
+46
+],
+"SELF|mem pool=69|rrf1:1|32": [
+45,
+46
+],
+"SELF|mem pool=69|rrf1:1|64": [
+46,
+46
+],
+"SELF|mem pool=69|rrf2:1|32": [
+46,
+46
+],
+"SELF|mem pool=69|rrf2:1|64": [
+46,
+46
+],
+"SELF|mem pool=69|rrf1:2|32": [
+27,
+46
+],
+"SELF|mem pool=69|rrf1:2|64": [
+46,
+46
+],
+"SELF|mem pool=500|text|32": [
+46,
+46
+],
+"SELF|mem pool=500|text|64": [
+46,
+46
+],
+"SELF|mem pool=500|newest8|32": [
+45,
+46
+],
+"SELF|mem pool=500|newest8|64": [
+46,
+46
+],
+"SELF|mem pool=500|newest16|32": [
+22,
+46
+],
+"SELF|mem pool=500|newest16|64": [
+46,
+46
+],
+"SELF|mem pool=500|rrf1:1|32": [
+44,
+46
+],
+"SELF|mem pool=500|rrf1:1|64": [
+46,
+46
+],
+"SELF|mem pool=500|rrf2:1|32": [
+45,
+46
+],
+"SELF|mem pool=500|rrf2:1|64": [
+46,
+46
+],
+"SELF|mem pool=500|rrf1:2|32": [
+27,
+46
+],
+"SELF|mem pool=500|rrf1:2|64": [
+44,
+46
+],
+"SELF|mem pool=all|text|32": [
+45,
+46
+],
+"SELF|mem pool=all|text|64": [
+46,
+46
+],
+"SELF|mem pool=all|newest8|32": [
+45,
+46
+],
+"SELF|mem pool=all|newest8|64": [
+46,
+46
+],
+"SELF|mem pool=all|newest16|32": [
+15,
+46
+],
+"SELF|mem pool=all|newest16|64": [
+46,
+46
+],
+"SELF|mem pool=all|rrf1:1|32": [
+45,
+46
+],
+"SELF|mem pool=all|rrf1:1|64": [
+46,
+46
+],
+"SELF|mem pool=all|rrf2:1|32": [
+45,
+46
+],
+"SELF|mem pool=all|rrf2:1|64": [
+46,
+46
+],
+"SELF|mem pool=all|rrf1:2|32": [
+29,
+46
+],
+"SELF|mem pool=all|rrf1:2|64": [
+39,
+46
+],
+"SELF|pg index, topics+cards|text|32": [
+46,
+46
+],
+"SELF|pg index, topics+cards|text|64": [
+46,
+46
+],
+"SELF|pg index, topics+cards|newest8|32": [
+46,
+46
+],
+"SELF|pg index, topics+cards|newest8|64": [
+46,
+46
+],
+"SELF|pg index, topics+cards|newest16|32": [
+25,
+46
+],
+"SELF|pg index, topics+cards|newest16|64": [
+46,
+46
+],
+"SELF|pg index, topics+cards|rrf1:1|32": [
+46,
+46
+],
+"SELF|pg index, topics+cards|rrf1:1|64": [
+46,
+46
+],
+"SELF|pg index, topics+cards|rrf2:1|32": [
+46,
+46
+],
+"SELF|pg index, topics+cards|rrf2:1|64": [
+46,
+46
+],
+"SELF|pg index, topics+cards|rrf1:2|32": [
+29,
+46
+],
+"SELF|pg index, topics+cards|rrf1:2|64": [
+46,
+46
+],
+"SELF|mem, topics+cards|text|32": [
+46,
+46
+],
+"SELF|mem, topics+cards|text|64": [
+46,
+46
+],
+"SELF|mem, topics+cards|newest8|32": [
+45,
+46
+],
+"SELF|mem, topics+cards|newest8|64": [
+46,
+46
+],
+"SELF|mem, topics+cards|newest16|32": [
+25,
+46
+],
+"SELF|mem, topics+cards|newest16|64": [
+46,
+46
+],
+"SELF|mem, topics+cards|rrf1:1|32": [
+44,
+46
+],
+"SELF|mem, topics+cards|rrf1:1|64": [
+46,
+46
+],
+"SELF|mem, topics+cards|rrf2:1|32": [
+46,
+46
+],
+"SELF|mem, topics+cards|rrf2:1|64": [
+46,
+46
+],
+"SELF|mem, topics+cards|rrf1:2|32": [
+27,
+46
+],
+"SELF|mem, topics+cards|rrf1:2|64": [
+43,
+46
+],
+"CONT|mem pool=69|text|32": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=69|text|32": [
+29,
+29
+],
+"CONT|mem pool=69|text|64": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=69|text|64": [
+29,
+29
+],
+"CONT|mem pool=69|newest8|32": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=69|newest8|32": [
+29,
+29
+],
+"CONT|mem pool=69|newest8|64": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=69|newest8|64": [
+29,
+29
+],
+"CONT|mem pool=69|newest16|32": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=69|newest16|32": [
+29,
+29
+],
+"CONT|mem pool=69|newest16|64": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=69|newest16|64": [
+29,
+29
+],
+"CONT|mem pool=69|rrf1:1|32": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=69|rrf1:1|32": [
+29,
+29
+],
+"CONT|mem pool=69|rrf1:1|64": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=69|rrf1:1|64": [
+29,
+29
+],
+"CONT|mem pool=69|rrf2:1|32": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=69|rrf2:1|32": [
+29,
+29
+],
+"CONT|mem pool=69|rrf2:1|64": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=69|rrf2:1|64": [
+29,
+29
+],
+"CONT|mem pool=69|rrf1:2|32": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=69|rrf1:2|32": [
+29,
+29
+],
+"CONT|mem pool=69|rrf1:2|64": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=69|rrf1:2|64": [
+29,
+29
+],
+"CONT|mem pool=500|text|32": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=500|text|32": [
+29,
+29
+],
+"CONT|mem pool=500|text|64": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=500|text|64": [
+29,
+29
+],
+"CONT|mem pool=500|newest8|32": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=500|newest8|32": [
+29,
+29
+],
+"CONT|mem pool=500|newest8|64": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=500|newest8|64": [
+29,
+29
+],
+"CONT|mem pool=500|newest16|32": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=500|newest16|32": [
+29,
+29
+],
+"CONT|mem pool=500|newest16|64": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=500|newest16|64": [
+29,
+29
+],
+"CONT|mem pool=500|rrf1:1|32": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=500|rrf1:1|32": [
+29,
+29
+],
+"CONT|mem pool=500|rrf1:1|64": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=500|rrf1:1|64": [
+29,
+29
+],
+"CONT|mem pool=500|rrf2:1|32": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=500|rrf2:1|32": [
+29,
+29
+],
+"CONT|mem pool=500|rrf2:1|64": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=500|rrf2:1|64": [
+29,
+29
+],
+"CONT|mem pool=500|rrf1:2|32": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=500|rrf1:2|32": [
+29,
+29
+],
+"CONT|mem pool=500|rrf1:2|64": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=500|rrf1:2|64": [
+29,
+29
+],
+"CONT|mem pool=all|text|32": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=all|text|32": [
+29,
+29
+],
+"CONT|mem pool=all|text|64": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=all|text|64": [
+29,
+29
+],
+"CONT|mem pool=all|newest8|32": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=all|newest8|32": [
+29,
+29
+],
+"CONT|mem pool=all|newest8|64": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=all|newest8|64": [
+29,
+29
+],
+"CONT|mem pool=all|newest16|32": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=all|newest16|32": [
+29,
+29
+],
+"CONT|mem pool=all|newest16|64": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=all|newest16|64": [
+29,
+29
+],
+"CONT|mem pool=all|rrf1:1|32": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=all|rrf1:1|32": [
+29,
+29
+],
+"CONT|mem pool=all|rrf1:1|64": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=all|rrf1:1|64": [
+29,
+29
+],
+"CONT|mem pool=all|rrf2:1|32": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=all|rrf2:1|32": [
+29,
+29
+],
+"CONT|mem pool=all|rrf2:1|64": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=all|rrf2:1|64": [
+29,
+29
+],
+"CONT|mem pool=all|rrf1:2|32": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=all|rrf1:2|32": [
+29,
+29
+],
+"CONT|mem pool=all|rrf1:2|64": [
+4,
+4
+],
+"ALL-but-SELF|mem pool=all|rrf1:2|64": [
+29,
+29
+],
+"CONT|pg index, topics+cards|text|32": [
+4,
+4
+],
+"ALL-but-SELF|pg index, topics+cards|text|32": [
+29,
+29
+],
+"CONT|pg index, topics+cards|text|64": [
+4,
+4
+],
+"ALL-but-SELF|pg index, topics+cards|text|64": [
+29,
+29
+],
+"CONT|pg index, topics+cards|newest8|32": [
+4,
+4
+],
+"ALL-but-SELF|pg index, topics+cards|newest8|32": [
+29,
+29
+],
+"CONT|pg index, topics+cards|newest8|64": [
+4,
+4
+],
+"ALL-but-SELF|pg index, topics+cards|newest8|64": [
+29,
+29
+],
+"CONT|pg index, topics+cards|newest16|32": [
+4,
+4
+],
+"ALL-but-SELF|pg index, topics+cards|newest16|32": [
+29,
+29
+],
+"CONT|pg index, topics+cards|newest16|64": [
+4,
+4
+],
+"ALL-but-SELF|pg index, topics+cards|newest16|64": [
+29,
+29
+],
+"CONT|pg index, topics+cards|rrf1:1|32": [
+4,
+4
+],
+"ALL-but-SELF|pg index, topics+cards|rrf1:1|32": [
+29,
+29
+],
+"CONT|pg index, topics+cards|rrf1:1|64": [
+4,
+4
+],
+"ALL-but-SELF|pg index, topics+cards|rrf1:1|64": [
+29,
+29
+],
+"CONT|pg index, topics+cards|rrf2:1|32": [
+4,
+4
+],
+"ALL-but-SELF|pg index, topics+cards|rrf2:1|32": [
+29,
+29
+],
+"CONT|pg index, topics+cards|rrf2:1|64": [
+4,
+4
+],
+"ALL-but-SELF|pg index, topics+cards|rrf2:1|64": [
+29,
+29
+],
+"CONT|pg index, topics+cards|rrf1:2|32": [
+4,
+4
+],
+"ALL-but-SELF|pg index, topics+cards|rrf1:2|32": [
+29,
+29
+],
+"CONT|pg index, topics+cards|rrf1:2|64": [
+4,
+4
+],
+"ALL-but-SELF|pg index, topics+cards|rrf1:2|64": [
+29,
+29
+],
+"CONT|mem, topics+cards|text|32": [
+4,
+4
+],
+"ALL-but-SELF|mem, topics+cards|text|32": [
+29,
+29
+],
+"CONT|mem, topics+cards|text|64": [
+4,
+4
+],
+"ALL-but-SELF|mem, topics+cards|text|64": [
+29,
+29
+],
+"CONT|mem, topics+cards|newest8|32": [
+4,
+4
+],
+"ALL-but-SELF|mem, topics+cards|newest8|32": [
+29,
+29
+],
+"CONT|mem, topics+cards|newest8|64": [
+4,
+4
+],
+"ALL-but-SELF|mem, topics+cards|newest8|64": [
+29,
+29
+],
+"CONT|mem, topics+cards|newest16|32": [
+4,
+4
+],
+"ALL-but-SELF|mem, topics+cards|newest16|32": [
+29,
+29
+],
+"CONT|mem, topics+cards|newest16|64": [
+4,
+4
+],
+"ALL-but-SELF|mem, topics+cards|newest16|64": [
+29,
+29
+],
+"CONT|mem, topics+cards|rrf1:1|32": [
+4,
+4
+],
+"ALL-but-SELF|mem, topics+cards|rrf1:1|32": [
+29,
+29
+],
+"CONT|mem, topics+cards|rrf1:1|64": [
+4,
+4
+],
+"ALL-but-SELF|mem, topics+cards|rrf1:1|64": [
+29,
+29
+],
+"CONT|mem, topics+cards|rrf2:1|32": [
+4,
+4
+],
+"ALL-but-SELF|mem, topics+cards|rrf2:1|32": [
+29,
+29
+],
+"CONT|mem, topics+cards|rrf2:1|64": [
+4,
+4
+],
+"ALL-but-SELF|mem, topics+cards|rrf2:1|64": [
+29,
+29
+],
+"CONT|mem, topics+cards|rrf1:2|32": [
+4,
+4
+],
+"ALL-but-SELF|mem, topics+cards|rrf1:2|32": [
+29,
+29
+],
+"CONT|mem, topics+cards|rrf1:2|64": [
+4,
+4
+],
+"ALL-but-SELF|mem, topics+cards|rrf1:2|64": [
+29,
+29
+],
+"HIST-new|mem pool=69|text|32": [
+4,
+4
+],
+"HIST-new|mem pool=69|text|64": [
+4,
+4
+],
+"HIST-new|mem pool=69|newest8|32": [
+4,
+4
+],
+"HIST-new|mem pool=69|newest8|64": [
+4,
+4
+],
+"HIST-new|mem pool=69|newest16|32": [
+4,
+4
+],
+"HIST-new|mem pool=69|newest16|64": [
+4,
+4
+],
+"HIST-new|mem pool=69|rrf1:1|32": [
+4,
+4
+],
+"HIST-new|mem pool=69|rrf1:1|64": [
+4,
+4
+],
+"HIST-new|mem pool=69|rrf2:1|32": [
+4,
+4
+],
+"HIST-new|mem pool=69|rrf2:1|64": [
+4,
+4
+],
+"HIST-new|mem pool=69|rrf1:2|32": [
+4,
+4
+],
+"HIST-new|mem pool=69|rrf1:2|64": [
+4,
+4
+],
+"HIST-new|mem pool=500|text|32": [
+4,
+4
+],
+"HIST-new|mem pool=500|text|64": [
+4,
+4
+],
+"HIST-new|mem pool=500|newest8|32": [
+4,
+4
+],
+"HIST-new|mem pool=500|newest8|64": [
+4,
+4
+],
+"HIST-new|mem pool=500|newest16|32": [
+4,
+4
+],
+"HIST-new|mem pool=500|newest16|64": [
+4,
+4
+],
+"HIST-new|mem pool=500|rrf1:1|32": [
+4,
+4
+],
+"HIST-new|mem pool=500|rrf1:1|64": [
+4,
+4
+],
+"HIST-new|mem pool=500|rrf2:1|32": [
+4,
+4
+],
+"HIST-new|mem pool=500|rrf2:1|64": [
+4,
+4
+],
+"HIST-new|mem pool=500|rrf1:2|32": [
+4,
+4
+],
+"HIST-new|mem pool=500|rrf1:2|64": [
+4,
+4
+],
+"HIST-new|mem pool=all|text|32": [
+4,
+4
+],
+"HIST-new|mem pool=all|text|64": [
+4,
+4
+],
+"HIST-new|mem pool=all|newest8|32": [
+4,
+4
+],
+"HIST-new|mem pool=all|newest8|64": [
+4,
+4
+],
+"HIST-new|mem pool=all|newest16|32": [
+4,
+4
+],
+"HIST-new|mem pool=all|newest16|64": [
+4,
+4
+],
+"HIST-new|mem pool=all|rrf1:1|32": [
+4,
+4
+],
+"HIST-new|mem pool=all|rrf1:1|64": [
+4,
+4
+],
+"HIST-new|mem pool=all|rrf2:1|32": [
+4,
+4
+],
+"HIST-new|mem pool=all|rrf2:1|64": [
+4,
+4
+],
+"HIST-new|mem pool=all|rrf1:2|32": [
+4,
+4
+],
+"HIST-new|mem pool=all|rrf1:2|64": [
+4,
+4
+],
+"HIST-new|pg index, topics+cards|text|32": [
+4,
+4
+],
+"HIST-new|pg index, topics+cards|text|64": [
+4,
+4
+],
+"HIST-new|pg index, topics+cards|newest8|32": [
+4,
+4
+],
+"HIST-new|pg index, topics+cards|newest8|64": [
+4,
+4
+],
+"HIST-new|pg index, topics+cards|newest16|32": [
+4,
+4
+],
+"HIST-new|pg index, topics+cards|newest16|64": [
+4,
+4
+],
+"HIST-new|pg index, topics+cards|rrf1:1|32": [
+4,
+4
+],
+"HIST-new|pg index, topics+cards|rrf1:1|64": [
+4,
+4
+],
+"HIST-new|pg index, topics+cards|rrf2:1|32": [
+4,
+4
+],
+"HIST-new|pg index, topics+cards|rrf2:1|64": [
+4,
+4
+],
+"HIST-new|pg index, topics+cards|rrf1:2|32": [
+4,
+4
+],
+"HIST-new|pg index, topics+cards|rrf1:2|64": [
+4,
+4
+],
+"HIST-new|mem, topics+cards|text|32": [
+4,
+4
+],
+"HIST-new|mem, topics+cards|text|64": [
+4,
+4
+],
+"HIST-new|mem, topics+cards|newest8|32": [
+4,
+4
+],
+"HIST-new|mem, topics+cards|newest8|64": [
+4,
+4
+],
+"HIST-new|mem, topics+cards|newest16|32": [
+4,
+4
+],
+"HIST-new|mem, topics+cards|newest16|64": [
+4,
+4
+],
+"HIST-new|mem, topics+cards|rrf1:1|32": [
+4,
+4
+],
+"HIST-new|mem, topics+cards|rrf1:1|64": [
+4,
+4
+],
+"HIST-new|mem, topics+cards|rrf2:1|32": [
+4,
+4
+],
+"HIST-new|mem, topics+cards|rrf2:1|64": [
+4,
+4
+],
+"HIST-new|mem, topics+cards|rrf1:2|32": [
+4,
+4
+],
+"HIST-new|mem, topics+cards|rrf1:2|64": [
+4,
+4
+],
+"HIST-same|mem pool=69|text|32": [
+21,
+21
+],
+"HIST-same|mem pool=69|text|64": [
+21,
+21
+],
+"HIST-same|mem pool=69|newest8|32": [
+21,
+21
+],
+"HIST-same|mem pool=69|newest8|64": [
+21,
+21
+],
+"HIST-same|mem pool=69|newest16|32": [
+21,
+21
+],
+"HIST-same|mem pool=69|newest16|64": [
+21,
+21
+],
+"HIST-same|mem pool=69|rrf1:1|32": [
+21,
+21
+],
+"HIST-same|mem pool=69|rrf1:1|64": [
+21,
+21
+],
+"HIST-same|mem pool=69|rrf2:1|32": [
+21,
+21
+],
+"HIST-same|mem pool=69|rrf2:1|64": [
+21,
+21
+],
+"HIST-same|mem pool=69|rrf1:2|32": [
+21,
+21
+],
+"HIST-same|mem pool=69|rrf1:2|64": [
+21,
+21
+],
+"HIST-same|mem pool=500|text|32": [
+21,
+21
+],
+"HIST-same|mem pool=500|text|64": [
+21,
+21
+],
+"HIST-same|mem pool=500|newest8|32": [
+21,
+21
+],
+"HIST-same|mem pool=500|newest8|64": [
+21,
+21
+],
+"HIST-same|mem pool=500|newest16|32": [
+21,
+21
+],
+"HIST-same|mem pool=500|newest16|64": [
+21,
+21
+],
+"HIST-same|mem pool=500|rrf1:1|32": [
+21,
+21
+],
+"HIST-same|mem pool=500|rrf1:1|64": [
+21,
+21
+],
+"HIST-same|mem pool=500|rrf2:1|32": [
+21,
+21
+],
+"HIST-same|mem pool=500|rrf2:1|64": [
+21,
+21
+],
+"HIST-same|mem pool=500|rrf1:2|32": [
+21,
+21
+],
+"HIST-same|mem pool=500|rrf1:2|64": [
+21,
+21
+],
+"HIST-same|mem pool=all|text|32": [
+21,
+21
+],
+"HIST-same|mem pool=all|text|64": [
+21,
+21
+],
+"HIST-same|mem pool=all|newest8|32": [
+21,
+21
+],
+"HIST-same|mem pool=all|newest8|64": [
+21,
+21
+],
+"HIST-same|mem pool=all|newest16|32": [
+21,
+21
+],
+"HIST-same|mem pool=all|newest16|64": [
+21,
+21
+],
+"HIST-same|mem pool=all|rrf1:1|32": [
+21,
+21
+],
+"HIST-same|mem pool=all|rrf1:1|64": [
+21,
+21
+],
+"HIST-same|mem pool=all|rrf2:1|32": [
+21,
+21
+],
+"HIST-same|mem pool=all|rrf2:1|64": [
+21,
+21
+],
+"HIST-same|mem pool=all|rrf1:2|32": [
+21,
+21
+],
+"HIST-same|mem pool=all|rrf1:2|64": [
+21,
+21
+],
+"HIST-same|pg index, topics+cards|text|32": [
+21,
+21
+],
+"HIST-same|pg index, topics+cards|text|64": [
+21,
+21
+],
+"HIST-same|pg index, topics+cards|newest8|32": [
+21,
+21
+],
+"HIST-same|pg index, topics+cards|newest8|64": [
+21,
+21
+],
+"HIST-same|pg index, topics+cards|newest16|32": [
+21,
+21
+],
+"HIST-same|pg index, topics+cards|newest16|64": [
+21,
+21
+],
+"HIST-same|pg index, topics+cards|rrf1:1|32": [
+21,
+21
+],
+"HIST-same|pg index, topics+cards|rrf1:1|64": [
+21,
+21
+],
+"HIST-same|pg index, topics+cards|rrf2:1|32": [
+21,
+21
+],
+"HIST-same|pg index, topics+cards|rrf2:1|64": [
+21,
+21
+],
+"HIST-same|pg index, topics+cards|rrf1:2|32": [
+21,
+21
+],
+"HIST-same|pg index, topics+cards|rrf1:2|64": [
+21,
+21
+],
+"HIST-same|mem, topics+cards|text|32": [
+21,
+21
+],
+"HIST-same|mem, topics+cards|text|64": [
+21,
+21
+],
+"HIST-same|mem, topics+cards|newest8|32": [
+21,
+21
+],
+"HIST-same|mem, topics+cards|newest8|64": [
+21,
+21
+],
+"HIST-same|mem, topics+cards|newest16|32": [
+21,
+21
+],
+"HIST-same|mem, topics+cards|newest16|64": [
+21,
+21
+],
+"HIST-same|mem, topics+cards|rrf1:1|32": [
+21,
+21
+],
+"HIST-same|mem, topics+cards|rrf1:1|64": [
+21,
+21
+],
+"HIST-same|mem, topics+cards|rrf2:1|32": [
+21,
+21
+],
+"HIST-same|mem, topics+cards|rrf2:1|64": [
+21,
+21
+],
+"HIST-same|mem, topics+cards|rrf1:2|32": [
+21,
+21
+],
+"HIST-same|mem, topics+cards|rrf1:2|64": [
+21,
+21
+]
+}
