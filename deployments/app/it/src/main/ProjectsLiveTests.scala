@@ -378,6 +378,56 @@ object ProjectsLiveTests extends TestSuite {
       }
     }
 
+    test(
+      "a split through the edge keeps every part at its artifact's label, believed no higher than the edge gave, and lowers the index so"
+    ) {
+      CommandRooms.commanding("projects_split", _ => Vector(atInternal)) {
+        (config, engine, commands) =>
+          val section = ArtifactKind(
+            MethodFixtures.kind("section"),
+            MethodFixtures.state("current"),
+            Vector.empty,
+            Set.empty,
+            Vector.empty
+          )
+          declared(
+            commands,
+            CommandFixtures.method(kinds =
+              Vector(MethodFixtures.change, MethodFixtures.note, section)
+            )
+          )
+          ran(commands, ann, desk, ToolName("project_new"), "project" -> "p")
+          keep(commands, desk, "a", "Lead.\n\n## Goal\n\nOne.\n\n## Reads\n\nTwo.")
+          val version = ran(commands, ann, desk, ToolName("project_show"), "key" -> "p/a") match {
+            case Right(CommandOutcome.Done(text)) =>
+              text.linesIterator.collectFirst {
+                case l if l.startsWith("version: ") => l.drop(9).toLong
+              }
+            case _ => None
+          }
+          // From the team, below the desk's member: the parts, the artifact and the index, whose
+          // next the split moves, are believed no higher than the team.
+          (
+            ran(
+              commands,
+              ann,
+              team,
+              ToolName("project_split"),
+              "artifact" -> "p/a",
+              "version" -> version.getOrElse(0L)
+            ).map(_.getClass),
+            artifactsKept(config, engine)
+          ) ==> (
+            Right(classOf[CommandOutcome.Done]),
+            Vector(
+              ("p", "internal", "outside"),
+              ("p/1", "internal", "outside"),
+              ("p/2", "internal", "outside"),
+              ("p/3", "internal", "outside")
+            )
+          )
+      }
+    }
     test("an edit through the edge keeps the body changed, answering the version it is kept at") {
       CommandRooms.commanding("projects_edit", _ => Vector(atInternal)) { (_, _, commands) =>
         declared(commands)
