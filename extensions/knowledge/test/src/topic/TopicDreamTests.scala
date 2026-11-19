@@ -202,7 +202,7 @@ object TopicDreamTests extends TestSuite {
 
     /** What the aside at the public label is believed at, when there is one. */
     def asideBelieved: Option[Integrity] =
-      ok(documents.keeper(Plugin, Terms).current(Aside.Key, Label.Public)).map(_.integrity)
+      ok(documents.keeper(Plugin, Terms).current(Aside.key, Label.Public)).map(_.integrity)
 
     /** The keys of the topics that refer to `r`. */
     def referring(r: Ref): Vector[String] =
@@ -1144,7 +1144,7 @@ object TopicDreamTests extends TestSuite {
       val card = DocumentVersionId.of(7L).getOrElse(throw new java.lang.AssertionError("7"))
       val _ = ok(
         keeper.write(
-          Aside.Key,
+          Aside.key,
           Label.Public,
           Integrity.Authority,
           Place.Everywhere,
@@ -1168,7 +1168,7 @@ object TopicDreamTests extends TestSuite {
       val aside = card.map(v => Aside.Item(Lineage.Tag.Card(v), Now.minusSeconds(3600)))
       val _ = ok(Aside.kept(keeper, Internal, aside, Now.minusSeconds(3600)))
       val line = runs.run(floor = Internal)
-      (card.size, line, runs.asked.size, ok(keeper.current(Aside.Key, Internal))) ==> (
+      (card.size, line, runs.asked.size, ok(keeper.current(Aside.key, Internal))) ==> (
         1,
         "topics: 0 written (0 opened), 0 withdrawn, 1 unchanged, 0 set aside, 0 left for the next run",
         0,

@@ -1,79 +1,24 @@
 package grit.knowledge.declassify
 
-import java.time.Instant
-
-import grit.core.document.{Declassified, DocText, DocumentKeeper}
+import grit.core.document.{Declassified, Document}
 import grit.core.id.DocKey
-import grit.core.place.Place
-import grit.core.store.{StoreError, Tx}
-import grit.core.visibility.Label
+import grit.knowledge.card.FloorList
 
 /** What a label's declassify runs withheld: each card version, under the policy and application
   * versions it was asked at, whose rewrite the check kept back or the model wrote nothing of, so
-  * no later run asks of it again at those versions. One document per label, at its floor, under
-  * [[Key]], holding no text a search matches and no rewrite's data
-  * ([[Declassified.Made.read]] reads none from it).
+  * no later run asks of it again at those versions. Kept under `declassify:withheld`, holding no
+  * rewrite's data ([[Declassified.Made.read]] reads none from it); an entry that does not read,
+  * such as one with no revision, is left out.
   */
-object Withheld {
+private[declassify] object Withheld
+    extends FloorList[Declassified.Made](DocKey.literal("declassify:withheld")) {
 
-  /** `declassify:withheld`. */
-  private[declassify] val Key: DocKey = DocKey.literal("declassify:withheld")
+  protected def encode(all: Vector[Declassified.Made]): ujson.Value =
+    ujson.Obj("withheld" -> ujson.Arr.from(all.map(_.written)))
 
-  /** A document is never blank; this one, read only by its data, holds no word. */
-  private val Text: DocText = DocText.literal("…")
-
-  /** Each entry withheld at `floor`, as [[Declassified.Made.read]] reads it (`None`: one that
-    * does not read, such as one with no revision); none when there is no such document, or its
-    * data holds no list.
-    */
-  def read(keeper: DocumentKeeper, floor: Label)(using
-      Tx^
-  ): Either[StoreError, Vector[Option[Declassified.Made]]] =
-    keeper
-      .current(Key, floor)
-      .map(
-        _.flatMap(_.data.objOpt.flatMap(_.get("withheld")).flatMap(_.arrOpt))
-          .fold(Vector.empty)(_.toVector.map(Declassified.Made.read))
-      )
-
-  /** `made` joined to what is withheld at its transaction's floor ([[Tx.floor]]), as [[kept]];
-    * an entry that does not read is dropped.
-    */
-  private[declassify] def joined(keeper: DocumentKeeper, made: Declassified.Made, at: Instant)(using
-      tx: Tx^
-  ): Either[StoreError, Kept.type] = {
-    val floor = Tx.floor(tx)
-    read(keeper, floor).flatMap(held =>
-      kept(keeper, floor, held.flatten.filterNot(_ == made) :+ made, at)
-    )
-  }
-
-  /** `withheld` as what is withheld at `floor`, written `at`, in no one room: withdrawn when it
-    * holds nothing. Believed at no more than the withholding it replaces
-    * ([[DocumentKeeper.replacing]]).
-    */
-  private[declassify] def kept(
-      keeper: DocumentKeeper,
-      floor: Label,
-      withheld: Vector[Declassified.Made],
-      at: Instant
-  )(using Tx^): Either[StoreError, Kept.type] =
-    if (withheld.isEmpty) keeper.withdraw(Key, floor, at).map(_ => Kept)
-    else
-      keeper
-        .current(Key, floor)
-        .map(DocumentKeeper.replacing)
-        .flatMap(
-          keeper.write(
-            Key,
-            floor,
-            _,
-            Place.Everywhere,
-            Text,
-            ujson.Obj("withheld" -> ujson.Arr.from(withheld.map(_.written))),
-            None,
-            at
-          )
-        )
-        .map(_ => Kept)
+  protected def decode(d: Document): Vector[Declassified.Made] =
+    d.data.objOpt
+      .flatMap(_.get("withheld"))
+      .flatMap(_.arrOpt)
+      .fold(Vector.empty)(_.toVector.flatMap(Declassified.Made.read))
 }

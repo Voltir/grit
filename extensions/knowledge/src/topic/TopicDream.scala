@@ -193,7 +193,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
             if (setAside.isEmpty) Vector.empty
             else
               moves.keep(TopicDream.SetAside, s.asked.reply.map(_ => setAside))(
-                (tags, keeper, at) => Aside.joined(keeper, tags, at)
+                (tags, keeper, at) => Aside.setAside(keeper, tags, at)
               ) match {
                 case Left(e) => Vector(("aside", MoveError.said(e)))
                 case Right(_) => Vector.empty

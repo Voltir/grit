@@ -202,7 +202,7 @@ object CardDeclassifyTests extends TestSuite {
         .keeper(Plugin, Terms)
         .newest(Int.MaxValue)(using TestTx.fake(Clearance.of(Floor)))
         .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
-        .filterNot(_.key == Withheld.Key)
+        .filterNot(_.key == Withheld.key)
         .flatMap(d => Declassified.Made.read(d.data).map(_.policy))
 
     /** The `version`th application to the card of `id`, a removal when `applied` is false. */
@@ -274,10 +274,18 @@ object CardDeclassifyTests extends TestSuite {
         .newest(Int.MaxValue)(using TestTx.fake(Clearance.of(Floor)))
         .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
       (
-        own.filterNot(_.key == Withheld.Key).map(_.integrity),
-        own.find(_.key == Withheld.Key).map(_.integrity)
+        own.filterNot(_.key == Withheld.key).map(_.integrity),
+        own.find(_.key == Withheld.key).map(_.integrity)
       )
     }
+
+    /** How many versions of the withholding at [[Floor]] were written. */
+    def withholdings: Int =
+      documents
+        .keeper(Plugin, Terms)
+        .versions(Withheld.key, Floor, Int.MaxValue)(using TestTx.fake(Clearance.of(Floor)))
+        .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
+        .size
 
     /** The plugin's current documents a run at [[Floor]] reads: each label and text. */
     def kept: Vector[(String, String)] =
@@ -285,7 +293,7 @@ object CardDeclassifyTests extends TestSuite {
         .keeper(Plugin, Terms)
         .newest(Int.MaxValue)(using TestTx.fake(Clearance.of(Floor)))
         .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
-        .filterNot(_.key == Withheld.Key)
+        .filterNot(_.key == Withheld.key)
         .map(d => (Label.written(d.label), DocText.value(d.text)))
 
     /** The plugin's own document `key`, holding `text` and `data`, written at [[Floor]] as an
@@ -311,7 +319,7 @@ object CardDeclassifyTests extends TestSuite {
     def withholding: Vector[ujson.Value] =
       documents
         .keeper(Plugin, Terms)
-        .current(Withheld.Key, Floor)(using TestTx.fake(Clearance.of(Floor)))
+        .current(Withheld.key, Floor)(using TestTx.fake(Clearance.of(Floor)))
         .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
         .flatMap(_.data.objOpt.flatMap(_.get("withheld")).flatMap(_.arrOpt))
         .fold(Vector.empty)(_.toVector)
@@ -495,6 +503,16 @@ object CardDeclassifyTests extends TestSuite {
       )
     }
 
+    test("a scan that forgets no withheld entry writes no version of the withholding") {
+      val runs = new Runs
+      val _ = runs.card("c1")
+      runs.policy(1)
+      runs.apply("c1", 1)
+      val _ = runs.run(leak = 0.5)
+      val first = runs.withholdings
+      val _ = runs.run(leak = 0.5)
+      (first, runs.withholdings) ==> (1, 1)
+    }
     test(
       "a rewrite whose card is gone, or whose application or policy is no longer current, is withdrawn in the run's scan"
     ) {
@@ -690,7 +708,7 @@ object CardDeclassifyTests extends TestSuite {
       )
       runs.own("knowledge:old", "The team meets.", unrevised)
       runs.own("stray", "Nothing a rewrite names.", ujson.Obj())
-      runs.own(DocKey.value(Withheld.Key), "…", ujson.Obj("withheld" -> ujson.Arr(unrevised)))
+      runs.own(DocKey.value(Withheld.key), "…", ujson.Obj("withheld" -> ujson.Arr(unrevised)))
       (runs.run(), runs.kept, runs.withholding) ==> (
         "declassified cards: 1 written, 0 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 2 withdrawn, 0 left for the next run",
         Vector(("internal", "The team meets offsite.")),

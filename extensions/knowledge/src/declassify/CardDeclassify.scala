@@ -147,7 +147,7 @@ object CardDeclassify {
       bench <- traverse(applying.flatten.map(_._2).distinct)(Declassifying.unbenched(keeper, _))
       current = inForce.map(_.made).toSet
       held <- Withheld.read(keeper, floor)
-      decided = held.flatten.toSet
+      decided = held.toSet
       cards = applied.flatten.map((d, a) => d.source -> (d, a)).toMap
       own <- rewrites(keeper)
       (standing, stale) = own.partition((_, made) =>
@@ -158,8 +158,8 @@ object CardDeclassify {
         )
       )
       withdrawn <- withdrawAll(keeper, stale.map(_._1), at)
-      kept = held.flatten.filter(current.contains)
-      _ <- if (kept.size == held.size) Right(Kept) else Withheld.kept(keeper, floor, kept, at)
+      kept = held.filter(current.contains)
+      _ <- Withheld.kept(keeper, floor, kept, at)
       done = standing.flatMap(_._2).toSet ++ kept
       due = inForce.filterNot(d => done.contains(d.made))
     } yield Scanned(due.take(most), withdrawn, (due.size - most).max(0), bench.flatten)
@@ -173,7 +173,7 @@ object CardDeclassify {
       using Tx^
   ): Either[StoreError, Withdrew] =
     for {
-      _ <- Withheld.joined(keeper, made, at)
+      _ <- Withheld.joined(keeper, held => held.filterNot(_ == made) :+ made, at)
       own <- rewrites(keeper)
       n <- withdrawAll(
         keeper,
@@ -188,7 +188,7 @@ object CardDeclassify {
   ): Either[StoreError, Vector[(Document, Option[Declassified.Made])]] =
     keeper
       .newest(Int.MaxValue)
-      .map(_.filterNot(_.key == Withheld.Key).map(d => (d, Declassified.Made.read(d.data))))
+      .map(_.filterNot(_.key == Withheld.key).map(d => (d, Declassified.Made.read(d.data))))
 
   /** `docs` withdrawn `at`: how many versions that withdrew. */
   private def withdrawAll(keeper: DocumentKeeper, docs: Vector[Document], at: Instant)(using

@@ -256,7 +256,7 @@ private[topic] object TopicScan {
     keeper.newest(Int.MaxValue).flatMap { (documents: Vector[Document]) =>
       val read: Vector[(Document, Either[Topic.Unread, (TopicKey, TopicWrite.Held)])] =
         documents
-          .filter(d => d.label == floor && d.key != Aside.Key)
+          .filter(d => d.label == floor && d.key != Aside.key)
           .map(d =>
             d -> TopicKey
               .read(d.key)
