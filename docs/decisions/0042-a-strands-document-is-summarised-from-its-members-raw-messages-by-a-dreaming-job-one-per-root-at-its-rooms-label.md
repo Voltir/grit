@@ -54,7 +54,8 @@ Decision:
 - **Summaries are infrequent**: at most once a run for a strand whose member set changed and
   passed the run's floor, never per heard message; an unchanged member set asks nothing.
 - **Members are read as raw messages until they age out**; a strand whose members' entries are
-  purged loses its document. Nothing re-links strands: membership stays the stitch's.
+  purged loses its document. Nothing re-links strands: a strand is stitched, a thread, or a run
+  its scan cuts ([ADR 0065](0065-a-rooms-discussions-are-cut-into-strands-by-code-each-night-and-a-topic-is-a-subject-or-one-meeting.md)).
 
 Consequences:
 

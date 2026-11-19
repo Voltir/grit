@@ -122,8 +122,12 @@ directory is reached.
 
 ## A topics run
 
-`TopicDream` scans its topics, the strands of rooms at its floor spoken in within `recent`, and
-the cards changed within `cardRecent` (`TopicParams.SeedReach` on a night up to its
+`TopicDream` scans its topics, the strands of rooms at its floor spoken in within `recent`
+(`StrandShelf.units`: each legacy stitched strand, each thread under a channel's top level whole,
+opening with the message it hangs under, and each run `TopicParams.cut` makes of a channel's top
+level, offered once it has settled and cut from its true start whatever the window, so `recent`
+is at least a day and the cut's settle; [ADR 0065](../../docs/decisions/0065-a-rooms-discussions-are-cut-into-strands-by-code-each-night-and-a-topic-is-a-subject-or-one-meeting.md)),
+at most `TopicParams.sorts`, and the cards changed within `cardRecent` (`TopicParams.SeedReach` on a night up to its
 `seedUntil`). It withdraws from a topic each passage naming a strand whose room is at another
 label than its floor now, and each dated more than `keepFor` (`TopicParams.KeepFor` unless its
 schedule says) before its day, the topic itself when none is left. A passage outlives the
@@ -135,21 +139,29 @@ it); pairs each card a strand it takes up links (`TopicScan.Linked`, read whatev
 whether it was set aside) with that strand, to go wherever the strand goes, the aside included,
 never sorted; and sorts the others (`Dreaming.sort`, `sort-{i}`, a classifier's judgment each,
 no model ask), but a directory's cards and those kept below its floor, which attach only by ref
-or a strand's link: at most `perRun` strands, then `TopicScan.Cards` cards, past those already
-placed. Each topic is shown by its text's head within `TopicDream.SortChars` (its lead, then the
+or a strand's link: at most `sorts` strands, then `TopicScan.Cards` cards, past those already
+placed. A run is told apart by its first message (`Strand.Id`) and has no ref: settled, it never
+grows, so nothing attaches to it by reference; a thread grown since attaches to its topic. Each topic is shown by its text's head within `TopicDream.SortChars` (its lead, then the
 head of its newest passage), cut further only if the request would pass the classifier's limit
 (`Request.MostChars`).
 
-A strand's sort is shown, chosen by ids alone, the topics attached to by ref, those it shares
+A topic is a subject or one meeting, fixed when it opens (`Topic.Kind`); a meeting's head
+(`Meeting`: proposed, planned or held, its day and start, who) is its text's first line, refined
+by each write's reply (`Meeting.refined`). A strand's sort is shown, chosen by ids alone, the
+topics attached to by ref, the meetings near its day (`Scanned.meetingsNear`: dated from 2 days
+before to 14 after, or undated with a passage within 14 days; at most 8), those it shares
 something with (`TopicScan.Scanned.near`: written from the same strand, holding a card it links,
 or written from a strand of its room; at most `TopicDream.Structural`) and the
 `TopicDream.Newest` newest; then the step fills it from every topic of the floor by the documents'
 index over their whole text, to `TopicDream.Fill` in all, never past `Sorting.Chosen`. A short
 strand (under `TopicDream.ShortChars` characters) is shown none for being newest, and is filled
-with at most `TopicDream.ShortFill`. It is one choice over those, a new one, or none
-(`TopicDream.sortDiscussion`): it joins the topic chosen at `TopicDream.TopicAt` or more, opens
-a topic keyed by the strand alone when `new` is chosen, and is otherwise set aside, counted
-unsure when a topic was chosen below the mark. A card is a yes or no for each of the 8 topics its
+with at most `TopicDream.ShortFill`, the topics opened earlier that night among them. It is one
+choice over those, `new_topic`, `new_meeting` or `aside` (`TopicDream.sortDiscussion`), which
+stands whatever its probability: it joins the topic chosen, or is set aside; a new one opens a
+topic of that kind keyed by the strand (`TopicKey.of`), written and kept at once (`open-{i}`,
+`keep-open-{i}`), so a later strand may join it. Opens take at most half of `perRun`, at least
+one, and joins the writes they leave; a strand past the opens is left for the next run, not set
+aside, and counted in the reply. A card is a yes or no for each of the 8 topics its
 words match best (`TopicDream.sortCard`); it joins the likeliest at `TopicDream.CardAt` or more,
 and no card alone opens a topic; with no topic to sort among, its cards are left for a later
 run. Those placed in none are set aside (`aside`), in a document of its floor under
