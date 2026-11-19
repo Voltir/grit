@@ -43,6 +43,27 @@ object ReorderTests extends TestSuite {
         true
       )
     }
+    test("a keep that re-spreads its siblings answers the version of the artifact it kept") {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      Vector("a", "b", "c", "d", "e").foreach(kept(projects, store, _, "note", "Words."))
+      rankedAt(store, "p/5", "z" * 32)
+      val answer = done(
+        ask(
+          projects,
+          store,
+          "project_keep",
+          "project" -> "p",
+          "handle" -> "f",
+          "kind" -> "note",
+          "title" -> "F",
+          "body" -> "More words."
+        )
+      )
+      answer ==> ("Kept p/6 f (note, open). Re-ranked 5 siblings to make room. " +
+        s"Now at version ${versionOf(projects, store, "p/6")}.")
+    }
     test("a reorder with room gives the moved artifact alone a rank between its new neighbours") {
       val (projects, store) = three()
       val versions = Vector("p/1", "p/2").map(versionOf(projects, store, _))
