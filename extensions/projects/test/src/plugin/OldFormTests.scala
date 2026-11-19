@@ -218,8 +218,10 @@ object OldFormTests extends TestSuite {
           .fold(e => throw new java.lang.AssertionError(e.toString), _ => ())
       }
       val leftOver = CommandOutcome.Refused(
-        "project p holds artifacts of the old form, keyed by name, labelled above the project's " +
-          "index: no re-key can number them"
+        "project p was re-keyed, but 1 artifact of the old form is kept above its index, where " +
+          "the re-key could not read it: p/late (kept [level: public, in: {trial}]). No command " +
+          "can number it, since that would write the index from above it. Use the project from " +
+          "a room at its index's label ([level: public]), which does not read it."
       )
       (
         high(projects, store, "project_show", "key" -> "p/1"),

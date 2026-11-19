@@ -1074,8 +1074,18 @@ private[plugin] final class ProjectCommands(
             indexOf(own.documents, p).flatMap(index =>
               Left(
                 Stop.Refused(
-                  if (index.exists(ArtifactJson.nextOf(_).exists(_.isDefined))) LeftOver(p)
-                  else OldForm(p)
+                  index
+                    .filter(ArtifactJson.nextOf(_).exists(_.isDefined))
+                    .fold(OldForm(p))(i =>
+                      LeftOver(
+                        p,
+                        i,
+                        documents.filter(d =>
+                          ArtifactJson.isOldForm(d) &&
+                            DocKey.value(d.key).startsWith(s"${ProjectKey.value(p)}/")
+                        )
+                      )
+                    )
                 )
               )
             )
@@ -1246,7 +1256,7 @@ private[plugin] final class ProjectCommands(
       documents <- stored(own.referring(holding, Projects.Terms.bound))
       (legacy, now) = documents.partition(ArtifactJson.isOldForm)
       _ <- (next, legacy.isEmpty, now.isEmpty) match {
-        case (Some(_), false, _) => Left(Stop.Refused(LeftOver(project)))
+        case (Some(_), false, _) => Left(Stop.Refused(LeftOver(project, index, legacy)))
         case (None, _, false) =>
           Left(Stop.Refused(s"project $p is in the old form but holds artifacts with ids too"))
         case _ => Right(())
@@ -2624,12 +2634,27 @@ private[plugin] object ProjectCommands {
   /** 100,000: the most characters `project_brief` is asked to give. */
   private val BriefMost: Int = 100_000
 
-  /** Why project `project`, re-keyed, is refused a command to a reader of artifacts of the old
-    * form labelled above its index, which no re-key can number without writing down.
+  /** 5: the most artifacts [[LeftOver]] names. */
+  private val LeftOverMost: Int = 5
+
+  /** Why project `project`, re-keyed, is refused a command to a reader of `left`, artifacts of
+    * the old form labelled above its `index`, which no re-key can number without writing down:
+    * the first [[LeftOverMost]] of them named with their labels, and the room that works.
     */
-  private def LeftOver(project: ProjectKey): String =
-    s"project ${ProjectKey.value(project)} holds artifacts of the old form, keyed by name, " +
-      "labelled above the project's index: no re-key can number them"
+  private def LeftOver(project: ProjectKey, index: Document, left: Vector[Document]): String = {
+    val named = left
+      .take(LeftOverMost)
+      .map(d => s"${DocKey.value(d.key)} (kept ${Label.shown(d.label)})")
+      .mkString(", ")
+    val more = if (left.size > LeftOverMost) s" and ${left.size - LeftOverMost} more" else ""
+    val (them, it) =
+      if (left.size == 1) ("1 artifact", "it") else (s"${left.size} artifacts", "them")
+    s"project ${ProjectKey.value(project)} was re-keyed, but $them of the old form " +
+      s"${if (left.size == 1) "is" else "are"} kept above its index, where the re-key could " +
+      s"not read $it: $named$more. No command can number $it, since that would write the " +
+      s"index from above it. Use the project from a room at its index's label " +
+      s"(${Label.shown(index.label)}), which does not read $it."
+  }
 
   /** Why project `project`, in the old form (ADR 0063), is refused a command. */
   private def OldForm(project: ProjectKey): String =
@@ -2730,7 +2755,8 @@ private[plugin] object ProjectCommands {
       holding <- refuse(ArtifactJson.holding(project))
       documents <- stored(own.referring(holding, Projects.Terms.bound))
       _ <-
-        if (documents.exists(ArtifactJson.isOldForm)) Left(Stop.Refused(LeftOver(project)))
+        if (documents.exists(ArtifactJson.isOldForm))
+          Left(Stop.Refused(LeftOver(project, index, documents.filter(ArtifactJson.isOldForm))))
         else Right(())
       artifacts <- refuse(Traversal.sequence(documents.map(d => readable(d).map(d -> _))))
     } yield Loaded(project, index, pin, next, artifacts)
