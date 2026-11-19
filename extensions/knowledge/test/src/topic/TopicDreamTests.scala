@@ -1070,6 +1070,15 @@ object TopicDreamTests extends TestSuite {
         ) ==> Vector((true, false, false), (false, true, false))
     }
 
+    test("a write reply with call markup it cannot read keeps nothing and is named not written") {
+      val w = new StrandWorld
+      val a = strand(w, "C1", "the deploy pipeline is flaky")
+      val runs = new Runs(w)
+      val reply =
+        runs.run(sort = everyNew, write = _ => wrote("A lead.<parameter name=\"x\">", Passage))
+      (reply.contains(s"not written: ${key(a)}"), runs.kept) ==> (true, Vector())
+    }
+
     test("a meeting's second write keeps its head line once, though its lead repeats it") {
       val w = new StrandWorld
       val a = strand(w, "C1", "a call on the budget, monday or tuesday?")

@@ -436,5 +436,36 @@ object TopicCodecTests extends TestSuite {
       (TopicParams.read(stored).left.map(_.contains("hold merges")), TopicParams.Merges) ==>
         (Left(true), 8)
     }
+
+    test(
+      "a write reply whose passage holds the rest of its call as markup reads the passage and the meeting it carried"
+    ) {
+      // As a provider parsed a model's call: `meeting` given inside `passage`, after its close.
+      def leaked(meeting: String) = ujson.Obj(
+        "lead" -> "Meetings with an outside party.",
+        "passage" -> s"Nick suggested inviting Emily.</passage>\n<parameter name=\"meeting\">$meeting",
+        "meeting" -> ujson.Null
+      )
+      val who = """{"state": "proposed", "day": null, "start": null, "who": ["Ana", "Emily"]}"""
+      (Wrote.read(leaked(who)), Wrote.read(leaked("null"))) ==> (
+        Right(
+          Wrote(
+            "Meetings with an outside party.",
+            "Nick suggested inviting Emily.",
+            Some(ujson.read(who))
+          )
+        ),
+        Right(Wrote("Meetings with an outside party.", "Nick suggested inviting Emily.", None))
+      )
+    }
+
+    test("a write reply with call markup it cannot read is refused, never kept as prose") {
+      val stray = ujson.Obj(
+        "lead" -> "A lead.<parameter name=\"passage\">",
+        "passage" -> "A passage.",
+        "meeting" -> ujson.Null
+      )
+      assert(Wrote.read(stray).isLeft)
+    }
   }
 }

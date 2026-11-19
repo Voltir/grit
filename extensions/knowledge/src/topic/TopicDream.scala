@@ -52,7 +52,8 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
   // and a topic it opens is written at once (`open-{i}`, `keep-open-{i}`).
   // 9: a legacy Slack conversation no stitched strand holds is offered whole, as a thread is.
   // 10: a meeting's lead drops a line repeating its head; an open's write ask is told its topic
-  // is new; an undated meeting is never pinned (its scan's `meetings` hold no `newest`).
+  // is new; an undated meeting is never pinned (its scan's `meetings` hold no `newest`); a write
+  // reply's call markup is read or refused.
   val version: Int = 10
 
   def write(params: TopicParams): ujson.Value = TopicParams.write(params)
@@ -784,11 +785,59 @@ private[topic] final case class Wrote(lead: String, passage: String, meeting: Op
     extends caps.Pure
 
 private[topic] object Wrote {
+
+  /** A reply [[TopicDream]]'s write ask gave, or why not. A provider may hand back the rest of
+    * a model's call as markup inside a field (`…</passage>\n<parameter name="meeting">{…}`):
+    * the field is read up to its close and `meeting` from what follows; a field with markup
+    * read no other way is refused, never kept as prose.
+    */
   def read(v: ujson.Value): Either[String, Wrote] =
-    (for {
-      o <- v.objOpt
-      lead <- o.get("lead").flatMap(_.strOpt)
-      passage <- o.get("passage").flatMap(_.strOpt)
-    } yield Wrote(lead, passage, o.get("meeting").filterNot(_.isNull)))
-      .toRight("a reply holds `lead` and `passage`, each a string")
+    for {
+      o <- v.objOpt.toRight("a reply is no object")
+      fields <- (for {
+        lead <- o.get("lead").flatMap(_.strOpt)
+        passage <- o.get("passage").flatMap(_.strOpt)
+      } yield (lead, passage)).toRight("a reply holds `lead` and `passage`, each a string")
+      (lead, leadRest) = closed("lead", fields._1)
+      (passage, passageRest) = closed("passage", fields._2)
+      rest = (leadRest + passageRest).trim
+      carried = Parameter.findAllMatchIn(rest).map(m => m.group(1) -> m.group(2).trim).toMap
+      _ <- Either.cond(
+        Parameter.replaceAllIn(rest, "").trim.isEmpty && carried.keySet.subsetOf(Set("meeting")),
+        (),
+        s"a reply's fields hold call markup: ${rest.take(80)}"
+      )
+      inside <- carried.get("meeting") match {
+        case None => Right(None)
+        case Some(t) =>
+          scala.util
+            .Try(ujson.read(t))
+            .toOption
+            .toRight(s"a reply's carried meeting is not JSON: ${t.take(80)}")
+            .map(Some(_))
+      }
+      _ <- Either.cond(
+        !Markup.findFirstIn(lead + passage).isDefined,
+        (),
+        "a reply's fields hold call markup"
+      )
+    } yield Wrote(
+      lead,
+      passage,
+      o.get("meeting").filterNot(_.isNull).orElse(inside.filterNot(_.isNull))
+    )
+
+  /** `text` up to its own `</name>` close, and what follows it; all of it and nothing when none. */
+  private def closed(name: String, text: String): (String, String) = {
+    val close = s"</$name>"
+    text.indexOf(close) match {
+      case -1 => (text, "")
+      case i => (text.take(i).trim, text.drop(i + close.length))
+    }
+  }
+
+  // `<parameter name="x">value`, up to the next parameter, its close, or the end.
+  private val Parameter =
+    """(?s)<parameter name="(\w+)">(.*?)(?:</parameter>|(?=<parameter name=)|\z)""".r
+  private val Markup = """</?(?:lead|passage|meeting|parameter)\b""".r
 }
