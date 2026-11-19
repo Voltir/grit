@@ -117,7 +117,7 @@ final class SqlStitchStore extends StitchStore {
          |SELECT e.conversation_id
          |  FROM grit.entries e
          |  JOIN grit.conversations c ON c.id = e.conversation_id
-         | WHERE c.origin ->> 'kind' IN ('room', 'thread')
+         | WHERE c.origin ->> 'kind' IN ('room', 'thread', 'slack')
          |   AND e.created_at >= ? AND e.created_at < ?
          |   AND $Spoken AND ${SqlClearance.entry("e")}
          | GROUP BY e.conversation_id

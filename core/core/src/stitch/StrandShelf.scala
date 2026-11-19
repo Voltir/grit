@@ -35,7 +35,9 @@ trait StrandShelf {
   def links(seen: Strand.Digested)(using Tx^): Either[StoreError, Vector[Href]]
 
   /** The strands at the floor a run places, oldest touched first: [[atFloor]]'s; each thread
-    * under a channel's top level spoken in within the range, whole, as it stood at `until`; and
+    * under a channel's top level, and each legacy Slack conversation no stitched strand holds,
+    * spoken in within the range, whole, as it stood at `until` (one read of each such
+    * conversation's own messages, so as many reads as conversations spoken in); and
     * each run `cut` makes of a channel's top level whose last message falls in the range and
     * that is offered by `until`, cut from its true start, whatever the range: a chain of
     * messages is read back at most [[StrandShelf.ReadBack]] days (or gaps, when longer), and
@@ -162,11 +164,18 @@ object StrandShelf {
         tx: Tx^
     ): Either[StoreError, Vector[Strand.Digested]] =
       for {
-        stitched <- atFloor(from, until)
+        linked <- touched(from, until)
+        stitched = linked.filter(_.roomLabel == Tx.floor(tx))
         rooms <- stitches.roomsSpokenIn(from, until)
         spoken <- each(rooms)(conversations.get)
         threads <- of(
-          spoken.flatten.collect { case c if c.origin.asking.nonEmpty => c.id },
+          spoken.flatten.collect {
+            case c if c.origin.asking.nonEmpty => c.id
+            // A legacy conversation is read alone only when no stitched strand holds it.
+            case c @ Conversation(_, Origin.Slack(_, _, _), _, _, _)
+                if !linked.exists(_.members.contains(c.id)) =>
+              c.id
+          },
           until
         )
         runs <- each(spoken.flatten.filter(_.origin match {

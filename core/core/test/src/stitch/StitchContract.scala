@@ -142,7 +142,7 @@ abstract class StitchContract extends TestSuite {
     }
 
     test(
-      "roomsSpokenIn names each top level and thread a message, reply or post was said in once, by first said"
+      "roomsSpokenIn names each top level, thread and legacy Slack conversation a message, reply or post was said in once, by first said"
     ) {
       val top = conversation(Origin.Room("T", "in-rooms"))
       val under = conversation(Origin.Thread("T", "in-rooms", "1.0"))
@@ -158,7 +158,7 @@ abstract class StitchContract extends TestSuite {
       def spoken(from: Long, until: Long) =
         right(transaction(stitches.roomsSpokenIn(At.plusSeconds(from), At.plusSeconds(until))))
           .filter(ours.contains)
-      (spoken(0, 3_600), spoken(16, 40)) ==> (Vector(top, under), Vector(top))
+      (spoken(0, 3_600), spoken(16, 40)) ==> (Vector(top, under, legacy), Vector(top, legacy))
       Vector((top, "2.0"), (under, "4.0"), (top, "1.0"), (under, "3.0"), (top, "9.0")).map((c, s) =>
         right(transaction(stitches.asked(c, SourceId(s)))).map(_.entry)
       ) ==> Vector(Some(heard), Some(asked), None, None, None)

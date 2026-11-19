@@ -68,7 +68,7 @@ final class InMemoryStitchStore(entries: InMemoryEntryStore, origin: Conversatio
       inRange(from, until)
         .filter(e =>
           message(e) && (origin(e.conversationId) match {
-            case Origin.Room(_, _) | Origin.Thread(_, _, _) => true
+            case Origin.Room(_, _) | Origin.Thread(_, _, _) | Origin.Slack(_, _, _) => true
             case _ => false
           })
         )

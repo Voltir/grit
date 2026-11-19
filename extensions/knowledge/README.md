@@ -123,8 +123,9 @@ directory is reached.
 ## A topics run
 
 `TopicDream` scans its topics, the strands of rooms at its floor spoken in within `recent`
-(`StrandShelf.units`: each legacy stitched strand, each thread under a channel's top level whole,
-opening with the message it hangs under, and each run `TopicParams.cut` makes of a channel's top
+(`StrandShelf.units`: each legacy stitched strand, each legacy Slack conversation no stitch holds,
+whole, each thread under a channel's top level whole, opening with the message it hangs under,
+and each run `TopicParams.cut` makes of a channel's top
 level, offered once it has settled and cut from its true start whatever window reads it, so `recent`
 is at least a day and the cut's settle; [ADR 0065](../../docs/decisions/0065-a-rooms-discussions-are-cut-into-strands-by-code-each-night-and-a-topic-is-a-subject-or-one-meeting.md)),
 at most `TopicParams.sorts`, and the cards changed within `cardRecent` (`TopicParams.SeedReach` on a night up to its

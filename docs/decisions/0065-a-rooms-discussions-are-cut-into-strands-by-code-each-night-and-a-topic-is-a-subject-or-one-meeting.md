@@ -16,8 +16,9 @@ out of a job's code; and a mark under which a chosen topic is set aside.
 
 Decision:
 
-- **Units are cut by code each night** (`StrandShelf.units`): a legacy stitched strand; a thread
-  under a channel's top level, whole, opening with the message it hangs under; or a run of a
+- **Units are cut by code each night** (`StrandShelf.units`): a legacy stitched strand; a legacy
+  Slack conversation no stitch holds, whole; a thread under a channel's top level, whole,
+  opening with the message it hangs under; or a run of a
   channel's top-level messages less than `Strand.Cut.gap` apart, of at most `most`, offered once
   it has settled. A run is cut from its true start whatever window reads it, is told apart
   by its first message (`Strand.Id`), and has no ref: settled, it never grows.

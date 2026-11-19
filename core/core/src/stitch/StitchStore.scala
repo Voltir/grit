@@ -44,8 +44,9 @@ trait StitchStore {
     */
   def openings(conversations: Vector[ConversationId])(using Tx^): Either[StoreError, Vector[Said]]
 
-  /** Each channel's top level and thread under it ([[grit.core.store.Origin.Room]],
-    * [[grit.core.store.Origin.Thread]]) with a message, reply or post said from `from` until
+  /** Each channel's top level, thread under it, and legacy Slack conversation
+    * ([[grit.core.store.Origin.Room]], [[grit.core.store.Origin.Thread]],
+    * [[grit.core.store.Origin.Slack]]) with a message, reply or post said from `from` until
     * before `until` that its transaction reads, each once, by its first such message; a closing
     * or a draft alone names none.
     */

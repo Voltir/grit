@@ -197,6 +197,28 @@ object StrandShelfTests extends TestSuite {
         Vector((c1.id, 2, at(0)), (c1.id, 1, at(1200)))
     }
 
+    test("a legacy conversation no stitch follows is one unit, whole") {
+      val w = new StrandWorld
+      val lone = w.thread("C1", "1.0")
+      w.say(lone, "who can review the deploy script?", 60)
+      w.say(lone, "I can, after lunch", 90, posted = true)
+      given Tx = TestTx.fake
+      right(w.shelf.units(at(0), at(600), Strand.Cut.Default)).map(u =>
+        (u.root, u.members, u.said, u.span)
+      ) ==> Vector((lone.id, Vector(lone.id), 2, Strand.Span.Whole))
+    }
+
+    test("a legacy conversation a stitch links is offered once, in its strand") {
+      val w = new StrandWorld
+      val root = w.thread("C1", "1.0")
+      w.say(root, "the release is Friday", 60)
+      val follower = w.thread("C1", "2.0")
+      w.follow(w.say(follower, "Friday works for QA", 120), root)
+      given Tx = TestTx.fake
+      right(w.shelf.units(at(0), at(600), Strand.Cut.Default)).map(u => (u.root, u.members)) ==>
+        Vector((root.id, Vector(root.id, follower.id)))
+    }
+
     test("a thread a stitch links a legacy thread to is one unit") {
       val w = new StrandWorld
       val t = w.under("C1", "1.0")

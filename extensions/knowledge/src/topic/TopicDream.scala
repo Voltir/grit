@@ -50,7 +50,8 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
   // 8: a room's top level is cut into runs and its threads read whole (its params `cut` and
   // `sorts`, its scan `meetings`); a sort chooses new_topic, new_meeting or aside with no mark,
   // and a topic it opens is written at once (`open-{i}`, `keep-open-{i}`).
-  val version: Int = 8
+  // 9: a legacy Slack conversation no stitched strand holds is offered whole, as a thread is.
+  val version: Int = 9
 
   def write(params: TopicParams): ujson.Value = TopicParams.write(params)
 
