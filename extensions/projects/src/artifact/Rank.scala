@@ -71,7 +71,7 @@ object Rank {
   /** `k` ranks, ascending, evenly spread over the ranks of the shortest length that holds `k`;
     * none when `k` is not above 0.
     */
-  private def spread(k: Int): Vector[Rank] =
+  private[artifact] def spread(k: Int): Vector[Rank] =
     if (k < 1) Vector.empty
     else {
       val length = Iterator.from(1).find(l => BigInt(26).pow(l) > k).getOrElse(1)

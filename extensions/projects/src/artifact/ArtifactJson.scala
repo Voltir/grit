@@ -184,9 +184,29 @@ object ArtifactJson {
           case other => Left(s"no artifact is named ${other.value}")
         }
       artifacts <- sequence(written.zip(named).map { case (a, (handle, key)) =>
-        headOf(a).flatMap(fromHead(key, Some(handle), Rank.Middle, _, a, reference))
+        oldFormOf(key, Some(handle), Rank.Middle, a, reference)
       })
     } yield artifacts
+
+  /** Whether `document` is an artifact of the old form, before ids: its head holds no id. */
+  def isOldForm(document: Document): Boolean =
+    headOf(document.data).exists(!_.contains(IdField))
+
+  /** The artifact of the old form whose head, holding no id, and stored body `data` holds, given
+    * `key`, `handle` and `rank`, each reference read by `reference`; or why not: a head with an
+    * id, or as [[fromHead]] refuses.
+    */
+  private[artifact] def oldFormOf(
+      key: ArtifactKey,
+      handle: Option[Handle],
+      rank: Rank,
+      data: ujson.Value,
+      reference: String -> Either[String, ArtifactKey]
+  ): Either[String, Artifact] =
+    headOf(data).flatMap { fields =>
+      if (fields.contains(IdField)) Left("it has an id: it is not of the old form")
+      else fromHead(key, handle, rank, fields, data, reference)
+    }
 
   /** `document` as [[write]] wrote it, as an artifact, or why not. */
   private[artifact] def read(document: Document): Either[String, Artifact] =
