@@ -2,7 +2,7 @@ package grit.projects.render
 
 import scala.util.Random
 
-import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
+import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project, Rank}
 import grit.projects.method.{
   ArtifactKind,
   Declared,
@@ -45,7 +45,9 @@ object ProjectGen {
   private val hazards: Vector[String] = Vector("\\", "`", "[", "]", "<", "!", "*", "_")
   private val words: Vector[String] = Vector("plan", "the", "cache", "zoë", "x2", "ends")
 
-  /** The project of `seed`: one to six artifacts, a forest by parent, each citing others. */
+  /** The project of `seed`: one to six artifacts, a forest by parent, each citing others, of
+    * ranks that sometimes tie.
+    */
   def project(seed: Int): Project = {
     val r = new Random(seed)
     val key = right(ProjectKey.of(s"p${r.nextInt(100)}"))
@@ -60,6 +62,8 @@ object ProjectGen {
         right(StateName.of(pick(r, Vector("open", "building", "done")))),
         line(r),
         Option.when(i > 0 && r.nextBoolean())(keys(r.nextInt(i))),
+        // Of a few ranks, so that siblings sometimes tie.
+        right(Rank.of(pick(r, Vector("n", "c", "zb")))),
         others.filter(_ => r.nextInt(3) == 0),
         Option.when(r.nextBoolean())(line(r))
       )

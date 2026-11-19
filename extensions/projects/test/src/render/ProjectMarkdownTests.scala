@@ -1,7 +1,7 @@
 package grit.projects.render
 
 import grit.core.id.DocumentVersionId
-import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
+import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project, Rank}
 import grit.projects.method.MethodFixtures
 import grit.projects.name.{ArtifactKey, KindName, MethodName, Pin, ProjectKey, StateName}
 
@@ -31,6 +31,7 @@ object ProjectMarkdownTests extends TestSuite {
         right(StateName.of("open")),
         title,
         parent.map(key),
+        Rank.Middle,
         Vector.empty,
         None
       ),
@@ -123,8 +124,8 @@ object ProjectMarkdownTests extends TestSuite {
     test("an exported file, which holds no version, is not read as shown") {
       val (_, text) = ProjectMarkdown.file(artifact("a", "A", "Body."))
       ProjectMarkdown.readShown(text) ==> Left(
-        "front matter names key, handle, kind, state, title, parent, cites, by, " +
-          "not key, handle, kind, state, title, parent, cites, by, version"
+        "front matter names key, handle, kind, state, title, parent, rank, cites, by, " +
+          "not key, handle, kind, state, title, parent, rank, cites, by, version"
       )
     }
 

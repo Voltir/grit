@@ -11,6 +11,7 @@ final case class ArtifactHead(
     state: StateName,
     title: String,
     parent: Option[ArtifactKey],
+    rank: Rank,
     cites: Vector[ArtifactKey],
     by: Option[String]
 ) extends caps.Pure {
@@ -19,6 +20,12 @@ final case class ArtifactHead(
     * named wherever it is shown.
     */
   def called: String = key.value + handle.fold("")(n => s" ${Handle.value(n)}")
+}
+
+object ArtifactHead {
+
+  /** The order siblings are listed in: by rank, ties by number. */
+  val ranked: Ordering[ArtifactHead] = Ordering.by(h => (h.rank, h.key.number))
 }
 
 /** An artifact: its head and its body. */

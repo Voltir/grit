@@ -49,6 +49,7 @@ object ArtifactJsonTests extends TestSuite {
       right(StateName.of("open")),
       "A title",
       None,
+      Rank.Middle,
       cites,
       Some("nick")
     )
@@ -128,7 +129,7 @@ object ArtifactJsonTests extends TestSuite {
       val written = ArtifactJson.write(a)
       assert(
         written.map(_ => ()) == Left(
-          "its head is 5119 bytes, over 4096: shorten its title or cite fewer"
+          "its head is 5130 bytes, over 4096: shorten its title or cite fewer"
         )
       )
     }
@@ -186,7 +187,7 @@ object ArtifactJsonTests extends TestSuite {
       assert(
         rendered ==
           """{"head":{"id":"p/1","handle":"a","kind":"note","state":"open","title":"A title",""" +
-          """"parent":"p/32","cites":["p/2"],"by":"nick"},"body":{"v":1,"notes":["p/2"],""" +
+          """"parent":"p/32","rank":"n","cites":["p/2"],"by":"nick"},"body":{"v":1,"notes":["p/2"],""" +
           """"blocks":""" +
           """[{"type":"para","text":[{"t":"See "},{"t":"b","n":[0]},{"t":"."}]}]}}"""
       )

@@ -20,7 +20,7 @@ import grit.core.plugin.{CommandBy, CommandOutcome, KeepingCommand, PluginComman
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Args, ArgsError, Field, ToolName, ToolSpec}
 import grit.core.visibility.{Integrity, Label}
-import grit.projects.artifact.{Artifact, ArtifactHead, ArtifactJson, Body, Project, Rekeyed}
+import grit.projects.artifact.{Artifact, ArtifactHead, ArtifactJson, Body, Project, Rank, Rekeyed}
 import grit.projects.method.{
   ArtifactKind,
   Method,
@@ -2665,6 +2665,9 @@ private[plugin] object ProjectCommands {
           )
           body <- refuse(Body.read(args.body, resolve))
           handle <- handled(method, now, key, existing, args.handle)
+          // An artifact keeps its rank among the siblings it keeps; under a new parent, or new,
+          // it ranks last.
+          staying = existing.filter(_.head.parent == parent)
           artifact = Artifact(
             ArtifactHead(
               key,
@@ -2673,13 +2676,18 @@ private[plugin] object ProjectCommands {
               state,
               args.title,
               parent,
+              staying.fold(Rank.Middle)(_.head.rank),
               cites,
               Some(writer)
             ),
             body
           )
+          siblings = siblingsOf(now.artifacts, parent, key)
+          ranked =
+            if (staying.isDefined) Vector(artifact)
+            else among(siblings, artifact, siblings.size, writer)
           changed = changing(
-            Vector(artifact),
+            ranked,
             whose match {
               case Whose.Caller => Set(key)
               case Whose.Prior => Set.empty
@@ -2689,7 +2697,7 @@ private[plugin] object ProjectCommands {
             if (named.isDefined) changed
             else changed.copy(next = ArtifactNumber.after(key.number))
           _ <- refuse(Project.of(project.key, project.pin, next.artifacts))
-        } yield (next, s"Kept ${AnswerText.named(artifact.head)}.")
+        } yield (next, s"Kept ${AnswerText.named(artifact.head)}." + respread(ranked.size - 1))
       case Step.Edit(args) =>
         for {
           key <- refuse(resolve(args.key))
@@ -2731,6 +2739,42 @@ private[plugin] object ProjectCommands {
         )
     }
   }
+
+  /** The artifacts of `artifacts` under `parent` (or, with none, those under none), but `besides`,
+    * in [[ArtifactHead.ranked]] order.
+    */
+  private def siblingsOf(
+      artifacts: Vector[Artifact],
+      parent: Option[ArtifactKey],
+      besides: ArtifactKey
+  ): Vector[Artifact] =
+    artifacts
+      .filter(a => a.head.parent == parent && a.head.key != besides)
+      .sortBy(_.head)(using ArtifactHead.ranked)
+
+  /** `artifact` placed among `siblings`, in their order, at `at` ([[Rank.among]]): it, then each
+    * sibling whose rank that changes, with its new rank, written as `writer`.
+    */
+  private def among(
+      siblings: Vector[Artifact],
+      artifact: Artifact,
+      at: Int,
+      writer: String
+  ): Vector[Artifact] = {
+    val ranks = Rank.among(siblings.map(_.head.rank), at)
+    val order = siblings.patch(at.max(0), Vector(artifact), 0)
+    val (moved, others) = order
+      .zip(ranks)
+      .map((a, r) => Artifact(a.head.copy(rank = r), a.body) -> (a.head.rank != r))
+      .partition(_._1.head.key == artifact.head.key)
+    moved.map(_._1) ++ others.collect { case (a, true) =>
+      Artifact(a.head.copy(by = Some(writer)), a.body)
+    }
+  }
+
+  /** What an answer adds when a step re-ranked `n` siblings to make room: nothing when none. */
+  private def respread(n: Int): String =
+    if (n < 1) "" else s" Re-ranked ${if (n == 1) "1 sibling" else s"$n siblings"} to make room."
 
   /** Nothing, or why what `steps` made of `project` may not be kept: a brief over its budget
     * ([[within]]), or an artifact changed, or the index when a step minted an id, kept below what
