@@ -31,16 +31,19 @@ object ReorderTests extends TestSuite {
     ) {
       val (projects, store) = three()
       rankedAt(store, "p/2", "n")
-      val before = versionOf(projects, store, "p/2")
+      def versions(key: String): Int =
+        done(ask(projects, store, "project_history", "key" -> key)).linesIterator.size
+      val siblings = Vector("p/1", "p/2", "p/3")
+      val before = siblings.map(versions)
       val answer = done(reorder(projects, store, "artifact" -> "p/c", "after" -> "p/a"))
       (
         answer,
         Vector("p/1", "p/3", "p/2").map(rankOf(projects, store, _)),
-        versionOf(projects, store, "p/2") > before
+        siblings.map(versions)
       ) ==> (
         "Placed p/3 c (note, open) after p/1 a (note, open). Re-ranked 2 siblings to make room.",
         Vector("h", "n", "u"),
-        true
+        before.map(_ + 1)
       )
     }
     test("a keep that re-spreads its siblings answers the version of the artifact it kept") {
@@ -113,7 +116,7 @@ object ReorderTests extends TestSuite {
       )
     }
     test(
-      "a re-spread from a room above its siblings' label is refused naming each, keeping nothing, where a reorder with room is kept"
+      "a re-spread from a room above its siblings' label is refused"
     ) {
       val (projects, store) = three()
       keptAbove(store, "p/3", TestLabels.Trial)
