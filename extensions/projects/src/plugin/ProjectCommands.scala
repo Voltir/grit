@@ -221,10 +221,7 @@ private[plugin] final class ProjectCommands(
     )(using Tx^): Either[StoreError, CommandOutcome] =
       answered(
         alone(own, claims, args.project, by, at, "keep")(_ => Right(Step.Keep(args)))
-          // A keep changes one artifact, or none when it changes nothing.
-          .map(done =>
-            done.versions.values.headOption.fold(done.said)(AnswerText.nowAt(done.said, _))
-          )
+          .map(done => done.version.fold(done.said)(AnswerText.nowAt(done.said, _)))
       )
   }
 
@@ -273,7 +270,7 @@ private[plugin] final class ProjectCommands(
       for {
         done <- alone(own, claims, key.project, by, at, "edit")(_ => Right(Step.Edit(args)))
         // An edit that changes nothing writes nothing, and the version given is current.
-        now = done.versions.values.headOption.getOrElse(args.version)
+        now = done.version.getOrElse(args.version)
       } yield AnswerText.nowAt(done.said, now)
     }
   }
@@ -375,11 +372,7 @@ private[plugin] final class ProjectCommands(
         at: Instant
     )(using Tx^): Either[StoreError, CommandOutcome] = answered(
       alone(own, claims, args.artifact.project, by, at, "split")(_ => Right(Step.Split(args)))
-        // The split artifact is the one it wrote that was kept before: each new one's id was
-        // minted after every id the project held, so it is the least of them.
-        .map(done =>
-          done.versions.minByOption(_._1).fold(done.said)((_, v) => AnswerText.nowAt(done.said, v))
-        )
+        .map(done => done.version.fold(done.said)(AnswerText.nowAt(done.said, _)))
     )
   }
 
@@ -657,7 +650,7 @@ private[plugin] final class ProjectCommands(
           plan = planned(project, method, args.steps, author(by), moverOf(by), onward = args.dry)
           (said, steps) = plan
           answers <- Traversal.traverse(said.zipWithIndex) {
-            case (Right(answer), i) => Right(s"${i + 1}. $answer")
+            case (Right(answer), i) => Right(s"${i + 1}. ${answer.said}")
             case (Left(Stop.Refused(why)), i) => Right(s"${i + 1}. Refused: $why")
             case (Left(failed), _) => Left(failed)
           }
@@ -2068,7 +2061,8 @@ private[plugin] final class ProjectCommands(
 
   /** The step `stepping` makes of project `key` as loaded, taken alone, as `project_keep` or
     * `project_move` takes it, saying `verb` of an artifact kept below this room: its answer and
-    * the version each artifact it wrote is now at, or why it was refused.
+    * the version the artifact it names is now at, none when it wrote that one no new version; or
+    * why it was refused.
     */
   private def alone(
       own: DocumentKeeper,
@@ -2079,7 +2073,7 @@ private[plugin] final class ProjectCommands(
       verb: String
   )(stepping: Loaded -> Either[Stop, Step])(using
       Tx^
-  ): Either[Stop, (said: String, versions: Map[ArtifactKey, DocumentVersionId])] =
+  ): Either[Stop, (said: String, version: Option[DocumentVersionId])] =
     locked(claims, key).flatMap { lock =>
       given Locked = lock
       for {
@@ -2093,7 +2087,7 @@ private[plugin] final class ProjectCommands(
         _ <- settled(claims, project, method, key, steps, at, verb)
         versions <- wrote(own, project, steps, author(by), at)
         _ <- rebriefed(own, held, key, at)
-      } yield (said = answer, versions = versions)
+      } yield (said = answer.said, version = versions.get(answer.artifact))
     }
 
   /** Each claim live at `at` on an artifact of `project`, matched by the key its document is
@@ -3030,20 +3024,25 @@ private[plugin] object ProjectCommands {
       writer: String,
       mover: Mover,
       onward: Boolean
-  ): (Vector[Either[Stop, String]], Stepping) =
+  ): (Vector[Either[Stop, (said: String, artifact: ArtifactKey)]], Stepping) =
     steps.foldLeft(
       (
-        Vector.empty[Either[Stop, String]],
+        Vector.empty[Either[Stop, (said: String, artifact: ArtifactKey)]],
         Stepping(project.artifacts, Vector.empty, Map.empty, project.next)
       )
-    ) { (sofar: (Vector[Either[Stop, String]], Stepping), step: Step) =>
-      val (said, now) = sofar
-      if (!onward && said.exists(_.isLeft)) sofar
-      else
-        stepped(project, method, now, step, writer, mover) match {
-          case Right((next, answer)) => (said :+ Right(answer), next)
-          case Left(why) => (said :+ Left(why), now)
-        }
+    ) {
+      (
+          sofar: (Vector[Either[Stop, (said: String, artifact: ArtifactKey)]], Stepping),
+          step: Step
+      ) =>
+        val (said, now) = sofar
+        if (!onward && said.exists(_.isLeft)) sofar
+        else
+          stepped(project, method, now, step, writer, mover) match {
+            case Right((next, answer, artifact)) =>
+              (said :+ Right((said = answer, artifact = artifact)), next)
+            case Left(why) => (said :+ Left(why), now)
+          }
     }
 
   /** The handle `change` leaves the artifact `key` (`existing` as it is now in `now`), or why not:
@@ -3088,7 +3087,8 @@ private[plugin] object ProjectCommands {
   }
 
   /** `step` taken over `now`, from `project` as loaded, written as `writer`, `mover` as
-    * [[planned]] takes it: what it makes of `now` and its answer, or why it is refused, as
+    * [[planned]] takes it: what it makes of `now`, its answer and the artifact it names (the one
+    * kept, edited, moved, re-ordered or split), or why it is refused, as
     * `project_keep`, `project_edit`, `project_move` or `project_reorder` refuses.
     */
   private def stepped(
@@ -3098,7 +3098,7 @@ private[plugin] object ProjectCommands {
       step: Step,
       writer: String,
       mover: Mover
-  ): Either[Stop, (Stepping, String)] = {
+  ): Either[Stop, (Stepping, String, ArtifactKey)] = {
     def changing(
         changed: Vector[Artifact],
         wrote: Map[ArtifactKey, Whose] = Map.empty
@@ -3197,7 +3197,7 @@ private[plugin] object ProjectCommands {
           _ <- (if (staying.isDefined) None else method.misplaced(whole, artifact))
             .map(Stop.Refused(_))
             .toLeft(())
-        } yield (next, s"Kept ${AnswerText.named(artifact.head)}." + respread(ranked.size - 1))
+        } yield (next, s"Kept ${AnswerText.named(artifact.head)}." + respread(ranked.size - 1), key)
       case Step.Edit(args) =>
         for {
           key <- refuse(resolve(args.key))
@@ -3261,7 +3261,8 @@ private[plugin] object ProjectCommands {
         } yield (
           changing(ranked),
           if (ranked.isEmpty) s"${AnswerText.named(moving.head)} already sits $where."
-          else s"Placed ${AnswerText.named(moving.head)} $where." + respread(ranked.size - 1)
+          else s"Placed ${AnswerText.named(moving.head)} $where." + respread(ranked.size - 1),
+          moving.head.key
         )
       case Step.Split(args) =>
         for {
@@ -3302,12 +3303,13 @@ private[plugin] object ProjectCommands {
             writer,
             mover
           )
-          (done, _) = kept
+          (done, _, _) = kept
         } yield (
           done,
           s"Split ${AnswerText.named(current.head)}, each section moved to an artifact of its " +
             "own under it: " +
-            made.links.map(l => s"${l.key.value} ${l.part.title}").mkString("; ") + "."
+            made.links.map(l => s"${l.key.value} ${l.part.title}").mkString("; ") + ".",
+          key
         )
       case Step.Move(args) =>
         for {
@@ -3326,7 +3328,8 @@ private[plugin] object ProjectCommands {
         } yield (
           changing(moved +: merged.toVector),
           s"Moved ${AnswerText.named(moved.head)}." +
-            merged.fold("")(c => s" Merged its deltas into ${AnswerText.named(c.head)}.")
+            merged.fold("")(c => s" Merged its deltas into ${AnswerText.named(c.head)}."),
+          key
         )
     }
   }
@@ -3363,7 +3366,7 @@ private[plugin] object ProjectCommands {
             ),
             writer,
             mover
-          ).map((next, _) => Parted(next, sofar.links.appended((part = part, key = child))))
+          ).map((next, _, _) => Parted(next, sofar.links.appended((part = part, key = child))))
         }
     }
 
