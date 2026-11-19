@@ -8,7 +8,7 @@ import grit.core.visibility.Integrity
 /** Runs an enabled plugin's command, by name with its arguments, as the caller of the request it
   * was made for, in the edge's room: an own command's way to the plugins' commands.
   */
-type Ran = (ToolName, ujson.Value) => Either[CommandError, CommandOutcome]
+type RunCommand = (ToolName, ujson.Value) => Either[CommandError, CommandOutcome]
 
 /** A deployment's own command at the commands edge, given by `name`: a caller not believed at
   * `least` is refused, nothing run; any other gets `run` of the request's arguments, lent `ran`
@@ -18,7 +18,7 @@ final case class OwnCommand private (
     name: ToolName,
     least: Integrity,
     guards: Boolean,
-    run: (Ran, ujson.Obj) -> Either[CommandError, CommandOutcome]
+    run: (RunCommand, ujson.Obj) -> Either[CommandError, CommandOutcome]
 ) extends caps.Pure
 
 object OwnCommand {
@@ -30,7 +30,7 @@ object OwnCommand {
   def guarding(
       name: ToolName,
       least: Integrity,
-      run: (Ran, ujson.Obj) -> Either[CommandError, CommandOutcome]
+      run: (RunCommand, ujson.Obj) -> Either[CommandError, CommandOutcome]
   ): OwnCommand = OwnCommand(name, least, guards = true, run)
 
   /** A command no plugin offers, at `/command` alone. The edge refuses to open when a plugin
@@ -39,6 +39,6 @@ object OwnCommand {
   def added(
       name: ToolName,
       least: Integrity,
-      run: (Ran, ujson.Obj) -> Either[CommandError, CommandOutcome]
+      run: (RunCommand, ujson.Obj) -> Either[CommandError, CommandOutcome]
   ): OwnCommand = OwnCommand(name, least, guards = false, run)
 }

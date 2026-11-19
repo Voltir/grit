@@ -4,7 +4,7 @@ import java.time.Instant
 
 import scala.concurrent.duration.*
 
-import grit.commands.declare.{HoldingWatch, Ran}
+import grit.commands.declare.{HoldingWatch, RunCommand}
 import grit.commands.machine.{MachineName, Worktrees}
 import grit.core.edge.{EdgeWatch, WatchError, WatchFor, Watched}
 import grit.core.id.ClaimHolder
@@ -30,7 +30,7 @@ private[commands] object Waited {
       body: ujson.Obj,
       machine: MachineName,
       holding: Option[HoldingWatch],
-      ran: Ran,
+      ran: RunCommand,
       now: Instant
   ): Either[(Status, String), (WatchFor, FiniteDuration)] = {
     val o = body.value

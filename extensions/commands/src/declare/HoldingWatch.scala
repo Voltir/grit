@@ -11,6 +11,6 @@ import grit.core.edge.{CommandError, WatchFor, Watched}
   */
 final case class HoldingWatch(
     keys: Set[String],
-    read: (Ran, ujson.Obj) -> Either[CommandError, Option[WatchFor.Holding]],
+    read: (RunCommand, ujson.Obj) -> Either[CommandError, Option[WatchFor.Holding]],
     met: (WatchFor.Holding, Watched.Held) -> String
 ) extends caps.Pure

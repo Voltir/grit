@@ -3,7 +3,7 @@ package grit.commands.routes
 import scala.concurrent.duration.*
 
 import grit.commands.caller.{Caller, Callers}
-import grit.commands.declare.{HoldingWatch, OwnCommand, Ran}
+import grit.commands.declare.{HoldingWatch, OwnCommand, RunCommand}
 import grit.core.clock.Clock
 import grit.core.edge.Adapter
 import grit.core.edge.{EdgeSessions, EdgeWatch, PluginCommands}
@@ -174,7 +174,7 @@ private[commands] final class Routes private (
       case None => RouteReply.command(ran(caller)(name, args))
     }
 
-  private def ran(caller: Caller): Ran = (name, args) =>
+  private def ran(caller: Caller): RunCommand = (name, args) =>
     commands.run(caller.account, room, caller.believed, name, args, clock.now())
 }
 
