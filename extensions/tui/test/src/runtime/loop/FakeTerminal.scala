@@ -44,6 +44,9 @@ final class FakeTerminal[C^](
   /** Queue characters for the reader to pick up. */
   def send(chars: String): Unit = { val _ = input.offer(chars) }
 
+  /** How many of the [[send]]s the reader has not yet picked up. */
+  def unread: Int = input.size
+
   /** How many reads were **in flight** when [[close]] happened.
     *
     * The oracle for "the reader is provably stopped before the terminal goes away". It

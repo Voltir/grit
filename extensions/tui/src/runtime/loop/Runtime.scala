@@ -85,6 +85,8 @@ final class Runtime[S, M <: caps.Pure](
               e match {
                 case Event.FromTerminal(in) if Loop.owesFrame(loop, in) =>
                   loop = repaint(loop, force = false)
+                case Event.Own(t) if Loop.owesFrame(loop, t) =>
+                  loop = repaint(loop, force = false)
                 case _ => ()
               }
               val (next, touched) = step(e, loop)

@@ -144,6 +144,15 @@ object Loop {
     */
   def owesFrame[S, M](l: Loop[S, M], in: Input): Boolean = l.behind && routedOnScreen(l, in)
 
+  /** Whether `l` must be painted before one of the runtime's own ticks: under a grab a tick is
+    * routed against the last paint, as a drag is, and the screen is [[Loop.behind]] the state.
+    * A deadline that ends a drag would otherwise copy a row that frame never highlighted.
+    */
+  def owesFrame[S, M](l: Loop[S, M], t: Tick): Boolean = l.behind && (t match {
+    // Both are routed against `l.painted` ([[tick]]).
+    case Tick.Autoscroll | Tick.Deadline => l.grab != Grab.Idle
+  })
+
   /** A terminal input, routed against the last layout and applied. A drag or release
     * under a grab is routed against what was *painted* -- the pane the user sees, once the
     * caller has painted what [[owesFrame]] says it owes -- and everything else against a

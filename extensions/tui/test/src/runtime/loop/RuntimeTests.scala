@@ -132,15 +132,17 @@ object RuntimeTests extends TestSuite {
   }
 
   /** Forty one-row blocks in a pane over a one-row strip, read from the top, that copies a
-    * finished drag. `Hold` keeps the loop inside `update` until `go` opens, so that what
-    * arrives meanwhile is handled as one batch.
+    * finished drag. `Hold` opens `held` and keeps the loop inside `update` until `go` opens,
+    * so that what arrives meanwhile is handled as one batch.
     */
-  private final class Dragging(go: CountDownLatch) extends App[Scroller.State, Dragged] {
+  private final class Dragging(go: CountDownLatch, held: CountDownLatch = new CountDownLatch(1))
+      extends App[Scroller.State, Dragged] {
     private val doc = Doc(Vector.tabulate(40)(i => Block.Text(s"line $i")))
     def init: (Scroller.State, Effect[Dragged]) =
       (Scroller.State(Anchor.At(DocPos(0, 0))), Effect.NoOp)
     def update(msg: Dragged, s: Scroller.State): (Scroller.State, Effect[Dragged]) = msg match {
       case Dragged.Hold =>
+        held.countDown()
         val _ = go.await(5L, TimeUnit.SECONDS)
         (s, Effect.NoOp)
       case Dragged.Done => (s, Effect.Quit)
@@ -514,7 +516,8 @@ object RuntimeTests extends TestSuite {
       val term = new FakeTerminal()
       val scheduler = Scheduler.create()
       val go = new CountDownLatch(1)
-      val runtime = new Runtime(new Dragging(go), term, scheduler, escapeTimeoutMs = 20L)
+      val held = new CountDownLatch(1)
+      val runtime = new Runtime(new Dragging(go, held), term, scheduler, escapeTimeoutMs = 20L)
       val done = started(runtime, "dragging-under-test")
       try {
         assert(waitUntil(() => term.calls.contains("flush")))
@@ -522,9 +525,48 @@ object RuntimeTests extends TestSuite {
         term.send(s"$Esc[<32;20;10M") // parked on the strip below the pane: autoscroll
         assert(waitUntil(() => runtime.state.exists(_.anchor != Anchor.At(DocPos(0, 0)))))
         runtime.mailbox.offer(Dragged.Hold)
-        Thread.sleep(150L) // a tick fires while the loop is held
+        assert(held.await(5L, TimeUnit.SECONDS))
+        // A tick fires while the loop is held, then the release is read. Waited for, not
+        // slept for: however late either lands, the copy must match the screen.
+        assert(waitUntil(() => !scheduler.isPending(TimerId.of("node-autoscroll"))))
         term.send(s"$Esc[<0;20;10m")
-        Thread.sleep(100L) // and the release is read
+        assert(waitUntil(() => term.unread == 0))
+        go.countDown()
+        assert(waitUntil(() => term.copied.nonEmpty))
+        val calls = term.calls
+        val before = calls.takeWhile(!_.startsWith("copyOut:")).count(_ == "flush")
+        val shown = highlighted(term.painted, before, term.size)
+        val copied = term.copied.head.split("\n").map(_.trim).filter(_.nonEmpty).toVector
+        assert(shown.nonEmpty)
+        copied ==> shown
+      } finally {
+        runtime.mailbox.offer(Dragged.Done)
+        val _ = done.await(5L, TimeUnit.SECONDS)
+        scheduler.close()
+      }
+    }
+
+    test(
+      "a drag that expires after an autoscroll tick in its batch copies what the screen highlighted"
+    ) {
+      // A loop held past Route.DeadlineMs, as one under load is, has the tick and the
+      // deadline in one batch: the deadline ends the drag against what was painted, so a
+      // frame painted after the tick must come first.
+      val term = new FakeTerminal()
+      val scheduler = Scheduler.create()
+      val go = new CountDownLatch(1)
+      val held = new CountDownLatch(1)
+      val runtime = new Runtime(new Dragging(go, held), term, scheduler, escapeTimeoutMs = 20L)
+      val done = started(runtime, "expiring-under-test")
+      try {
+        assert(waitUntil(() => term.calls.contains("flush")))
+        term.send(pressAt(Pos(2, 0)))
+        term.send(s"$Esc[<32;20;10M")
+        assert(waitUntil(() => runtime.state.exists(_.anchor != Anchor.At(DocPos(0, 0)))))
+        runtime.mailbox.offer(Dragged.Hold)
+        assert(held.await(5L, TimeUnit.SECONDS))
+        assert(waitUntil(() => !scheduler.isPending(TimerId.of("node-deadline"))))
+        Thread.sleep(50L) // the fired deadline's offer lands on the queue
         go.countDown()
         assert(waitUntil(() => term.copied.nonEmpty))
         val calls = term.calls

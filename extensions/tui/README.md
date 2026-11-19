@@ -121,8 +121,9 @@ key's *input* rather than its result: the prompt kept only the last key typed. S
 each input in a batch the loop lays the current state out again, without painting (`Loop.fresh`,
 microseconds); a drag under a grab is the exception and is routed against what was painted,
 which is what the user sees. When something else in the batch changed the state first, an
-autoscroll tick say, the loop paints before that drag or release (`Loop.owesFrame`), so a
-release copies the rows the screen highlighted; motion alone never owes a frame, so a burst
+autoscroll tick say, the loop paints before that drag or release, or a tick of its own under
+the grab (`Loop.owesFrame`), so a release, or a deadline that ends the drag, copies the rows
+the screen highlighted; motion alone never owes a frame, so a burst
 of it is still one paint. The gate's `burst` scenario pins this.
 
 The alternative, handlers answering with deltas ("scroll by 3") that compose across a batch,
