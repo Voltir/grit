@@ -2200,20 +2200,20 @@ private[plugin] object ProjectCommands {
   final case class Starting(project: ProjectKey, method: Option[MethodName]) extends caps.Pure
 
   /** `project_keep`'s arguments: with no `key`, a new artifact of `project`, its id minted; else a
-    * new version of the artifact `key` names, of `project`. A `parent` or `cites` of `None`
-    * leaves an existing artifact's as it was (a new one's, none); `version`, given only with a
+    * new version of the artifact `key` names, of `project`. A field left unchanged is none on a
+    * new artifact; `version`, given only with a
     * `key`, is the one its writer read, and the keep is refused unless it is the artifact's
     * current one.
     */
   final case class Keeping private (
       project: ProjectKey,
       key: Option[ArtifactRef],
-      handle: HandleChange,
+      handle: Change[Option[Handle]],
       kind: Option[KindName],
       title: String,
       body: String,
-      parent: Option[Option[ArtifactRef]],
-      cites: Option[Vector[ArtifactRef]],
+      parent: Change[Option[ArtifactRef]],
+      cites: Change[Vector[ArtifactRef]],
       version: Option[DocumentVersionId]
   ) extends caps.Pure
 
@@ -2230,12 +2230,12 @@ private[plugin] object ProjectCommands {
       new Keeping(
         key.project,
         Some(ArtifactRef.Id(key)),
-        HandleChange.Unchanged,
+        Change.Unchanged,
         None,
         title,
         body,
-        None,
-        None,
+        Change.Unchanged,
+        Change.Unchanged,
         Some(version)
       )
 
@@ -2244,12 +2244,12 @@ private[plugin] object ProjectCommands {
       new Keeping(
         parent.project,
         None,
-        HandleChange.Unchanged,
+        Change.Unchanged,
         Some(kind),
         title,
         body,
-        Some(Some(ArtifactRef.Id(parent))),
-        None,
+        Change.To(Some(ArtifactRef.Id(parent))),
+        Change.Unchanged,
         None
       )
 
@@ -2271,18 +2271,18 @@ private[plugin] object ProjectCommands {
       for {
         key <- key.fold(Right(None))(k => referred("key", k, project).map(Some(_)))
         handle <- handle match {
-          case None => Right(HandleChange.Unchanged)
-          case Some("") => Right(HandleChange.Removed)
-          case Some(h) => parsed("handle", h, Handle.of).map(HandleChange.To(_))
+          case None => Right(Change.Unchanged)
+          case Some("") => Right(Change.To(None))
+          case Some(h) => parsed("handle", h, Handle.of).map(h => Change.To(Some(h)))
         }
         kind <- kind.fold(Right(None))(k => parsed("kind", k, KindName.of).map(Some(_)))
-        parent <- parent.fold(Right(None)) { p =>
-          if (p.isEmpty) Right(Some(None))
-          else referred("parent", p, project).map(k => Some(Some(k)))
+        parent <- parent.fold(Right(Change.Unchanged)) { p =>
+          if (p.isEmpty) Right(Change.To(None))
+          else referred("parent", p, project).map(k => Change.To(Some(k)))
         }
         cites <- cites
-          .fold(Right(None))(cs =>
-            Traversal.traverse(cs.toVector)(referred("cites", _, project)).map(Some(_))
+          .fold(Right(Change.Unchanged))(cs =>
+            Traversal.traverse(cs.toVector)(referred("cites", _, project)).map(Change.To(_))
           )
         version <- (version, key) match {
           case (None, _) => Right(None)
@@ -2298,11 +2298,16 @@ private[plugin] object ProjectCommands {
       } yield new Keeping(project, key, handle, kind, title, body, parent, cites, version)
   }
 
-  /** What a keep does to an artifact's handle: leaves it, removes it, or sets it. */
-  enum HandleChange extends caps.Pure {
+  /** What a keep does to a field of an artifact's head: leaves it, or makes it `to`. */
+  enum Change[+A] extends caps.Pure {
     case Unchanged
-    case Removed
-    case To(handle: Handle)
+    case To(to: A)
+
+    /** The field as this leaves it, `was` before. */
+    def over[B >: A](was: B): B = this match {
+      case Unchanged => was
+      case To(to) => to
+    }
   }
 
   /** `value` as a reference to an artifact of `project`, or the argument error for `field`: no
@@ -3112,15 +3117,11 @@ private[plugin] object ProjectCommands {
       now: Stepping,
       key: ArtifactKey,
       existing: Option[Artifact],
-      change: HandleChange
+      change: Change[Option[Handle]]
   ): Either[Stop, Option[Handle]] = {
     val was = existing.flatMap(_.head.handle)
     val called = existing.fold(key.value)(_.head.called)
-    val becomes = change match {
-      case HandleChange.Unchanged => was
-      case HandleChange.Removed => None
-      case HandleChange.To(h) => Some(h)
-    }
+    val becomes = change.over(was)
     val holder =
       becomes.flatMap(h => now.artifacts.find(a => a.head.key != key && a.head.handle.contains(h)))
     val carrying = was
@@ -3205,12 +3206,14 @@ private[plugin] object ProjectCommands {
               Left(Stop.Refused("a new artifact needs its kind"))
           }
           (kind, state) = placed
-          parent <- args.parent.fold(Right(existing.flatMap(_.head.parent)))(
-            _.fold(Right(None))(r => refuse(resolve(r)).map(Some(_)))
-          )
-          cites <- args.cites.fold(Right(existing.fold(Vector.empty)(_.head.cites)))(cs =>
-            refuse(Traversal.traverse(cs)(resolve))
-          )
+          parent <- args.parent match {
+            case Change.Unchanged => Right(existing.flatMap(_.head.parent))
+            case Change.To(to) => to.fold(Right(None))(r => refuse(resolve(r)).map(Some(_)))
+          }
+          cites <- args.cites match {
+            case Change.Unchanged => Right(existing.fold(Vector.empty)(_.head.cites))
+            case Change.To(to) => refuse(Traversal.traverse(to)(resolve))
+          }
           body <- Body.reading(args.body, resolve).left.map { why =>
             // Only what is kept already can be split.
             Stop.Refused(why match {
