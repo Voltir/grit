@@ -241,7 +241,7 @@ object ActCaptureTests extends TestSuite {
       |  def run(run: Trusted[JobRun[Count]], moves: Dreaming^): String =
       |    moves.scan(Names.of("scan"), run.tainted) { (_, keeper, strands, needs, at) =>
       |      for {
-      |        seen <- strands.atFloor(at, at)
+      |        seen <- strands.of(Vector.empty, at)
       |        newest <- needs.of(Newer).fold(_ => Right(Vector.empty), _.newest())
       |      } yield Count(seen.size + newest.size)
       |    }

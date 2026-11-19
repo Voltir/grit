@@ -217,7 +217,7 @@ object RunFixtures {
     def run(run: Trusted[JobRun[Count]], moves: Dreaming^): String =
       moves
         .scan(move("scan"), run.tainted)((_, _, strands, _, at) =>
-          strands.touched(Instant.EPOCH, at).map(Scanned(_))
+          strands.units(Instant.EPOCH, at, StrandWorld.sixHours).map(Scanned(_))
         )
         .left
         .map(_.toString)
@@ -254,7 +254,7 @@ object RunFixtures {
         .scan(move("gather"), run.tainted)((_, keeper, strands, _, at) =>
           for {
             note <- noted(keeper, "seen", "the deploy is on hold", at)
-            seen <- strands.touched(Instant.EPOCH, at)
+            seen <- strands.units(Instant.EPOCH, at, StrandWorld.sixHours)
           } yield Gathered(seen, Vector(note))
         )
         .left

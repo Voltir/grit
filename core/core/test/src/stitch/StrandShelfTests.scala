@@ -10,12 +10,7 @@ import utest.*
 /** [[StrandShelf]]: a room's strands by ids, counts and a digest. */
 object StrandShelfTests extends TestSuite {
 
-  import StrandWorld.{at, right}
-
-  /** Runs of messages less than 6 hours apart, at most 4, settled in 6 hours. */
-  private val sixHours: Strand.Cut = Strand.Cut
-    .of(java.time.Duration.ofHours(6), 4, java.time.Duration.ofHours(6))
-    .fold(e => throw new java.lang.AssertionError(e), identity)
+  import StrandWorld.{at, right, sixHours}
 
   val tests = Tests {
     test("the same messages give the same digest; one more message another") {
@@ -83,7 +78,9 @@ object StrandShelfTests extends TestSuite {
       w.of(a, at(0)) ==> Vector.empty
     }
 
-    test("touched: the strands spoken in over a range, as they stood at its end, oldest first") {
+    test(
+      "units: the stitched strands spoken in over a range, as they stood at its end, oldest first"
+    ) {
       val w = new StrandWorld
       val a = w.thread("C1", "1.0")
       val b = w.thread("C1", "2.0")
@@ -98,13 +95,13 @@ object StrandShelfTests extends TestSuite {
       w.say(a, "fixed now", 900)
       w.say(d, "moved to one", 800)
       given Tx = TestTx.fake
-      right(w.shelf.touched(at(700), at(1000))).map(x => (x.root, x.said, x.touched)) ==>
+      right(w.shelf.units(at(700), at(1000), sixHours)).map(x => (x.root, x.said, x.touched)) ==>
         Vector((s.id, 3, at(800)), (a.id, 3, at(900)))
-      right(w.shelf.touched(at(700), at(850))).map(x => (x.root, x.said)) ==>
+      right(w.shelf.units(at(700), at(850), sixHours)).map(x => (x.root, x.said)) ==>
         Vector((s.id, 3))
     }
 
-    test("a strand's room label is the one in force; atFloor keeps the floor's strands alone") {
+    test("a strand's room label is the one in force; units keeps the floor's strands alone") {
       val w = new StrandWorld
       val a = w.thread("C1", "1.0")
       val b = w.thread("C1", "2.0")
@@ -123,9 +120,9 @@ object StrandShelfTests extends TestSuite {
           Map.empty
         )
       )
-      right(w.shelf.touched(at(0), at(100))).map(x => (x.root, x.roomLabel)) ==>
+      right(w.shelf.of(Vector(a.id, s.id), at(100))).map(x => (x.root, x.roomLabel)) ==>
         Vector((a.id, Label.Public), (s.id, TestLabels.Trial))
-      right(w.shelf.atFloor(at(0), at(100))).map(_.root) ==> Vector(s.id)
+      right(w.shelf.units(at(0), at(100), sixHours)).map(_.root) ==> Vector(s.id)
     }
 
     test(

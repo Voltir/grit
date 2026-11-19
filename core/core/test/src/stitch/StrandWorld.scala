@@ -155,6 +155,11 @@ object StrandWorld {
 
   def at(seconds: Long): Instant = At.plusSeconds(seconds)
 
+  /** Runs of messages less than 6 hours apart, at most 4, settled in 6 hours. */
+  val sixHours: Strand.Cut = Strand.Cut
+    .of(java.time.Duration.ofHours(6), 4, java.time.Duration.ofHours(6))
+    .fold(e => throw new java.lang.AssertionError(e), identity)
+
   def right[A](e: Either[StoreError, A]): A =
     e.fold(x => throw new java.lang.AssertionError(s"store failed: $x"), identity)
 }

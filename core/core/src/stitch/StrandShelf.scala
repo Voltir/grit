@@ -11,16 +11,6 @@ import grit.core.store.{Conversation, ConversationStore, Origin, StoreError, Tx}
   */
 trait StrandShelf {
 
-  /** Each strand with at least one follower, a member of which had a message said from `from`
-    * until before `until`, as it stood at `until`; oldest touched first.
-    */
-  def touched(from: Instant, until: Instant)(using Tx^): Either[StoreError, Vector[Strand.Digested]]
-
-  /** [[touched]], only the strands whose room's label in force is the transaction's floor
-    * ([[grit.core.store.Tx.floor]]): what a run kept at one label reads.
-    */
-  def atFloor(from: Instant, until: Instant)(using Tx^): Either[StoreError, Vector[Strand.Digested]]
-
   /** Each of `roots`' strands as it stood at `asOf`, in `roots`' order; a root none of whose
     * members holds a message kept and read is left out.
     */
@@ -34,8 +24,11 @@ trait StrandShelf {
     */
   def links(seen: Strand.Digested)(using Tx^): Either[StoreError, Vector[Href]]
 
-  /** The strands at the floor a run places, oldest touched first: [[atFloor]]'s; each thread
-    * under a channel's top level, and each legacy Slack conversation no stitched strand holds,
+  /** The strands whose room's label in force is the transaction's floor
+    * ([[grit.core.store.Tx.floor]]) that a run places, oldest touched first: each stitched
+    * strand with at least one follower, a member of which had a message said from `from` until
+    * before `until`, as it stood at `until`; each thread under a channel's top level, and each
+    * legacy Slack conversation no stitched strand holds,
     * spoken in within the range, whole, as it stood at `until` (one read of each such
     * conversation's own messages, so as many reads as conversations spoken in); and
     * each run `cut` makes of a channel's top level whose last message falls in the range and
@@ -130,18 +123,15 @@ object StrandShelf {
   private final class Over(stitches: StitchStore, conversations: ConversationStore)
       extends StrandShelf {
 
-    def touched(from: Instant, until: Instant)(using
+    /** Each strand with at least one follower, a member of which had a message said from
+      * `from` until before `until`, as it stood at `until`, at every label read.
+      */
+    private def touched(from: Instant, until: Instant)(using
         Tx^
     ): Either[StoreError, Vector[Strand.Digested]] =
       stitches
         .touched(from, until)
         .flatMap(links => of(links.map(_.root).distinct, until))
-        .map(_.sortBy(_.touched))
-
-    def atFloor(from: Instant, until: Instant)(using
-        tx: Tx^
-    ): Either[StoreError, Vector[Strand.Digested]] =
-      touched(from, until).map(_.filter(_.roomLabel == Tx.floor(tx)))
 
     def of(roots: Vector[ConversationId], asOf: Instant)(using
         Tx^
