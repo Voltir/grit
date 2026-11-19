@@ -178,6 +178,14 @@ object ArtifactRef {
         else Handle.of(local).map(Named(p, _))
       }
   }
+
+  /** `ref`'s id, or why not: it names a handle, which only its project resolves
+    * (`Project.resolve`). What resolves a text's links where every link is by id.
+    */
+  def id(ref: ArtifactRef): Either[String, ArtifactKey] = ref match {
+    case Id(k) => Right(k)
+    case named => Left(s"${named.value} names no id: only its project tells which artifact it is")
+  }
 }
 
 /** The method version a project pinned: its name, its version and the digest it had then. */
