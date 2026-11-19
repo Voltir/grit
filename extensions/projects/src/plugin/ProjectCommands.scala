@@ -734,7 +734,7 @@ private[plugin] final class ProjectCommands(
         kept <- stored(own.documents.versions(where._1, where._2, HistoryMost))
         text <- args.diff match {
           case None =>
-            refuse(Traversal.sequence(kept.map(listed)))
+            refuse(Traversal.sequence(kept.map(row)))
               .map(AnswerText.versions(_, "No version is kept."))
           case Some((from, to)) =>
             def file(n: Long): Either[Stop, String] =
@@ -1866,7 +1866,7 @@ private[plugin] object ProjectCommands {
   private val HistoryMost: Int = 50
 
   /** `version` as [[AnswerText.versions]] lists it, or why it does not read. */
-  private def listed(
+  private def row(
       version: DocumentVersion
   ): Either[String, (version: Long, written: Instant, head: Option[ArtifactHead])] =
     version match {

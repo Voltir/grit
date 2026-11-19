@@ -142,7 +142,7 @@ private[plugin] final class MethodCommands(checks: Vector[TransitionCheck], meth
           } yield ujson.write(MethodJson.written(was.method, was.examples), indent = 2)
         case (named, _) =>
           for {
-            found <- listed(own.documents, named)
+            found <- versionsOf(own.documents, named)
             lines <- lined(found)
           } yield
             if (lines.isEmpty)
@@ -165,7 +165,7 @@ private[plugin] final class MethodCommands(checks: Vector[TransitionCheck], meth
   /** The latest version of the method `name` declared, or why none is. */
   def latest(own: DocumentShelf, name: MethodName)(using Tx^): Either[Stop, Method] =
     for {
-      found <- listed(own, Some(name))
+      found <- versionsOf(own, Some(name))
       newest <- found.lastOption.toRight(
         Stop.Refused(
           s"No method ${MethodName.value(name)} is declared here: declare it with project_declare."
@@ -181,7 +181,7 @@ private[plugin] final class MethodCommands(checks: Vector[TransitionCheck], meth
     ifDeclared(own, name, version).flatMap {
       case Some(method) => Right(method)
       case None =>
-        listed(own, Some(name)).flatMap { found =>
+        versionsOf(own, Some(name)).flatMap { found =>
           val versions = found.flatMap(d => keyed(d.key)).map(_.version).mkString(", ")
           Left(
             Stop.Refused(
@@ -275,7 +275,7 @@ private[plugin] final class MethodCommands(checks: Vector[TransitionCheck], meth
   /** Each version declared of `name`, or of every method when `None`, kept at `methodsAt`,
     * once, oldest version first within a method, the methods by name.
     */
-  private def listed(own: DocumentShelf, name: Option[MethodName])(using
+  private def versionsOf(own: DocumentShelf, name: Option[MethodName])(using
       Tx^
   ): Either[Stop, Vector[Document]] =
     for {
