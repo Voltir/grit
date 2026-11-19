@@ -949,13 +949,12 @@ object TopicDreamTests extends TestSuite {
     }
 
     test(
-      "a dated meeting −2 to +14 days, or an undated one with a passage within 14 days, is pinned"
+      "a dated meeting −2 to +14 days is pinned; an undated one never is, though it has a passage that day"
     ) {
-      def live(name: String, day: Option[String], newest: Option[String]) = TopicScan.Live(
+      def live(name: String, day: Option[String]) = TopicScan.Live(
         right(TopicKey.strand(ConversationId(name))),
         DocumentVersionId.of(1).getOrElse(throw new java.lang.AssertionError("version")),
-        day.map(LocalDate.parse),
-        newest.map(LocalDate.parse)
+        day.map(LocalDate.parse)
       )
       val scan = TopicScan.Scanned(
         Vector.empty,
@@ -971,17 +970,16 @@ object TopicDreamTests extends TestSuite {
         0,
         Vector.empty,
         Vector(
-          live("back2", Some("2026-11-17"), None),
-          live("back3", Some("2026-11-16"), None),
-          live("ahead14", Some("2026-12-03"), None),
-          live("ahead15", Some("2026-12-04"), None),
-          live("undated", None, Some("2026-11-05")),
-          live("stale", None, Some("2026-11-04")),
-          live("bare", None, None)
+          live("back2", Some("2026-11-17")),
+          live("back3", Some("2026-11-16")),
+          live("ahead14", Some("2026-12-03")),
+          live("ahead15", Some("2026-12-04")),
+          live("undated", None),
+          live("bare", None)
         )
       )
       scan.meetingsNear(LocalDate.parse("2026-11-19")).map(TopicKey.value) ==>
-        Vector("back2", "ahead14", "undated").map(n => s"topic:strand-$n")
+        Vector("back2", "ahead14").map(n => s"topic:strand-$n")
     }
 
     test("at most sorts units") {

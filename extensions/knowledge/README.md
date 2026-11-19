@@ -150,7 +150,7 @@ A topic is a subject or one meeting, fixed when it opens (`Topic.Kind`); a meeti
 (`Meeting`: proposed, planned or held, its day and start, who) is its text's first line, refined
 by each write's reply (`Meeting.refined`). A strand's sort is shown, chosen by ids alone, the
 topics attached to by ref, the meetings near its day (`Scanned.meetingsNear`: dated from 2 days
-before to 14 after, or undated with a passage within 14 days; at most 8), those it shares
+before to 14 after, never an undated one; at most 8), those it shares
 something with (`TopicScan.Scanned.near`: written from the same strand, holding a card it links,
 or written from a strand of its room; at most `TopicDream.Structural`) and the
 `TopicDream.Newest` newest; then the step fills it from every topic of the floor by the documents'

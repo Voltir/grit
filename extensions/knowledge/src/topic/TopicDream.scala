@@ -52,7 +52,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
   // and a topic it opens is written at once (`open-{i}`, `keep-open-{i}`).
   // 9: a legacy Slack conversation no stitched strand holds is offered whole, as a thread is.
   // 10: a meeting's lead drops a line repeating its head; an open's write ask is told its topic
-  // is new.
+  // is new; an undated meeting is never pinned (its scan's `meetings` hold no `newest`).
   val version: Int = 10
 
   def write(params: TopicParams): ujson.Value = TopicParams.write(params)

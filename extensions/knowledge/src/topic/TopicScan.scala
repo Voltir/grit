@@ -68,15 +68,13 @@ private[topic] object TopicScan {
       near.collectFirst { case (r, ks) if r == id => ks }.getOrElse(Vector.empty)
 
     /** The meetings a strand said on `day` is pinned, at most [[Meetings]], newest first: those
-      * whose day is from 2 days before it to 14 after, and those with no day whose newest
-      * passage is within 14 days before it.
+      * whose day is from 2 days before it to 14 after. One with no day has none to be near,
+      * and is never pinned: pinned on its newest passage, each join renewed the pin.
       */
     def meetingsNear(day: LocalDate): Vector[TopicKey] =
       meetings
         .filter(m =>
-          m.day.fold(m.newest.exists(n => !n.isBefore(day.minusDays(14))))(d =>
-            !d.isBefore(day.minusDays(2)) && !d.isAfter(day.plusDays(14))
-          )
+          m.day.exists(d => !d.isBefore(day.minusDays(2)) && !d.isAfter(day.plusDays(14)))
         )
         .map(_.key)
         .take(Meetings)
@@ -102,16 +100,11 @@ private[topic] object TopicScan {
   final case class Linked(strand: Strand.Id, units: Vector[Ref], cards: Vector[CardShelf.Seen])
       extends caps.Pure
 
-  /** A meeting kept at the floor, as a sort may be pinned it: its `key` and `version`, the
-    * `day` it is proposed, planned or held for when it has one, and the day of its `newest`
-    * passage when it has one.
+  /** A meeting kept at the floor, as a sort may be pinned it: its `key` and `version`, and the
+    * `day` it is proposed, planned or held for when it has one.
     */
-  final case class Live(
-      key: TopicKey,
-      version: DocumentVersionId,
-      day: Option[LocalDate],
-      newest: Option[LocalDate]
-  ) extends caps.Pure
+  final case class Live(key: TopicKey, version: DocumentVersionId, day: Option[LocalDate])
+      extends caps.Pure
 
   /** 8: the most meetings a strand's sort is pinned ([[Scanned.meetingsNear]]). */
   val Meetings: Int = 8
@@ -236,7 +229,7 @@ private[topic] object TopicScan {
               case Meeting.State.Planned(w) => Some(w.day)
               case Meeting.State.Held(d) => Some(d)
             }
-            Some(Live(k, v, day, h.topic.passages.lastOption.map(_.day)))
+            Some(Live(k, v, day))
           case Topic.Kind.Subject => None
         }
       }
@@ -673,7 +666,6 @@ private[topic] object TopicScan {
   private def liveJson(m: Live): ujson.Value = {
     val o = lead(m.key, m.version)
     m.day.foreach(d => o("day") = d.toString)
-    m.newest.foreach(d => o("newest") = d.toString)
     o
   }
 
@@ -688,9 +680,9 @@ private[topic] object TopicScan {
     }
     for {
       kv <- readLead(v)
+      // A scan recorded before v10 also holds a "newest", now read by none.
       d <- day("day")
-      n <- day("newest")
-    } yield Live(kv._1, kv._2, d, n)
+    } yield Live(kv._1, kv._2, d)
   }
 
   private def holdsJson(h: (TopicKey, Vector[DocumentVersionId])): ujson.Value = ujson.Obj(
