@@ -81,7 +81,7 @@ object OldFormTests extends TestSuite {
       done(ask(projects, store, "project_rekey", "project" -> "p"))
       (believedOf(store, "p/a"), believedOf(store, "p/b")) ==> (Some("authority"), Some("member"))
     }
-    test("a re-keyed project answers by id, handle and old key, and mints above its highest") {
+    test("a re-keyed project answers by id and by handle, and mints above its highest") {
       val (projects, store) = oldProject()
       val answer = done(ask(projects, store, "project_rekey", "project" -> "p"))
       val head = (key: String) =>
@@ -91,7 +91,7 @@ object OldFormTests extends TestSuite {
       (
         answer,
         head("p/1"),
-        head("p/a") == head("p/1"),
+        head("p/a"),
         Body.markdown(right(Artifact.of(current(store, "p/a"))).body),
         done(
           ask(
@@ -108,7 +108,7 @@ object OldFormTests extends TestSuite {
         "p: 2 artifacts, 1 body links, 1 head cites, 0 handles carried\n" +
           "It gave ids p/1 to p/2; the next new artifact is p/3.",
         Vector("---", "id: p/1", "handle: a"),
-        true,
+        Vector("---", "id: p/1", "handle: a"),
         "See [b](artifact:p/2).",
         "Kept p/3 (note, open)."
       )
@@ -169,6 +169,7 @@ object OldFormTests extends TestSuite {
     ) {
       val (projects, store) = oldProject()
       done(ask(projects, store, "project_rekey", "project" -> "p"))
+      val shownBefore = ask(projects, store, "project_show", "key" -> "p/1")
       val trial = grit.core.visibility.TestLabels.Trial
       def high(projects: Projects, store: Store, name: String, args: (String, ujson.Value)*) =
         askBy(direct(), cleared = grit.core.visibility.Clearance.of(trial))(
@@ -203,14 +204,14 @@ object OldFormTests extends TestSuite {
       (
         high(projects, store, "project_show", "key" -> "p/1"),
         high(projects, store, "project_rekey", "project" -> "p"),
-        ask(projects, store, "project_show", "key" -> "p/1").isInstanceOf[CommandOutcome.Done]
+        ask(projects, store, "project_show", "key" -> "p/1")
       ) ==> (
         leftOver,
         CommandOutcome.Refused(
           "project p is kept labelled [level: public], below what this room writes ([level: " +
             "public, in: {trial}]): re-key from a room at its label"
         ),
-        true
+        shownBefore
       )
     }
     test("a dry re-key counts what it would do and keeps nothing") {
