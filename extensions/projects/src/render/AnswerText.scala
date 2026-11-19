@@ -73,7 +73,7 @@ object AnswerText {
         case (false, false) => ""
         case (false, true) => s": ${states(heads)}"
         case (true, false) =>
-          ": " + split(heads, h => KindName.value(h.kind))
+          ": " + groupByName(heads, h => KindName.value(h.kind))
             .map((k: String, hs: Vector[ArtifactHead]) => s"$k ${hs.size}")
             .mkString("; ")
         case (true, true) => s": ${kindsAndStates(heads)}"
@@ -115,7 +115,7 @@ object AnswerText {
     }
 
   /** Each name `name` gives among `among` and the heads it gives it to, most first, then by name. */
-  private def split(
+  private def groupByName(
       among: Vector[ArtifactHead],
       name: ArtifactHead -> String
   ): Vector[(String, Vector[ArtifactHead])] =
@@ -126,13 +126,13 @@ object AnswerText {
 
   /** `<state> <n>, …`, most first. */
   private def states(among: Vector[ArtifactHead]): String =
-    split(among, h => StateName.value(h.state))
+    groupByName(among, h => StateName.value(h.state))
       .map((s: String, hs: Vector[ArtifactHead]) => s"$s ${hs.size}")
       .mkString(", ")
 
   /** `<kind> <n> (<state> <n>, …); …`, most first. */
   private def kindsAndStates(among: Vector[ArtifactHead]): String =
-    split(among, h => KindName.value(h.kind))
+    groupByName(among, h => KindName.value(h.kind))
       .map((k: String, hs: Vector[ArtifactHead]) => s"$k ${hs.size} (${states(hs)})")
       .mkString("; ")
 
