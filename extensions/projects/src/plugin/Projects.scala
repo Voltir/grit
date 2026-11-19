@@ -60,6 +60,9 @@ object Projects {
     */
   val DeclaredAlready: String = "declared already, under the same digest; nothing changed"
 
+  /** What `project_rekey`'s survey answers, whole, when no project it reads is left to re-key. */
+  val NothingToRekey: String = "No project is left to re-key."
+
   /** What a write refused past `bound` current documents answers. */
   def full(bound: Int): String =
     s"this deployment keeps at most $bound project documents and holds that many already, " +
