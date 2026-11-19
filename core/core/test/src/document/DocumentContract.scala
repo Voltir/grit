@@ -323,32 +323,39 @@ abstract class DocumentContract extends TestSuite {
     }
 
     test(
-      "a keeper capped twice believes what it writes as its believing says: met with both caps"
+      "a keeper capped twice believes what it writes as its believing says: met with both caps, " +
+        "whichever is the lower"
     ) {
       val p = name("doc-capped")
       val endorsed = Integrity.at(Integrity.Level.Authority, TestLabels.trial)
-      val k = DocumentKeeper.believedAtMost(
-        DocumentKeeper.believedAtMost(keeper(p, terms()), Integrity.Member),
-        Integrity.Outside
-      )
-      transaction(
-        ok(
-          k.write(
-            key("k"),
-            Label.Public,
-            endorsed,
-            place("here"),
-            text("words"),
-            Empty,
-            None,
-            at(1)
+      // Each order fails one bug: the outer cap lower misses an inner cap dropped, the inner
+      // lower misses the outer's own.
+      val orders =
+        Vector(Integrity.Member -> Integrity.Outside, Integrity.Outside -> Integrity.Member)
+      orders.zipWithIndex.map { case ((inner, outer), i) =>
+        val k = DocumentKeeper.believedAtMost(
+          DocumentKeeper.believedAtMost(keeper(p, terms()), inner),
+          outer
+        )
+        transaction(
+          ok(
+            k.write(
+              key(s"k$i"),
+              Label.Public,
+              endorsed,
+              place("here"),
+              text("words"),
+              Empty,
+              None,
+              at(1)
+            )
           )
         )
-      )
-      (
-        transaction(ok(shelf(p).current(key("k"), Label.Public))).map(_.integrity),
-        k.believing(endorsed)
-      ) ==> (Some(Integrity.Outside), Integrity.Outside)
+        (
+          transaction(ok(shelf(p).current(key(s"k$i"), Label.Public))).map(_.integrity),
+          k.believing(endorsed)
+        )
+      } ==> Vector.fill(2)((Some(Integrity.Outside), Integrity.Outside))
     }
 
     test("a withdrawn key holds nothing, its withdrawal is never read, and its old version is") {
