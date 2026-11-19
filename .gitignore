@@ -5,8 +5,7 @@ out/
 # Vendored reference (keep out of git on purpose)
 .local/
 
-# Planning artifacts — local working documents, not part of the repo
-roadmap/
+# A person's local instructions, not part of the repo
 CLAUDE.local.md
 
 # Metals / BSP / Bloop
