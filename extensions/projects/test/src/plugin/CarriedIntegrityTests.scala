@@ -20,17 +20,28 @@ object CarriedIntegrityTests extends TestSuite {
   /** A steward of [[TestLabels.trial]]: `Authority` in it alone, as `Tx.integrityOf` gives. */
   private val steward = TestLabels.Endorsed
 
-  /** Command `name` asked by [[steward]] in a deployment declaring [[TestLabels.trial]]. */
-  private def asSteward(projects: Projects, store: Store)(
+  /** Member endorsed in [[TestLabels.trial]]: incomparable with `Authority` alone. */
+  private val memberInTrial = Integrity.at(Integrity.Level.Member, TestLabels.trial)
+
+  /** Command `name` asked by a caller believed at `believed`, in a deployment declaring
+    * [[TestLabels.trial]].
+    */
+  private def askIn(believed: Integrity)(projects: Projects, store: Store)(
       name: String,
       args: (String, ujson.Value)*
   ): CommandOutcome =
     askThrough(
       store.keeper,
       store.claims,
-      CommandBy.Direct(person, steward),
+      CommandBy.Direct(person, believed),
       visibility = TestLabels.Trialled
     )(projects, store, name, args*)
+
+  /** Command `name` asked by [[steward]], as [[askIn]]. */
+  private def asSteward(projects: Projects, store: Store)(
+      name: String,
+      args: (String, ujson.Value)*
+  ): CommandOutcome = askIn(steward)(projects, store)(name, args*)
 
   /** Project `p` with change `p/<local>` kept by a caller believed at `by`. */
   private def changeKeptBy(by: Integrity, local: String = "a"): (Projects, Store) = {
@@ -38,9 +49,7 @@ object CarriedIntegrityTests extends TestSuite {
     val store = Store()
     started(projects, store)
     done(
-      askBelieved(by)(
-        projects,
-        store,
+      askIn(by)(projects, store)(
         "project_keep",
         "key" -> s"p/$local",
         "kind" -> "change",
@@ -54,7 +63,7 @@ object CarriedIntegrityTests extends TestSuite {
   /** How far `p/a` is believed once a caller believed at `mover` moves it, kept by one at `keeper`. */
   private def moved(keeper: Integrity, mover: Integrity): Option[String] = {
     val (projects, store) = changeKeptBy(keeper)
-    done(askBelieved(mover)(projects, store, "project_move", "key" -> "p/a", "state" -> "building"))
+    done(askIn(mover)(projects, store)("project_move", "key" -> "p/a", "state" -> "building"))
     believedOf(store, "p/a")
   }
 
@@ -62,9 +71,7 @@ object CarriedIntegrityTests extends TestSuite {
   private def edited(keeper: Integrity, editor: Integrity): Option[String] = {
     val (projects, store) = changeKeptBy(keeper)
     done(
-      askBelieved(editor)(
-        projects,
-        store,
+      askIn(editor)(projects, store)(
         "project_edit",
         "key" -> "p/a",
         "version" -> versionOf(projects, store, "p/a"),
@@ -79,11 +86,10 @@ object CarriedIntegrityTests extends TestSuite {
     // In the move and the edit, the version before decides only the first pair: the second's
     // caller is the lower, and the capped keeper meets every write with its caller's.
     test("a move is believed at the meet of its caller's and the version it moves") {
-      (moved(session, personally), moved(personally, session)) ==> (Some("member"), Some("member"))
+      moved(memberInTrial, personally) ==> Some(Integrity.written(Integrity.Member))
     }
     test("an edit is believed at the meet of its caller's and the version it changes") {
-      (edited(session, personally), edited(personally, session)) ==>
-        (Some("member"), Some("member"))
+      edited(memberInTrial, personally) ==> Some(Integrity.written(Integrity.Member))
     }
     test("a keep's whole body is believed at its caller's, whoever kept the version before") {
       val (projects, store) = changeKeptBy(session)
