@@ -242,8 +242,8 @@ object MethodJsonTests extends TestSuite {
     test("a nesting neither anywhere, root nor under kinds is refused, naming the kind") {
       val json = declared()
       json("kinds")(0)("nesting") = "inside"
-      MethodJson.read(json, TransitionChecks.all).left.map(_.exists(_.contains("nesting"))) ==>
-        Left(true)
+      MethodJson.read(json, TransitionChecks.all).map(_ => ()) ==>
+        Left(Vector("""kind 1's nesting is neither anywhere, root nor {"under": [kinds]}"""))
     }
     test("movers and a move's mover are written only when not their default") {
       val m = right(
