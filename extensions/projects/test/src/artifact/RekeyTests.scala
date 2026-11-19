@@ -101,12 +101,14 @@ object RekeyTests extends TestSuite {
       .plan(p, pin, legacy.toVector)
       .fold(why => throw new java.lang.AssertionError(why.mkString("; ")), identity)
 
-  /** Three milestones, out of order by title, a note citing two of them and one under the first. */
+  /** Three milestones, out of order by title, a note citing two of them and one under the first;
+    * the two written at minute 1 listed out of key order, so only the tie by key orders them.
+    */
   private val roadmap: Vector[Rekey.Old] = Vector(
+    old("p/step", "A step", 1, parent = Some("p/m9"), cites = Vector("p/notes")),
     old("p/m10", "M10: later", 1),
     old("p/m9", "M9: earlier", 2),
-    old("p/notes", "Notes", 0, cites = Vector("p/m9", "p/m10")),
-    old("p/step", "A step", 1, parent = Some("p/m9"), cites = Vector("p/notes"))
+    old("p/notes", "Notes", 0, cites = Vector("p/m9", "p/m10"))
   )
 
   val tests: Tests = Tests {
