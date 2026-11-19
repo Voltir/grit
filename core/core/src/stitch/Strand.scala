@@ -159,7 +159,7 @@ object Strand {
           .toRight(s"a cut's '$key' is not a whole number")
       for {
         gap <- count("gap")
-        most <- count("most")
+        most <- count("most").filterOrElse(_.isValidInt, s"a cut's 'most' is past an Int")
         settle <- count("settle")
         cut <- of(Duration.ofSeconds(gap), most.toInt, Duration.ofSeconds(settle))
       } yield cut
@@ -205,7 +205,12 @@ object Strand {
       def text(key: String): Either[String, String] =
         field(key).flatMap(_.strOpt.toRight(s"a strand's '$key' is not text"))
       def count(key: String): Either[String, Int] =
-        field(key).flatMap(_.numOpt.map(_.toInt).toRight(s"a strand's '$key' is not a number"))
+        field(key).flatMap(
+          _.numOpt
+            .filter(_.isValidInt)
+            .map(_.toInt)
+            .toRight(s"a strand's '$key' is not a whole number within an Int")
+        )
       def instant(key: String): Either[String, Instant] =
         text(key).flatMap(t =>
           scala.util.Try(Instant.parse(t)).toOption.toRight(s"a strand's '$key' is no instant")

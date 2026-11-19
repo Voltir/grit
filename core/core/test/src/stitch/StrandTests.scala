@@ -90,6 +90,15 @@ object StrandTests extends TestSuite {
       Strand.Cut.read(Strand.Cut.write(Strand.Cut.Default)) ==> Right(Strand.Cut.Default)
     }
 
+    test("a cut's or a strand's count past an Int is refused, never wrapped") {
+      val wide = 4294967296.0 + 16 // 2^32 + 16, which toInt would wrap to 16
+      val cut = Strand.Cut.write(Strand.Cut.Default).obj.clone()
+      cut("most") = wide
+      val strand = Strand.Digested.write(digested(Strand.Span.Whole)).obj.clone()
+      strand("said") = wide
+      (Strand.Cut.read(cut).isLeft, Strand.Digested.read(strand).isLeft) ==> (true, true)
+    }
+
     test("a whole strand's record writes no span, and reads back as before") {
       val whole = digested(Strand.Span.Whole)
       val run = digested(Strand.Span.Run(EntryId("a"), EntryId("b")))
