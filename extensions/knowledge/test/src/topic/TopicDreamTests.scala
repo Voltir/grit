@@ -702,7 +702,8 @@ object TopicDreamTests extends TestSuite {
           s.endsWith("\n\n" + grit.core.prompt.Fenced.Rule)
         )
       ) ==> Vector(
-        (Vector("`<discussion>`", "`<document label=\"topic\">`", "`<document>`"), true)
+        // An open is shown no topic, so it names no topic's fence.
+        (Vector("`<discussion>`", "`<document>`"), true)
       )
     }
 
@@ -1049,6 +1050,26 @@ object TopicDreamTests extends TestSuite {
         ),
         Vector(true, true)
       )
+    }
+
+    test(
+      "an open's write ask is told the topic is new; a later write is told it is shown its text"
+    ) {
+      val w = new StrandWorld
+      val a = strand(w, "C1", "the deploy pipeline is flaky")
+      val runs = new Runs(w)
+      val _ = runs.run(sort = everyNew)
+      w.say(a, "fixed by pinning the runner", 900)
+      val _ = runs.run(now = Now.plusSeconds(600))
+      runs.asked
+        .filter(_.kind == "write")
+        .map(x =>
+          (
+            x.system.contains("This topic is new"),
+            x.system.contains("then the topic's text"),
+            x.system.contains("when the topic exists")
+          )
+        ) ==> Vector((true, false, false), (false, true, false))
     }
 
     test("a meeting's second write keeps its head line once, though its lead repeats it") {

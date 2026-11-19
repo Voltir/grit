@@ -51,7 +51,8 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
   // `sorts`, its scan `meetings`); a sort chooses new_topic, new_meeting or aside with no mark,
   // and a topic it opens is written at once (`open-{i}`, `keep-open-{i}`).
   // 9: a legacy Slack conversation no stitched strand holds is offered whole, as a thread is.
-  // 10: a meeting's lead drops a line repeating its head.
+  // 10: a meeting's lead drops a line repeating its head; an open's write ask is told its topic
+  // is new.
   val version: Int = 10
 
   def write(params: TopicParams): ujson.Value = TopicParams.write(params)
@@ -342,7 +343,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
     val name = TopicKey.value(t.key)
     val ahead = run.extract.params.keepFor.toDays
     val summary = Dreaming.Summary(
-      TopicDream.writeSystem(day, meeting),
+      TopicDream.writeSystem(day, meeting, opened = t.version.isEmpty),
       TopicDream.Chars,
       // The whole topic, bounded by Topic.Passages.
       Int.MaxValue,
@@ -625,26 +626,32 @@ object TopicDream {
   private val Discussion = Tag.Discussion.name
   private val Document = Tag.Document.name
 
-  /** What a write ask is told, before what it is shown: of a `meeting`, how to give its head. */
-  private def writeSystem(day: LocalDate, meeting: Boolean): String =
-    writeTopic(day) + " " + (if (meeting) {
-                               "This topic is one meeting. Give `meeting`: its `state`, " +
-                                 "`proposed` until a day is agreed, `planned` once it is, " +
-                                 "`held` once the messages say it took place; its `day` " +
-                                 "(yyyy-mm-dd) and `start` (HH:MM) when the messages fix " +
-                                 "them, else null; and `who`: everyone taking part, those " +
-                                 "the topic already names included, as the messages write " +
-                                 "them, else null."
-                             } else "Give `meeting` null.")
+  /** What a write ask is told, before what it is shown: of an `opened` topic, that it is new; of
+    * a `meeting`, how to give its head.
+    */
+  private def writeSystem(day: LocalDate, meeting: Boolean, opened: Boolean): String =
+    writeTopic(day, opened) + " " + (if (meeting) {
+                                       "This topic is one meeting. Give `meeting`: its `state`, " +
+                                         "`proposed` until a day is agreed, `planned` once it is, " +
+                                         "`held` once the messages say it took place; its `day` " +
+                                         "(yyyy-mm-dd) and `start` (HH:MM) when the messages fix " +
+                                         "them, else null; and `who`: everyone taking part, those " +
+                                         "the topic already names included, as the messages write " +
+                                         "them, else null."
+                                     } else "Give `meeting` null.")
 
-  private def writeTopic(day: LocalDate): String =
+  private def writeTopic(day: LocalDate, opened: Boolean): String =
     "You keep one topic of a team's knowledge: a durable subject, written as a lead and dated " +
       s"passages. You are shown the discussions and the cards attached to it on $day and the " +
       s"other cards it holds, each discussion a `<$Discussion>` of messages under their speakers' " +
-      s"names and each card a `<$Document>` describing a file, its label in `label`; then, when " +
-      s"the topic exists, its text in a `<$Document label=\"topic\">`: its lead, then its " +
-      "passages newest first, each under " +
-      s"its day. Reply by calling `reply` with `lead`, what the topic is about now, in at most " +
+      s"names and each card a `<$Document>` describing a file, its label in `label`" +
+      // Draft wording, for Nick: an open is told its topic is new, so it narrates no absence.
+      (if (opened)
+         ". This topic is new: write its lead and first passage from what you are shown alone."
+       else
+         s"; then the topic's text in a `<$Document label=\"topic\">`: its lead, then its " +
+           "passages newest first, each under its day.") +
+      s" Reply by calling `reply` with `lead`, what the topic is about now, in at most " +
       s"$LeadChars characters of markdown, and `passage`, in markdown, what $day's discussions " +
       "and cards add to it: what was decided, what is known and what is still open, naming " +
       "people as the messages do. Write about the matter, not the exchange: never about the " +
