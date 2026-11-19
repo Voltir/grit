@@ -3,7 +3,7 @@ package grit.projects.render
 import scala.util.Try
 
 import grit.core.id.DocumentVersionId
-import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
+import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project, Rank}
 import grit.projects.name.{
   ArtifactKey,
   ArtifactRef,
@@ -174,6 +174,7 @@ object ProjectMarkdown {
         "state" -> StateName.value(h.state),
         "title" -> quoted(h.title),
         "parent" -> h.parent.fold("null")(_.value),
+        "rank" -> Rank.value(h.rank),
         "cites" -> h.cites.map(_.value).mkString("[", ", ", "]"),
         "by" -> h.by.fold("null")(quoted)
       ) ++ version.map(v => "version" -> DocumentVersionId.value(v).toString)
@@ -206,7 +207,7 @@ object ProjectMarkdown {
 
   private val IndexFields: Vector[String] = Vector("key", "method", "version", "digest")
   private val HeadFields: Vector[String] =
-    Vector("key", "handle", "kind", "state", "title", "parent", "cites", "by")
+    Vector("key", "handle", "kind", "state", "title", "parent", "rank", "cites", "by")
 
   private def front(fields: Vector[(String, String)]): String =
     fields.map((k, v) => s"$k: $v").mkString("---\n", "\n", "\n---\n")
@@ -245,10 +246,11 @@ object ProjectMarkdown {
       state <- StateName.of(fields("state"))
       title <- unquoted("title", fields("title"))
       parent <- nullable(fields("parent"))(ArtifactKey.read)
+      rank <- Rank.of(fields("rank"))
       cites <- list(fields("cites"))
       by <- nullable(fields("by"))(unquoted("by", _))
       read <- Body.read(body, ArtifactRef.id)
-    } yield Artifact(ArtifactHead(key, handle, kind, state, title, parent, cites, by), read)
+    } yield Artifact(ArtifactHead(key, handle, kind, state, title, parent, rank, cites, by), read)
 
   /** `text`'s front matter, holding exactly `names`, each once, as each name's value (empty
     * for any other name), and what follows it.

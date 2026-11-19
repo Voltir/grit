@@ -2,7 +2,7 @@ package grit.projects.render
 
 import scala.util.Random
 
-import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
+import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project, Rank}
 import grit.projects.method.{MethodFixtures, RoleView}
 import grit.projects.name.{
   ArtifactKey,
@@ -46,6 +46,7 @@ object BriefTests extends TestSuite {
         right(StateName.of("open")),
         title,
         parent.map(key),
+        Rank.Middle,
         cites.map(key),
         None
       ),

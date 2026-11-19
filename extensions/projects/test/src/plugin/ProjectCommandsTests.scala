@@ -8,7 +8,7 @@ import grit.core.identity.Principal
 import grit.core.plugin.{CommandBy, CommandOutcome}
 import grit.core.tool.{ArgsError, ToolName}
 import grit.core.visibility.Integrity
-import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
+import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project, Rank}
 import grit.projects.method.MethodFixtures
 import grit.projects.name.{ArtifactKey, ArtifactNumber, Handle, Pin, ProjectKey}
 import grit.projects.render.{Brief, ProjectMarkdown}
@@ -349,7 +349,7 @@ object ProjectCommandsTests extends TestSuite {
       )
       done(ask(projects, store, "project_keep", "key" -> "p/a", "title" -> "A", "body" -> "New."))
       val text = shown(projects, store, "p/a")
-      assert(text.contains("parent: p/1\ncites: [p/1]\n"), text.contains("New."))
+      assert(text.contains("parent: p/1\nrank: n\ncites: [p/1]\n"), text.contains("New."))
     }
     test("an empty cites clears them, and an empty parent clears it") {
       val projects = plugin()
@@ -368,7 +368,8 @@ object ProjectCommandsTests extends TestSuite {
         )
       keep("kind" -> "note", "parent" -> "p/b", "cites" -> ujson.Arr("p/b"))
       keep("cites" -> ujson.Arr(), "parent" -> "")
-      assert(shown(projects, store, "p/a").contains("parent: null\ncites: []\n"))
+      // Out from under b, it ranks after b, the last of the artifacts under none.
+      assert(shown(projects, store, "p/a").contains("parent: null\nrank: naab\ncites: []\n"))
     }
     test("a keep naming an artifact the project lacks is refused, keeping nothing") {
       val projects = plugin()
@@ -491,11 +492,13 @@ object ProjectCommandsTests extends TestSuite {
       locals.foreach(l => kept(projects, store, l, "note", s"Text of $l."))
       val p = right(ProjectKey.of("p"))
       val m = method()
+      // Each create ranks after the last: `n`, then stepping on.
+      val ranks = Iterator.iterate(Rank.Middle)(r => right(Rank.between(Some(r), None)))
       val expected = right(
         Project.of(
           p,
           right(Pin.of(m.name, m.version, m.digest)),
-          locals.zipWithIndex.map { (l, i) =>
+          locals.zip(ranks).zipWithIndex.map { case ((l, rank), i) =>
             Artifact(
               ArtifactHead(
                 ArtifactKey.of(p, right(ArtifactNumber.of(i + 1))),
@@ -504,6 +507,7 @@ object ProjectCommandsTests extends TestSuite {
                 state("open"),
                 s"Title $l",
                 None,
+                rank,
                 Vector.empty,
                 Some(by)
               ),
@@ -715,7 +719,7 @@ object ProjectCommandsTests extends TestSuite {
       )
       val headed = done(ask(projects, store, "project_show", "key" -> "p/a", "head" -> true))
       headed ==>
-        "---\nkey: p/1\nhandle: a\nkind: note\nstate: open\ntitle: \"Title a\"\nparent: null\ncites: []\n" +
+        "---\nkey: p/1\nhandle: a\nkind: note\nstate: open\ntitle: \"Title a\"\nparent: null\nrank: n\ncites: []\n" +
         s"by: ${shown(projects, store, "p/a").linesIterator.find(_.startsWith("by: ")).fold("")(_.drop(4))}\n" +
         s"version: ${versionOf(projects, store, "p/a")}\n---\n\n" +
         "Opening words, all of them.\n\nSections: Goal; Reads (0.1 KB in all)\n"

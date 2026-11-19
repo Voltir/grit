@@ -136,8 +136,8 @@ object ArtifactJson {
   /** The project [[projectData]] wrote as `json`, or why not: a field missing or malformed, a
     * stored body [[Body.fromStored]] refuses, or what [[Project.of]] refuses. It reads too the
     * old form, each artifact beside its key `<project>/<name>` and its head without an id: each
-    * takes `<name>` as its handle and its place in the list, from 1, as its number, and every
-    * reference names a handle. Refused for artifacts of both forms.
+    * takes `<name>` as its handle, its place in the list, from 1, as its number and
+    * [[Rank.Middle]] as its rank, and every reference names a handle. Refused for artifacts of both forms.
     */
   def projectFrom(json: ujson.Value): Either[String, Project] =
     for {
@@ -184,7 +184,7 @@ object ArtifactJson {
           case other => Left(s"no artifact is named ${other.value}")
         }
       artifacts <- sequence(written.zip(named).map { case (a, (handle, key)) =>
-        headOf(a).flatMap(fromHead(key, Some(handle), _, a, reference))
+        headOf(a).flatMap(fromHead(key, Some(handle), Rank.Middle, _, a, reference))
       })
     } yield artifacts
 
@@ -214,8 +214,8 @@ object ArtifactJson {
       .toRight("its pin holds no method, version and digest")
       .flatMap((m, v, d) => MethodName.of(m).flatMap(Pin.read(_, v, d)))
 
-  /** The artifact whose head and stored body `data` holds, its id and handle as the head holds
-    * them, or why not.
+  /** The artifact whose head and stored body `data` holds, its id, handle and rank as the head
+    * holds them, or why not.
     */
   private def fromData(data: ujson.Value): Either[String, Artifact] =
     for {
@@ -227,7 +227,8 @@ object ArtifactJson {
         case Some(h) => Handle.of(h).map(Some(_))
         case None => Right(None)
       }
-      artifact <- fromHead(key, handle, fields, data, ArtifactKey.read)
+      rank <- text(fields, "rank").flatMap(Rank.of)
+      artifact <- fromHead(key, handle, rank, fields, data, ArtifactKey.read)
     } yield artifact
 
   /** The head of `data`, or why not. */
@@ -237,12 +238,13 @@ object ArtifactJson {
       .flatMap(_.objOpt)
       .toRight("its data holds no head")
 
-  /** The artifact `key`, `handle`, of head `fields` and the stored body `data` holds, each
-    * reference read by `reference`, or why not.
+  /** The artifact `key`, `handle`, of `rank`, of head `fields` and the stored body `data` holds,
+    * each reference read by `reference`, or why not.
     */
   private def fromHead(
       key: ArtifactKey,
       handle: Option[Handle],
+      rank: Rank,
       fields: collection.Map[String, ujson.Value],
       data: ujson.Value,
       reference: String -> Either[String, ArtifactKey]
@@ -264,7 +266,7 @@ object ArtifactJson {
       by <- nullable(fields, "by")
       stored <- data.objOpt.flatMap(_.get(BodyField)).toRight("its data holds no body")
       body <- Body.fromStored(stored, reference)
-    } yield Artifact(ArtifactHead(key, handle, kind, state, title, parent, cites, by), body)
+    } yield Artifact(ArtifactHead(key, handle, kind, state, title, parent, rank, cites, by), body)
 
   /** The ref an artifact in `state` holds, as [[write]] names it. */
   def stateRef(state: StateName): DocRef =
@@ -291,6 +293,7 @@ object ArtifactJson {
       "state" -> StateName.value(h.state),
       "title" -> h.title,
       "parent" -> h.parent.fold[ujson.Value](ujson.Null)(k => ujson.Str(k.value)),
+      "rank" -> Rank.value(h.rank),
       "cites" -> ujson.Arr.from(h.cites.map(k => ujson.Str(k.value))),
       "by" -> h.by.fold[ujson.Value](ujson.Null)(ujson.Str(_))
     )

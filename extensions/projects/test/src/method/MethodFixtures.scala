@@ -1,6 +1,6 @@
 package grit.projects.method
 
-import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
+import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project, Rank}
 import grit.projects.name.{
   ArtifactKey,
   ArtifactNumber,
@@ -151,6 +151,7 @@ object MethodFixtures {
       state(in),
       k,
       parent.map(key),
+      Rank.Middle,
       cites.map(key),
       None
     )
