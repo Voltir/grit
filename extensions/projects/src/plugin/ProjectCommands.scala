@@ -220,7 +220,7 @@ private[plugin] final class ProjectCommands(
         at: Instant
     )(using Tx^): Either[StoreError, CommandOutcome] =
       answered(
-        alone(own, claims, args.project, by, at, "keep")(_ => Right(Step.Keep(args)))
+        alone(own, claims, args.project, by, at, "keep")(Step.Keep(args))
           .map(done => done.version.fold(done.said)(AnswerText.nowAt(done.said, _)))
       )
   }
@@ -268,7 +268,7 @@ private[plugin] final class ProjectCommands(
     )(using Tx^): Either[StoreError, CommandOutcome] = answered {
       val key = args.key
       for {
-        done <- alone(own, claims, key.project, by, at, "edit")(_ => Right(Step.Edit(args)))
+        done <- alone(own, claims, key.project, by, at, "edit")(Step.Edit(args))
         // An edit that changes nothing writes nothing, and the version given is current.
         now = done.version.getOrElse(args.version)
       } yield AnswerText.nowAt(done.said, now)
@@ -324,7 +324,7 @@ private[plugin] final class ProjectCommands(
         at: Instant
     )(using Tx^): Either[StoreError, CommandOutcome] =
       answered(
-        alone(own, claims, args.artifact.project, by, at, "reorder")(_ => Right(Step.Reorder(args)))
+        alone(own, claims, args.artifact.project, by, at, "reorder")(Step.Reorder(args))
           .map(_.said)
       )
   }
@@ -371,7 +371,7 @@ private[plugin] final class ProjectCommands(
         claims: Claims,
         at: Instant
     )(using Tx^): Either[StoreError, CommandOutcome] = answered(
-      alone(own, claims, args.artifact.project, by, at, "split")(_ => Right(Step.Split(args)))
+      alone(own, claims, args.artifact.project, by, at, "split")(Step.Split(args))
         .map(done => done.version.fold(done.said)(AnswerText.nowAt(done.said, _)))
     )
   }
@@ -408,7 +408,7 @@ private[plugin] final class ProjectCommands(
         at: Instant
     )(using Tx^): Either[StoreError, CommandOutcome] =
       answered(
-        alone(own, claims, args.key.project, by, at, "move")(_ => Right(Step.Move(args)))
+        alone(own, claims, args.key.project, by, at, "move")(Step.Move(args))
           .map(_.said)
       )
   }
@@ -463,7 +463,7 @@ private[plugin] final class ProjectCommands(
         at: Instant
     )(using Tx^): Either[StoreError, CommandOutcome] =
       answered(
-        alone(own, claims, args.project, by, at, "propose")(_ => Right(Step.Keep(args)))
+        alone(own, claims, args.project, by, at, "propose")(Step.Keep(args))
           .map(_.said)
       )
   }
@@ -640,52 +640,47 @@ private[plugin] final class ProjectCommands(
         claims: Claims,
         at: Instant
     )(using Tx^): Either[StoreError, CommandOutcome] = answered {
-      val n = args.steps.size
-      locked(claims, args.project).flatMap { lock =>
-        given Locked = lock
-        for {
-          project <- loaded(own, args.project)
-          held <- if (args.dry) Right(Vector.empty) else holding(claims, project, at)
-          method <- declared(own, project.pin)
-          plan = planned(project, method, args.steps, author(by), moverOf(by), onward = args.dry)
-          (said, steps) = plan
-          answers <- Traversal.traverse(said.zipWithIndex) {
-            case (Right(answer), i) => Right(s"${i + 1}. ${answer.said}")
-            case (Left(Stop.Refused(why)), i) => Right(s"${i + 1}. Refused: $why")
-            case (Left(failed), _) => Left(failed)
-          }
-          lines = answers.mkString("\n")
-          wouldRefuse =
+      changed(own, claims, args.project, by, at, "change it", args.steps, args.dry).flatMap {
+        done =>
+          def each(answers: Vector[Either[String, String]]): String =
+            answers.zipWithIndex
+              .map {
+                case (Right(answer), i) => s"${i + 1}. $answer"
+                case (Left(why), i) => s"${i + 1}. Refused: $why"
+              }
+              .mkString("\n")
+          def wouldRefuse(lines: String): String =
             s"Dry run, nothing kept; the batch would be refused. Each step would answer:\n$lines"
-          refused = said.zipWithIndex.collectFirst { case (Left(Stop.Refused(why)), i) => (i, why) }
-          done <- (refused, args.dry) match {
-            case (Some((i, why)), false) =>
+          done match {
+            case Changed.Refused(answers) if args.dry =>
+              Left(Stop.Refused(wouldRefuse(each(answers.map(_.map(_.said))))))
+            case Changed.Refused(answers) =>
               Left(
                 Stop.Refused(
-                  s"Nothing was kept: step ${i + 1} of $n (${described(args.steps, i)}) was " +
-                    s"refused: $why"
+                  answers.zipWithIndex
+                    .collectFirst { case (Left(why), i) =>
+                      s"Nothing was kept: step ${i + 1} of ${args.steps.size} " +
+                        s"(${described(args.steps, i)}) was refused: $why"
+                    }
+                    .getOrElse("Nothing was kept.")
                 )
               )
-            case (Some(_), true) => Left(Stop.Refused(wouldRefuse))
-            case (None, false) =>
-              settled(claims, project, method, args.project, steps, at, "change it").left
-                .map {
-                  case Stop.Refused(why) => Stop.Refused(s"Nothing was kept: $why")
-                  case failed => failed
-                }
-                .flatMap(_ => wrote(own, project, steps, author(by), at))
-                .flatMap(_ => rebriefed(own, held, args.project, at))
-                .map(_ => s"Every step is done:\n$lines")
-            case (None, true) =>
-              settled(claims, project, method, args.project, steps, at, "change it").left
-                .map {
-                  case Stop.Refused(why) =>
-                    Stop.Refused(s"$wouldRefuse\nOnce every step is done, refused: $why")
-                  case failed => failed
-                }
-                .map(_ => s"Dry run, nothing kept. Each step would answer:\n$lines")
+            case Changed.Unsettled(answers, why) if args.dry =>
+              Left(
+                Stop.Refused(
+                  s"${wouldRefuse(each(answers.map(a => Right(a.said))))}\n" +
+                    s"Once every step is done, refused: $why"
+                )
+              )
+            case Changed.Unsettled(_, why) => Left(Stop.Refused(s"Nothing was kept: $why"))
+            case Changed.Done(answers, _) if args.dry =>
+              Right(
+                s"Dry run, nothing kept. Each step would answer:\n" +
+                  each(answers.map(a => Right(a.said)))
+              )
+            case Changed.Done(answers, _) =>
+              Right(s"Every step is done:\n${each(answers.map(a => Right(a.said)))}")
           }
-        } yield done
       }
     }
 
@@ -2059,10 +2054,9 @@ private[plugin] final class ProjectCommands(
     }
   }
 
-  /** The step `stepping` makes of project `key` as loaded, taken alone, as `project_keep` or
-    * `project_move` takes it, saying `verb` of an artifact kept below this room: its answer and
-    * the version the artifact it names is now at, none when it wrote that one no new version; or
-    * why it was refused.
+  /** `step` taken alone over project `key`, as `project_keep` or `project_move` takes it, saying
+    * `verb` of an artifact kept below this room: its answer and the version the artifact it names
+    * is now at, none when it wrote that one no new version; or why it was refused.
     */
   private def alone(
       own: DocumentKeeper,
@@ -2071,23 +2065,66 @@ private[plugin] final class ProjectCommands(
       by: CommandBy,
       at: Instant,
       verb: String
-  )(stepping: Loaded -> Either[Stop, Step])(using
+  )(step: Step)(using
       Tx^
   ): Either[Stop, (said: String, version: Option[DocumentVersionId])] =
+    changed(own, claims, key, by, at, verb, Vector(step), dry = false).flatMap {
+      case Changed.Refused(answers) =>
+        Left(
+          Stop.Refused(
+            answers.collectFirst { case Left(why) => why }.getOrElse("nothing was asked")
+          )
+        )
+      case Changed.Unsettled(_, why) => Left(Stop.Refused(why))
+      case Changed.Done(answers, versions) =>
+        answers.headOption
+          .map(a => (said = a.said, version = versions.get(a.artifact)))
+          .toRight(Stop.Refused("nothing was asked"))
+    }
+
+  /** `steps` taken over project `key` as loaded, each seeing what those before it did, written
+    * and moved as `by`, saying `verb` of an artifact kept below this room ([[settled]]); kept
+    * unless `dry`, or when a step or the settling refuses. Refused for what the store refuses.
+    */
+  private def changed(
+      own: DocumentKeeper,
+      claims: Claims,
+      key: ProjectKey,
+      by: CommandBy,
+      at: Instant,
+      verb: String,
+      steps: Vector[Step],
+      dry: Boolean
+  )(using Tx^): Either[Stop, Changed] =
     locked(claims, key).flatMap { lock =>
       given Locked = lock
       for {
         project <- loaded(own, key)
-        held <- holding(claims, project, at)
-        step <- stepping(project)
+        held <- if (dry) Right(Vector.empty) else holding(claims, project, at)
         method <- declared(own, project.pin)
-        plan = planned(project, method, Vector(step), author(by), moverOf(by), onward = false)
-        (said, steps) = plan
-        answer <- said.headOption.toRight(Stop.Refused("nothing was asked")).flatten
-        _ <- settled(claims, project, method, key, steps, at, verb)
-        versions <- wrote(own, project, steps, author(by), at)
-        _ <- rebriefed(own, held, key, at)
-      } yield (said = answer.said, version = versions.get(answer.artifact))
+        plan = planned(project, method, steps, author(by), moverOf(by), onward = dry)
+        (said, stepping) = plan
+        answers <- Traversal.traverse(said) {
+          case Right(answer) => Right(Right(answer))
+          case Left(Stop.Refused(why)) => Right(Left(why))
+          case Left(failed) => Left(failed)
+        }
+        done <-
+          if (answers.exists(_.isLeft)) Right(Changed.Refused(answers))
+          else {
+            val all = answers.collect { case Right(a) => a }
+            settled(claims, project, method, key, stepping, at, verb) match {
+              case Left(Stop.Refused(why)) => Right(Changed.Unsettled(all, why))
+              case Left(failed) => Left(failed)
+              case Right(_) if dry => Right(Changed.Done(all, Map.empty))
+              case Right(_) =>
+                for {
+                  versions <- wrote(own, project, stepping, author(by), at)
+                  _ <- rebriefed(own, held, key, at)
+                } yield Changed.Done(all, versions)
+            }
+          }
+      } yield done
     }
 
   /** Each claim live at `at` on an artifact of `project`, matched by the key its document is
@@ -2999,6 +3036,24 @@ private[plugin] object ProjectCommands {
       case Vector() => Right(())
       case refusals => Left(Stop.Refused(refusals.mkString("; ")))
     }
+  }
+
+  /** What [[changed]] made of its steps, each answered with the artifact it names. */
+  private enum Changed extends caps.Pure {
+
+    /** A step was refused, each step's answer or refusal given; nothing was kept. */
+    case Refused(answers: Vector[Either[String, (said: String, artifact: ArtifactKey)]])
+
+    /** Every step was taken, and what they made together was refused, why given; nothing was
+      * kept.
+      */
+    case Unsettled(answers: Vector[(said: String, artifact: ArtifactKey)], why: String)
+
+    /** Every step was taken, and kept at `versions` (none when dry). */
+    case Done(
+        answers: Vector[(said: String, artifact: ArtifactKey)],
+        versions: Map[ArtifactKey, DocumentVersionId]
+    )
   }
 
   /** What steps have made of a loaded project so far: its artifacts, the keys of those they
