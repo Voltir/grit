@@ -20,7 +20,7 @@ import grit.core.provider.ModelRequest
 import grit.core.screen.{Screen, Screened}
 import grit.core.stitch.{Strand, StrandShelf}
 import grit.core.store.{StoreError, Tx}
-import grit.core.visibility.{DeclassificationPolicy, Integrity, Label, Recorded}
+import grit.core.visibility.{DeclassificationPolicy, Integrity, Label, Recorded, Visibility}
 import grit.std.either.Traversal.sequence
 
 /** [[Dreaming]] for a job's tests: [[ScriptedKeeping]], scripted as it is, whose scans read
@@ -49,7 +49,8 @@ final class ScriptedDreaming(
     asks: ModelRequest -> Either[MoveError, Asked[Message.Assistant]] = (_: ModelRequest) =>
       Left(MoveError.Model("no text reply scripted")),
     judgments: Request -> Either[MoveError, Asked[Vector[Answer]]] = (_: Request) =>
-      Left(MoveError.Model("no judgment scripted"))
+      Left(MoveError.Model("no judgment scripted")),
+    visibility: Visibility = Visibility.Shipped
 ) extends ScriptedKeeping(
       limits,
       floor,
@@ -62,7 +63,8 @@ final class ScriptedDreaming(
       documents = documents,
       at = at,
       integrity = integrity,
-      rooms = rooms
+      rooms = rooms,
+      visibility = visibility
     ),
       Dreaming {
 

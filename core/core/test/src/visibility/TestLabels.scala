@@ -46,4 +46,12 @@ object TestLabels {
         .left
         .map(_.toString)
     } yield v).fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** grit's own under [[Trialled]] ([[Integrity.top]]): what a schedule's run there is believed
+    * at.
+    */
+  val TrialledOwn: Integrity = Integrity.top(Trialled.compartments)
+
+  /** [[Integrity.Level.Authority]] endorsed in [[trial]]: a source or a steward's words there. */
+  val Endorsed: Integrity = Integrity.at(Integrity.Level.Authority, trial)
 }

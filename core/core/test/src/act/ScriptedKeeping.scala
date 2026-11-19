@@ -26,7 +26,7 @@ import grit.dbos.sql.TestTx
 
 /** [[Keeping]] for a job's tests: [[ScriptedMoves]], scripted as it is, whose keeps write
   * `plugin`'s documents in `documents` under `terms`, each in a transaction opened at `floor`
-  * whose rooms are labelled as `rooms` records them, at `at`. Under the rules every [[Keeping]] keeps, which `grit.act.moves.MovesContract` holds
+  * under `visibility` whose rooms are labelled as `rooms` records them, at `at`. Under the rules every [[Keeping]] keeps, which `grit.act.moves.MovesContract` holds
   * it to beside the durable moves: a keep whose body is `Left` keeps none of its writes, is
   * [[MoveError.Store]] in the durable moves' words, and its name is spent; a keep writes at no
   * less than `floor`, believed at no more than what it keeps from, and from what is believed
@@ -56,7 +56,8 @@ class ScriptedKeeping(
     val pieces: InMemoryPieces = new InMemoryPieces,
     files: FileHandle -> Either[String, (String, Understood)] = (h: FileHandle) =>
       Left(FileError.Gone(h, Files.Expiry).message),
-    formats: Option[Formats] = None
+    formats: Option[Formats] = None,
+    visibility: Visibility = Visibility.Shipped
 ) extends ScriptedMoves(limits, asks, calls, jsons, judgments, integrity),
       Keeping {
 
@@ -121,7 +122,9 @@ class ScriptedKeeping(
       .newest(Int.MaxValue)(using opened)
       .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
 
-  /** A transaction of a run at `floor`, its rooms labelled as `rooms` records them. */
-  protected def opened: Tx = TestTx.fake(Clearance.of(floor), Visibility.Shipped, rooms)
+  /** A transaction of a run at `floor` under `visibility`, its rooms labelled as `rooms` records
+    * them.
+    */
+  protected def opened: Tx = TestTx.fake(Clearance.of(floor), visibility, rooms)
 
 }
