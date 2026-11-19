@@ -24,17 +24,8 @@ import grit.projects.method.{
 }
 import grit.projects.name.{CheckName, MethodName, StateName}
 
-import ProjectCommands.{
-  PersonOnlyBy,
-  Stop,
-  answered,
-  moverOf,
-  parsed,
-  refusal,
-  refuse,
-  stored,
-  written
-}
+import ProjectCommands.{PersonOnlyBy, moverOf, parsed, refusal, written}
+import Stop.{answered, refuse, stored}
 import MethodCommands.{Asking, Declaring}
 
 /** `project_declare` and `project_methods`, and the method versions every other command reads:

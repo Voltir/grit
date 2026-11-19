@@ -19,6 +19,7 @@ import grit.prose.words.Words
 import grit.std.either.Traversal
 
 import ProjectCommands.*
+import Stop.refuse
 
 /** What a keeping command's steps make of a loaded project, before anything is kept: each step
   * as its command takes it, over what the steps before it made. No step reads or writes the

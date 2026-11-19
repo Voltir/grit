@@ -73,6 +73,7 @@ private[plugin] final class ProjectCommands(
 
   import ProjectCommands.*
   import ProjectSteps.*
+  import Stop.{answered, refuse, stored}
 
   /** Whether turns are offered the shipped commands, not `project_propose` alone. */
   private val shipped: Boolean = turns match {
@@ -2206,6 +2207,7 @@ private[plugin] final class ProjectCommands(
 
 private[plugin] object ProjectCommands {
   import ProjectSteps.*
+  import Stop.{refuse, stored}
 
   /** `project_new`'s arguments. */
   final case class Starting(project: ProjectKey, method: Option[MethodName]) extends caps.Pure
@@ -2753,12 +2755,6 @@ private[plugin] object ProjectCommands {
     s"project ${ProjectKey.value(project)} is in the old form, its artifacts keyed by name: " +
       "re-key it with project_rekey first"
 
-  /** Why a command stopped: its store failed, or it refused, in words its asker reads. */
-  private[plugin] enum Stop extends caps.Pure {
-    case Store(error: StoreError)
-    case Refused(why: String)
-  }
-
   /** A project as its documents hold it: its key, its index, its pin, the number its next new
     * artifact takes, and each artifact with its document.
     */
@@ -2798,18 +2794,6 @@ private[plugin] object ProjectCommands {
       at: Instant
   )(using Tx^)(using Locked): Either[Stop, Claimed] =
     stored(claims.claim(document.key, args.holder, args.role, by, document.label, at))
-
-  private[plugin] def answered(step: Either[Stop, String]): Either[StoreError, CommandOutcome] =
-    step match {
-      case Right(text) => Right(CommandOutcome.Done(text))
-      case Left(Stop.Refused(why)) => Right(CommandOutcome.Refused(why))
-      case Left(Stop.Store(e)) => Left(e)
-    }
-
-  private[plugin] def refuse[A](e: Either[String, A]): Either[Stop, A] = e.left.map(Stop.Refused(_))
-
-  private[plugin] def stored[A](e: Either[StoreError, A]): Either[Stop, A] =
-    e.left.map(Stop.Store(_))
 
   /** As [[stored]], a write refused past the bound refused in words. */
   private[plugin] def written[A](e: Either[StoreError, A]): Either[Stop, A] = e.left.map {
