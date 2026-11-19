@@ -91,8 +91,8 @@ final case class Method private (
     * another method, or to this version under another digest (its rules changed: declare a new
     * version); an override in `remap.artifacts` for a key `project` lacks; artifacts that would
     * be of a kind this method does not declare, or in a state their kind does not declare, named
-    * by kind or state; or what [[Project.of]] refuses. No transition's checks are asked: they guard moves, not the states
-    * artifacts are in.
+    * by kind or state; what [[Project.of]] refuses; or what [[nested]] refuses. No transition's
+    * checks are asked: they guard moves, not the states artifacts are in.
     */
   def migrated(project: Project, remap: Remap): Either[String, Migrated] = {
     val held = project.artifacts.map(_.head.key).toSet
@@ -143,6 +143,7 @@ final case class Method private (
       _ <- Either.cond(reasons.isEmpty, (), reasons.mkString("; "))
       pin <- Pin.of(name, version, digest)
       done <- Project.of(project.key, pin, renamed)
+      _ <- nested(done)
     } yield Migrated(
       done,
       project.artifacts
@@ -154,9 +155,40 @@ final case class Method private (
     )
   }
 
+  /** `project`, or why not, every reason joined by `; `: an artifact whose kind's nesting refuses
+    * its parent, or its having none. A kind this method does not declare is not judged. Reading
+    * a stored or exported project judges no nesting, so a project pinned to this method may hold
+    * an artifact this refuses.
+    */
+  def nested(project: Project): Either[String, Project] =
+    project.artifacts.sortBy(_.head.key.number).flatMap(misplaced(project, _)) match {
+      case Vector() => Right(project)
+      case some => Left(some.mkString("; "))
+    }
+
+  /** Why `a` may not sit where it does in `project` under its kind's nesting, or nothing. */
+  private[projects] def misplaced(project: Project, a: Artifact): Option[String] = {
+    val parent = a.head.parent.flatMap(p => project.artifacts.find(_.head.key == p))
+    def kindOf(h: ArtifactHead): String = s"${h.called}, of kind ${KindName.value(h.kind)}"
+    val where = parent.fold("sit at the project's root")(p => s"sit under ${kindOf(p.head)}")
+    kinds
+      .find(_.name == a.head.kind)
+      .map(_.nesting)
+      .flatMap {
+        case Nesting.Anywhere => None
+        case Nesting.Root => parent.map(_ => "it may sit only at the project's root")
+        case Nesting.Under(under) =>
+          Option.when(!parent.exists(p => under.contains(p.head.kind)))(
+            s"it may sit under ${under.toVector.map(KindName.value).sorted.mkString(" or ")}"
+          )
+      }
+      .map(why => s"${kindOf(a.head)}, cannot $where: $why")
+  }
+
   /** The digest of its data and of each check's name and version: equal for equal methods,
     * whatever order their kinds, transitions, role views, states and checks are declared in. A
-    * view carrying nothing, or a transition anyone makes, adds nothing to the digest.
+    * view carrying nothing, a transition anyone makes, or a kind that may sit anywhere, adds
+    * nothing to the digest.
     */
   def digest: Sha256 = {
     def field(s: String): String = s"${s.length}:$s"
@@ -169,7 +201,11 @@ final case class Method private (
           names(k.states.map(StateName.value)),
           names(k.ends.map(StateName.value)),
           field(k.sections.map(field).mkString)
-        ).mkString
+        ).mkString + (k.nesting match {
+          case Nesting.Anywhere => ""
+          case Nesting.Root => field("root")
+          case Nesting.Under(under) => field("under") + names(under.map(KindName.value))
+        })
       } ++ transitions.map { t =>
         "transition " + Vector(
           field(KindName.value(t.kind)),
@@ -204,8 +240,8 @@ object Method {
       "declare a new version of the method rather than changing this one"
 
   /** These as a method, or every reason not ([[MethodRefusal]]): a version under 1; a kind,
-    * state, role or check named twice; an end state, a transition (its action's kind among them)
-    * or a role view naming a kind or state not declared; a transition from an end state; a check
+    * state, role or check named twice; an end state, a transition (its action's kind among them),
+    * a role view or a kind's nesting naming a kind or state not declared; a transition from an end state; a check
     * not in `compiled`; a state its kind's first cannot reach.
     */
   def of(
@@ -243,7 +279,11 @@ object Method {
         } ++
         (transitions.collect { case Transition(_, _, _, _, TransitionAction.MergeDeltas(into), _) =>
           into
-        } ++ views.flatMap(_.kinds.toVector.sortBy(KindName.value))).distinct
+        } ++ views.flatMap(_.kinds.toVector.sortBy(KindName.value)) ++
+          kinds.flatMap(_.nesting match {
+            case Nesting.Under(under) => under.toVector.sortBy(KindName.value)
+            case Nesting.Anywhere | Nesting.Root => Vector.empty
+          })).distinct
           .filterNot(declared.contains)
           .map(UndeclaredKind(_)) ++
         named.filterNot(compiled.map(_.name).contains).map(NotCompiled(_)) ++
@@ -357,7 +397,7 @@ enum MethodRefusal extends caps.Pure {
   /** Two compiled checks share a name. */
   case CheckTwice(check: CheckName)
 
-  /** A transition or a role view names a kind not declared. */
+  /** A transition, a role view or a kind's nesting names a kind not declared. */
   case UndeclaredKind(kind: KindName)
 
   /** An end state or a transition names a state its kind does not declare. */

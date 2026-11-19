@@ -120,5 +120,22 @@ object MigrationTests extends TestSuite {
       )
       was.migrated(pinnedTo(was, n), Remap()) ==> Right(Migrated(pinnedTo(was, n), Vector()))
     }
+
+    test(
+      "a migration to kinds whose nesting refuses a parent is refused, naming each out of place"
+    ) {
+      val rooted = change.copy(nesting = Nesting.Root)
+      val inChange = note.copy(nesting = right(Nesting.under(Set(change.name))))
+      val inside = artifact(head("p/n", note, "open", parent = Some("p/a")), "N.")
+      val loose = artifact(head("p/m", note, "open"), "M.")
+      val sunk = artifact(head("p/b", change, "building", parent = Some("p/n")), "## Why\n\nB.")
+      version2(rooted, inChange).migrated(project(a, inside, loose, sunk), Remap()).map(_ => ()) ==>
+        Left(
+          "p/2 b, of kind change, cannot sit under p/12 n, of kind note: " +
+            "it may sit only at the project's root; " +
+            "p/11 m, of kind note, cannot sit at the project's root: it may sit under change"
+        )
+      version2(rooted, inChange).migrated(project(a, inside), Remap()).isRight ==> true
+    }
   }
 }

@@ -4,14 +4,15 @@ import grit.projects.artifact.ArtifactHead
 import grit.projects.name.{CheckName, Handle, KindName, RoleName, StateName}
 
 /** A kind of artifact: the state each starts in, its other states, those of them it ends in,
-  * and the `##` sections its body must hold.
+  * the `##` sections its body must hold, and what it may sit under.
   */
 final case class ArtifactKind(
     name: KindName,
     first: StateName,
     states: Vector[StateName],
     ends: Set[StateName],
-    sections: Vector[String]
+    sections: Vector[String],
+    nesting: Nesting = Nesting.Anywhere
 ) extends caps.Pure {
 
   /** `first`, then `states`. */
@@ -23,6 +24,22 @@ object ArtifactKind {
   /** Whether `head` is in an end state of its kind among `kinds`; false for a kind none is. */
   def ends(kinds: Vector[ArtifactKind], head: ArtifactHead): Boolean =
     kinds.exists(k => k.name == head.kind && k.ends(head.state))
+}
+
+/** What an artifact of a kind may sit under: any artifact or none, none, or an artifact of one
+  * of `kinds`.
+  */
+enum Nesting extends caps.Pure {
+  case Anywhere
+  case Root
+  case Under private[Nesting] (kinds: Set[KindName])
+}
+
+object Nesting {
+
+  /** Under one of `kinds`, or why not: none given. */
+  def under(kinds: Set[KindName]): Either[String, Nesting] =
+    if (kinds.isEmpty) Left("a nesting under kinds names no kind") else Right(new Under(kinds))
 }
 
 /** A move an artifact of `kind` may make from `from` to `to`: allowed only when each check

@@ -20,7 +20,8 @@ Packages, in one-way order (each names only those before it):
   an artifact and a project's index as ledger documents hold them (`Artifact.of` reads one
   back), and a whole project as a file holds it. Imports `name`.
 - **`method`**: a methodology as versioned data: `Method` (its kinds, transitions and role
-  views, every name declared and every check compiled in), `ArtifactKind`, `Transition`,
+  views, every name declared and every check compiled in), `ArtifactKind` with its `Nesting`
+  (what an artifact of it may sit under, judged where one is placed), `Transition`,
   `TransitionCheck` (compiled, pure, deterministic and versioned; the built-ins in
   `TransitionChecks`), `TransitionAction` (grit's, never a method's code) and `RoleView` (what a role is shown, and
   what it always carries);

@@ -27,13 +27,21 @@ object MethodJson {
       "name" -> MethodName.value(method.name),
       "version" -> method.version,
       "kinds" -> ujson.Arr.from(method.kinds.map { k =>
-        ujson.Obj(
+        val o = ujson.Obj(
           "name" -> KindName.value(k.name),
           "first" -> StateName.value(k.first),
           "states" -> strings(k.states.map(StateName.value)),
           "ends" -> strings(k.ends.toVector.map(StateName.value).sorted),
           "sections" -> strings(k.sections)
         )
+        k.nesting match {
+          case Nesting.Anywhere => ()
+          case Nesting.Root => o("nesting") = RootNesting
+          case Nesting.Under(under) =>
+            o("nesting") =
+              ujson.Obj(UnderNesting -> strings(under.toVector.map(KindName.value).sorted))
+        }
+        o
       }),
       "transitions" -> ujson.Arr.from(method.transitions.map { t =>
         unlessDefault(
@@ -131,6 +139,9 @@ object MethodJson {
   private val RefusedKind = "refused-by"
   private val PersonOnlyKind = "refused-person-only"
   private val PeopleMove = "people"
+  private val AnywhereNesting = "anywhere"
+  private val RootNesting = "root"
+  private val UnderNesting = "under"
   private val AnyoneMoves = "anyone"
   private val PersonMover = "person"
   private val AgentMover = "agent"
@@ -191,7 +202,20 @@ object MethodJson {
       states <- names(f, "states")(StateName.of)
       ends <- names(f, "ends")(StateName.of)
       sections <- names(f, "sections")(Right(_))
-    } yield ArtifactKind(name, first, states, ends.toSet, sections)
+      written <- f.added("nesting")
+      nesting <- written match {
+        case None | Some(ujson.Str(AnywhereNesting)) => Right(Nesting.Anywhere)
+        case Some(ujson.Str(RootNesting)) => Right(Nesting.Root)
+        case Some(o: ujson.Obj) =>
+          names(Fields(s"${f.what}'s nesting", o), UnderNesting)(KindName.of)
+            .flatMap(ks => Nesting.under(ks.toSet).left.map(why => s"${f.what}'s nesting: $why"))
+        case Some(_) =>
+          Left(
+            s"${f.what}'s nesting is neither $AnywhereNesting, $RootNesting nor " +
+              s"""{"$UnderNesting": [kinds]}"""
+          )
+      }
+    } yield ArtifactKind(name, first, states, ends.toSet, sections, nesting)
 
   private def transition(f: Fields): Either[String, Transition] =
     for {
