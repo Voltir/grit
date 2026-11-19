@@ -23,8 +23,8 @@ Packages, in one-way order (each names only those before it):
   views, every name declared and every check compiled in), `ArtifactKind` with its `Nesting`
   (what an artifact of it may sit under, judged where one is placed), `Transition`,
   `TransitionCheck` (compiled, pure, deterministic and versioned; the built-ins in
-  `TransitionChecks`), `TransitionAction` (grit's, never a method's code) and `RoleView` (what a role is shown, and
-  what it always carries);
+  `TransitionChecks`), `TransitionAction` (grit's, never a method's code) and `RoleView` (what a role is shown,
+  what it always carries, and whether its claim covers what sits under its artifact);
   `Method.move`, the one move a live `project_move` and a bench replay both make; and
   `MethodBench`, which replays a method's worked examples (`Example`), so a method that does
   not do what its author says is refused; and `MethodJson`, a method with its examples

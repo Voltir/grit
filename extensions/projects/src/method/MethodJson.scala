@@ -64,12 +64,14 @@ object MethodJson {
         )
       }),
       "views" -> ujson.Arr.from(method.views.map { v =>
-        ujson.Obj(
+        val o = ujson.Obj(
           "role" -> RoleName.value(v.role),
           "kinds" -> strings(v.kinds.toVector.map(KindName.value).sorted),
           "depth" -> v.depth,
           "carried" -> strings(v.carried.toVector.map(Handle.value).sorted)
         )
+        if (v.covers) o("covers") = true
+        o
       }),
       "checks" -> ujson.Arr.from(method.checks.sortBy(c => CheckName.value(c.name)).map { c =>
         ujson.Obj("name" -> CheckName.value(c.name), "version" -> c.version)
@@ -249,7 +251,16 @@ object MethodJson {
       kinds <- names(f, "kinds")(KindName.of)
       depth <- f.int("depth")
       carried <- names(f, "carried")(Handle.of)
-      view <- RoleView.of(role, kinds.toSet, depth, carried.toSet).left.map(w => s"${f.what}: $w")
+      written <- f.added("covers")
+      covers <- written match {
+        case None => Right(false)
+        case Some(ujson.Bool(b)) => Right(b)
+        case Some(_) => Left(s"${f.what}'s covers is neither true nor false")
+      }
+      view <- RoleView
+        .of(role, kinds.toSet, depth, carried.toSet, covers)
+        .left
+        .map(w => s"${f.what}: $w")
     } yield view
 
   /** Nothing when the check `f` names is compiled at the version it names; else why not. */
