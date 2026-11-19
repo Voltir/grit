@@ -11,12 +11,13 @@ Packages, in one-way order (each names only those before it):
 - **`name`**: the names a method and a project use: `MethodName`, `KindName`, `StateName`,
   `CheckName`, `RoleName` (each core's `Slug`, free to start with a digit), `ProjectKey`, `ArtifactKey` (an artifact's id,
   `<project>/<number>`, minted by its project and never reused), `Handle` (the name an artifact
-  may carry beside its id), `ArtifactRef` (what a caller names one by: an id or a handle), and `Pin`, the method version a project holds to. What an artifact
-  is claimed for is core's `ClaimHolder`.
+  may carry beside its id), and `ArtifactRef` (what a caller names one by: an id or a handle).
+  What an artifact is claimed for is core's `ClaimHolder`.
 - **`artifact`**: what a project is: `ArtifactHead` (everything but the body), `Rank` (where an
   artifact sits among its siblings), `Body` (opaque:
   its prose and its stored form in one file, so a stored-form version bump is one migration),
-  `Artifact` and `Project`, which holds no dangling link and no parent cycle; and `ArtifactJson`,
+  `Artifact` and `Project`, which holds no dangling link and no parent cycle, and `Pin`, the
+  method version a project holds to; and `ArtifactJson`,
   an artifact and a project's index as ledger documents hold them (`Artifact.of` reads one
   back), and a whole project as a file holds it. Imports `name`.
 - **`method`**: a methodology as versioned data: `Method` (its kinds, transitions and role

@@ -8,9 +8,10 @@ import grit.core.identity.Principal
 import grit.core.plugin.{CommandBy, CommandOutcome}
 import grit.core.tool.{ArgsError, ToolName}
 import grit.core.visibility.Integrity
+import grit.projects.artifact.Pin
 import grit.projects.artifact.{Artifact, ArtifactHead, Body, OldFormFixtures, Project, Rank}
 import grit.projects.method.MethodFixtures
-import grit.projects.name.{ArtifactKey, ArtifactNumber, Handle, Pin, ProjectKey}
+import grit.projects.name.{ArtifactKey, ArtifactNumber, Handle, ProjectKey}
 import grit.projects.render.{Brief, ProjectMarkdown}
 
 import utest.*

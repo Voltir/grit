@@ -22,6 +22,7 @@ import grit.core.plugin.{CommandBy, CommandOutcome, KeepingCommand, PluginComman
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Args, ArgsError, Field, ToolName, ToolSpec}
 import grit.core.visibility.{Integrity, Label}
+import grit.projects.artifact.Pin
 import grit.projects.artifact.{Artifact, ArtifactHead, ArtifactJson, Body, Project, Rank, Rekeyed}
 import grit.projects.method.{
   ArtifactKind,
@@ -42,7 +43,6 @@ import grit.projects.name.{
   Handle,
   KindName,
   MethodName,
-  Pin,
   ProjectKey,
   RoleName,
   StateName

@@ -1,5 +1,7 @@
 package grit.projects.name
 
+import grit.projects.artifact.Pin
+
 import utest.*
 
 object NameTests extends TestSuite {

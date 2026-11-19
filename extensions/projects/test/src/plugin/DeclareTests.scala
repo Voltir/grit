@@ -5,6 +5,7 @@ import grit.core.id.{ConversationId, Sha256, TurnRef, TurnSeq}
 import grit.core.place.Place
 import grit.core.plugin.{CommandBy, CommandOutcome}
 import grit.core.visibility.{Clearance, Integrity, Label, TestLabels}
+import grit.projects.artifact.Pin
 import grit.projects.artifact.{Artifact, ArtifactHead, ArtifactJson}
 import grit.projects.method.{
   ArtifactKind,
@@ -14,7 +15,7 @@ import grit.projects.method.{
   TransitionCheck,
   TransitionChecks
 }
-import grit.projects.name.{ArtifactNumber, CheckName, Pin, ProjectKey}
+import grit.projects.name.{ArtifactNumber, CheckName, ProjectKey}
 
 import utest.*
 

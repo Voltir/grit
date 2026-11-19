@@ -1,17 +1,10 @@
 package grit.projects.render
 
 import grit.core.id.DocumentVersionId
+import grit.projects.artifact.Pin
 import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project, Rank}
 import grit.projects.method.MethodFixtures
-import grit.projects.name.{
-  ArtifactKey,
-  ArtifactNumber,
-  KindName,
-  MethodName,
-  Pin,
-  ProjectKey,
-  StateName
-}
+import grit.projects.name.{ArtifactKey, ArtifactNumber, KindName, MethodName, ProjectKey, StateName}
 
 import utest.*
 

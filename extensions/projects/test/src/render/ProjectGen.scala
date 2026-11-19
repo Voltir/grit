@@ -2,6 +2,7 @@ package grit.projects.render
 
 import scala.util.Random
 
+import grit.projects.artifact.Pin
 import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project, Rank}
 import grit.projects.method.{
   ArtifactKind,
@@ -21,7 +22,6 @@ import grit.projects.name.{
   Handle,
   KindName,
   MethodName,
-  Pin,
   ProjectKey,
   RoleName,
   StateName

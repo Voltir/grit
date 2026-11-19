@@ -7,8 +7,9 @@ import scala.concurrent.duration.FiniteDuration
 
 import grit.core.claim.{Claim, ClaimRole}
 import grit.core.id.{ClaimHolder, DocumentVersionId}
+import grit.projects.artifact.Pin
 import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
-import grit.projects.name.{ArtifactKey, KindName, MethodName, Pin, ProjectKey, StateName}
+import grit.projects.name.{ArtifactKey, KindName, MethodName, ProjectKey, StateName}
 import grit.prose.words.Words
 
 /** What the projects plugin's commands answer, the same for every edge that asks. */
