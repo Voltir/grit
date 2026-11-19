@@ -196,5 +196,11 @@ object ArtifactJsonTests extends TestSuite {
       ArtifactJson.projectFrom(data) ==>
         Left("p/a is not of project elsewhere; p/b is not of project elsewhere")
     }
+    test("a project's data with no key is refused as holding none, naming no head") {
+      val pin = right(Pin.read(right(MethodName.of("grit")), 1, "0" * 64))
+      val data = ArtifactJson.projectData(right(Project.of(p, pin, Vector.empty)))
+      data.obj.remove("key")
+      ArtifactJson.projectFrom(data) ==> Left("it holds no key")
+    }
   }
 }

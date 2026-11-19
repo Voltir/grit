@@ -6,6 +6,7 @@ import grit.core.document.{DocRef, DocText, Document}
 import grit.core.id.DocKey
 import grit.projects.name.{ArtifactKey, KindName, MethodName, Pin, ProjectKey, StateName}
 import grit.std.either.Proven
+import grit.std.either.Traversal.sequence
 
 /** An artifact as the projects plugin's document holds it. */
 object ArtifactJson {
@@ -38,7 +39,7 @@ object ArtifactJson {
       Left(s"it would hold ${named.size} references, over ${DocRef.Most}: cite fewer")
     else
       for {
-        refs <- all(named.map(DocRef.of(_, _)))
+        refs <- sequence(named.map(DocRef.of(_, _)))
         text <- DocText.of(s"${h.title}\n\n${Body.searchText(artifact.body)}")
       } yield (text, data, refs.toSet)
   }
@@ -98,10 +99,10 @@ object ArtifactJson {
   def projectFrom(json: ujson.Value): Either[String, Project] =
     for {
       fields <- json.objOpt.toRight("it is no object")
-      key <- text(fields, "key").flatMap(ProjectKey.of)
+      key <- fields.get("key").flatMap(_.strOpt).toRight("it holds no key").flatMap(ProjectKey.of)
       pin <- fields.get("pin").toRight("it holds no pin").flatMap(pinFrom)
       each <- fields.get("artifacts").flatMap(_.arrOpt).toRight("it holds no artifacts")
-      artifacts <- all(each.toVector.map { a =>
+      artifacts <- sequence(each.toVector.map { a =>
         a.objOpt
           .flatMap(_.get("key"))
           .flatMap(_.strOpt)
@@ -159,8 +160,8 @@ object ArtifactJson {
         .get("cites")
         .flatMap(_.arrOpt)
         .toRight("its head holds no cites")
-        .flatMap(cs => all(cs.toVector.map(c => c.strOpt.toRight("a cite is not text"))))
-        .flatMap(cs => all(cs.map(ArtifactKey.read)))
+        .flatMap(cs => sequence(cs.toVector.map(c => c.strOpt.toRight("a cite is not text"))))
+        .flatMap(cs => sequence(cs.map(ArtifactKey.read)))
       by <- nullable(fields, "by")
       stored <- data.objOpt.flatMap(_.get(BodyField)).toRight("its data holds no body")
       body <- Body.fromStored(stored)
@@ -208,9 +209,4 @@ object ArtifactJson {
     case Some(ujson.Str(s)) => Right(Some(s))
     case _ => Left(s"its head holds no $name")
   }
-
-  private def all[A](each: Vector[Either[String, A]]): Either[String, Vector[A]] =
-    each.foldLeft[Either[String, Vector[A]]](Right(Vector.empty)) { (acc, e) =>
-      acc.flatMap(as => e.map(as :+ _))
-    }
 }
