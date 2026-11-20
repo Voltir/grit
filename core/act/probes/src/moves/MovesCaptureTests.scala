@@ -38,7 +38,7 @@ object MovesCaptureTests extends TestSuite {
 
   private val runs =
     """val plain = DurableMoves.plain[KeepingEnv, Reply](acting, limits, KeepingEnv.moves)(moves => Reply(moves.toString))
-      |val kept = DurableMoves.keeping(acting, limits, plugin, keeper, pieces)(moves => Reply(moves.toString))
+      |val kept = DurableMoves.keeping(acting, limits, plugin, keeper, pieces, _ => true)(moves => Reply(moves.toString))
       |Reply(steps.run(peek, ()).merge + plain.text + kept.text)""".stripMargin
 
   private val plainReturnsMoves =
@@ -46,7 +46,7 @@ object MovesCaptureTests extends TestSuite {
       |Reply("")""".stripMargin
 
   private val keepingReturnsMoves =
-    """val _ = DurableMoves.keeping[Keeping^](acting, limits, plugin, keeper, pieces)(moves => moves)
+    """val _ = DurableMoves.keeping[Keeping^](acting, limits, plugin, keeper, pieces, _ => true)(moves => moves)
       |Reply("")""".stripMargin
 
   private val plainSteps =
@@ -56,7 +56,7 @@ object MovesCaptureTests extends TestSuite {
       |})""".stripMargin
 
   private val keepingSteps =
-    """DurableMoves.keeping(acting, limits, plugin, keeper, pieces)(moves => {
+    """DurableMoves.keeping(acting, limits, plugin, keeper, pieces, _ => true)(moves => {
       |  val seen = steps.run(peek, ()).merge
       |  Reply(moves.toString + seen)
       |})""".stripMargin
