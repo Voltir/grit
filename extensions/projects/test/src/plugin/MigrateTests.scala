@@ -182,6 +182,31 @@ object MigrateTests extends TestSuite {
       )
     }
 
+    test("an artifact `artifacts` names, by handle or by id, takes its kind there over `kinds`") {
+      val store = Store()
+      holding(store)
+      def overriding(pairs: (String, String)*): (String, ujson.Value) =
+        "artifacts" -> ujson.Arr.from(pairs.map((k, kind) => ujson.Obj("key" -> k, "kind" -> kind)))
+      (
+        refusedArgs(
+          both,
+          "project_migrate",
+          "project" -> "p",
+          "version" -> 2,
+          noteToMemo,
+          overriding("p/a" -> "memo", "p/a" -> "note")
+        ),
+        migrated(store, noteToMemo, overriding("p/1" -> "note", "p/b" -> "note")),
+        exported(store)
+      ) ==> (
+        Some("p/a given twice"),
+        CommandOutcome.Done(
+          "Moved project p to method grit version 2; no artifact renamed, none kept again."
+        ),
+        Right((2, Vector("p/1" -> "note", "p/2" -> "note", "p/3" -> "change")))
+      )
+    }
+
     test("past 40 renamed keys the answer is cut, saying how many more") {
       val store = Store()
       notes(plugin(), store, 42)

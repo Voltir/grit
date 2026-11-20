@@ -477,15 +477,24 @@ object ProjectsLiveTests extends TestSuite {
             .map(_.getClass) ==> Right(classOf[CommandOutcome.Done])
           def cascade(by: Account, room: Place) =
             ran(commands, by, room, ToolName("project_withdraw"), "key" -> "p/a", "cascade" -> true)
+          // How many versions the ended citer p/2 has, as its history lists them.
+          def citerVersions: Either[grit.core.edge.CommandError, Int] =
+            ran(commands, ann, desk, ToolName("project_history"), "key" -> "p/2").map {
+              case CommandOutcome.Done(t) => t.linesIterator.count(!_.startsWith(" "))
+              case _ => -1
+            }
+          val before = citerVersions
           cascade(bea, board) ==> Right(
             CommandOutcome.Refused(
               "p/2 cites what would be withdrawn, but is kept labelled [level: internal], below " +
                 "what this room writes ([level: confidential]): withdraw from a room at its label"
             )
           )
-          artifactsKept(config, engine).map(_._1) ==> Vector("p", "p/1", "p/2")
+          (artifactsKept(config, engine).map(_._1), citerVersions) ==>
+            (Vector("p", "p/1", "p/2"), before)
           cascade(ann, desk).map(_.getClass) ==> Right(classOf[CommandOutcome.Done])
-          artifactsKept(config, engine).map(_._1) ==> Vector("p", "p/2")
+          (artifactsKept(config, engine).map(_._1), citerVersions) ==>
+            (Vector("p", "p/2"), before.map(_ + 1))
       }
     }
 
