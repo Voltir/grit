@@ -27,7 +27,10 @@ Decision:
   unit that night may join it.
 - **A topic is a subject or one meeting** (`Topic.Kind`), fixed when it opens. A meeting opens
   proposed and is refined by each write's reply (`Meeting.refined`), a model's guess checked by
-  code: a day too far back or ahead dropped, planned with no day proposed, held kept held.
+  code: a day too far back or ahead dropped, planned with no day proposed, held kept held. The
+  model gives a day only as the messages write it; a day named otherwise ("Monday", "tomorrow",
+  a time alone) it gives as the day the message was said and those words, and code reckons the
+  date (`Meeting.reckon`).
 - **A live turn writes no knowledge.** Only the dream writes, and a written passage is never
   re-placed.
 
