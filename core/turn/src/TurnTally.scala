@@ -5,6 +5,7 @@ import grit.core.message.{AssistantBlock, Cost, Message}
 import grit.core.place.Place
 import grit.core.store.{ConversationStore, EntryStore, Payload, StoreError, Tx, UsageLedger}
 import grit.prose.words.Words
+import grit.std.collect.Collect
 
 /** What a finished turn did: where, its model calls in its reply (`rounds`), the tools those
   * called by the names the model called them, in the order called, what all its model calls
@@ -27,13 +28,12 @@ final case class TurnTally(
     val called =
       if (tools.isEmpty) "no tools"
       else
-        "tools " + tools.distinct
-          .map(name =>
-            tools.count(_ == name) match {
-              case 1 => name
-              case n => s"$name×$n"
-            }
-          )
+        "tools " + Collect
+          .counted(tools)
+          .map {
+            case (name, 1) => name
+            case (name, n) => s"$name×$n"
+          }
           .mkString(", ")
     val counted = Words.counted(rounds, "round")
     s"turn ${WorkflowId.value(turn.workflowId)} at ${place.written}: $counted, $called; " +

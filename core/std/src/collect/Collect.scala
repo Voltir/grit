@@ -8,6 +8,12 @@ object Collect {
     */
   def firstRepeat[A](as: Seq[A]): Option[A] = as.diff(as.distinct).headOption
 
+  /** Each distinct element of `as` once, in order of first occurrence, with its count: of
+    * `[a, b, a]`, `(a, 2)` then `(b, 1)`.
+    */
+  def counted[A](as: Seq[A]): Vector[(A, Int)] =
+    as.distinct.map(a => (a, as.count(_ == a))).toVector
+
   /** Every index where `needle` starts in `hay`, in order, overlapping ones included: of `aa` in
     * `aaa`, 0 and 1. An empty `needle` is at none.
     */
