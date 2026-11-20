@@ -884,6 +884,58 @@ object ProjectsLiveTests extends TestSuite {
       }
     }
     test(
+      "two claims of the oldest at once each wait on the project's lock, then take different artifacts"
+    ) {
+      CommandRooms.commanding("projects_oldest", _ => Vector(atInternal)) {
+        (config, engine, commands) =>
+          declared(commands)
+          ran(commands, ann, desk, ToolName("project_new"), "project" -> "p")
+          keep(commands, desk, "a", "First.")
+          keep(commands, desk, "b", "Second.")
+          val pool = Executors.newFixedThreadPool(3)
+          given ExecutionContext = ExecutionContext.fromExecutorService(pool)
+          val (holding, go) = (new CountDownLatch(1), new CountDownLatch(1))
+          def oldest(holder: String) = Future(
+            ran(
+              commands,
+              ann,
+              desk,
+              ToolName("project_claim"),
+              "oldest" -> ujson.Obj("project" -> "p", "kind" -> "note", "state" -> "open"),
+              "role" -> "builder",
+              "holder" -> holder
+            ) match {
+              case Right(CommandOutcome.Done(said)) => Right(ujson.read(said)("claimed").str)
+              case other => Left(other.toString)
+            }
+          )
+          try {
+            // Another command's transaction on p, mid-way: it holds the project's lock.
+            val internal = Label.at(Level.Internal)
+            val other = Future {
+              LiveDb.transaction(config, Clearance.inRoom(desk, internal, internal)) {
+                for {
+                  lock <- DocKey.of("p#lock").left.map(StoreError.Invalid(_))
+                  _ <- engine.claims(Projects.Name).lock(lock)
+                } yield {
+                  holding.countDown()
+                  val _ = go.await(30, TimeUnit.SECONDS)
+                }
+              }
+            }
+            holding.await(30, TimeUnit.SECONDS)
+            val (first, second) = (oldest("h1"), oldest("h2"))
+            val waited = LiveDb.waiting(config, sessions = 2)
+            go.countDown()
+            val _ = Await.result(other, 30.seconds)
+            val claimed = Vector(Await.result(first, 30.seconds), Await.result(second, 30.seconds))
+            val named = claimed.map(_.map(s => (s.contains("p/1 a"), s.contains("p/2 b"))))
+            (waited, named.size, named.toSet) ==>
+              (true, 2, Set(Right((true, false)), Right((false, true))))
+          } finally pool.shutdownNow()
+      }
+    }
+    test(
       "a re-key keeps how far each artifact was believed, and the next create mints above it"
     ) {
       CommandRooms.commanding("projects_rekey", _ => Vector(atInternal)) {

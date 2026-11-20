@@ -1321,10 +1321,7 @@ private[plugin] final class ProjectCommands(
         "take, when `oldest` finds none. A role the method says " +
         "covers claims everything under the artifact too: such a claim is refused, naming " +
         "the other, when another session or agent holds one at, above or under it in that " +
-        "role or another that covers. Claims made at the same " +
-        "moment are not refused: of two for one artifact, the later fails with a store error " +
-        "(asked again, it is refused naming the first), and two for one session or agent on " +
-        "different artifacts may both be kept. A claim kept where the asker cannot read it " +
+        "role or another that covers. A claim kept where the asker cannot read it " +
         "(at another label) is not seen, so it refuses nothing.",
       Args
         .of(
