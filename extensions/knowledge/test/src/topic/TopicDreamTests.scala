@@ -116,7 +116,8 @@ object TopicDreamTests extends TestSuite {
       * `floor`; its sorts judged by `sort`, its write asks answered by `write`; its rooms
       * labelled as `rooms` records them; its asks reading no document `unread` holds to; sorting
       * at most `merges` topics to merge, none unless a test of merges says, folding those at
-      * `foldAt` or more: its reply.
+      * `foldAt` or more, the topic `meanwhile` names rewritten with its lead as the first merge
+      * sort these runs make is judged: its reply.
       */
     def run(
         perRun: Int = 64,
@@ -132,7 +133,8 @@ object TopicDreamTests extends TestSuite {
         asideFor: FiniteDuration = TopicParams.AsideFor,
         merges: Int = 0,
         sorts: Int = TopicParams.Sorts,
-        foldAt: Option[Double] = None
+        foldAt: Option[Double] = None,
+        meanwhile: Option[(String, String)] = None
     ): String = {
       val dream = new TopicDream(most, ZoneOffset.UTC, Some(Cards))
       heard.run()
@@ -147,7 +149,12 @@ object TopicDreamTests extends TestSuite {
           Right(Replied(write(shown), Label.Public))
         }
       val judged: Request -> Either[MoveError, Replied[Vector[Judged]]] = r => {
-        heard.ask(sorted(r.state, r.questions))
+        val ask = sorted(r.state, r.questions)
+        if (
+          ask.system.startsWith("document") && !heard.asked.exists(_.system.startsWith("document"))
+        )
+          meanwhile.foreach((name, lead) => topic(name = name, lead = lead))
+        heard.ask(ask)
         Right(Replied(sort.answers(r.questions), Label.Public))
       }
       val pieces = new InMemoryPieces
@@ -357,6 +364,15 @@ object TopicDreamTests extends TestSuite {
       given Tx =
         TestTx.fake(Clearance.of(Label.Public), recorded = labelled(Label.Public, "CREVIEW"))
       ok(documents.reviews.of(Plugin).unposted(room)).map(r => (DocKey.value(r.key), r.day))
+    }
+
+    /** The text of each topic put up for review, as [[reviewed]] offers it, by key. */
+    def reviewedText: Vector[(String, String)] = {
+      val room = right(Place.read("slack:T/CREVIEW"))
+      given Tx =
+        TestTx.fake(Clearance.of(Label.Public), recorded = labelled(Label.Public, "CREVIEW"))
+      ok(documents.reviews.of(Plugin).unposted(room))
+        .map(r => (DocKey.value(r.key), DocText.value(r.document.text)))
     }
   }
 
@@ -2033,6 +2049,105 @@ object TopicDreamTests extends TestSuite {
       )
       runs.topics.map(d => (DocKey.value(d.key), d.integrity)) ==>
         Vector("topic:strand-two" -> Integrity.Outside)
+    }
+
+    test(
+      "a fold refused, its keeper written since its sort, stays a proposal named not written; nothing is withdrawn or set aside"
+    ) {
+      val w = new StrandWorld
+      val runs = new Runs(w)
+      runs.topic(name = "one", lead = "The deploy pipeline, once.", from = Vector("s-1"))
+      runs.topic(name = "two", lead = "The deploy pipeline.", from = Vector("s-2"))
+      val reply = runs.run(
+        sort = judging("new_topic", yes = 0.95),
+        merges = TopicParams.Merges,
+        foldAt = Some(0.95),
+        meanwhile = Some("two" -> "The deploy pipeline, rewritten.")
+      )
+      val aside = ok(
+        Aside.read(runs.documents.keeper(Plugin, Terms), Label.Public)(using TestTx.fake)
+      ).map(_.tag)
+      (reply, runs.kept.map(_._1), aside) ==> (
+        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run" +
+          "; would fold topic:strand-one into topic:strand-two (0.95)" +
+          "; not written: fold-0 (a topic was written since its merge sort)",
+        Vector("topic:strand-one", "topic:strand-two"),
+        Vector()
+      )
+    }
+
+    test("a fold of a subject into a meeting is refused, and writes nothing") {
+      val w = new StrandWorld
+      val runs = new Runs(w)
+      runs.topic(name = "one", lead = "The review, a subject.", from = Vector("s-1"))
+      runs.topic(name = "tue", lead = "The review, Tuesday.", kind = planned(Day))
+      def at(name: String) = runs.topics
+        .find(d => DocKey.value(d.key) == s"topic:strand-$name")
+        .fold(sys.error(s"no topic $name"))(_.version)
+      def keyed(name: String) = right(TopicKey.strand(ConversationId(name)))
+      val folded = TopicDream.fold(
+        Gathered.Fold(keyed("one"), keyed("tue"), 0.95),
+        at("one"),
+        at("tue"),
+        runs.documents.keeper(Plugin, Terms),
+        Now
+      )(using TestTx.fake)
+      (folded, runs.kept.map(_._1)) ==> (
+        Left(
+          StoreError.Invalid(
+            "a subject and a meeting, or meetings of two days, never fold"
+          )
+        ),
+        Vector("topic:strand-one", "topic:strand-tue")
+      )
+    }
+
+    test(
+      "a keeper put up for review the night it opens is still offered once a topic is folded into it, as the text its write put up"
+    ) {
+      val w = new StrandWorld
+      val c = strand(w, "C1", "deploy pipeline rollback")
+      val runs = new Runs(w)
+      runs.topic(
+        name = "one",
+        lead = "The deploy pipeline, once.",
+        passages = Vector(
+          grit.knowledge.topic
+            .Passage(
+              Day,
+              Lineage.of(Vector.empty),
+              TopicWrite.prose("Bo moved deploys to Fridays.")
+            )
+        )
+      )
+      // Of two discussions, so never sorted itself, and one subject the other may fold with.
+      runs.topic(name = "two", lead = "The office move.", from = Vector("s-2", "s-3"))
+      val base = judging("new_topic")
+      // Yes only for the topic tonight's strand opens, written with Lead.
+      val onlyOpened = Judge(qs =>
+        base
+          .answers(qs)
+          .zip(qs)
+          .map {
+            case (_, Question.YesNo(about, _, _)) if about.contains(Lead) => Judged.YesNo(0.95)
+            case (a, _) => a
+          }
+      )
+      val reply =
+        runs.run(sort = onlyOpened, merges = TopicParams.Merges, foldAt = Some(0.95))
+      (
+        reply,
+        runs.kept.map((k, text) => (k, text.contains("Fridays"))),
+        runs.reviewed,
+        runs.reviewedText.map((k, text) => (k, text.contains("Fridays")))
+      ) ==> (
+        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run" +
+          s"; folded topic:strand-one into ${key(c)} (0.95)",
+        Vector(key(c) -> true, "topic:strand-two" -> false),
+        Vector(key(c) -> Day),
+        // The review is a verdict on the night's write, so it shows that write, not the fold.
+        Vector(key(c) -> false)
+      )
     }
   }
 }

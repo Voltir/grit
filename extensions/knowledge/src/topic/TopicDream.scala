@@ -809,7 +809,7 @@ object TopicDream {
     * `Left`, nothing written, when either is not current at its version, or by their kinds they
     * may not fold ([[Topic.Foldable]]).
     */
-  private def fold(
+  private[topic] def fold(
       f: Gathered.Fold,
       was: DocumentVersionId,
       keeps: DocumentVersionId,
@@ -831,7 +831,9 @@ object TopicDream {
         Topic.Foldable.of(from._2.topic.kind).foldsWith(Topic.Foldable.of(into._2.topic.kind)),
         (),
         // Draft wording, for Nick.
-        StoreError.Invalid("a subject and a meeting, or meetings of two days, never fold")
+        StoreError.Invalid(
+          "a subject and a meeting, or meetings of two days, never fold"
+        )
       )
       kept <- TopicWrite.kept(
         DocumentKeeper.believedAtMost(keeper, from._1),
