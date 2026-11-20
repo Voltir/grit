@@ -114,8 +114,8 @@ capability is a promise of purity.**
     its doc, could a competent agent still call it correctly? If not, fix the signature.
     Trustworthy signatures let the next change be built from them alone, in far fewer tokens.
     Scaladoc says *what*, never *how*. An invariant a doc states is a missing type; a doc
-    never restates what the type or visibility says; it does state every failure a caller
-    can see and every constant that changes behaviour.
+    never restates what the type or visibility says, and is absent when the signature says
+    it all; it states only the failures and constants the types cannot show.
 11. **Escape hatches carry their proof.** Every `caps.unsafe` use states beside it why the
     untracked effect cannot be observed.
 

@@ -55,8 +55,9 @@ breaks, for whom, and the smallest change that fixes it. Check, as hard as the d
 
 - **Elision (STYLE.md rule 10):** could a caller use each new or changed signature correctly
   from it and its Scaladoc alone? An invariant a doc states is a missing type. A doc never
-  restates what a type or visibility says, and does state every failure a caller can see and
-  every constant that changes behaviour.
+  restates what a type or visibility says (a failure the error type names included), is absent
+  when the signature says it all, and states only the failures and constants the types cannot
+  show. Ask for a type before a longer doc.
 - **Capture and separation:** which values hold capabilities and which must be pure; what each
   new trait, field and type parameter may capture (an unbounded type parameter can smuggle a
   capability); that no step body mentions the `Durable` and no `Tx` escapes; every

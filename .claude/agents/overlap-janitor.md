@@ -46,12 +46,14 @@ rule 8) that says so; a test fake.
 
 | Verdict | Meaning |
 |---|---|
-| restates | says what the name, type or visibility says |
+| restates | says what the name, type or visibility says, a failure the error type names included |
 | narrates | tells how the body works, or a subsystem's behaviour on its entry point |
 | history | what it replaced, when it was added, what was turned down |
+| redundant | the whole doc, where the signature and types already say what a caller needs |
 | private-doc | on a private member, saying nothing its body does not show |
 
-A doc flag quotes the line and gives the text that should remain, or "delete".
+A doc flag quotes the line and gives the text that should remain, or "delete". Never ask
+for a doc to be added or lengthened; a missing fact a type could hold is a missing type.
 
 ## Standard of evidence
 

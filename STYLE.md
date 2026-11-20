@@ -197,9 +197,14 @@ docs left out):
 - **Never restate what the name, type or visibility already says.** `/** The band it fell
   in. */` on `def band: Band`, or "only `fold` makes one" beside a private constructor, is
   noise a reader pays for.
-- **State every failure a caller can observe, and every constant that changes behaviour.**
-  "`Unreadable` when its choice is no option's key"; "clamped to [0, 1], NaN as 0". Silence
-  about a failure mode is how a doc misleads without lying.
+- **State only the failures and constants the signature cannot show.** A failure the
+  return type's error ADT names needs no doc; a doc says what that type cannot: the order
+  of refusals, whether one spends something, "clamped to [0, 1], NaN as 0". A constant
+  is named only when it changes behaviour and the signature does not carry it. Silence
+  about a failure the type hides is how a doc misleads without lying.
+- **No doc is the default.** A definition whose name, signature and types say what a
+  caller needs has none. A doc that has to explain an invariant marks a missing type: make
+  the type, or file it, rather than writing the prose.
 - **A doc must be true of every value that can exist.** If a type can hold values the doc
   rules out, fix the type or weaken the doc to what is true — never leave the claim.
 - **The first sentence is the contract.** A signature-only view may print no more of a
