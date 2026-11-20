@@ -71,6 +71,7 @@ private[plugin] final class ProjectCommands(
   private val declaring = new MethodCommands(checks, methodsAt)
 
   import ProjectArgs.*
+  import ProjectBriefs.*
   import ProjectCommands.*
   import ProjectSteps.*
   import Stop.{answered, refuse, stored}
@@ -2207,6 +2208,7 @@ private[plugin] final class ProjectCommands(
 
 private[plugin] object ProjectCommands {
   import ProjectArgs.*
+  import ProjectBriefs.*
   import ProjectSteps.*
   import Stop.{refuse, stored}
 
@@ -2447,72 +2449,6 @@ private[plugin] object ProjectCommands {
   /** [[resolver]] of `ref` over `project` as loaded. */
   private[plugin] def resolved(project: Loaded, ref: ArtifactRef): Either[Stop, ArtifactKey] =
     refuse(resolver(project, project.artifacts)(ref))
-
-  /** A live claim on artifact `key` of a project, and the brief [[Brief.of]] gives it within
-    * [[DocRef.BriefChars]] under the view its role is shown, or how long it would be.
-    */
-  private[plugin] final case class Rendered(
-      claim: Claim,
-      key: ArtifactKey,
-      view: RoleView,
-      brief: Either[BriefRefusal.Over, Brief]
-  )
-
-  /** Each claim of `live` on an artifact of `project` whose role `method` shows a view of, in the
-    * order given, with its brief: its artifact the one `keys` gives its subject.
-    */
-  private[plugin] def rendered(
-      method: Method,
-      project: Project,
-      keys: Map[DocKey, ArtifactKey],
-      live: Vector[Claim]
-  ): Vector[Rendered] =
-    live.flatMap { c =>
-      for {
-        key <- keys.get(c.subject)
-        if key.project == project.key
-        view <- method.views.find(_.role == c.role)
-        brief <- Brief.of(project, key, view, DocRef.BriefChars) match {
-          case Right(b) => Some(Right(b))
-          case Left(over: BriefRefusal.Over) => Some(Left(over))
-          case Left(BriefRefusal.Unknown(_)) => None
-        }
-      } yield Rendered(c, key, view, brief)
-    }
-
-  /** Nothing, or a refusal naming each brief of `after` over its budget that was not over it, or
-    * was shorter, rendered over `before` (none: as if it was not), each claim's artifact the one
-    * `keys` gives its subject; and the characters to cut from those of `changed` the brief holds
-    * whole (the claimed artifact, or one its role carries).
-    */
-  private[plugin] def within(
-      method: Method,
-      before: Option[Project],
-      keys: Map[DocKey, ArtifactKey],
-      after: Vector[Rendered],
-      changed: Vector[ArtifactHead]
-  ): Either[Stop, Unit] = {
-    lazy val was =
-      before.fold(Vector.empty[Rendered])(rendered(method, _, keys, after.map(_.claim)))
-    after.flatMap { r =>
-      for {
-        size <- r.brief.left.toOption.map(_.size)
-        if was.find(_.claim == r.claim).flatMap(_.brief.left.toOption).forall(_.size < size)
-      } yield {
-        val (c, key, view) = (r.claim, r.key, r.view)
-        val held = changed.filter(h => h.key == key || h.handle.exists(view.carried.contains))
-        val cut = size - DocRef.BriefChars
-        f"the brief of ${key.value}, claimed as ${ClaimRole.value(c.role)} for " +
-          f"${ClaimHolder.value(c.holder)}, would be $size%,d characters, $cut%,d over the " +
-          f"${DocRef.BriefChars}%,d a brief holds (the artifact with what its role always " +
-          f"carries): cut at least $cut%,d character${if (cut == 1) "" else "s"} from " +
-          (if (held.isEmpty) changed else held).map(_.key.value).mkString(", ")
-      }
-    } match {
-      case Vector() => Right(())
-      case refusals => Left(Stop.Refused(refusals.mkString("; ")))
-    }
-  }
 
   /** What [[changed]] made of its steps, each answered with the artifact it names. */
   private[plugin] enum Changed extends caps.Pure {
@@ -2891,114 +2827,9 @@ private[plugin] object ProjectCommands {
         )
     }
 
-  /** The key the brief of the artifact kept under `stored` is kept under: that key and `#brief`. */
-  private[plugin] def briefKey(stored: DocKey): Either[String, DocKey] =
-    DocKey.of(s"${DocKey.value(stored)}#brief")
-
   /** The id of each artifact of `project`, by the key its document is kept under. */
   private[plugin] def ids(project: Loaded): Map[DocKey, ArtifactKey] =
     project.documents.map((d, a) => d.key -> a.head.key).toMap
-
-  /** Keeps `r`'s brief through `own`, at its claim's label and at `place`, as the brief of the
-    * claim's holder ([[DocRef.brief]]), its data naming the holder, believed at no more than the
-    * least of what it shows as `project` holds them ([[Brief.shows]]), unless the one current
-    * there is that brief already: `None` when it is current, else why none is, the one current
-    * there withdrawn: it is over [[DocRef.BriefChars]], or the plugin is full.
-    */
-  private[plugin] def briefed(
-      own: DocumentKeeper,
-      r: Rendered,
-      place: Place,
-      project: Loaded,
-      at: Instant
-  )(using
-      Tx^
-  )(using Locked): Either[Stop, Option[String]] = {
-    val over =
-      f"it is over ${DocRef.BriefChars}%,d characters; shorten the artifact or what its role carries"
-    val (label, holder) = (r.claim.label, r.claim.holder)
-    val data = ujson.Obj(BriefHolder -> ClaimHolder.value(holder))
-    // A shown artifact `project` holds no document of is believed at nothing, so a brief
-    // rendered from another project's value fails closed.
-    val whole = Tx.top
-    val believed = r.brief.fold(
-      _ => whole,
-      b =>
-        Integrity
-          .meetAll(
-            b.shows.map(k =>
-              project.documents.find(_._2.head.key == k).fold(Integrity.Untrusted)(_._1.integrity)
-            )
-          )
-          .getOrElse(whole)
-    )
-    // What a write through `own` would believe it at: no rewrite only lowers it to its caller.
-    val target = own.believing(believed)
-    def raises(was: Integrity): Boolean = target.dominates(was) && target != was
-    briefKey(r.claim.subject).fold(
-      _ => Right(Some(s"No brief was kept: $over.")),
-      key =>
-        stored(own.current(key, label)).flatMap { was =>
-          def none(why: String): Either[Stop, Option[String]] =
-            stored(
-              was.fold[Either[StoreError, Option[DocumentVersionId]]](Right(None))(_ =>
-                own.withdraw(key, label, at)
-              )
-            ).map(_ => Some(s"No brief was kept: $why."))
-          r.brief.left.map(_ => over).flatMap(b => DocText.of(b.text).left.map(_ => over)) match {
-            case Left(why) => none(why)
-            case Right(text)
-                if was.exists(d =>
-                  d.text == text && d.data == data && believed.dominates(d.integrity) &&
-                    !raises(d.integrity)
-                ) =>
-              Right(None)
-            case Right(text) =>
-              own.write(
-                key,
-                label,
-                believed,
-                place,
-                text,
-                data,
-                None,
-                at,
-                Set(DocRef.brief(holder))
-              ) match {
-                case Right(_) => Right(None)
-                case Left(StoreError.Full(bound)) => none(Projects.full(bound))
-                case Left(other) => Left(Stop.Store(other))
-              }
-          }
-        }
-    )
-  }
-
-  /** Withdraws `artifact`'s brief at every label it is current at that the transaction reads:
-    * the holder the newest of them was for, `None` when there was none.
-    */
-  private[plugin] def unbriefed(own: DocumentKeeper, artifact: DocKey, at: Instant)(using
-      Tx^
-  )(using Locked): Either[Stop, Option[ClaimHolder]] =
-    briefKey(artifact).fold(
-      _ => Right(None),
-      key =>
-        for {
-          labels <- stored(own.labels(key))
-          current <- stored(Traversal.traverse(labels)(own.current(key, _)).map(_.flatten))
-          holder = current
-            .sortBy(_.written)
-            .lastOption
-            .flatMap(_.data.objOpt.flatMap(_.get(BriefHolder)).flatMap(_.strOpt))
-            .flatMap(ClaimHolder.of(_).toOption)
-          withdrawn: Vector[Option[DocumentVersionId]] <- stored(
-            Traversal.traverse(current)(d => own.withdraw(key, d.label, at))
-          )
-        } yield holder.filter(_ => withdrawn.nonEmpty)
-    )
-
-  /** `holder`: the key a brief's data names its holder under. */
-  private[plugin] val BriefHolder: String = "holder"
 
   /** Keeps `artifact` through `own` under the key and at the label of `before`, its document, or
     * when new under its id and at public: the version it is now at. Believed at no more than
