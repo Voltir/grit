@@ -303,7 +303,7 @@ object Stitching {
         .foldLeft((Vector.empty[String], Option.empty[java.time.LocalDate])) {
           case ((out, last), Some(l)) =>
             val day = l.at.atZone(zone).toLocalDate
-            // Draft wording, for Nick: the day line, in a meeting head's form.
+            // The day line, in a meeting head's form.
             val named = if (last.contains(day)) out else out :+ s"${Utc.toWeekday(day)}:"
             (named :+ l.shown, Some(day))
           case ((out, last), None) => (out :+ "…", last)
