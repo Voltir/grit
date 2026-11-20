@@ -135,10 +135,10 @@ object DurableMoves {
         summary: Tainted[Dreaming.Summary[T]]
     ): Either[MoveError, Option[Dreaming.Summarised[T]]] =
       refused(name, MoveKind.Ask).toLeft(()).flatMap { _ =>
-        val Dreaming.Summary(system, chars, documentChars, reply, datedIn) =
+        val Dreaming.Summary(system, chars, documents, reply, datedIn) =
           Trusted.asIs(summary).extract
         val digest =
-          MovesJournal.strands(seen, shown, system, chars, documentChars, reply.schema, datedIn)
+          MovesJournal.strands(seen, shown, system, chars, documents, reply.schema, datedIn)
         val asked = made(
           Act.ask(Act.summary[T]),
           Act.Summary(
@@ -148,7 +148,7 @@ object DurableMoves {
             shown,
             system,
             chars,
-            documentChars,
+            documents,
             reply,
             datedIn,
             reads.excerpts,
@@ -163,7 +163,7 @@ object DurableMoves {
           shown,
           system,
           chars,
-          documentChars,
+          documents,
           reply.schema,
           datedIn
         )

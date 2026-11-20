@@ -454,7 +454,8 @@ object RunFixtures {
   }
 
   /** What [[Dreamer]] asks of a strand: its answer, within 1,000 characters. */
-  def Summarised: Dreaming.Summary[String] = Dreaming.Summary("Summarise.", 1000, 1000, Answered)
+  def Summarised: Dreaming.Summary[String] =
+    Dreaming.Summary("Summarise.", 1000, Dreaming.Showing.Head(1000), Answered)
 
   /** The strands a scan read, as it records them ([[Strand.Digested.write]]). */
   final case class Scanned(seen: Vector[Strand.Digested]) extends caps.Pure

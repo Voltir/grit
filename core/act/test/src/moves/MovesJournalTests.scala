@@ -1,5 +1,6 @@
 package grit.act.moves
 
+import grit.core.act.Dreaming.Showing
 import grit.core.act.MovesFixtures.shown
 import grit.core.act.{Answer, Called, Declassifying}
 import grit.core.classify.{Answer as Judged, Ask, Criterion, Level as Rung, Request, StateJson}
@@ -448,7 +449,7 @@ object MovesJournalTests extends TestSuite {
           Vector.empty,
           "Summarise.",
           1000,
-          0,
+          Showing.Head(0),
           schema,
           None
         ),
@@ -458,18 +459,34 @@ object MovesJournalTests extends TestSuite {
           Vector.empty,
           "Summarise.",
           1000,
-          0,
+          Showing.Head(0),
           schema,
           None
         )
       )
       // One strand and no documents is digested as v1 was, whatever the documents' budget.
-      MovesJournal.strands(Vector(seen), Vector.empty, "Summarise.", 1000, 500, schema, None) ==>
+      MovesJournal.strands(
+        Vector(seen),
+        Vector.empty,
+        "Summarise.",
+        1000,
+        Showing.Head(500),
+        schema,
+        None
+      ) ==>
         MovesJournal.strand(seen, "Summarise.", 1000, schema)
       val version =
         DocumentVersionId.of(7).getOrElse(throw new java.lang.AssertionError("version"))
       val many =
-        MovesJournal.strands(Vector(seen), Vector(version), "Summarise.", 1000, 500, schema, None)
+        MovesJournal.strands(
+          Vector(seen),
+          Vector(version),
+          "Summarise.",
+          1000,
+          Showing.Head(500),
+          schema,
+          None
+        )
       (
         many,
         MovesJournal.sameStrands(
@@ -478,7 +495,7 @@ object MovesJournalTests extends TestSuite {
           Vector(version),
           "Summarise.",
           1000,
-          500,
+          Showing.Head(500),
           schema,
           None
         ),
@@ -488,7 +505,7 @@ object MovesJournalTests extends TestSuite {
           Vector(version),
           "Summarise.",
           1000,
-          400,
+          Showing.Head(400),
           schema,
           None
         ),
@@ -498,7 +515,7 @@ object MovesJournalTests extends TestSuite {
           Vector.empty,
           "Summarise.",
           1000,
-          500,
+          Showing.Head(500),
           schema,
           None
         )
@@ -515,7 +532,7 @@ object MovesJournalTests extends TestSuite {
           Vector.empty,
           "Summarise.",
           1000,
-          500,
+          Showing.Head(500),
           schema,
           Some(java.time.ZoneId.of(zone))
         )
@@ -530,6 +547,75 @@ object MovesJournalTests extends TestSuite {
       pinned[AskMade](
         AskMade.Refused(AskMade.Kind.StrandChanged, "moved", "v1:ab"),
         """{"refused":"changed","why":"moved","digest":"v1:ab"}"""
+      )
+    }
+
+    test(
+      "a summary showing its documents whole or by a head is digested as their character count was, so a recorded ask still matches; a lead apart from both"
+    ) {
+      val schema = JsonSchema
+        .read(
+          ujson.Obj(
+            "type" -> "object",
+            "properties" -> ujson.Obj("summary" -> ujson.Obj("type" -> "string")),
+            "required" -> ujson.Arr("summary"),
+            "additionalProperties" -> false
+          )
+        )
+        .fold(e => throw new java.lang.AssertionError(e.message), identity)
+      val digest = StrandDigest
+        .read("0123456789abcdef")
+        .fold(e => throw new java.lang.AssertionError(e), identity)
+      val at = java.time.Instant.parse("2026-10-12T09:10:00Z")
+      val seen = Strand.Digested(
+        Place.under(Namespace.Task, Vector("room")),
+        Label.Public,
+        ConversationId("c1"),
+        Vector(ConversationId("c1")),
+        2,
+        40,
+        at,
+        at,
+        digest,
+        at
+      )
+      val version =
+        DocumentVersionId.of(7).getOrElse(throw new java.lang.AssertionError("version"))
+      def form(documents: Showing) =
+        MovesJournal.strandsForm(
+          Vector(seen),
+          Vector(version),
+          "Summarise.",
+          1000,
+          documents,
+          schema,
+          None
+        )
+      // The forms the documents' character count gave, Int.MaxValue for a whole topic's write
+      // and 500 here; the first digest computed outside grit (`printf '%s' '<form>' | sha256sum`).
+      val (before, after) = (
+        "strands1;2:c116:0123456789abcdef20:2026-10-12T09:10:00Z1;1:71000;",
+        "10:Summarise.112:{\"type\":\"object\",\"properties\":{\"summary\":{\"type\":\"string\"}}," +
+          "\"required\":[\"summary\"],\"additionalProperties\":false}"
+      )
+      (
+        form(Showing.Whole),
+        form(Showing.Head(500)),
+        MovesJournal.strands(
+          Vector(seen),
+          Vector(version),
+          "Summarise.",
+          1000,
+          Showing.Whole,
+          schema,
+          None
+        ),
+        Set(form(Showing.Lead(500)), form(Showing.Head(500)), form(Showing.Whole)).size
+      ) ==> (
+        before + "2147483647;" + after,
+        before + "500;" + after,
+        "v2:0b5fe0d7a8b83c429fe9a2ff8c1ed93055d83447f30d07cece16b1731a67fc0a",
+        3
       )
     }
 
@@ -565,7 +651,15 @@ object MovesJournalTests extends TestSuite {
         grit.core.act.Sorting.Among[MovesContract.Pick](Vector.empty, Vector.empty, 0)
       def forms(s: Strand.Digested): (String, String, String) = (
         MovesJournal.strand(s, "Summarise.", 1000, schema),
-        MovesJournal.strands(Vector(s, s), Vector.empty, "Summarise.", 1000, 0, schema, None),
+        MovesJournal.strands(
+          Vector(s, s),
+          Vector.empty,
+          "Summarise.",
+          1000,
+          Showing.Head(0),
+          schema,
+          None
+        ),
         MovesJournal.sortingForm(
           grit.core.act.Dreaming.Item.Discussion(s),
           among,

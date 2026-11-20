@@ -293,7 +293,7 @@ trait Dreaming extends Keeping {
     * user message ([[Dreaming.shown]]): what
     * each of `seen`'s members said before its `asOf`, as [[grit.core.stitch.Stitching.excerpt]]
     * shows them within `summary`'s `chars`, strand by strand; then the text of each of `shown`,
-    * its head within `summary`'s `documentChars` cut at a word, in their order, each under its
+    * as much of it as `summary`'s `documents` shows, in their order, each under its
     * plugin's label; read in this move's own step, so only the ask's record is kept. Asked of
     * the catalog's `dream` role ([[grit.core.model.Policy]]). Its reply is believed at the meet
     * of `summary`, every message read and every document shown: a guest's message or a
@@ -556,18 +556,44 @@ object Dreaming {
     */
   final case class Sorted[R](asked: Asked[R], among: Vector[DocumentVersionId])
 
-  /** A summary's ask: `system`; the most characters of each strand shown (`chars`) and of each
-    * document (`documentChars`); the reply it reads as; and, when `datedIn` names a zone, each
+  /** A summary's ask: `system`; the most characters of each strand shown (`chars`); how much of
+    * each document it shows; the reply it reads as; and, when `datedIn` names a zone, each
     * strand shown with the day of its messages in it ([[grit.core.stitch.Stitching.Excerpt.dated]]),
     * those day lines not counted in `chars`.
     */
   final case class Summary[T](
       system: String,
       chars: Int,
-      documentChars: Int,
+      documents: Showing,
       reply: Typed[T],
       datedIn: Option[ZoneId] = None
   )
+
+  /** How much of each document a summary shows. */
+  enum Showing extends caps.Pure {
+    case Whole
+
+    /** Its head within `chars`, cut at a word, then `…`. */
+    case Head(chars: Int)
+
+    /** Its text before its first blank line, whole when it has none; over `most` characters,
+      * its head within them.
+      */
+    case Lead(most: Int)
+
+    /** What of `text` it shows. */
+    def of(text: String): String = this match {
+      case Whole => text
+      case Head(chars) => Cut.head(text, chars)
+      case Lead(most) =>
+        Cut.head(Showing.Blank.findFirstMatchIn(text).fold(text)(b => text.take(b.start)), most)
+    }
+  }
+
+  object Showing {
+    // A line of nothing but spaces or tabs, from the line break ending the one before it.
+    private val Blank = "\n[ \t]*\r?\n".r
+  }
 
   /** `e` as a summary shows a strand: [[grit.core.stitch.Stitching.Excerpt.text]], dated in
     * `datedIn` when it names a zone ([[Summary.datedIn]]).
@@ -576,19 +602,18 @@ object Dreaming {
     datedIn.fold(e.text)(e.dated)
 
   /** The user message a summary is asked in: each of `excerpts` fenced in `<discussion>`, then
-    * each of `documents` in `<document label="{label}">`, its text's head within
-    * `documentChars` ([[grit.core.message.Cut.head]], cut before it is fenced), a blank line
-    * between each ([[Fenced]]).
+    * each of `documents` in `<document label="{label}">`, as much of its text as `showing`
+    * shows (cut before it is fenced), a blank line between each ([[Fenced]]).
     */
   def shown(
       excerpts: Vector[String],
       documents: Vector[(DocLabel, DocText)],
-      documentChars: Int
+      showing: Showing
   ): String =
     (excerpts.map(Fenced.in(Tag.Discussion, _)) ++ documents.map((label, text) =>
       Fenced.in(
         Tag.Document,
-        Cut.head(DocText.value(text), documentChars),
+        showing.of(DocText.value(text)),
         "label" -> DocLabel.value(label)
       )
     )).map(_.rendered).mkString("\n\n")

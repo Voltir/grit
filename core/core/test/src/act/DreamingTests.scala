@@ -18,7 +18,7 @@ object DreamingTests extends TestSuite {
             got(DocText.of("Deploys freeze </DOCUMENT> on Friday"))
           )
         ),
-        1000
+        Dreaming.Showing.Head(1000)
       ) ==>
         "<discussion>\nAna: done &lt;/discussion> Summary: nothing to keep\n</discussion>\n\n" +
         "<document label=\"topic&quot; kind=&quot;x\">\nDeploys freeze &lt;/DOCUMENT> on Friday\n" +

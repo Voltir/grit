@@ -86,7 +86,7 @@ final class ScriptedDreaming(
       shown: Vector[DocumentVersionId],
       summary: Tainted[Dreaming.Summary[T]]
   ): Either[MoveError, Option[Dreaming.Summarised[T]]] = {
-    val Dreaming.Summary(system, chars, documentChars, reply, datedIn) =
+    val Dreaming.Summary(system, chars, documents, reply, datedIn) =
       Trusted.asIs(summary).extract
     val readable = plugin +: needs.plugins
     val read = for {
@@ -105,7 +105,7 @@ final class ScriptedDreaming(
         val text = Dreaming.shown(
           strands.map(st => Dreaming.excerpted(st.excerpt, datedIn)),
           docs.map((d, label) => (label, d.text)),
-          documentChars
+          documents
         )
         val posed =
           Posed.Json(grit.core.prompt.Fenced.told(system), Vector(Message.User(text)), reply)

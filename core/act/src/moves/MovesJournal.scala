@@ -325,21 +325,21 @@ object MovesJournal {
 
   /** The digest of a summary of `seen` and `shown`: one strand and no documents, its
     * [[strand]] digest (v1); otherwise v2, of its strands' roots, [[grit.core.stitch.StrandDigest]]s
-    * and `asOf`s in order, then the versions of `shown` in order, `chars`, `documentChars`, the
-    * system text, and the schema as [[json]] writes it. What it was shown is not in it: the
-    * strands' digests and the versions stand for that.
+    * and `asOf`s in order, then the versions of `shown` in order, `chars`, how much of each
+    * document it shows (`documents`), the system text, and the schema as [[json]] writes it.
+    * What it was shown is not in it: the strands' digests and the versions stand for that.
     */
   def strands(
       seen: Vector[Strand.Digested],
       shown: Vector[DocumentVersionId],
       system: String,
       chars: Int,
-      documentChars: Int,
+      documents: Dreaming.Showing,
       schema: JsonSchema,
       datedIn: Option[ZoneId]
   ): String = (seen, shown, datedIn) match {
     case (Vector(one), Vector(), None) => strand(one, system, chars, schema)
-    case _ => v2(strandsForm(seen, shown, system, chars, documentChars, schema, datedIn))
+    case _ => v2(strandsForm(seen, shown, system, chars, documents, schema, datedIn))
   }
 
   /** As [[sameAsk]], for a summary ([[strands]]). */
@@ -349,12 +349,12 @@ object MovesJournal {
       shown: Vector[DocumentVersionId],
       system: String,
       chars: Int,
-      documentChars: Int,
+      documents: Dreaming.Showing,
       schema: JsonSchema,
       datedIn: Option[ZoneId]
   ): Boolean = recorded match {
     case s"v1:$_" | s"v2:$_" =>
-      recorded == strands(seen, shown, system, chars, documentChars, schema, datedIn)
+      recorded == strands(seen, shown, system, chars, documents, schema, datedIn)
     case _ => false
   }
 
@@ -661,7 +661,7 @@ object MovesJournal {
       shown: Vector[DocumentVersionId],
       system: String,
       chars: Int,
-      documentChars: Int,
+      documents: Dreaming.Showing,
       schema: JsonSchema,
       datedIn: Option[ZoneId]
   ): String =
@@ -673,7 +673,15 @@ object MovesJournal {
       }.mkString + count(shown.size) + shown
         .map(v => text(DocumentVersionId.value(v).toString))
         .mkString +
-      count(chars) + count(documentChars) + text(system) + text(ujson.write(schema.json))
+      count(chars) + showing(documents) + text(system) + text(ujson.write(schema.json))
+
+  // Whole and a head are written as the character count each stood for when a summary's
+  // documents were one, so every digest recorded then still matches; a lead is tagged apart.
+  private def showing(documents: Dreaming.Showing): String = documents match {
+    case Dreaming.Showing.Whole => count(Int.MaxValue)
+    case Dreaming.Showing.Head(chars) => count(chars)
+    case Dreaming.Showing.Lead(most) => "lead" + count(most)
+  }
 
   private def v1(form: String): String = "v1:" + sha(form)
 

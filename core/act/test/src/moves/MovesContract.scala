@@ -812,6 +812,41 @@ abstract class MovesContract extends TestSuite {
       )
     }
 
+    test(
+      "a summary showing leads shows each document's text before its first blank line, whole when it has none, and a lead past its most cut there"
+    ) {
+      val (w, root) = strand()
+      val seen = StrandWorld.right(w.shelf.of(Vector(root), StrandWorld.at(600))(using TestTx.fake))
+      val shelves = Shelves(needed = Vector(Cards))
+      declared(shelves)
+      val blank =
+        put(shelves, Cards.name, "c", "the deploy owner\n  \nruns friday", Integrity.Member)
+      val none = put(shelves, MovesWorld.Notes, "n", "no blank line\nhere", Integrity.Member)
+      val long =
+        put(shelves, Cards.name, "d", "a lead longer than the most\n\nrest", Integrity.Member)
+      val (_, asked) = dreaming(limits(1, 0), w, shelves = shelves)(m =>
+        Seen(
+          Vector(
+            summarised(
+              m,
+              "s",
+              seen,
+              shown = Vector(blank, none, long),
+              documents = Dreaming.Showing.Lead(22)
+            )
+          )
+        )
+      )
+      asked.map(_._2) ==> Vector(
+        Vector(
+          "<discussion>\nSomeone: the deploy is stuck\nSomeone: still stuck?\n</discussion>\n\n" +
+            "<document label=\"cards\">\nthe deploy owner\n</document>\n\n" +
+            "<document label=\"notes\">\nno blank line\nhere\n</document>\n\n" +
+            "<document label=\"cards\">\na lead longer than…\n</document>"
+        )
+      )
+    }
+
     test("a dated summary shows each strand's messages under the day they were said, in its zone") {
       val (w, root) = strand()
       val seen = StrandWorld.right(w.shelf.of(Vector(root), StrandWorld.at(600))(using TestTx.fake))
@@ -2106,14 +2141,15 @@ object MovesContract {
       seen: Vector[Strand.Digested],
       believed: Integrity = Believed,
       shown: Vector[DocumentVersionId] = Vector.empty,
-      datedIn: Option[java.time.ZoneId] = None
+      datedIn: Option[java.time.ZoneId] = None,
+      documents: Dreaming.Showing = Dreaming.Showing.Head(DocumentChars)
   ): Either[MoveError, String] =
     m.summarise(
       name(n),
       seen,
       shown,
       TestTainted.at(
-        Dreaming.Summary(SummarySystem, 1000, DocumentChars, Typed.json(AnswerSchema), datedIn),
+        Dreaming.Summary(SummarySystem, 1000, documents, Typed.json(AnswerSchema), datedIn),
         believed
       )
     ).map(

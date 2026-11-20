@@ -159,7 +159,7 @@ private[moves] object Act {
 
   /** The summary `name` of `seen` and `shown`, after `system`: the strands' messages read
     * through `excerpts`, each within `chars`, dated in `datedIn` when it names a zone; then each of `shown` that `documents` reads and
-    * whose plugin is one of `readable`, its head within `documentChars`; its reply read by
+    * whose plugin is one of `readable`, as much of it as `showing` shows; its reply read by
     * `reply`, under `digest`.
     */
   final case class Summary[T](
@@ -169,7 +169,7 @@ private[moves] object Act {
       shown: Vector[DocumentVersionId],
       system: String,
       chars: Int,
-      documentChars: Int,
+      showing: Dreaming.Showing,
       reply: Typed[T],
       datedIn: Option[ZoneId],
       excerpts: StrandExcerpts,
@@ -459,7 +459,7 @@ private[moves] object Act {
             val text = Dreaming.shown(
               strands.map(st => Dreaming.excerpted(st.excerpt, s.datedIn)),
               documents.map((d, label) => (label, d.text)),
-              s.documentChars
+              s.showing
             )
             val messages = Vector(Message.User(text))
             val level = (strands.map(_.integrity) ++ documents.map(_._1.integrity))

@@ -382,8 +382,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
     val summary = Dreaming.Summary(
       TopicDream.writeSystem(day, meeting, opened = t.version.isEmpty),
       TopicDream.Chars,
-      // The whole topic, bounded by Topic.Passages.
-      Int.MaxValue,
+      Dreaming.Showing.Whole,
       TopicDream.WriteReply,
       // Each message's day is shown, so a relative day can be reckoned from it.
       datedIn = Some(zone)
@@ -923,7 +922,12 @@ object TopicDream {
     * card whole (within [[PersonCards.TextChars]]).
     */
   private val personSummary: Dreaming.Summary[Option[String]] =
-    Dreaming.Summary(PersonSystem, PersonCards.AskChars, PersonCards.TextChars, PersonReply)
+    Dreaming.Summary(
+      PersonSystem,
+      PersonCards.AskChars,
+      Dreaming.Showing.Head(PersonCards.TextChars),
+      PersonReply
+    )
 
   /** The topic of `f.from`, current at `was`, folded into that of `f.into`, current at `keeps`
     * ([[Topic.folded]]): the keeper kept under its key, believed at no more than the topic folded
