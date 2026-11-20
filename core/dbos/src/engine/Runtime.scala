@@ -3,7 +3,7 @@ package grit.dbos.engine
 import grit.core.clock.Clock
 import grit.core.durable.Durable
 import grit.core.id.{JobName, PluginName, TurnRef, WorkflowId}
-import grit.core.inbox.InboxError
+import grit.core.inbox.{InboxError, OccasionInbox}
 import grit.core.job.ScheduleDesk
 import grit.core.plugin.Plugin
 import grit.core.stitch.Placements
@@ -16,7 +16,7 @@ import grit.core.triage.Shadowing
   * an engine runs each as a durable workflow, a session's rehearsal runs each once, inside the
   * session.
   */
-trait Runtime extends Stores, caps.SharedCapability {
+trait Runtime extends Stores, OccasionInbox, caps.SharedCapability {
 
   /** Short read transactions. */
   val db: Db

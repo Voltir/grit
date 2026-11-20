@@ -11,6 +11,7 @@ import grit.core.act.{
   Keeping,
   MoveError,
   MoveName,
+  Occasioned,
   Pieced,
   Piecing,
   Posed,
@@ -47,6 +48,7 @@ import grit.core.flow.{Extracted, Shape, Tainted, TestTainted, Trusted}
 import grit.core.id.{CorpusName, DocKey, FileHandle, PluginName, ScheduleKey}
 import grit.core.job.{JobRun, SlotRule}
 import grit.core.message.Message
+import grit.core.occasion.Occasion
 import grit.core.place.{Place, Service}
 import grit.core.sanitise.IntegrityTree
 import grit.core.store.{StoreError, Tx}
@@ -633,6 +635,9 @@ object SyncTests extends TestSuite {
 
     def piece(name: MoveName, from: Tainted[Piecing]): Either[MoveError, Pieced] =
       inner.piece(name, from)
+
+    def occasion(name: MoveName, from: Tainted[Occasion]): Either[MoveError, Occasioned] =
+      inner.occasion(name, from)
   }
 
   val tests = Tests {

@@ -47,7 +47,7 @@ object Run {
   /** The workflow of a job's run, the turn whose workflow id it starts from:
     *   1. `read-slot` — which slot it runs, its schedule, and the version it was started at;
     *   1. under its job's current version in `jobs`, the job's run: the moves it makes, each as
-    *      `ask:{name}`, `call:{name}` or `keep:{name}` and its phases
+    *      `ask:{name}`, `call:{name}`, `keep:{name}` or `occasion:{name}` and its phases
     *      ([[grit.act.moves.ActName]]), for its schedule's principal, each ask admitted by `budget` against the day's spend, a call whose tool
     *      asks a person first never sent ([[grit.core.act.Gates.Closed]]), within the job's
     *      limits, and a plugin's keeping or dreaming job's keeps over its plugin's documents, as
@@ -78,7 +78,7 @@ object Run {
       .andThen(
         Flow.branch((r: (TurnRef, SlotRead.Read)) => planned(jobs, budget, r._1, r._2))(
           moves(keepers, pieces, reads)
-            .over[RunEnv](env => KeepingEnv(env.moves, env.files, env.jot))
+            .over[RunEnv](env => KeepingEnv(env.moves, env.files, env.jot, env.occasions))
             .keeping
             .map { (p, text) =>
               Replying(p.acting.turn, p.read, Planned.Says(text))
@@ -141,7 +141,9 @@ object Run {
         case Owned.Deployments(job) => plain(job, p.read, p.acting)(using steps)
         case Owned.Plugins(_, job) => plain(job, p.read, p.acting)(using steps)
         case Owned.Keeps(plugin, terms, job) =>
-          keeping(job, p.read, p.acting, keepers(plugin, terms), pieces(plugin))(using steps)
+          keeping(job, p.read, p.acting, plugin, keepers(plugin, terms), pieces(plugin))(using
+            steps
+          )
         case Owned.Dreams(plugin, terms, job) =>
           dreaming(job, p.read, p.acting, plugin, keepers(plugin, terms), pieces(plugin), reads)(
             using steps
@@ -264,17 +266,18 @@ object Run {
         .text
     )
 
-  /** As [[plain]], its moves also keeping `keeper`'s documents. */
+  /** As [[plain]], `plugin`'s, its moves also keeping `keeper`'s documents. */
   private def keeping[P <: caps.Pure](
       job: KeepingJob[P],
       read: SlotRead.Read,
       acting: Acting,
+      plugin: PluginName,
       keeper: DocumentKeeper,
       pieces: PieceKeeper
   )(using steps: Steps[KeepingEnv]^): String =
     said(job, read, acting)(run =>
       DurableMoves
-        .keeping(acting, job.limits, keeper, pieces)(moves => Said(job.run(run, moves)))
+        .keeping(acting, job.limits, plugin, keeper, pieces)(moves => Said(job.run(run, moves)))
         .text
     )
 

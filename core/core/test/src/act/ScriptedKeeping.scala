@@ -16,9 +16,13 @@ import grit.core.files.{
 }
 import grit.core.flow.{Tainted, Trusted}
 import grit.core.id.{FileHandle, PluginName}
+import grit.core.inbox.InMemoryInbox
 import grit.core.message.Message
+import grit.core.occasion.Occasion
 import grit.core.place.Service
 import grit.core.provider.ModelRequest
+import grit.core.speech.Speaking
+import grit.core.spend.Budget
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
 import grit.core.visibility.{Clearance, Integrity, Label, Recorded, Visibility}
@@ -36,7 +40,9 @@ import grit.dbos.sql.TestTx
   * handle (by default none is kept), cut with [[MovesFixtures.PerChar]]; its surveys take the
   * area's readers to be `formats`, as the durable moves take theirs ([[Formats.reads]],
   * [[Formats.first]]), or, with none given, every format at every version to be read and no
-  * kind to have a first.
+  * kind to have a first. Its occasions are made over `occasions`, as the durable moves make
+  * theirs ([[Occasioned.found]], [[Occasioned.decided]]), at `at`; by default in an empty
+  * inbox, grit never speaking.
   */
 class ScriptedKeeping(
     limits: MoveLimits,
@@ -57,7 +63,11 @@ class ScriptedKeeping(
     files: FileHandle -> Either[String, (String, Understood)] = (h: FileHandle) =>
       Left(FileError.Gone(h, Files.Expiry).message),
     formats: Option[Formats] = None,
-    visibility: Visibility = Visibility.Shipped
+    visibility: Visibility = Visibility.Shipped,
+    // The test's own in-memory inbox, which this run's occasions write and the test reads back on
+    // its one thread once the run returns: nothing reaches it after the test.
+    @caps.unsafe.untrackedCaptures
+    private val occasions: ScriptedKeeping.Occasions^ = ScriptedKeeping.Occasions.Unscripted
 ) extends ScriptedMoves(limits, asks, calls, jsons, judgments, integrity),
       Keeping {
 
@@ -111,6 +121,62 @@ class ScriptedKeeping(
       }
     }
 
+  def occasion(name: MoveName, from: Tainted[Occasion]): Either[MoveError, Occasioned] =
+    making(name, MoveKind.Occasion, limits.occasions) {
+      {
+        val o = occasions
+        given Tx = opened
+        val (occasion, believed) = (Trusted.asIs(from).extract, from.integrity)
+        val speaking = o.speaking
+        val speech = o.inbox.speech
+        val made: Either[String, Occasioned] = for {
+          found <- Occasioned
+            .found(occasion, keeper, speech, speaking, believed, at)
+            .left
+            .map(_.described)
+          ended <- found match {
+            case Left(ended) => Right(ended)
+            case Right((origin, to)) =>
+              for {
+                turn <- o.inbox
+                  .occasion(origin, plugin, occasion, at, believed)
+                  .left
+                  .map(_.toString)
+                decided <- Occasioned
+                  .decided(
+                    occasion,
+                    turn,
+                    to,
+                    believed,
+                    speaking,
+                    o.budget,
+                    speech,
+                    o.inbox.ledger,
+                    at
+                  )
+                  .left
+                  .map(_.described)
+                ended <- decided match {
+                  case Left(ended) => Right(ended)
+                  case Right(()) =>
+                    o.refusing match {
+                      case None =>
+                        o.inbox
+                          .startTurn(turn)
+                          .left
+                          .map(_.toString)
+                          .map(_ => Occasioned.Started(turn))
+                      case Some(why) =>
+                        Occasioned.unstarted(turn, why, speech, at).left.map(_.described)
+                    }
+                }
+              } yield ended
+          }
+        } yield ended
+        made.left.map(MoveError.Store(_))
+      }
+    }
+
   /** `plugin`'s current pieces of files, as a run at `floor` reads them. */
   def pieced: Vector[KeptPiece] = pieces.current(plugin)(using opened)
 
@@ -127,4 +193,26 @@ class ScriptedKeeping(
     */
   protected def opened: Tx = TestTx.fake(Clearance.of(floor), visibility, rooms)
 
+}
+
+object ScriptedKeeping {
+
+  /** What a scripted run's occasions are made with: `inbox`, which records each, keeps its
+    * decision ([[InMemoryInbox.speech]]), reads the day's spend from its ledger and starts each
+    * turn grit drafts, unless the start is `refusing`, with why; `speaking` and `budget`, what
+    * grit speaks within.
+    */
+  final case class Occasions(
+      inbox: InMemoryInbox,
+      speaking: Speaking,
+      budget: Budget,
+      refusing: Option[String] = None
+  )
+
+  object Occasions {
+
+    /** An empty inbox's, grit never speaking. */
+    def Unscripted: Occasions^ =
+      Occasions(InMemoryInbox.fresh(), Speaking.Off, Budget(java.time.ZoneOffset.UTC, None))
+  }
 }

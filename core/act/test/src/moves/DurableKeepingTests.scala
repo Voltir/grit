@@ -4,9 +4,11 @@ import java.time.Instant
 
 import grit.core.act.MovesFixtures.{Answering, Judging}
 import grit.core.act.{Dreaming, Keeping, MoveError, MoveLimits, MovesFixtures}
-import grit.core.document.{DocRef, DocText, DocumentKeeper, Pointer, Written}
+import grit.core.document.{DocRef, DocText, DocumentKeeper, InMemoryDocuments, Pointer, Written}
 import grit.core.durable.{Flows, InMemoryDurable}
+import grit.core.flow.TestTainted
 import grit.core.id.{DocKey, DocumentVersionId}
+import grit.core.inbox.InMemoryInbox
 import grit.core.place.Place
 import grit.core.stitch.{Strand, StrandWorld}
 import grit.core.store.{StoreError, Tx}
@@ -155,7 +157,8 @@ object DurableKeepingTests extends TestSuite {
             val env = KeepingEnv(
               s.world.env(new Answering(MovesContract.Answer), again),
               MovesWorld.Fileless,
-              s.world.jot
+              s.world.jot,
+              s.world.occasioning
             )
             Flows.run(dreams, env, ()).merge.moves.mkString
         }
@@ -229,7 +232,95 @@ object DurableKeepingTests extends TestSuite {
         )
       )
     }
+
+    test("an occasion whose entry was recorded and never decided is decided by the run resumed") {
+      val (inbox, documents) = (MovesContract.heard(InMemoryInbox.fresh()), new InMemoryDocuments)
+      val first = occasions(inbox, documents)
+      val made = first.keeping(MovesContract.OneOccasion)(occasion)
+      val turns = inbox.started
+      // The run cut short after its entry was recorded: nothing decided, nothing started.
+      inbox.speech.occasions = Vector.empty
+      inbox.started = Vector.empty
+      val history = first.durable.history(Turn.workflowId).take(2)
+      val again = occasions(inbox, documents)
+      val resumed = new InMemoryDurable().replay(Turn.workflowId, history) { _ =>
+        Flows
+          .run(
+            MovesWorld.keeps(again.acting, MovesContract.OneOccasion, again.keeper)(occasion),
+            again.kept(new Answering(MovesContract.Answer)),
+            ()
+          )
+          .merge
+          .said
+      }
+      (
+        history.map(_.name),
+        made.said,
+        resumed,
+        turns.size,
+        inbox.started == turns,
+        inbox.speech.occasions.map(_._1) == turns
+      ) ==> (Vector("keep:doc", "occasion:o"), "Started", Right("Started"), 1, true, true)
+    }
+
+    test("an occasion starts its turn once across a replay, which reads its start back") {
+      val (inbox, documents) = (MovesContract.heard(InMemoryInbox.fresh()), new InMemoryDocuments)
+      val first = occasions(inbox, documents)
+      val made = first.keeping(MovesContract.OneOccasion)(occasion)
+      val history = first.durable.history(Turn.workflowId)
+      // A start now would be refused: the replay reads what the first run's start recorded.
+      val again = occasions(inbox, documents, refusing = Some("down"))
+      val replayed = new InMemoryDurable().replay(Turn.workflowId, history) { _ =>
+        Flows
+          .run(
+            MovesWorld.keeps(again.acting, MovesContract.OneOccasion, again.keeper)(occasion),
+            again.kept(new Answering(MovesContract.Answer)),
+            ()
+          )
+          .merge
+          .said
+      }
+      (history.map(_.name), made.said, replayed, inbox.started.size) ==> (
+        Vector("keep:doc", "occasion:o", "occasion:o:decide", "occasion:o:start"),
+        "Started",
+        Right("Started"),
+        1
+      )
+    }
   }
+
+  /** A world whose keeping runs' occasions are recorded in `inbox` at the contract's floor, its
+    * channel's room at that floor, grit speaking on occasions, each start refused with
+    * `refusing` when given.
+    */
+  private def occasions(
+      inbox: InMemoryInbox,
+      documents: InMemoryDocuments,
+      refusing: Option[String] = None
+  ): MovesWorld =
+    new MovesWorld(
+      broken = false,
+      MovesContract.Floor,
+      documents = documents,
+      recorded = MovesContract.RoomAtFloor,
+      inbox = inbox,
+      speaking = MovesContract.Occasional,
+      refusing = refusing
+    )
+
+  /** A run that keeps its document, then names one occasion about it: what came of it. */
+  private val occasion: Keeping^ -> Seen = m =>
+    Seen(
+      MovesContract.occasioned(
+        m.occasion(
+          name("o"),
+          TestTainted.at(
+            MovesContract.occasion(MovesContract.about(m), "k"),
+            MovesContract.Believed
+          )
+        )
+      )
+    )
 
   /** A world sorting the contract's strand, its deploy stuck, among one card, "deploys stay
     * stuck by friday", by [[MovesContract.Choosing]], once (`s`), its classifier cleared for

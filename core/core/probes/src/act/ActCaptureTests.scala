@@ -208,6 +208,16 @@ object ActCaptureTests extends TestSuite {
       |}
       |""".stripMargin
 
+  /** 13. A keeping job reaching for the start of the turn its occasion drafts: a plain type
+    * error, so that a job starts a turn only through [[Keeping.occasion]], its decision first.
+    */
+  private val keepStarts =
+    """final class Starts extends Tallied {
+      |  def run(run: Trusted[JobRun[Count]], moves: Keeping^): String =
+      |    moves.unprompted.start(TurnRef(ConversationId("c"), TurnSeq.First)).fold(identity, _.toString)
+      |}
+      |""".stripMargin
+
   /** Every breach capture checking rejects; [[keepReturnsRead]] is the bound on what a keep
     * returns, rejected with the checker off too.
     */
@@ -291,6 +301,7 @@ object ActCaptureTests extends TestSuite {
       scanReturnsShelf,
       scanReturnsNeed,
       keepScans,
+      keepStarts,
       usesMoves,
       dreams,
       readsJson,
@@ -351,6 +362,11 @@ object ActCaptureTests extends TestSuite {
     test("a keeping job's moves offer no strand read") {
       val errs = errors(keepScans)
       assert(errs.exists(_.contains("value scan is not a member of grit.core.act.Keeping")))
+    }
+
+    test("a job's run handed Keeping^ cannot reach the move's starter") {
+      val errs = errors(keepStarts)
+      assert(errs.exists(_.contains("value unprompted is not a member of grit.core.act.Keeping")))
     }
 
     test("a job asking for JSON its pure reader reads, beside asks it makes itself, compiles") {

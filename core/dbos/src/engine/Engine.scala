@@ -16,12 +16,13 @@ import grit.core.host.ProcessIdentity
 import grit.core.id.{PluginName, PrincipalId, TurnRef, WorkflowId}
 import grit.core.identity.{Domain, Identities, Realm}
 import grit.core.inbox.{Inbox, InboxError}
+import grit.core.occasion.Occasion
 import grit.core.place.Place
 import grit.core.plugin.Plugin
 import grit.core.spend.Budget
-import grit.core.store.{Db, Jot, Linking, StoreError, Voucher}
+import grit.core.store.{Db, Jot, Linking, Origin, StoreError, Voucher}
 import grit.core.triage.Shadowing
-import grit.core.visibility.{Compartment, Visibility}
+import grit.core.visibility.{Compartment, Integrity, Visibility}
 import grit.dbos.sql.{DbConfig, Opener, Pool, SqlDb, SqlJot, SqlLabels, SqlVoucher}
 import grit.dbos.workflow.{
   Closes,
@@ -134,6 +135,15 @@ final class Engine private (
 
   /** [[Inbox.startTurn]], through this engine's [[inbox]]. */
   def startTurn(turn: TurnRef): Either[InboxError, Unit] = inbox.startTurn(turn)
+
+  /** [[Inbox.occasion]], through this engine's [[inbox]]. */
+  def occasion(
+      origin: Origin,
+      plugin: PluginName,
+      occasion: Occasion,
+      at: Instant,
+      believed: Integrity
+  ): Either[InboxError, TurnRef] = inbox.occasion(origin, plugin, occasion, at, believed)
 
   /** Registers `turn` as the body of every turn, `close` of every attempt to close a period,
     * `settle` of every question whether anyone is waiting on a quiet period, `post` of every

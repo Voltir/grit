@@ -24,10 +24,31 @@ import grit.core.spend.{Budget, DailyCap, Day, Spend}
 import grit.core.store.{Entry, Origin, Payload, StoreError, WentOn}
 import grit.core.visibility.Integrity
 
+/** Where a plugin's occasion is recorded as a turn of its own: the one inbox write a keeping
+  * job's occasion move makes ([[grit.core.act.Keeping.occasion]]).
+  */
+trait OccasionInbox extends caps.SharedCapability {
+
+  /** Records `occasion`, `plugin`'s, as the first entry of a new turn of `origin`'s conversation
+    * ([[grit.core.store.Payload.Occasion]]), grit's own, dated `at`, believed at `believed`, its
+    * source [[grit.core.occasion.OccasionKey.source]], and returns that turn; the turn recorded
+    * before when that source was, whatever this occasion holds, so a step that re-runs gets it
+    * back. Never refused over the day's cap. [[InboxError.Invalid]] for an
+    * [[grit.core.store.Origin.Direct]], and when the store holds what it cannot read.
+    */
+  def occasion(
+      origin: Origin,
+      plugin: PluginName,
+      occasion: Occasion,
+      at: Instant,
+      believed: Integrity
+  ): Either[InboxError, TurnRef]
+}
+
 /** How an edge hands the engine work (ADR 0002). Every operation is idempotent, so an edge
   * that is unsure whether one happened repeats it.
   */
-trait Inbox extends caps.SharedCapability {
+trait Inbox extends OccasionInbox {
 
   /** Records `message` from `origin`'s conversation, written through `by`, as the first entry of a
     * new turn, and returns that turn; an account not seen before is, unnamed, a new person's one
@@ -71,21 +92,6 @@ trait Inbox extends caps.SharedCapability {
       turn: Int,
       reason: WentOn,
       by: Account
-  ): Either[InboxError, TurnRef]
-
-  /** Records `occasion`, `plugin`'s, as the first entry of a new turn of `origin`'s conversation
-    * ([[grit.core.store.Payload.Occasion]]), grit's own, dated `at`, believed at `believed`, its
-    * source [[grit.core.occasion.OccasionKey.source]], and returns that turn; the turn recorded
-    * before when that source was, whatever this occasion holds, so a step that re-runs gets it
-    * back. Never refused over the day's cap. [[InboxError.Invalid]] for an
-    * [[grit.core.store.Origin.Direct]], and when the store holds what it cannot read.
-    */
-  def occasion(
-      origin: Origin,
-      plugin: PluginName,
-      occasion: Occasion,
-      at: Instant,
-      believed: Integrity
   ): Either[InboxError, TurnRef]
 
   /** The refusal a new message would get now over the day's cap ([[InboxError.OverCap]]), by

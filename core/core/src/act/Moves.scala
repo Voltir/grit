@@ -17,6 +17,7 @@ import grit.core.flow.{Extracted, Shape, Tainted, Trusted}
 import grit.core.id.{DocumentVersionId, PluginName}
 import grit.core.message.{Cut, Message}
 import grit.core.need.Needs
+import grit.core.occasion.Occasion
 import grit.core.place.Service
 import grit.core.prompt.{Fenced, Tag}
 import grit.core.provider.ModelRequest
@@ -243,6 +244,19 @@ trait Keeping extends Moves {
     * counts as made.
     */
   def piece(name: MoveName, from: Tainted[Piecing]): Either[MoveError, Pieced]
+
+  /** What came of `from`, the acting plugin's occasion, believed at no more than `from` is: read
+    * at the run's floor as the acting's subject, then recorded as the first entry of a turn of
+    * its own at its room's top level ([[grit.core.inbox.OccasionInbox.occasion]]), decided as
+    * [[grit.core.speech.Speech.occasion]] decides under the deployment's speaking, and its turn
+    * started when it drafts; each phase recorded once, so a rerun records, decides and starts
+    * nothing twice. [[Occasioned.Mislabelled]], [[Occasioned.Unread]] and an
+    * [[Occasioned.Held]] with no turn record nothing. [[MoveError.OverLimit]] past
+    * `limits.occasions`, counted as the move begins, so each of those counts as made;
+    * [[MoveError.Store]] when the store fails, or the inbox, or a failed start's outcome could
+    * not be kept.
+    */
+  def occasion(name: MoveName, from: Tainted[Occasion]): Either[MoveError, Occasioned]
 }
 
 /** [[Keeping]], the strands of the rooms its run reads, by ids and counts, and its plugin's

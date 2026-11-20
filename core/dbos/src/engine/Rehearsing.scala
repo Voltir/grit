@@ -11,17 +11,18 @@ import scala.util.control.NonFatal
 
 import grit.core.clock.Clock
 import grit.core.durable.Durable
-import grit.core.id.{SourceId, TurnRef, WorkflowId}
+import grit.core.id.{PluginName, SourceId, TurnRef, WorkflowId}
 import grit.core.identity.Account
 import grit.core.inbox.InboxError
 import grit.core.message.Message
+import grit.core.occasion.Occasion
 import grit.core.plugin.Plugin
 import grit.core.speech.Reach
 import grit.core.spend.Budget
 import grit.core.stitch.Placements
 import grit.core.store.{Db, Jot, Origin, StoreError, Tx}
 import grit.core.triage.Shadowing
-import grit.core.visibility.{Subject, Visibility}
+import grit.core.visibility.{Integrity, Subject, Visibility}
 import grit.dbos.sql.{DbConfig, SqlEntryStore, SqlStatements}
 
 import org.postgresql.ds.PGSimpleDataSource
@@ -76,6 +77,22 @@ final class Rehearsing private (
     * that started it; the runner's refusal, an [[InboxError.Invalid]], otherwise.
     */
   def startTurn(turn: TurnRef): Either[InboxError, Unit] = runner.started(turn)
+
+  /** `occasion` recorded as [[grit.core.inbox.Inbox.occasion]] records it, in this session. */
+  def occasion(
+      origin: Origin,
+      plugin: PluginName,
+      occasion: Occasion,
+      at: Instant,
+      believed: Integrity
+  ): Either[InboxError, TurnRef] =
+    SqlInbox
+      .undirected(origin, "an occasion begins no direct message")
+      .flatMap(_ =>
+        maintained(recorder.occasion(origin, plugin, occasion, at, believed)).left
+          .map(InboxError.stored)
+          .flatMap(identity)
+      )
 
   /** Hands every body to its runner ([[Rehearsing.Runner.launched]]), which runs the
     * situation's workflows through them, in this session, before this returns; `plugins` and

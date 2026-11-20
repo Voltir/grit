@@ -3,7 +3,7 @@ package grit.kit.run
 import java.nio.file.Path
 import java.time.Instant
 
-import grit.act.moves.{MoveRecords, MovesEnv}
+import grit.act.moves.{MoveRecords, MovesEnv, Occasioning}
 import grit.act.phase.Placing
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
@@ -26,6 +26,7 @@ import grit.core.persona.Persona
 import grit.core.place.Weight
 import grit.core.plugin.Plugin
 import grit.core.provider.{CallLine, ModelRequest, Models, Provider, ProviderError}
+import grit.core.speech.Unprompted
 import grit.core.stitch.{StitchReads, StrandExcerpts, StrandShelf, Tuning as StitchTuning}
 import grit.core.store.{Askers, Db, Jot, LifecycleStore, StoreError}
 import grit.core.tool.{SetRefusal, Tool, Toolbox}
@@ -379,6 +380,10 @@ private[grit] object Launch {
           clock
         )
       )
+    // What grit speaks within unasked, and the start of a turn it drafts: a heard message's
+    // triage's and a job's occasion's alike.
+    val unprompted: Unprompted^{runtime} =
+      Unprompted(d.speaking, d.budget, turn => runtime.startTurn(turn).left.map(_.toString))
     val triage: WorkflowId => Durable^ ?=> String =
       Triage.body(
         TriageEnv(
@@ -401,11 +406,7 @@ private[grit] object Launch {
           d.budget,
           db,
           clock,
-          grit.core.speech.Unprompted(
-            d.speaking,
-            d.budget,
-            turn => runtime.startTurn(turn).left.map(_.toString)
-          ),
+          unprompted,
           StitchTuning.Default,
           placing,
           d.knowledge,
@@ -446,6 +447,7 @@ private[grit] object Launch {
           clock,
           moves,
           files,
+          Occasioning(runtime, runtime.speech, unprompted),
           d.budget,
           runtime.keeper,
           plugin => runtime.pieceKeeper(plugin, PieceKeeper.Bound),

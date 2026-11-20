@@ -41,9 +41,10 @@ final case class MovesEnv(
 
 /** What a keeping job's moves are made with: every move's `moves`, and `files`, the area a piece
   * move reads files from, and `jot`, through which it keeps their pieces in a transaction of its
-  * own ([[grit.core.act.Keeping.piece]]).
+  * own ([[grit.core.act.Keeping.piece]]) and settles an occasion whose turn could not start; and
+  * `occasions`, what its occasions are recorded, decided and started with.
   */
-final case class KeepingEnv(moves: MovesEnv^, files: Files^, jot: Jot^)
+final case class KeepingEnv(moves: MovesEnv^, files: Files^, jot: Jot^, occasions: Occasioning^)
 
 object KeepingEnv {
 

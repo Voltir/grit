@@ -6,7 +6,7 @@ import grit.core.id.{ScheduleId, TurnRef}
 import grit.core.spend.Budget
 import grit.core.visibility.{Integrity, Subject}
 
-/** Who acts, and within what (ADR 0068): every ask, call and keep is made under one. Its
+/** Who acts, and within what (ADR 0068): every ask, call, keep and occasion is made under one. Its
   * moves belong to `turn`: their spend is recorded under its conversation, their requests are
   * made from it, and an edge rings its workflow. What its transactions read, and the least
   * label they write at, are each transaction's clearance, resolved as it opens for [[subject]]

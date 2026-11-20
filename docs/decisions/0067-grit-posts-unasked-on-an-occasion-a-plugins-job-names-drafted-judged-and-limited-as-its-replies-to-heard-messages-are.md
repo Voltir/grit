@@ -38,7 +38,7 @@ Decision:
   hold before anything is recorded, so the key stays free for a later run; a hold after the
   entry spends its key for good.
 - **The turn starts as triage starts a drafting turn**; a start that fails settles the
-  decision `Failed`.
+  decision `Failed`, and the move says so (`Occasioned.Unstarted`), its key spent.
 
 Consequences: an unprompted post traces to its occasion's decision as a heard draft traces
 to its message's. A job that names occasions spends speech, not its own allowance, and a

@@ -2,10 +2,17 @@ package grit.core.act
 
 /** How many moves of each limited kind one run may make; a move past its kind's count is
   * refused ([[MoveError.OverLimit]]) and not made. `asks` counts asks a model answers (a JSON
-  * ask's repairs within it); `judgments`, judgments ([[Posed.Judgment]]); `calls`, calls. Keeps
-  * are not limited: they spend nothing.
+  * ask's repairs within it); `judgments`, judgments ([[Posed.Judgment]]); `calls`, calls;
+  * `occasions`, occasions ([[Keeping.occasion]]), none unless [[withOccasions]] allows them.
+  * Keeps are not limited: they spend nothing.
   */
-final case class MoveLimits private (asks: Int, calls: Int, judgments: Int)
+final case class MoveLimits private (asks: Int, calls: Int, judgments: Int, occasions: Int) {
+
+  /** These limits, allowing `n` occasions, or why not: `n` negative. */
+  def withOccasions(n: Int): Either[String, MoveLimits] =
+    if (n < 0) Left(s"a run's limits are each at least zero: occasions $n")
+    else Right(copy(occasions = n))
+}
 
 object MoveLimits {
 
@@ -26,15 +33,16 @@ object MoveLimits {
       Left(
         s"a run's limits are each at least zero: asks $asks, calls $calls, judgments $judgments"
       )
-    else Right(new MoveLimits(asks, calls, judgments))
+    else Right(new MoveLimits(asks, calls, judgments, 0))
 
-  /** No moves of any limited kind: zero asks, calls and judgments. */
-  val Zero: MoveLimits = new MoveLimits(0, 0, 0)
+  /** No moves of any limited kind: zero asks, calls, judgments and occasions. */
+  val Zero: MoveLimits = new MoveLimits(0, 0, 0, 0)
 }
 
 /** What a move is: an ask a model answers (text or JSON), a judgment ([[Posed.Judgment]]), a
-  * call or a keep. A run's limits count each but keeps ([[MoveLimits]]).
+  * call, a keep or an occasion ([[Keeping.occasion]]). A run's limits count each but keeps
+  * ([[MoveLimits]]).
   */
 enum MoveKind {
-  case Ask, Judge, Call, Keep
+  case Ask, Judge, Call, Keep, Occasion
 }

@@ -68,5 +68,6 @@ object MoveError {
     case MoveKind.Judge => "judgments"
     case MoveKind.Call => "calls"
     case MoveKind.Keep => "keeps"
+    case MoveKind.Occasion => "occasions"
   }
 }

@@ -24,7 +24,10 @@ their own names and recorded forms. It names core alone, and grit.prose, which c
   savepoint. A piece move (`piece:{name}`, a keep by kind) keeps a plugin's pieces of a file
   outside its step's transaction, over a keeping job's `KeepingEnv`: its file admitted in a
   read, opened and read holding none, its pieces kept in a write of their own, which a rerun
-  repeats to the same effect. What a move answers carries the integrity it is believed at (ADR 0036): a run
+  repeats to the same effect. An occasion (`occasion:{name}`, `:decide`, `:start`; ADR 0067)
+  is `OccasionMove`'s three steps over the phases core's `Occasioned` defines, which a scripted
+  job's moves share: read and recorded through the inbox, decided with its record, started
+  outside any transaction. What a move answers carries the integrity it is believed at (ADR 0036): a run
   starts at its acting's, a keep of what is believed below `Outside` is refused, and the moves
   hold the two endorsements core's `Moves` raises with, an extraction's (`extract`) and the
   integrity tree's (`vet`), which no other code here reaches. `Judging` is an engine workflow's

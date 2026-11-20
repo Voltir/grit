@@ -1,6 +1,6 @@
 package grit.act.moves
 
-import java.time.Instant
+import java.time.{Instant, ZoneOffset}
 
 import grit.core.act.ScriptedMoves.Replied
 import grit.core.act.{
@@ -20,11 +20,14 @@ import grit.core.document.{Document, InMemoryDocuments}
 import grit.core.files.{FileError, Files, Formats, InMemoryPieces, KeptPiece}
 import grit.core.flow.TestTainted
 import grit.core.id.FileHandle
+import grit.core.inbox.InMemoryInbox
 import grit.core.message.{AssistantBlock, Message, StopReason, Usage}
 import grit.core.provider.ModelRequest
+import grit.core.speech.Speaking
+import grit.core.spend.Budget
 import grit.core.stitch.StrandWorld
 import grit.core.tool.Outcome
-import grit.core.visibility.{Integrity, Recorded}
+import grit.core.visibility.{Integrity, Recorded, Visibility}
 
 /** [[MovesContract]] against `ScriptedMoves` and its keeping `ScriptedKeeping`, scripted with
   * the contract's world.
@@ -45,6 +48,36 @@ object ScriptedMovesTests extends MovesContract {
       scripted(limits, broken = false, Vector(), Right(Judged.YesNo(Yes)), Integrity.Authority)
     (use(moves), moves.kept)
   }
+
+  def occasioning[A <: caps.Pure](
+      limits: MoveLimits,
+      inbox: InMemoryInbox,
+      documents: InMemoryDocuments,
+      rooms: Recorded,
+      speaking: Speaking,
+      refusing: Option[String]
+  )(use: Keeping^ -> A): A =
+    use(
+      new ScriptedKeeping(
+        limits,
+        Floor,
+        MovesWorld.Notes,
+        MovesWorld.NotesTerms,
+        _ => Left(MoveError.Model("no ask scripted")),
+        (_, _, _) => Right(Called.Failed("unadvertised")),
+        (_, _) => Left(MoveError.Model("no ask scripted")),
+        _ => Left(MoveError.Model("no judgment scripted")),
+        documents,
+        OccasionAt,
+        Integrity.Authority,
+        rooms,
+        new InMemoryPieces,
+        h => Left(FileError.Gone(h, Files.Expiry).message),
+        None,
+        Visibility.Shipped,
+        ScriptedKeeping.Occasions(inbox, speaking, Budget(ZoneOffset.UTC, None), refusing)
+      )
+    )
 
   def piecing[A <: caps.Pure](limits: MoveLimits, formats: Formats)(
       use: (Keeping^, FileHandle) -> A

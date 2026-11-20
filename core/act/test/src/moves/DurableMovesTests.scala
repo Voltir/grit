@@ -53,11 +53,13 @@ import grit.core.files.{
 import grit.core.host.TempBlobs
 import grit.core.id.{CallSlot, ConversationId, EdgeName, FileHandle, PluginName, TurnRef, TurnSeq}
 import grit.core.identity.Principal
+import grit.core.inbox.InMemoryInbox
 import grit.core.job.InMemorySchedules
 import grit.core.message.{Message, StopReason}
 import grit.core.need.Needs
 import grit.core.place.Place
 import grit.core.provider.{ModelRequest, Models}
+import grit.core.speech.{Speaking, Unprompted}
 import grit.core.spend.{Budget, DailyCap, Day, Spend, Spending, TurnSpend}
 import grit.core.stitch.StrandWorld
 import grit.core.store.{Askers, InMemoryToolSets, InMemoryUsageLedger, Jot, StoreError, TestJot, Tx}
@@ -72,6 +74,7 @@ import grit.core.visibility.{
   Party,
   Provenance,
   Readers,
+  Recorded,
   RoomLabels,
   Visibility
 }
@@ -136,6 +139,24 @@ object DurableMovesTests extends MovesContract {
       )
     }
   }
+
+  def occasioning[A <: caps.Pure](
+      limits: MoveLimits,
+      inbox: InMemoryInbox,
+      documents: InMemoryDocuments,
+      rooms: Recorded,
+      speaking: Speaking,
+      refusing: Option[String]
+  )(use: Keeping^ -> A): A =
+    new MovesWorld(
+      broken = false,
+      MovesContract.Floor,
+      documents = documents,
+      recorded = rooms,
+      inbox = inbox,
+      speaking = speaking,
+      refusing = refusing
+    ).keeping(limits)(use)
 
   /** `bytes`, as a source gives them. */
   private final class Given(bytes: Vector[Byte]) extends Incoming {
@@ -224,8 +245,11 @@ object DurableMovesTests extends MovesContract {
   * said at its places is capped by `capped`
   * ([[MovesContract.Probe]]'s at [[MovesContract.ProbeOutput]]). When `broken`, the day's spend
   * cannot be read, and the acting's allowance is daily, so every ask's admission fails. Its run
-  * starts believed at `integrity`, and its places are labelled by `rooms`; its pieces, kept by
-  * its piece moves and read by its declassifies, are in `pieces`.
+  * starts believed at `integrity`, and its places are labelled by `rooms`, beside what
+  * `recorded` holds of them; its pieces, kept by its piece moves and read by its declassifies,
+  * are in `pieces`; its keeping runs' occasions are recorded in `inbox`, decided under
+  * `speaking` with no cap, and each turn drafted started there unless the start refuses with
+  * `refusing` ([[occasioning]]).
   */
 final class MovesWorld(
     broken: Boolean,
@@ -237,7 +261,11 @@ final class MovesWorld(
     val documents: InMemoryDocuments = new InMemoryDocuments,
     compartments: Compartments = Compartments.Shipped,
     val pieces: InMemoryPieces = new InMemoryPieces,
-    judgedAt: Option[Label] = None
+    judgedAt: Option[Label] = None,
+    recorded: Recorded = Recorded.Empty,
+    inbox: InMemoryInbox = InMemoryInbox.fresh(),
+    speaking: Speaking = Speaking.Off,
+    refusing: Option[String] = None
 ) extends caps.SharedCapability {
   import MovesContract.*
   import MovesWorld.*
@@ -317,7 +345,7 @@ final class MovesWorld(
       ),
       models,
       grit.core.classify.TestClassifiers.cleared(classifier),
-      new FakeDb(Clearance.of(floor), visibility),
+      new FakeDb(Clearance.of(floor), visibility, recorded),
       clock
     )
 
@@ -359,9 +387,21 @@ final class MovesWorld(
   /** Short write transactions, each opened at `floor`. */
   val jot: Jot = TestJot(() => Clearance.of(floor), visibility)
 
+  /** What its keeping runs' occasions are made with, as its doc says. */
+  def occasioning: Occasioning^{this} =
+    Occasioning(
+      inbox,
+      inbox.speech,
+      Unprompted(
+        speaking,
+        Budget(ZoneOffset.UTC, None),
+        turn => refusing.toLeft(()).flatMap(_ => inbox.startTurn(turn).left.map(_.toString))
+      )
+    )
+
   /** [[env]], and a keeping job's: piece moves reading `files` and writing through [[jot]]. */
   def kept(models: Models^, files: Files^ = MovesWorld.Fileless): KeepingEnv^ =
-    KeepingEnv(env(models), files, jot)
+    KeepingEnv(env(models), files, jot, occasioning)
 
   /** What `use` returns over [[Turn]]'s moves within `limits`, keeping [[Notes]]' documents
     * through `keeper` and its pieces in [[pieces]], read from `files`, its workflow run once.
@@ -418,7 +458,13 @@ final class MovesWorld(
     var out: Option[A] = None
     durable.run(Turn.workflowId) { _ =>
       out = Some(
-        Flows.run(dreams, KeepingEnv(env(models, classifier), MovesWorld.Fileless, jot), ()).merge
+        Flows
+          .run(
+            dreams,
+            KeepingEnv(env(models, classifier), MovesWorld.Fileless, jot, occasioning),
+            ()
+          )
+          .merge
       )
       "done"
     }
@@ -479,7 +525,7 @@ object MovesWorld {
       use: Keeping^ -> A
   ): Flow[KeepingEnv, Unit, Nothing, A] =
     Flow.program[KeepingEnv, Unit, A]("moves", DurableMoves.Within)(steps =>
-      _ => DurableMoves.keeping(acting, limits, keeper, pieces)(use)(using steps)
+      _ => DurableMoves.keeping(acting, limits, Notes, keeper, pieces)(use)(using steps)
     )
 
   val Start: Instant = Instant.parse("2026-10-08T12:00:00Z")

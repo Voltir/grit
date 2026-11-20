@@ -4,7 +4,7 @@ import java.time.{Instant, ZoneOffset}
 
 import scala.concurrent.duration.*
 
-import grit.act.moves.{MoveRecords, MovesEnv}
+import grit.act.moves.{MoveRecords, MovesEnv, Occasioning}
 import grit.core.act.MovesFixtures.{
   Answering,
   Dream,
@@ -100,6 +100,7 @@ import grit.core.need.Needs
 import grit.core.place.{Namespace, Place, Service}
 import grit.core.provider.ModelRequest
 import grit.core.schema.{JsonSchema, Typed}
+import grit.core.speech.{Speaking, Unprompted}
 import grit.core.spend.{Budget, DailyCap}
 import grit.core.stitch.{Strand, StrandWorld}
 import grit.core.store.{
@@ -670,6 +671,8 @@ object RunFixtures {
       switches.answering = Option.when(answers)(edge)
     }
 
+    private val budget = Budget(ZoneOffset.UTC, cap.flatMap(DailyCap.of(_).toOption))
+
     def env(jot: Jot^ = new FakeJot()): RunEnv^ =
       RunEnv(
         RunRecords(inbox.entries, inbox.conversations, inbox.schedules, deliveries),
@@ -694,7 +697,13 @@ object RunFixtures {
           clock
         ),
         new NoFiles,
-        Budget(ZoneOffset.UTC, cap.flatMap(DailyCap.of(_).toOption)),
+        // No job here names an occasion: grit never speaks on one.
+        Occasioning(
+          inbox,
+          inbox.speech,
+          Unprompted(Speaking.Off, budget, turn => inbox.startTurn(turn).left.map(_.toString))
+        ),
+        budget,
         (plugin, terms) => documents.keeper(plugin, terms),
         plugin => pieces.keeper(plugin, PieceKeeper.Bound),
         Dreaming.Reads(

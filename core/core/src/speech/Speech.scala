@@ -537,7 +537,7 @@ object Speech {
   }
 
   /** The limits `speaking` drafts under; `None` under [[Speaking.Off]]. */
-  private def limitsOf(speaking: Speaking): Option[Limits] = speaking match {
+  private[grit] def limitsOf(speaking: Speaking): Option[Limits] = speaking match {
     case Speaking.Off => None
     case Speaking.Shadow(limits) => Some(limits)
     case Speaking.Within(limits) => Some(limits)

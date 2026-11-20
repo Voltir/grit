@@ -15,6 +15,7 @@ import grit.core.act.{
   MoveName,
   Moves,
   MovesFixtures,
+  Occasioned,
   Pieced,
   Piecing,
   Posed,
@@ -66,20 +67,42 @@ import grit.core.files.{
   Unread
 }
 import grit.core.flow.{Shape, Tainted, TestTainted}
-import grit.core.id.{DocKey, DocumentVersionId, FileHandle, PluginName}
+import grit.core.id.{DocKey, DocumentVersionId, FileHandle, PluginName, SourceId}
+import grit.core.identity.Account
+import grit.core.inbox.InMemoryInbox
 import grit.core.message.{AssistantBlock, Message, StopReason}
 import grit.core.need.{Needs, PluginReads}
+import grit.core.occasion.{Occasion, OccasionKey}
 import grit.core.period.Probability
 import grit.core.place.{Namespace, Place, Service}
 import grit.core.plugin.{Exports, InMemoryPlugins}
 import grit.core.provider.ModelRequest
 import grit.core.schema.{JsonSchema, Typed}
 import grit.core.screen.Checks
+import grit.core.speech.{
+  Limits,
+  Occasions,
+  Outcome as SpeechOutcome,
+  Reach,
+  ReplyTo,
+  Silence,
+  Speaking,
+  Venue
+}
+import grit.core.spend.DailyCap
 import grit.core.stitch.{Strand, StrandWorld}
-import grit.core.store.{StoreError, Tx}
+import grit.core.store.{Origin, StoreError, Tx}
 import grit.core.tool.ToolName
+import grit.core.triage.Tags
 import grit.core.visibility.Integrity
-import grit.core.visibility.{Compartments, DeclassificationPolicy, Label, Level, TestLabels}
+import grit.core.visibility.{
+  Compartments,
+  DeclassificationPolicy,
+  Label,
+  Level,
+  Recorded,
+  TestLabels
+}
 import grit.dbos.sql.TestTx
 import grit.prose.form.{Block, Doc, Span, Text}
 
@@ -172,6 +195,22 @@ abstract class MovesContract extends TestSuite {
   def piecing[A <: caps.Pure](limits: MoveLimits, formats: Formats = PagedText.formats)(
       use: (Keeping^, FileHandle) -> A
   ): (A, Vector[KeptPiece])
+
+  /** What `use` returns, given moves as [[keeping]]'s within `limits`, [[MovesWorld.Notes]]',
+    * keeping its documents in `documents`, at [[OccasionAt]], whose occasions are recorded in
+    * `inbox` and kept in its speech store, decided under `speaking` with no cap, and each turn
+    * drafted started in `inbox` unless the start refuses with `refusing`; read in transactions
+    * opened at [[Floor]] whose rooms are as `rooms` records them. Two calls over one `inbox`
+    * and `documents` are two runs.
+    */
+  def occasioning[A <: caps.Pure](
+      limits: MoveLimits,
+      inbox: InMemoryInbox,
+      documents: InMemoryDocuments,
+      rooms: Recorded = RoomAtFloor,
+      speaking: Speaking = Occasional,
+      refusing: Option[String] = None
+  )(use: Keeping^ -> A): A
 
   val tests = Tests {
     test(
@@ -1648,6 +1687,155 @@ abstract class MovesContract extends TestSuite {
         Vector("b")
       )
     }
+
+    test(
+      "an occasion drafted is Started: its entry recorded once, decided at its room's top level"
+    ) {
+      val inbox = heard(InMemoryInbox.fresh())
+      val got = occasioning(OneOccasion, inbox, new InMemoryDocuments)(m =>
+        Said(occasioned(m.occasion(name("o"), TestTainted.at(occasion(about(m), "k"), Believed))))
+      )
+      val decided = inbox.speech.occasions.map((turn, room, decision, _) =>
+        (Vector(turn) == inbox.started, room, decision.toString.replace(s"$turn", "turn"))
+      )
+      (got, recorded(inbox, "k"), decided) ==> (
+        Said("Started"),
+        true,
+        Vector((true, Channel.room, s"Drafting(turn,${Venue.Room(ChannelAt)})"))
+      )
+    }
+
+    test("an occasion lapsed is Held with no turn, and its key stays free for one not lapsed") {
+      val inbox = heard(InMemoryInbox.fresh())
+      val lapsed = OccasionAt.minusSeconds(1)
+      val got = occasioning(occasions(2), inbox, new InMemoryDocuments) { m =>
+        val about = MovesContract.about(m)
+        Said(
+          Vector(
+            m.occasion(name("a"), TestTainted.at(occasion(about, "k", lapsed), Believed)),
+            m.occasion(name("b"), TestTainted.at(occasion(about, "k"), Believed))
+          ).map(occasioned).mkString(", ")
+        )
+      }
+      (got, inbox.started.size) ==> (Said(s"Held(None,Lapsed($lapsed)), Started"), 1)
+    }
+
+    test(
+      "an occasion in a room labelled other than the run's floor is Mislabelled, recording nothing"
+    ) {
+      val inbox = heard(InMemoryInbox.fresh())
+      val above = roomAt(Label.at(Level.Restricted))
+      val got = occasioning(OneOccasion, inbox, new InMemoryDocuments, rooms = above)(m =>
+        Said(occasioned(m.occasion(name("o"), TestTainted.at(occasion(about(m), "k"), Believed))))
+      )
+      (got, recorded(inbox, "k"), inbox.speech.occasions) ==> (
+        Said(s"Mislabelled(${Channel.room})"),
+        false,
+        Vector()
+      )
+    }
+
+    test(
+      "an occasion with no reach heard in its room is Held NoAddress with no turn; a later run records it"
+    ) {
+      val inbox = InMemoryInbox.fresh()
+      val documents = new InMemoryDocuments
+      val first = occasioning(OneOccasion, inbox, documents)(m =>
+        Said(occasioned(m.occasion(name("o"), TestTainted.at(occasion(about(m), "k"), Believed))))
+      )
+      val unrecorded = recorded(inbox, "k")
+      val _ = heard(inbox)
+      val second = occasioning(OneOccasion, inbox, documents)(m =>
+        Said(occasioned(m.occasion(name("o"), TestTainted.at(occasion(about(m), "k"), Believed))))
+      )
+      (first, unrecorded, second, inbox.started.size) ==> (
+        Said("Held(None,NoAddress)"),
+        false,
+        Said("Started"),
+        1
+      )
+    }
+
+    test("an occasion in a quiet room is Held NoAddress with no turn") {
+      val inbox = heard(InMemoryInbox.fresh())
+      val quiet = Recorded(
+        Map(Channel.room -> Recorded.Kept(None, Some(Floor), quiet = true, None)),
+        Map.empty
+      )
+      val got = occasioning(OneOccasion, inbox, new InMemoryDocuments, rooms = quiet)(m =>
+        Said(occasioned(m.occasion(name("o"), TestTainted.at(occasion(about(m), "k"), Believed))))
+      )
+      (got, recorded(inbox, "k")) ==> (Said("Held(None,NoAddress)"), false)
+    }
+
+    test("an occasion believed below Outside is Held Below with no turn, nothing recorded") {
+      val inbox = heard(InMemoryInbox.fresh())
+      val got = occasioning(OneOccasion, inbox, new InMemoryDocuments)(m =>
+        Said(
+          occasioned(
+            m.occasion(name("o"), TestTainted.at(occasion(about(m), "k"), Integrity.Untrusted))
+          )
+        )
+      )
+      (got, recorded(inbox, "k")) ==> (
+        Said(s"Held(None,${Silence.Below(Integrity.Untrusted)})"),
+        false
+      )
+    }
+
+    test(
+      "an occasion whose turn cannot start is Unstarted, its decision settled failed, with why"
+    ) {
+      val inbox = heard(InMemoryInbox.fresh())
+      val got = occasioning(OneOccasion, inbox, new InMemoryDocuments, refusing = Some("down"))(m =>
+        Said(occasioned(m.occasion(name("o"), TestTainted.at(occasion(about(m), "k"), Believed))))
+      )
+      (got, inbox.started, inbox.speech.outcomes.values.map(_._1).toVector) ==> (
+        Said("Unstarted(down)"),
+        Vector(),
+        Vector(SpeechOutcome.Failed("not started: down"))
+      )
+    }
+
+    test("an occasion about no current document of the plugin is Unread, recording nothing") {
+      val inbox = heard(InMemoryInbox.fresh())
+      val elsewhere =
+        DocumentVersionId.of(999L).getOrElse(throw new java.lang.AssertionError("999"))
+      val got = occasioning(OneOccasion, inbox, new InMemoryDocuments)(m =>
+        Said(occasioned(m.occasion(name("o"), TestTainted.at(occasion(elsewhere, "k"), Believed))))
+      )
+      (got, recorded(inbox, "k")) ==> (Said(s"Unread($elsewhere)"), false)
+    }
+
+    test("past limits.occasions an occasion is OverLimit, and one Mislabelled counted against it") {
+      val inbox = heard(InMemoryInbox.fresh())
+      val got =
+        occasioning(OneOccasion, inbox, new InMemoryDocuments, rooms = roomAt(Label.Public))(m => {
+          val about = MovesContract.about(m)
+          Said(
+            Vector(
+              m.occasion(name("a"), TestTainted.at(occasion(about, "a"), Believed)),
+              m.occasion(name("b"), TestTainted.at(occasion(about, "b"), Believed))
+            ).map(occasioned).mkString(", ")
+          )
+        })
+      got ==> Said(s"Mislabelled(${Channel.room}), OverLimit(Occasion,1)")
+    }
+
+    test("a second run's occasion of a key decided already is Already, and starts nothing") {
+      val inbox = heard(InMemoryInbox.fresh())
+      val documents = new InMemoryDocuments
+      val runs = Vector("first", "second").map(_ =>
+        occasioning(OneOccasion, inbox, documents)(m =>
+          Said(occasioned(m.occasion(name("o"), TestTainted.at(occasion(about(m), "k"), Believed))))
+        )
+      )
+      (runs, inbox.started.size, inbox.speech.occasions.size) ==> (
+        Vector(Said("Started"), Said("Already")),
+        1,
+        1
+      )
+    }
   }
 }
 
@@ -2263,4 +2451,130 @@ object MovesContract {
     case MoveError.Store(_) => "Store"
     case other => other.toString
   }
+
+  /** What a run said, as a pure value a test compares. */
+  final case class Said(text: String) extends caps.Pure
+
+  /** The channel an occasion is named in: its top level, reached at [[ChannelAt]]. */
+  val Channel: Origin.Room = Origin.Room("T1", "C1")
+
+  /** [[Channel]]'s room address. */
+  val ChannelAt: String = "C1"
+
+  /** [[Channel]]'s room labelled at `label` through grit, as a transaction reads it. */
+  def roomAt(label: Label): Recorded =
+    Recorded(Map(Channel.room -> Recorded.Kept(None, Some(label), quiet = false, None)), Map.empty)
+
+  /** [[Channel]]'s room labelled at [[Floor]], the run's. */
+  val RoomAtFloor: Recorded = roomAt(Floor)
+
+  /** When every occasion run is: [[MovesWorld.Start]], its clock's. */
+  val OccasionAt: Instant = MovesWorld.Start
+
+  /** Grit speaking on occasions at the suggested rate, with no cap. */
+  val Occasional: Speaking = Speaking.Within(
+    Limits
+      .suggested(
+        DailyCap.of("1").getOrElse(throw new java.lang.AssertionError("cap")),
+        Tags.V1.gate
+      )
+      .copy(occasions = Some(Occasions.Live(Occasions.Suggested)))
+  )
+
+  /** No asks or calls, and `n` occasions. */
+  def occasions(n: Int): MoveLimits =
+    MoveLimits.Zero.withOccasions(n).fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** No asks or calls, and one occasion. */
+  val OneOccasion: MoveLimits = occasions(1)
+
+  /** `inbox`, a message heard in [[Channel]]'s thread an hour before [[OccasionAt]], its reach
+    * at [[ChannelAt]].
+    */
+  def heard(inbox: InMemoryInbox): InMemoryInbox = {
+    val reach = Reach(Some(ReplyTo("1.0", Some(ChannelAt))), Set.empty)
+    inbox
+      .hear(
+        Channel,
+        SourceId("m1"),
+        "hello",
+        Account.Local,
+        OccasionAt.minusSeconds(3600),
+        reach,
+        None
+      )
+      .fold(e => throw new java.lang.AssertionError(s"$e"), _ => inbox)
+  }
+
+  /** A document version, as a keep returns it. */
+  final case class Version(id: DocumentVersionId) extends caps.Pure
+  object Version {
+    given Journaled[Version] = Journaled.json(
+      v => ujson.Num(DocumentVersionId.value(v.id).toDouble),
+      v =>
+        v.numOpt.flatMap(n => DocumentVersionId.of(n.toLong)).map(Version(_)).toRight("no version")
+    )
+  }
+
+  /** The version of the plugin's document `about`, kept by a keep of `m`'s at its floor: written
+    * when it is not current, read back when it is.
+    */
+  def about(m: Keeping^): DocumentVersionId =
+    m.keep(name("doc"), From)((_, keeper, at) =>
+      keeper
+        .write(
+          DocKey.of("about").fold(e => throw new java.lang.AssertionError(e), identity),
+          Label.Public,
+          Integrity.Member,
+          Here,
+          DocText.of("about").fold(e => throw new java.lang.AssertionError(e), identity),
+          ujson.Obj(),
+          None,
+          at
+        )
+        .map {
+          case Written.Versioned(v, _, _) => Version(v)
+          case Written.Unchanged(v, _) => Version(v)
+        }
+    ).fold(e => throw new java.lang.AssertionError(s"$e"), _.id)
+
+  /** An occasion in [[Channel]]'s room, ahead, about `about`, under `key`, until `until`. */
+  def occasion(
+      about: DocumentVersionId,
+      key: String,
+      until: Instant = OccasionAt.plusSeconds(86400)
+  ): Occasion =
+    Occasion(
+      Channel.room,
+      OccasionKey.of(key).getOrElse(throw new java.lang.AssertionError(key)),
+      Occasion.Reason.Ahead,
+      about,
+      until
+    )
+
+  /** Whether `inbox` recorded the occasion of [[MovesWorld.Notes]] under `key`. */
+  def recorded(inbox: InMemoryInbox, key: String): Boolean =
+    inbox
+      .recorded(
+        Channel,
+        Set(
+          OccasionKey.source(
+            MovesWorld.Notes,
+            OccasionKey.of(key).getOrElse(throw new java.lang.AssertionError(key))
+          )
+        )
+      )
+      .fold(e => throw new java.lang.AssertionError(s"$e"), _.nonEmpty)
+
+  /** What a move came to, its turn left out: the case and its detail. */
+  def occasioned(made: Either[MoveError, Occasioned]): String = made match {
+    case Right(Occasioned.Started(_)) => "Started"
+    case Right(Occasioned.Unstarted(_, why)) => s"Unstarted($why)"
+    case Right(Occasioned.Held(turn, why)) =>
+      s"Held(${turn.map(_ => "turn").getOrElse("None")},$why)"
+    case Right(other) => other.toString
+    case Left(MoveError.OverLimit(kind, n)) => s"OverLimit($kind,$n)"
+    case Left(e) => e.toString
+  }
+
 }

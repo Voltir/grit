@@ -15,6 +15,7 @@ import grit.core.act.{
   MoveLimits,
   MoveName,
   Moves,
+  Occasioned,
   Pieced,
   Piecing,
   Posed,
@@ -29,6 +30,7 @@ import grit.core.id.{CallSlot, DocumentVersionId, PluginName}
 import grit.core.job.JobRun
 import grit.core.message.Message
 import grit.core.need.Needs
+import grit.core.occasion.Occasion
 import grit.core.place.Service
 import grit.core.provider.ModelRequest
 import grit.core.sanitise.IntegrityTree
@@ -73,16 +75,18 @@ object DurableMoves {
   def started[P <: caps.Pure](run: JobRun[P], acting: Acting): Trusted[JobRun[P]] =
     Mint.trusted(run, acting.integrity)
 
-  /** As [[plain]], its moves also keeping `keeper`'s documents and `pieces`' pieces of files,
-    * each piece move recorded as `piece:{name}`.
+  /** As [[plain]], `plugin`'s, its moves also keeping `keeper`'s documents and `pieces`' pieces
+    * of files, each piece move recorded as `piece:{name}`, and naming its occasions, each
+    * recorded as `occasion:{name}`, then `occasion:{name}:decide` and `occasion:{name}:start`.
     */
   def keeping[A <: caps.Pure](
       acting: Acting,
       limits: MoveLimits,
+      plugin: PluginName,
       keeper: DocumentKeeper,
       pieces: PieceKeeper
   )(body: Keeping^ => A)(using steps: Steps[KeepingEnv]^): A =
-    body(new Kept(acting, limits, keeper, pieces))
+    body(new Kept(acting, limits, plugin, keeper, pieces))
 
   /** As [[keeping]], `plugin`'s, its moves also reading `reads` ([[Dreaming]]), its scans
     * `plugin`'s needs; a summary reading the documents of `plugin` and its needs alone, in its
@@ -111,7 +115,7 @@ object DurableMoves {
       pieces: PieceKeeper,
       reads: Dreaming.Reads
   )(using steps: Steps[KeepingEnv]^)
-      extends Kept(acting, limits, keeper, pieces),
+      extends Kept(acting, limits, plugin, keeper, pieces),
         Dreaming {
 
     private val needs = reads.needs(plugin)
@@ -407,10 +411,13 @@ object DurableMoves {
     private def readable: Vector[PluginName] = plugin +: needs.plugins
   }
 
-  /** One run's moves, its keeps over `keeper` and its piece moves over `pieces`. */
+  /** One run's moves, `plugin`'s, its keeps and occasions over `keeper` and its piece moves over
+    * `pieces`.
+    */
   private class Kept(
       acting: Acting,
       limits: MoveLimits,
+      plugin: PluginName,
       keeper: DocumentKeeper,
       pieces: PieceKeeper
   )(using
@@ -443,6 +450,19 @@ object DurableMoves {
             .map(MoveError.Store(_))
         }
       }
+
+    def occasion(name: MoveName, from: Tainted[Occasion]): Either[MoveError, Occasioned] =
+      refused(name, MoveKind.Occasion).toLeft(()).flatMap { _ =>
+        val occasion = Trusted.asIs(from).extract
+        steps
+          .run(
+            OccasionMove.flow,
+            OccasionMove.Move(name, acting, plugin, occasion, from.integrity, keeper)
+          )
+          .merge
+          .left
+          .map(MoveError.Store(_))
+      }
   }
 
   /** One run's moves. The run state below is read and written only by this object's own
@@ -465,6 +485,8 @@ object DurableMoves {
     private var judgments: Int = 0
     @caps.unsafe.untrackedCaptures
     private var calls: Int = 0
+    @caps.unsafe.untrackedCaptures
+    private var occasions: Int = 0
     @caps.unsafe.untrackedCaptures
     private var diverged: Option[MoveName] = None
 
@@ -489,6 +511,8 @@ object DurableMoves {
             Some(MoveError.OverLimit(kind, limits.judgments))
           case MoveKind.Call if calls >= limits.calls =>
             Some(MoveError.OverLimit(kind, limits.calls))
+          case MoveKind.Occasion if occasions >= limits.occasions =>
+            Some(MoveError.OverLimit(kind, limits.occasions))
           case _ => None
         })
         .orElse {
@@ -497,6 +521,7 @@ object DurableMoves {
             case MoveKind.Ask => asks += 1
             case MoveKind.Judge => judgments += 1
             case MoveKind.Call => calls += 1
+            case MoveKind.Occasion => occasions += 1
             case MoveKind.Keep => ()
           }
           None

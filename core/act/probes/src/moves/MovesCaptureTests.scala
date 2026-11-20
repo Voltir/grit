@@ -28,7 +28,7 @@ object MovesCaptureTests extends TestSuite {
 
   /** `body` as a run's: over an acting, its limits and keepers, in a keeping program's steps. */
   private def run(body: String): String =
-    "def run(acting: Acting, limits: MoveLimits, keeper: DocumentKeeper, pieces: PieceKeeper)" +
+    "def run(acting: Acting, limits: MoveLimits, plugin: grit.core.id.PluginName, keeper: DocumentKeeper, pieces: PieceKeeper)" +
       s"(using steps: Steps[KeepingEnv]^): Reply = {\n$body\n}"
 
   /** The error messages from compiling `body` as a run's, with every probe below. */
@@ -38,7 +38,7 @@ object MovesCaptureTests extends TestSuite {
 
   private val runs =
     """val plain = DurableMoves.plain[KeepingEnv, Reply](acting, limits, KeepingEnv.moves)(moves => Reply(moves.toString))
-      |val kept = DurableMoves.keeping(acting, limits, keeper, pieces)(moves => Reply(moves.toString))
+      |val kept = DurableMoves.keeping(acting, limits, plugin, keeper, pieces)(moves => Reply(moves.toString))
       |Reply(steps.run(peek, ()).merge + plain.text + kept.text)""".stripMargin
 
   private val plainReturnsMoves =
@@ -46,7 +46,7 @@ object MovesCaptureTests extends TestSuite {
       |Reply("")""".stripMargin
 
   private val keepingReturnsMoves =
-    """val _ = DurableMoves.keeping[Keeping^](acting, limits, keeper, pieces)(moves => moves)
+    """val _ = DurableMoves.keeping[Keeping^](acting, limits, plugin, keeper, pieces)(moves => moves)
       |Reply("")""".stripMargin
 
   private val plainSteps =
@@ -56,10 +56,17 @@ object MovesCaptureTests extends TestSuite {
       |})""".stripMargin
 
   private val keepingSteps =
-    """DurableMoves.keeping(acting, limits, keeper, pieces)(moves => {
+    """DurableMoves.keeping(acting, limits, plugin, keeper, pieces)(moves => {
       |  val seen = steps.run(peek, ()).merge
       |  Reply(moves.toString + seen)
       |})""".stripMargin
+
+  /** A turn's moves environment reaching for the start of an occasion's turn: a plain type
+    * error, so that only a keeping job's environment ([[KeepingEnv.occasions]]) can start one.
+    */
+  private val turnStarts =
+    """def start(env: MovesEnv^, turn: grit.core.id.TurnRef): Either[String, Unit] =
+      |  env.occasions.unprompted.start(turn)""".stripMargin
 
   /** A judgment's writing pose over `models`, its reply read by `read`. */
   private def writing(read: String): String =
@@ -73,16 +80,17 @@ object MovesCaptureTests extends TestSuite {
   private val writingAsksAgain =
     writing("reply => models.catalog().fold(identity, _.toString) + reply.toString")
 
-  /* The bounds' refusals are the typer's, so a second compile answers the rest. */
+  /* A missing member stops the first compile in the typer, the bounds' refusals the second, so
+   * a third answers the rest. */
   private lazy val compiled = Probes.batch(
     prelude,
     List(runs, plainReturnsMoves, keepingReturnsMoves, plainSteps, keepingSteps).map(run) ++
-      List(writingPure, writingAsksAgain)
+      List(writingPure, writingAsksAgain, turnStarts)
   )
 
   val tests = Tests {
-    test("two compiles answer every probe: the typer's refusals of the bounds, then the rest") {
-      compiled.runs ==> 2
+    test("three compiles answer every probe: a missing member's, the bounds', then the rest") {
+      compiled.runs ==> 3
     }
 
     test("a run's body, plain or keeping, then the run's next step, compiles") {
@@ -108,6 +116,11 @@ object MovesCaptureTests extends TestSuite {
     test("a keeping run's body that makes a step while its moves are live is rejected") {
       val errs = errors(keepingSteps)
       assert(errs.exists(_.startsWith("Separation failure")))
+    }
+
+    test("a turn's MovesEnv holds no starter") {
+      val errs = compiled.errors(turnStarts)
+      assert(errs.exists(_.contains("value occasions is not a member of grit.act.moves.MovesEnv")))
     }
 
     test("a writing pose whose read is pure compiles") {
