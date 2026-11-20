@@ -18,13 +18,13 @@ object MeetingLookupTests extends TestSuite {
 
   private def lookup(
       from: LocalDate = day(16),
-      to: Option[LocalDate] = None,
+      until: Option[LocalDate] = None,
       about: Option[String] = None,
       most: Option[Int] = None,
       latestFirst: Boolean = false
   ): MeetingLookup =
     MeetingLookup
-      .of(from, to, ZoneOffset.UTC, about, most, latestFirst)
+      .of(from, until, ZoneOffset.UTC, about, most, latestFirst)
       .fold(sys.error, identity)
 
   private def planned(d: Int, start: Option[LocalTime] = None): State =
@@ -49,7 +49,7 @@ object MeetingLookupTests extends TestSuite {
     }
 
     test(
-      "dated meetings from `from` to `to` come soonest first, by day then start, none after a start; a day outside is not listed"
+      "dated meetings from `from` to `until` come soonest first, by day then start, none after a start; a day outside is not listed"
     ) {
       val kept = Kept(
         at("a", meeting(planned(18, Some(LocalTime.of(9, 30))), Vector.empty, "Engine sync.")),
@@ -73,7 +73,7 @@ object MeetingLookupTests extends TestSuite {
         at("c", meeting(State.Held(day(16)), Vector.empty, "Sync three."))
       )
       val answer =
-        lookup(from = day(1), to = Some(day(19)), most = Some(1), latestFirst = true)
+        lookup(from = day(1), until = Some(day(19)), most = Some(1), latestFirst = true)
           .answer(kept.read())
           .text
       (
@@ -177,11 +177,11 @@ object MeetingLookupTests extends TestSuite {
     }
 
     test(
-      "of: to is 13 days after from when not given; to before from, or most outside 1 to 8, is refused"
+      "of: until is 13 days after from when not given, until before from, or most outside 1 to 8, is refused"
     ) {
-      lookup().to ==> day(29)
+      lookup().until ==> day(29)
       MeetingLookup.of(day(16), Some(day(15)), ZoneOffset.UTC, None, None, false) ==>
-        Left("`to` is before `from`; give a day on or after it.")
+        Left("`until` is before `from`; give a day on or after it.")
       MeetingLookup.of(day(16), None, ZoneOffset.UTC, None, Some(9), false) ==>
         Left("`most` is a whole number from 1 to 8.")
     }

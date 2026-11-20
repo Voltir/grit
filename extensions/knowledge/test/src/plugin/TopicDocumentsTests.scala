@@ -1,15 +1,24 @@
 package grit.knowledge.plugin
 
-import java.time.{Instant, LocalDate, LocalTime, ZoneOffset}
+import java.time.{Instant, LocalDate, LocalTime, ZoneId, ZoneOffset}
 
+import scala.util.chaining.*
+
+import grit.core.clock.SetClock
 import grit.core.document.DocLabel
-import grit.core.id.{PluginName, ScheduleKey}
-import grit.core.job.{Grace, SlotRule}
-import grit.core.need.PluginReads
-import grit.core.plugin.Exports
-import grit.core.visibility.{Label, Level, TestLabels, Visibility}
+import grit.core.flow.TestTainted
+import grit.core.id.{PluginName, ScheduleKey, TestCallSlots, ToolCallId}
+import grit.core.job.{Grace, InMemorySchedules, OwnJobs, ScheduleDesk, SlotRule}
+import grit.core.message.AssistantBlock
+import grit.core.need.{Needs, PluginReads}
+import grit.core.plugin.{Exports, InMemoryPlugins, PluginTool}
+import grit.core.store.{Db, StoreError, Tx}
+import grit.core.tool.{Bound, CallError, Outcome, Repairs, ToolName, Toolbox}
+import grit.core.visibility.{Clearance, Integrity, Label, Level, Subject, TestLabels, Visibility}
+import grit.dbos.sql.TestTx
 import grit.knowledge.card.CardShelf
-import grit.knowledge.topic.TopicParams
+import grit.knowledge.topic.TestMeetings.{Kept, meeting, text}
+import grit.knowledge.topic.{Meeting, MeetingLookup, TopicParams}
 
 import utest.*
 
@@ -31,6 +40,55 @@ object TopicDocumentsTests extends TestSuite {
       seedUntil: Option[java.time.LocalDate] = None
   ) =
     TopicDocuments.of(Name, labels, At, ZoneOffset.UTC, visibility, cards, seedUntil)
+
+  private val Internal: Label = Label.at(Level.Internal)
+  private val Secret: Label = Label.at(Level.Confidential)
+
+  private def planned(d: Int): Meeting.State =
+    Meeting.State.Planned(Meeting.When(LocalDate.of(2026, 11, d), None))
+
+  /** The plugin at internal, its days in a zone other than UTC. */
+  private val plugin: TopicDocuments = TopicDocuments
+    .of(Name, Vector(Internal), At, ZoneId.of("Pacific/Auckland"), Visibility.Shipped, None, None)
+    .fold(sys.error, identity)
+
+  private final class FakeDb(clearance: Label) extends Db {
+    def read[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+      body(using TestTx.fake(Clearance.of(clearance)))
+  }
+
+  /** `plugin`'s `meetings` called with `args` by a turn cleared at `clearance`, over `kept`. */
+  private def call(kept: Kept, clearance: Label, args: (String, ujson.Value)*): Outcome = {
+    val db: Db^ = new FakeDb(clearance)
+    val desk: ScheduleDesk^ =
+      new InMemorySchedules().desk(Name, Vector.empty, new SetClock(Instant.EPOCH))
+    val tool = plugin.tools
+      .collectFirst { case t: PluginTool[MeetingLookup] @unchecked => t }
+      .getOrElse(sys.error("no meetings tool"))
+    tool
+      .bind(
+        PluginReads(new InMemoryPlugins().docs(Name), kept.docs.shelf(Name)),
+        Needs.over(Name, Vector.empty),
+        OwnJobs.over(Name, Vector.empty)
+      )
+      .fold(u => sys.error(u.toString), identity)
+      .pipe(r =>
+        Toolbox.of[caps.CapSet^{db, desk}](
+          tool.described.calling((l, at) => r.run(l, at, db.as(Subject.Turn(at.turn)), desk))
+        )
+      )
+      .fold(d => sys.error(d.toString), identity)
+      .bind(
+        TestTainted.authority(
+          AssistantBlock.ToolCall(ToolCallId("c1"), "meetings", ujson.Obj.from(args))
+        ),
+        Repairs.All
+      ) match {
+      case Right(free: Bound.Free) => free(TestCallSlots.First)
+      case Left(CallError.BadArgs(_, refused, _)) => Outcome.Failed(refused.message)
+      case other => sys.error(s"not free: $other")
+    }
+  }
 
   /** A plugin exporting its cards, as the knowledge plugin does. */
   private val cards: Exports[CardShelf] = new Exports[CardShelf] {
@@ -151,6 +209,50 @@ object TopicDocumentsTests extends TestSuite {
         TopicDocuments.backfilled(Vector(BigDecimal("0.001"), BigDecimal("0.0005")))
       ) ==>
         ("nothing ran", "spent 0.15¢")
+    }
+
+    test(
+      "meetings lists a meeting kept at what the turn reads, under its header, believed as it is"
+    ) {
+      val m = meeting(planned(18), Vector("Ana"), "Engine sync.")
+      val kept = Kept(("a", m, Internal, Integrity.Outside))
+      call(kept, Internal, "from" -> ujson.Str("2026-11-16")) ==> Outcome.Done(
+        "Meetings from Monday 2026-11-16 to Sunday 2026-11-29 (Pacific/Auckland time), soonest first, as of the last write-up:" +
+          s"\n\n${text(m)}",
+        Some(Integrity.Outside)
+      )
+    }
+
+    test("meetings lists no meeting kept above what the turn reads") {
+      val kept =
+        Kept(("a", meeting(planned(18), Vector("Ana"), "Engine sync."), Secret, Integrity.Member))
+      call(kept, Internal, "from" -> ujson.Str("2026-11-16")) ==> Outcome.Done(
+        "No meeting this conversation may see from Monday 2026-11-16 to Sunday 2026-11-29 has been written up.",
+        None
+      )
+    }
+
+    test("meetings refuses a day that is no date, and an until before from, saying why") {
+      val kept = Kept()
+      (
+        call(kept, Internal, "from" -> ujson.Str("Monday")),
+        call(kept, Internal, "from" -> ujson.Str("2026-11-16"), "until" -> ujson.Str("2026-11-15"))
+      ) ==> (
+        Outcome.Failed("`from` takes a date as yyyy-mm-dd, not \"Monday\"."),
+        Outcome.Failed("`until` is before `from`; give a day on or after it.")
+      )
+    }
+
+    test("the plugin offers meetings once, its from field naming the plugin's zone") {
+      val tools = plugin.tools.map(_.described)
+      (
+        tools.map(_.name),
+        tools.headOption.exists(
+          _.schema(strict = false).parameters
+            .render()
+            .contains("yyyy-mm-dd, in Pacific/Auckland time")
+        )
+      ) ==> (Vector(ToolName("meetings")), true)
     }
   }
 }

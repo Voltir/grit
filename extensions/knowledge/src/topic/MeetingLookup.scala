@@ -10,13 +10,13 @@ import grit.core.message.Cut
 import grit.core.visibility.Integrity
 import grit.knowledge.ref.TopicKey
 
-/** What a turn asks of the meetings: the days `from` to `to`, both included, in `zone`, the
+/** What a turn asks of the meetings: the days `from` to `until`, both included, in `zone`, the
   * words (lower-cased) each one listed must mention, at most how many to list, and whether the
   * latest come first.
   */
 final case class MeetingLookup private (
     from: LocalDate,
-    to: LocalDate,
+    until: LocalDate,
     zone: ZoneId,
     about: Vector[String],
     most: Int,
@@ -24,11 +24,11 @@ final case class MeetingLookup private (
 ) extends caps.Pure {
 
   /** The answer over `documents`: a header naming the days, their zone and `about` when given;
-    * then the meetings among them whose day ([[Meeting.when]]) is from `from` to `to`, soonest
+    * then the meetings among them whose day ([[Meeting.when]]) is from `from` to `until`, soonest
     * first by day and then start (on a day, one with no start after those with one), or the
     * reverse when `latestFirst`; then, under [[MeetingLookup.UndatedHeader]], those proposed with
     * no day, or proposed for a day before `from`, whose newest passage is dated from
-    * [[MeetingLookup.Lately]] days before `from` to `to`, most recently talked of first. Each is
+    * [[MeetingLookup.Lately]] days before `from` to `until`, most recently talked of first. Each is
     * kept only when every word of `about` starts some word of its document's text (both split by
     * [[MeetingLookup.words]]), and is shown as that text cut to [[MeetingLookup.ShownChars]]. At
     * most `most` are shown in all, the rest counted on a last line. A document that is not a
@@ -62,7 +62,7 @@ final case class MeetingLookup private (
         }
         t.passages.lastOption
           .map(_.day)
-          .filter(talked => open && !talked.isBefore(earliest) && !talked.isAfter(to))
+          .filter(talked => open && !talked.isBefore(earliest) && !talked.isAfter(until))
           .map(talked => (d, talked, text))
       }
       .sortBy(_._2)(using Ordering[LocalDate].reverse)
@@ -91,14 +91,14 @@ final case class MeetingLookup private (
     }
   }
 
-  private def within(w: Meeting.When): Boolean = !w.day.isBefore(from) && !w.day.isAfter(to)
+  private def within(w: Meeting.When): Boolean = !w.day.isBefore(from) && !w.day.isAfter(until)
 
   private def mentions(text: String): Boolean = {
     val said = MeetingLookup.words(text)
     about.forall(w => said.exists(_.startsWith(w)))
   }
 
-  private def days: String = s"from ${Utc.toWeekday(from)} to ${Utc.toWeekday(to)}"
+  private def days: String = s"from ${Utc.toWeekday(from)} to ${Utc.toWeekday(until)}"
 
   private def quoted: String = s"\"${about.mkString(" ")}\""
 
@@ -120,7 +120,7 @@ object MeetingLookup {
   /** 8: the most meetings one answer shows. */
   val Most: Int = 8
 
-  /** 13: the days after `from` that `to` is when not given (two weeks, both ends included). */
+  /** 13: the days after `from` that `until` is when not given (two weeks, both ends included). */
   val Span: Long = 13
 
   /** 14: how many days before `from` a meeting proposed with no day, or a day before `from`,
@@ -141,21 +141,21 @@ object MeetingLookup {
   def words(s: String): Vector[String] =
     s.toLowerCase.split("[^\\p{L}\\p{N}]+").toVector.filter(_.nonEmpty)
 
-  /** The lookup: `to` [[Span]] days after `from` when `None`; `about` as [[words]], none when
-    * `None`; `most` [[Shown]] when `None`. Why not: `to` before `from`, or `most` outside 1 to
+  /** The lookup: `until` [[Span]] days after `from` when `None`; `about` as [[words]], none when
+    * `None`; `most` [[Shown]] when `None`. Why not: `until` before `from`, or `most` outside 1 to
     * [[Most]].
     */
   def of(
       from: LocalDate,
-      to: Option[LocalDate],
+      until: Option[LocalDate],
       zone: ZoneId,
       about: Option[String],
       most: Option[Int],
       latestFirst: Boolean
   ): Either[String, MeetingLookup] = {
-    val last = to.getOrElse(from.plusDays(Span))
+    val last = until.getOrElse(from.plusDays(Span))
     val n = most.getOrElse(Shown)
-    if (last.isBefore(from)) Left("`to` is before `from`; give a day on or after it.")
+    if (last.isBefore(from)) Left("`until` is before `from`; give a day on or after it.")
     else if (n < 1 || n > Most) Left(s"`most` is a whole number from 1 to $Most.")
     else Right(MeetingLookup(from, last, zone, about.fold(Vector.empty)(words), n, latestFirst))
   }
