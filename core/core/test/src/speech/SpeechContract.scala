@@ -146,12 +146,19 @@ abstract class SpeechContract extends TestSuite {
 
   private val judged = Judged(p(0.6), p(0.8), "jev", usage)
 
-  /** The note an occasion's turn begins with. */
-  private val occasionNote = Payload.Occasion(
+  /** An occasion in [[room]], and the note its turn begins with. */
+  private val occasion = Occasion(
+    room,
+    OccasionKey.of("ahead:review").getOrElse(throw new java.lang.AssertionError("key")),
     TestOccasions.Brief,
     DocumentVersionId.of(5).getOrElse(throw new java.lang.AssertionError("5")),
-    OccasionKey.of("ahead:review").getOrElse(throw new java.lang.AssertionError("key"))
+    At.plusSeconds(3600)
   )
+  private val occasionNote = Payload.Occasion(occasion.brief, occasion.about, occasion.key)
+
+  /** `turn`, begun on [[occasion]], as a decision weighs it. */
+  private def occasionOf(turn: TurnRef): OccasionRoot =
+    OccasionRoot(turn, occasion, "C//", grit.core.visibility.Integrity.Member)
 
   val tests = Tests {
     test("a heard message's reach is kept, the first one standing; none for another turn") {
@@ -486,8 +493,8 @@ abstract class SpeechContract extends TestSuite {
       val turn = next(c, occasionNote, "occasioned:o")
       val drafting = Decision.Drafting(turn, Venue.Room("C//"))
       (
-        transaction(speech.occasioned(turn, room, drafting, At)),
-        transaction(speech.occasioned(turn, room, Decision.Held(Silence.OverBudget), At)),
+        transaction(speech.decided(occasionOf(turn), drafting, At)),
+        transaction(speech.decided(occasionOf(turn), Decision.Held(Silence.OverBudget), At)),
         mine(c, At),
         transaction(speech.venue(turn))
       ) ==> (
@@ -507,10 +514,10 @@ abstract class SpeechContract extends TestSuite {
       val shadowed = next(c, occasionNote, "occasion-shadowed:o1")
       val heldOne = next(c, occasionNote, "occasion-shadowed:o2")
       transaction(
-        speech.occasioned(shadowed, room, Decision.Drafting(shadowed, Venue.Room("C//")), At)
+        speech.decided(occasionOf(shadowed), Decision.Drafting(shadowed, Venue.Room("C//")), At)
       ) ==>
         Right(true)
-      transaction(speech.occasioned(heldOne, room, Decision.Held(Silence.Occasions(1)), At)) ==>
+      transaction(speech.decided(occasionOf(heldOne), Decision.Held(Silence.Occasions(1)), At)) ==>
         Right(true)
       transaction(
         speech.drafted(shadowed, Outcome.Shadowed(Cleared.Scored(judged)), Some("hi"), At)

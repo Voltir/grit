@@ -118,25 +118,18 @@ final class InMemorySpeechStore(
     )
   }
 
-  def decided(heard: Heard, decision: Decision, at: Instant)(using
+  def decided(root: Heard | OccasionRoot, decision: Decision, at: Instant)(using
       Tx^
-  ): Either[StoreError, Boolean] =
-    if (decisions.exists(_._1.turn == heard.turn)) Right(false)
-    else {
+  ): Either[StoreError, Boolean] = (root, decision) match {
+    case (_: OccasionRoot, Decision.Answering(_, _)) =>
+      Left(StoreError.Invalid("an occasion is never answered"))
+    case (heard: Heard, _) if !kept.exists(_._1 == heard.turn) =>
       decisions = decisions :+ ((heard, decision, at))
       Right(true)
-    }
-
-  def occasioned(turn: TurnRef, room: Place, decision: Decision, at: Instant)(using
-      Tx^
-  ): Either[StoreError, Boolean] = decision match {
-    case Decision.Answering(_, _) => Left(StoreError.Invalid("an occasion is never answered"))
-    case Decision.Drafting(_, _) | Decision.Held(_) =>
-      if (kept.exists(_._1 == turn)) Right(false)
-      else {
-        occasions = occasions :+ ((turn, room, decision, at))
-        Right(true)
-      }
+    case (o: OccasionRoot, _) if !kept.exists(_._1 == o.turn) =>
+      occasions = occasions :+ ((o.turn, o.occasion.room, decision, at))
+      Right(true)
+    case _ => Right(false)
   }
 
   def answering(turn: TurnRef)(using Tx^): Either[StoreError, Boolean] =

@@ -12,6 +12,7 @@ import grit.core.place.Place
 import grit.core.speech.{
   Decision,
   Heard,
+  OccasionRoot,
   Outcome,
   Reach,
   ReplyTo,
@@ -219,16 +220,13 @@ final class SqlSpeechStore extends SpeechStore {
     }
   }
 
-  def decided(heard: Heard, decision: Decision, at: Instant)(using
+  def decided(root: Heard | OccasionRoot, decision: Decision, at: Instant)(using
       Tx^
-  ): Either[StoreError, Boolean] =
-    kept(heard.turn, heard.room, decision, at, Some(heard.cues))
-
-  def occasioned(turn: TurnRef, room: Place, decision: Decision, at: Instant)(using
-      Tx^
-  ): Either[StoreError, Boolean] = decision match {
-    case Decision.Answering(_, _) => Left(StoreError.Invalid("an occasion is never answered"))
-    case Decision.Drafting(_, _) | Decision.Held(_) => kept(turn, room, decision, at, None)
+  ): Either[StoreError, Boolean] = (root, decision) match {
+    case (heard: Heard, _) => kept(heard.turn, heard.room, decision, at, Some(heard.cues))
+    case (_: OccasionRoot, Decision.Answering(_, _)) =>
+      Left(StoreError.Invalid("an occasion is never answered"))
+    case (o: OccasionRoot, _) => kept(o.turn, o.occasion.room, decision, at, None)
   }
 
   /** `decision` on `turn` in `room`, made `at`, kept with `cues` (`None` for an occasion's,

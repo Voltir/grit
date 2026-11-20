@@ -8,7 +8,7 @@ import grit.core.id.{ConversationId, EntryId, SourceId, TriageRef, TurnRef, Work
 import grit.core.inbox.InboundId
 import grit.core.period.{Judgement, PeriodState}
 import grit.core.recipe.Records
-import grit.core.speech.{Decision, Heard, Ledger, Reach, Silence, Speaking, Speech}
+import grit.core.speech.{Decision, Heard, Reach, Silence, Speaking, Speech}
 import grit.core.spend.Budget
 import grit.core.stitch.{Along, Placed}
 import grit.core.store.{Conversation, Entry, Origin, PeriodStore, StoreError, Tx}
@@ -21,7 +21,7 @@ private[triage] object Speak {
 
   /** What `speaking` decides about the heard message `entry`, `triage`'s, tagged `tags`, at
     * `now`, against the speech ledger and the day's spend under `budget`
-    * ([[Speech.decide]]), kept in `records`' speech store with the cues read around it to
+    * ([[Speech.kept]]), kept in `records`' speech store with the cues read around it to
     * `now`, its strand read from `horizon` before its thread began ([[Cues]]); a message it
     * answers as said to grit ([[Decision.Answering]]) has its reply awaited and its mark
     * wanted at its reply address in the same transaction, as an edge does for a message said to
@@ -40,18 +40,12 @@ private[triage] object Speak {
   )(using Tx^): Either[String, Decision] =
     speaking match {
       case Speaking.Off if !Tags.directed(tags) => Right(Decision.Held(Silence.Off))
-      case Speaking.Off =>
-        decide(records, speaking, None, budget, horizon, triage, entry, tags, now)
-      case Speaking.Shadow(limits) =>
-        decide(records, speaking, Some(limits), budget, horizon, triage, entry, tags, now)
-      case Speaking.Within(limits) =>
-        decide(records, speaking, Some(limits), budget, horizon, triage, entry, tags, now)
+      case _ => decide(records, speaking, budget, horizon, triage, entry, tags, now)
     }
 
   private def decide(
       records: TriageRecords,
       speaking: Speaking,
-      limits: Option[grit.core.speech.Limits],
       budget: Budget,
       horizon: FiniteDuration,
       triage: TriageRef,
@@ -64,15 +58,20 @@ private[triage] object Speak {
       found <- records.entries.get(entry)
       conversation <- records.conversations.get(turn.conversationId)
       reach <- records.speech.reach(turn)
-      ledger <- Ledger.read(records.speech, records.spending, limits, budget, now)
       decided <- (found, conversation) match {
         case (Some(e), Some(c)) =>
           val reached = reach.getOrElse(Reach.Nowhere)
           for {
             cues <- cuesOf(records, horizon, e, c, reached, now)
             heard = Heard.of(turn, e, c.origin, reached, tags, cues)
-            decision = Speech.decide(speaking, heard, ledger, budget, now)
-            kept <- records.speech.decided(heard, decision, now)
+            (decision, kept) <- Speech.kept(
+              records.speech,
+              records.spending,
+              speaking,
+              budget,
+              heard,
+              now
+            )
             _ <- decision match {
               case Decision.Answering(_, to) if kept =>
                 records.deliveries

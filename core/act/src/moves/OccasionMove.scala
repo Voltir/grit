@@ -46,8 +46,8 @@ private[moves] object OccasionMove {
   private val Started: StepName[Act.Move] =
     StepName.keyed[Act.Move]("occasion")(m => s"${MoveName.value(m.name)}:start")
 
-  /** Read at the run's floor ([[Occasioned.found]]), then recorded through the inbox, dated by
-    * the step's clock: the turn its entry began and its reply address, or what it ended as.
+  /** The turn the occasion's entry began, and its room's reply address; or what the move ended
+    * as before anything was recorded ([[Occasioned.found]]).
     */
   private val found: Step[KeepingEnv, Move, Either[String, Either[Occasioned, (TurnRef, String)]]] =
     Step[KeepingEnv, Move, Either[String, Either[Occasioned, (TurnRef, String)]]](Found)(env =>
@@ -72,8 +72,8 @@ private[moves] object OccasionMove {
       }
     )(using MovesJournal.kept(using recorded))
 
-  /** Decided in one transaction with its record ([[Occasioned.decided]]), dated by the step's
-    * clock: what the move ended as, or `Right` when its turn is to start.
+  /** What the move ended as on its decision ([[Occasioned.decided]]), or `Right` when its turn
+    * is to start.
     */
   private val decided: Step[KeepingEnv, Recorded, Either[String, Either[Occasioned, Unit]]] =
     Step.transact[KeepingEnv, Recorded, Either[String, Either[Occasioned, Unit]]](
@@ -116,8 +116,7 @@ private[moves] object OccasionMove {
     )(using MovesJournal.kept(using occasioned))
 
   /** What [[grit.core.act.Keeping.occasion]] says it does: what came of the move, or why the
-    * store failed, either way as its last step left it. Defined after its steps, which the object
-    * initialises in order.
+    * store failed.
     */
   val flow: Flow[KeepingEnv, Move, Either[String, Occasioned], Either[String, Occasioned]] =
     Flow

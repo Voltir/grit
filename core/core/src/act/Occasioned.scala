@@ -8,7 +8,6 @@ import grit.core.occasion.Occasion
 import grit.core.place.Place
 import grit.core.speech.{
   Decision,
-  Ledger,
   OccasionRoot,
   Occasions,
   Outcome,
@@ -87,10 +86,9 @@ private[grit] object Occasioned {
       }
 
   /** `occasion`, whose entry began `turn` in a conversation with reply address `to`, believed
-    * at `believed`, decided at `now` as [[Speech.decide]] decides under `speaking` and
-    * `budget` over the ledger `speech` and `spending` give, and kept on `turn` in its room: what
-    * the move ends as (`Left`: `Already` when a decision was kept for `turn` before, `Held` with
-    * `turn` when it is held), or `Right` when its turn is to start.
+    * at `believed`, decided and kept at `now` as [[Speech.kept]] does under `speaking` and
+    * `budget`: what the move ends as (`Left`: `Already` when a decision was kept for `turn`
+    * before, `Held` with `turn` when it is held), or `Right` when its turn is to start.
     */
   def decided(
       occasion: Occasion,
@@ -103,29 +101,16 @@ private[grit] object Occasioned {
       spending: Spending,
       now: Instant
   )(using Tx^): Either[StoreError, Either[Occasioned, Unit]] =
-    for {
-      ledger <- Ledger.read(
-        speech,
-        spending,
-        Speech.limitsOf(speaking),
-        budget,
-        now
+    Speech
+      .kept(speech, spending, speaking, budget, OccasionRoot(turn, occasion, to, believed), now)
+      .flatMap((decision, kept) =>
+        decision match {
+          case _ if !kept => Right(Left(Already))
+          case Decision.Held(why) => Right(Left(Held(Some(turn), why)))
+          case Decision.Drafting(_, _) => Right(Right(()))
+          case Decision.Answering(_, _) => Left(StoreError.Invalid("an occasion is never answered"))
+        }
       )
-      decision = Speech.decide(
-        speaking,
-        OccasionRoot(turn, occasion, to, believed),
-        ledger,
-        budget,
-        now
-      )
-      kept <- speech.occasioned(turn, occasion.room, decision, now)
-      ended <- decision match {
-        case _ if !kept => Right(Left(Already))
-        case Decision.Held(why) => Right(Left(Held(Some(turn), why)))
-        case Decision.Drafting(_, _) => Right(Right(()))
-        case Decision.Answering(_, _) => Left(StoreError.Invalid("an occasion is never answered"))
-      }
-    } yield ended
 
   /** `turn`, an occasion's drafting turn that could not be started for `why`, its decision
     * settled at `at` as a heard message's is ([[grit.core.speech.Outcome.Failed]]).

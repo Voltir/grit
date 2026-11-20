@@ -45,10 +45,11 @@ trait SpeechStore {
     */
   def spentOn(day: Day)(using Tx^): Either[StoreError, Spend]
 
-  /** Keeps `decision` on the heard message `heard`, made `at`, with what triage said;
-    * `false`, writing nothing, when one is kept for it already.
+  /** Keeps `decision` on `root`'s turn, made `at`, with what triage said of a heard message;
+    * `false`, writing nothing, when one is kept for it already. A drafting occasion is spoken at
+    * its venue ([[Spoken.Root.Occasion]]); `Invalid` for an occasion decided `Answering`.
     */
-  def decided(heard: Heard, decision: Decision, at: Instant)(using
+  def decided(root: Heard | OccasionRoot, decision: Decision, at: Instant)(using
       Tx^
   ): Either[StoreError, Boolean]
 
@@ -56,15 +57,6 @@ trait SpeechStore {
     * `false` for any other turn, decided on or not.
     */
   def answering(turn: TurnRef)(using Tx^): Either[StoreError, Boolean]
-
-  /** Keeps `decision` on `turn`, an occasion's, in `room`, made `at` ([[Speech.decide]]);
-    * `false`, writing nothing, when one is kept for it already. A drafting one is spoken at its
-    * venue, as an occasion's ([[Spoken.occasion]]); `Invalid` for [[Decision.Answering]], which
-    * no occasion is.
-    */
-  def occasioned(turn: TurnRef, room: Place, decision: Decision, at: Instant)(using
-      Tx^
-  ): Either[StoreError, Boolean]
 
   /** Where `turn`'s reply goes: the venue its decision placed it at ([[Decision.Drafting]]),
     * unless [[toThread]] moved it since; [[Venue.Thread]] for any other turn, decided on or not.

@@ -459,6 +459,25 @@ object Speech {
     }
   }
 
+  /** The decision made on `root` at `now` ([[decide]]) over the ledger `speech` and `spending`
+    * hold ([[Ledger.read]]), and whether it was kept on its turn ([[SpeechStore.decided]]):
+    * `false` when one was kept for that turn before, which stands; the decision returned is then
+    * the one made now, kept nowhere.
+    */
+  def kept(
+      speech: SpeechStore,
+      spending: Spending,
+      speaking: Speaking,
+      budget: Budget,
+      root: Heard | OccasionRoot,
+      now: Instant
+  )(using Tx^): Either[StoreError, (Decision, Boolean)] =
+    for {
+      ledger <- Ledger.read(speech, spending, limitsOf(speaking), budget, now)
+      decision = decide(speaking, root, ledger, budget, now)
+      kept <- speech.decided(root, decision, now)
+    } yield (decision, kept)
+
   /** The first unprompted turn in `turn`'s conversation drafting, or posted after `after`, as
     * [[Silence.Unanswered]]. Per conversation, not per thread: grit drafting, or having posted
     * since, anywhere in the conversation answers a message as far as grit can tell.
@@ -547,7 +566,7 @@ object Speech {
     limitsOf(speaking).flatMap(l => l.occasions.map(o => (l, o.room)))
 
   /** The limits `speaking` drafts under; `None` under [[Speaking.Off]]. */
-  private[grit] def limitsOf(speaking: Speaking): Option[Limits] = speaking match {
+  private def limitsOf(speaking: Speaking): Option[Limits] = speaking match {
     case Speaking.Off => None
     case Speaking.Shadow(limits) => Some(limits)
     case Speaking.Within(limits) => Some(limits)
