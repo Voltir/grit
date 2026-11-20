@@ -3,6 +3,7 @@ package grit.turn
 import grit.core.context.SectionTag
 import grit.core.host.RedactionMark
 import grit.core.id.EdgeName
+import grit.core.occasion.Occasion
 import grit.core.persona.Persona
 import grit.core.place.{Directory, Place, Service}
 import grit.core.prompt.{Fenced, Fragment, Layer, Tag}
@@ -285,6 +286,58 @@ object TurnPrompt {
         "and do not introduce yourself or say that you were not asked. If you have nothing to " +
         s"add that the channel does not already say, reply with exactly: $Pass"
     )
+
+  /** 1,200: the most characters of its document a turn rooted on an occasion is shown
+    * ([[TurnShown.occasionOf]]), and its judge recalls first.
+    */
+  val OccasionChars: Int = 1_200
+
+  /** Why grit is posting on an occasion of `reason`, in one sentence: the message its turn's
+    * judge reads ([[TurnJudge.State]]), and the note its turn is shown above its document.
+    */
+  // Draft wording, for Nick (W1 and W2, their first sentence after "Nobody asked you anything.").
+  def occasionNote(reason: Occasion.Reason): String = reason match {
+    case Occasion.Reason.Ahead =>
+      "grit is writing one short post for this channel's top level because something the team " +
+        "planned is coming up: the meeting in the document below."
+    case Occasion.Reason.Open =>
+      "grit is writing one short post for this channel's top level because the team talked of " +
+        "a meeting, in the document below, without settling its day."
+  }
+
+  /** What a turn rooted on an occasion of `reason` is told, an edge-layer fragment of its own:
+    * nobody asked it; [[occasionNote]]; for `Ahead`, say what the meeting is, when and who is in
+    * it, from its document alone, in two to four lines; for `Open`, ask which day and time it
+    * is, suggesting none; without introducing itself; or reply exactly [[Pass]] when the
+    * channel has already said it, or the document shows the meeting moved, called off or no
+    * longer wanted.
+    */
+  // Draft wording, for Nick (W1 and W2).
+  def occasion(reason: Occasion.Reason): Fragment =
+    Fragment(
+      Layer.Edge,
+      Fragment.Grit,
+      s"Nobody asked you anything. ${occasionNote(reason)} " + (reason match {
+        case Occasion.Reason.Ahead =>
+          "Say what it is, when (its day and time), who is in it, and what the team said it " +
+            "will cover, from that document alone, leaving out what it does not say. Two to " +
+            "four lines. Do not introduce yourself or say that nobody asked. If the channel has " +
+            "already said all of this today, or the document shows the meeting moved or called " +
+            s"off, reply with exactly: $Pass"
+        case Occasion.Reason.Open =>
+          "Ask in one or two sentences which day and time it is, naming the meeting as the " +
+            "team did so people know which one you mean. Do not suggest a day yourself. Do not " +
+            "introduce yourself or say that nobody asked. If the channel has since settled the " +
+            s"day, or the meeting no longer seems wanted, reply with exactly: $Pass"
+      })
+    )
+
+  /** The message a turn rooted on an occasion of `reason` is shown as its own: its
+    * [[occasionNote]] as grit's note, then a blank line and `text`, its document's, fenced as a
+    * document.
+    */
+  def occasionShown(reason: Occasion.Reason, text: String): String =
+    Fenced.noted(Vector(occasionNote(reason))) + "\n\n" + Fenced.in(Tag.Document, text).rendered
 
   /** What a turn rooted on a heard message whose draft goes in its thread is told: nobody
     * asked it; add what the thread lacks from what it knows (a record, another conversation),

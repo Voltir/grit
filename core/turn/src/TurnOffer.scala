@@ -12,6 +12,7 @@ import grit.core.speech.Venue
 import grit.core.store.{
   Audience,
   EntryStore,
+  Focus,
   Origin,
   Payload,
   Position,
@@ -107,10 +108,13 @@ object TurnOffer {
     * put to grit by name as an offer recorded it before such messages were answered as said
     * to grit: drafted, unjudged, and posted through speech
     * ([[grit.core.speech.Speech.postNamed]]); no offer records it now. An offer recorded
-    * before roots existed is `Addressed`.
+    * before roots existed is `Addressed`. `Occasion` is grit's own note of a job's occasion
+    * ([[grit.core.store.Payload.Occasion]]): offered as a `Heard` turn at a channel's top level,
+    * drafted from its document with no search, judged, and posted through speech under
+    * [[grit.core.speech.Speech.forOccasion]] at the address its decision kept.
     */
   enum Root {
-    case Addressed, Heard, Named, ByName
+    case Addressed, Heard, Named, ByName, Occasion
   }
 
   /** What `turn` is offered now, kept, and recorded as `turn`'s prompt: its conversation's
@@ -131,9 +135,11 @@ object TurnOffer {
     * conversation's origin works as. Its root is `ByName` when its first entry in
     * `entries` is a heard message ([[grit.core.store.Payload.Heard]]) and `answering` (triage
     * decided to answer it as said to grit, [[grit.core.speech.Decision.Answering]]), `Heard`
-    * for any other heard message, else `Addressed`; a `ByName` turn is offered, told and
-    * shaped as an `Addressed` one. A `Heard` turn records `venue`, where its decision placed
-    * its draft; any other, its thread.
+    * for any other heard message, `Occasion` when it is an occasion
+    * ([[grit.core.store.Payload.Occasion]]), else `Addressed`; a `ByName` turn is offered, told
+    * and shaped as an `Addressed` one, an `Occasion` one as a `Heard` one said at a channel's
+    * top level, told [[TurnPrompt.occasion]]. A `Heard` or `Occasion` turn records `venue`,
+    * where its decision placed its draft; any other, its thread.
     *
     * `tooling.recipe` shapes it by its root ([[grit.core.recipe.Rooted]]: a heard message at
     * the focus it was said at, [[grit.core.store.Origin.focus]]): the shaping's width is
@@ -187,6 +193,8 @@ object TurnOffer {
             }),
             venue
           )
+        case Some(Payload.Occasion(reason, _, _)) =>
+          (Root.Occasion, Rooted.Heard(Focus.Open), Some(TurnPrompt.occasion(reason)), venue)
         case _ => (Root.Addressed, Rooted.Addressed, None, Venue.Thread)
       }
       shaping = tooling.recipe.at(rooted)
@@ -330,7 +338,7 @@ object TurnOffer {
   private def administering(root: Root, origin: Origin): Boolean =
     (root match {
       case Root.Addressed | Root.ByName => true
-      case Root.Heard | Root.Named => false
+      case Root.Heard | Root.Named | Root.Occasion => false
     }) && (origin.audience match {
       case Audience.Colleagues => true
       case Audience.Operator | Audience.Nobody | Audience.Person => false

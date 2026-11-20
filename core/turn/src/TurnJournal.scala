@@ -703,6 +703,7 @@ private[turn] object TurnJournal {
       case TurnOffer.Root.Heard => o("root") = "heard"
       case TurnOffer.Root.Named => o("root") = "named"
       case TurnOffer.Root.ByName => o("root") = "by-name"
+      case TurnOffer.Root.Occasion => o("root") = "occasion"
       case TurnOffer.Root.Addressed => ()
     }
     // Written only when some were taken, so every other offer keeps its earlier form.
@@ -770,6 +771,7 @@ private[turn] object TurnJournal {
         case Some(ujson.Str("heard")) => Right(TurnOffer.Root.Heard)
         case Some(ujson.Str("named")) => Right(TurnOffer.Root.Named)
         case Some(ujson.Str("by-name")) => Right(TurnOffer.Root.ByName)
+        case Some(ujson.Str("occasion")) => Right(TurnOffer.Root.Occasion)
         case Some(other) => Left(s"offer: unknown root ${other.render()}")
       }
       advertised <- o.get("advertised") match {

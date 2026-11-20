@@ -274,13 +274,15 @@ private[turn] object TurnAssembly {
   /** The `ask:needs` body: asked of the turn's classifier, cleared for what was read, about its
     * message and thread ([[TurnNeeds.State]]) read as the route bounds them, when its window
     * could find anything by searching; unjudged, asking nothing, when it could not
-    * ([[TurnNeeds.NothingToSearch]]) or nothing can be asked.
+    * ([[TurnNeeds.NothingToSearch]]), when the turn is rooted on an occasion
+    * ([[TurnNeeds.OnOccasion]]), or nothing can be asked.
     */
   private def needing(env: TurnEnv^, p: Placed): Pose[Verdict]^{env} = {
     def unjudged(why: String): Pose[Verdict] = Pose.Made(Verdict.Unjudged(why))
-    p.at.routed.picked(env) match {
-      case Left(f) => unjudged(TurnFailure.reason(f))
-      case Right(pins) =>
+    (p.at.routed.picked(env), p.at.offer.root) match {
+      case (_, TurnOffer.Root.Occasion) => unjudged(TurnNeeds.OnOccasion)
+      case (Left(f), _) => unjudged(TurnFailure.reason(f))
+      case (Right(pins), _) =>
         val db = pins.reads(env.db)
         // `ask:query` reads `prepare` again: a read, never a call, and `Prepared.Asking` holds a
         // function, so it cannot be recorded here and passed on.
@@ -332,7 +334,7 @@ private[turn] object TurnAssembly {
   /** The `ask:query` body: the assembler's preparation read as the route bounds it; when it
     * asks and the turn searches, its request written under the route's query pin, as cleared
     * for what was read; when it does not search, the window drawn with no query, noted
-    * [[TurnNeeds.Unneeded]].
+    * [[TurnNeeds.OnOccasion]] for a turn rooted on an occasion, else [[TurnNeeds.Unneeded]].
     */
   private def writing(
       env: TurnEnv^,
@@ -347,7 +349,11 @@ private[turn] object TurnAssembly {
           case Left(e) => Pose.Made(Left(failed(e)))
           case Right(Prepared.Drawn(drawn)) => Pose.Made(Right(drawn))
           case Right(Prepared.Asking(_, written)) if !searching =>
-            Pose.Made(Right(written(Left(TurnNeeds.Unneeded))))
+            val why = p.at.offer.root match {
+              case TurnOffer.Root.Occasion => TurnNeeds.OnOccasion
+              case _ => TurnNeeds.Unneeded
+            }
+            Pose.Made(Right(written(Left(why))))
           case Right(Prepared.Asking(asked, written)) =>
             pins.query match {
               case None => Pose.Made(Right(written(Left(Prepared.NoPin))))

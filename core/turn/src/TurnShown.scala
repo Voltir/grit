@@ -9,6 +9,7 @@ import grit.core.files.{KeptPiece, PieceSearch}
 import grit.core.id.{EntryId, EntrySeq, Sha256, ToolCallId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{AfterToolResult, ToolGuidance}
+import grit.core.occasion.Occasion
 import grit.core.period.{Balance, Closing, Flows}
 import grit.core.prompt.Fenced
 import grit.core.provider.{ModelRequest, Repeats, ToolSchema}
@@ -224,9 +225,11 @@ private[turn] object TurnShown {
   }
 
   /** What a request for `turn` over `seen` can show, read from `records`: each part of its
-    * window, oldest first ([[Part]]), the turn's own entries, and who said each; nothing else
-    * of the conversation. `Invalid` when `seen.after` is not read back as a chain of window
-    * records.
+    * window, oldest first ([[Part]]), the turn's own entries, who said each, and, for a turn
+    * rooted on an occasion, its document's text; nothing else of the conversation. `Invalid`
+    * when `seen.after` is not read back as a chain of window records, and `Invalid("its
+    * document is gone")` when an occasion's document is not kept or not read by the
+    * transaction.
     */
   def shown(records: TurnRecords, turn: TurnRef, seen: Seen)(using
       Tx^
@@ -281,14 +284,36 @@ private[turn] object TurnShown {
       carried <- traverse(chain)(r => part(r.window, Some(r)))
       own <- part(seen.window, None)
       mine <- entries.ofTurn(turn)
+      occasion <- occasionOf(documents, mine)
       parts = carried :+ own
       named <- principals.speakers(
         (parts.flatMap(p => p.entries ++ p.near ++ p.carried.fold(Vector.empty)(_.own)) ++ mine)
           .map(_.id)
           .distinct
       )
-    } yield Showing(parts, mine, named)
+    } yield Showing(parts, mine, named, occasion)
   }
+
+  /** The reason and the document's text, its first [[TurnPrompt.OccasionChars]], of the
+    * occasion that is the first of `mine`, a turn's own entries; `None` when it begins with
+    * none. `Invalid("its document is gone")` when the document is not kept or not read by the
+    * transaction.
+    */
+  def occasionOf(documents: DocumentSearch, mine: Vector[Entry])(using
+      Tx^
+  ): Either[StoreError, Option[(Occasion.Reason, String)]] =
+    mine.minByOption(e => EntrySeq.value(e.seq)).map(_.payload) match {
+      case Some(Payload.Occasion(reason, about, _)) =>
+        documents
+          .read(Vector(about))
+          .flatMap(
+            _.headOption
+              .map(d => (reason, DocText.value(d.text).take(TurnPrompt.OccasionChars)))
+              .toRight(StoreError.Invalid("its document is gone"))
+          )
+          .map(Some(_))
+      case _ => Right(None)
+    }
 
   /** A carried turn as [[shown]] read it: `turn`, its own entries `own`, and the lines its
     * window record keeps (`carry`).
@@ -313,9 +338,15 @@ private[turn] object TurnShown {
   )
 
   /** What [[shown]] read: `parts`, the window's, oldest first, the turn's own last; `mine`,
-    * the turn's own entries; `named`, the speakers of all of them.
+    * the turn's own entries; `named`, the speakers of all of them; `occasion`, when `mine`
+    * begins with an occasion, its reason and its document's text as [[occasionOf]] reads them.
     */
-  final case class Showing(parts: Vector[Part], mine: Vector[Entry], named: Speakers) {
+  final case class Showing(
+      parts: Vector[Part],
+      mine: Vector[Entry],
+      named: Speakers,
+      occasion: Option[(Occasion.Reason, String)] = None
+  ) {
 
     /** Every part's entries, each carried part's followed by its turn's own. */
     def window: Vector[Entry] = parts.flatMap(p => p.entries ++ p.carried.fold(Vector.empty)(_.own))
@@ -346,7 +377,8 @@ private[turn] object TurnShown {
     * [[Shown.turn]] shows them, its record's note added to its asking message
     * ([[TurnVerdict.taggedWith]]). The turn's own follow: when it has an own entry,
     * [[answering]] of its first, in `zoned` (its offer's, [[TurnOffer.Recorded]]), in a direct
-    * message when `direct` ([[direct]]), as one user message, then its own, its tool loop's
+    * message when `direct` ([[direct]]), as one user message, then, for an occasion, its note
+    * and document as one ([[TurnPrompt.occasionShown]]), then its own, its tool loop's
     * exchange among them in order. A summary is not shown to the model yet. `system` is sent as
     * it is given. A part's seq with no entry is an `Assembly` failure naming every such seq.
     */
@@ -358,7 +390,7 @@ private[turn] object TurnShown {
       zoned: Option[TurnOffer.Zoned],
       direct: Boolean
   ): Either[TurnFailure, Unshaped] = {
-    val Showing(parts, mine, named) = hiding(showing, stubs)
+    val Showing(parts, mine, named, occasion) = hiding(showing, stubs)
     val befores = None +: parts.map(_.carried.map(_.turn))
     traverse(parts.zip(befores)) { (part, before) =>
       val bySeq = part.entries.map(e => e.seq -> e).toMap
@@ -402,7 +434,9 @@ private[turn] object TurnShown {
       val dated = mine
         .minByOption(e => EntrySeq.value(e.seq))
         .map(root => Message.User(answering(root.createdAt, zoned, direct)))
-      Unshaped(system, shownParts, dated.toVector ++ Shown.turn(mine, named))
+      val occasioned =
+        occasion.map((reason, text) => Message.User(TurnPrompt.occasionShown(reason, text)))
+      Unshaped(system, shownParts, dated.toVector ++ occasioned ++ Shown.turn(mine, named))
     }
   }
 
@@ -558,7 +592,7 @@ private[turn] object TurnShown {
     * a query, a summary, an item, an ask, a message with no text nearby) is none.
     */
   def itemsOf(showing: Showing): Vector[Item] = {
-    val Showing(parts, mine, named) = showing
+    val Showing(parts, mine, named, _) = showing
     val tools: Map[ToolCallId, String] = (showing.window ++ mine)
       .flatMap(_.payload match {
         case Payload.Exchange(reply) =>

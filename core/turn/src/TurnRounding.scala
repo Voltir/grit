@@ -345,7 +345,8 @@ private[turn] object Rounding {
     val rooted =
       mine.minByOption(e => EntrySeq.value(e.seq)).fold(Integrity.Untrusted)(_.integrity)
     root match {
-      case TurnOffer.Root.Heard | TurnOffer.Root.Named => rooted.meet(Integrity.Outside)
+      case TurnOffer.Root.Heard | TurnOffer.Root.Named | TurnOffer.Root.Occasion =>
+        rooted.meet(Integrity.Outside)
       case TurnOffer.Root.Addressed | TurnOffer.Root.ByName => rooted
     }
   }

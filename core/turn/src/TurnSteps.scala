@@ -110,6 +110,13 @@ private[turn] object TurnSteps {
       routed.known
         .flatMap(_ => turnEnv.speech.store.answering(turn))
         .flatMap(answering => turnEnv.speech.store.venue(turn).map((answering, _)))
+        // An occasion whose document is gone fails here, before any model is asked.
+        .flatMap(placed =>
+          turnEnv.records.entries
+            .ofTurn(turn)
+            .flatMap(TurnShown.occasionOf(turnEnv.records.documents, _))
+            .map(_ => placed)
+        )
         .left
         .map(TurnFailure.ofStore)
         .flatMap((answering, venue) =>
@@ -417,7 +424,7 @@ private[turn] object TurnSteps {
     )
 
   /** `record-failure`: for a turn that ended before its offer was made or read, `Failed` kept
-    * as what became of it when it answers a heard message
+    * as what became of it when it answers a heard message or is rooted on an occasion
     * ([[grit.core.speech.SpeechStore.drafted]]), so its decision never stands drafting; for a
     * message said to grit, [[Uncleared.reply]] kept as its reply when its failure is
     * `Uncleared`, and nothing otherwise. Taken by every turn that fails there, whatever it
@@ -434,7 +441,7 @@ private[turn] object TurnSteps {
             .ofTurn(turn)
             .flatMap(own =>
               own.minByOption(_.seq).map(_.payload) match {
-                case Some(Payload.Heard(_)) =>
+                case Some(Payload.Heard(_) | Payload.Occasion(_, _, _)) =>
                   store.drafted(turn, Outcome.Failed(in.failure.toString), None, at)
                 case _ =>
                   in.failure match {
@@ -608,6 +615,7 @@ private[turn] object TurnSteps {
             r.env,
             in.turn,
             in.settling,
+            in.at.at.offer.root,
             in.at.at.offer.venue,
             in.at.level,
             r.env.clock.now()
@@ -1024,19 +1032,23 @@ private[turn] object TurnSteps {
     * top level when its offer recorded that `venue` and the room's top-level rate
     * ([[grit.core.speech.ToRoom]]) still allows it, counted again here, else in its thread
     * ([[grit.core.speech.Speech.placing]]); and the outcome kept
-    * ([[grit.core.speech.SpeechStore.drafted]]), dated `at`. A post with no address to go to
-    * is `Failed`.
+    * ([[grit.core.speech.SpeechStore.drafted]]), dated `at`. A turn `rooted` on an occasion
+    * is posted under [[Speech.forOccasion]] of the speaking in force, at the room address its
+    * `venue` holds, never moved to its thread. A post with no address to go to is `Failed`.
     */
   private def recordSpeech(
       env: TurnEnv^,
       turn: TurnRef,
       settling: Settling,
+      rooted: TurnOffer.Root,
       venue: Venue,
       believed: Option[Integrity],
       at: Instant
   )(using Tx^): Either[TurnFailure, Outcome] = {
     val TurnRecords(entries, ledger, _, _, _, _, _, _) = env.records
-    val TurnSpeech(speaking, store, deliveries) = env.speech
+    val TurnSpeech(inForce, store, deliveries) = env.speech
+    val occasion = rooted == TurnOffer.Root.Occasion
+    val speaking = if (occasion) Speech.forOccasion(inForce) else inForce
     for {
       all <- entries.list(turn.conversationId).left.map(TurnFailure.ofStore)
       root <- all
@@ -1049,6 +1061,18 @@ private[turn] object TurnSteps {
         }
         .toRight(TurnFailure.Store(s"${WorkflowId.value(turn.workflowId)} has no draft"))
       reach <- store.reach(turn).left.map(TurnFailure.ofStore)
+      // An occasion was heard nowhere: its address is its decision's, at its room's top level;
+      // a heard message's, its reach's, placed when it posts.
+      address = rooted match {
+        case TurnOffer.Root.Occasion =>
+          venue match {
+            case Venue.Room(to) => Some(Left(to))
+            case Venue.Thread => None
+          }
+        case TurnOffer.Root.Addressed | TurnOffer.Root.Heard | TurnOffer.Root.Named |
+            TurnOffer.Root.ByName =>
+          reach.flatMap(_.replyTo).map(Right(_))
+      }
       level <- believedAt(entries, turn, believed)
       // The strand after the root, to now: the assistant's reply there holds the draft too.
       strand <- strandOf(
@@ -1071,7 +1095,7 @@ private[turn] object TurnSteps {
           case Settling.Named =>
             TurnJudge.said(draft).fold(Outcome.Passed)(_ => Speech.postNamed(speaking))
         })
-      outcome = (judged, reach.flatMap(_.replyTo)) match {
+      outcome = (judged, address) match {
         case (Outcome.Posted(_), None) => Outcome.Failed("no address to reply to")
         case (o, _) => o
       }
@@ -1095,10 +1119,12 @@ private[turn] object TurnSteps {
           .left
           .map(TurnFailure.ofStore)
       )
-      _ <- (outcome, reach.flatMap(_.replyTo)) match {
-        case (Outcome.Posted(_), Some(replyTo)) =>
+      _ <- (outcome, address) match {
+        case (Outcome.Posted(_), Some(address)) =>
           for {
-            to <- placedAt(speaking, store, turn, venue, replyTo, at).left
+            to <- address
+              .fold(Right(_), placedAt(speaking, store, turn, venue, _, at))
+              .left
               .map(TurnFailure.ofStore)
             next <- entries.lockNext(turn.conversationId).left.map(TurnFailure.ofStore)
             _ <- entries
@@ -1268,7 +1294,8 @@ private[turn] object TurnSteps {
     val (id, payload) = offer.root match {
       case TurnOffer.Root.Addressed | TurnOffer.Root.ByName =>
         (turn.replyId, Payload.Message(message))
-      case TurnOffer.Root.Heard | TurnOffer.Root.Named => (turn.draftId, Payload.Draft(message))
+      case TurnOffer.Root.Heard | TurnOffer.Root.Named | TurnOffer.Root.Occasion =>
+        (turn.draftId, Payload.Draft(message))
     }
     val TurnRecords(entries, ledger, estimator, _, _, _, _, _) = records
     for {
@@ -1324,7 +1351,9 @@ private[turn] object TurnSteps {
             .drafted(turn, Outcome.Replied, TurnJudge.said(message), at)
             .left
             .map(TurnFailure.ofStore)
-        case TurnOffer.Root.Addressed | TurnOffer.Root.Heard | TurnOffer.Root.Named => Right(true)
+        case TurnOffer.Root.Addressed | TurnOffer.Root.Heard | TurnOffer.Root.Named |
+            TurnOffer.Root.Occasion =>
+          Right(true)
       }
     } yield Appended(id, followed)
   }

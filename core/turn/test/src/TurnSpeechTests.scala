@@ -6,7 +6,17 @@ import grit.core.id.{EntryId, TurnRef}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.provider.ProviderError
-import grit.core.speech.{Cleared, Judged, Limits, Outcome, Speaking, SpeechJson, ToRoom, Venue}
+import grit.core.speech.{
+  Cleared,
+  Judged,
+  Limits,
+  Occasions,
+  Outcome,
+  Speaking,
+  SpeechJson,
+  ToRoom,
+  Venue
+}
 import grit.core.store.Payload
 import grit.core.triage.InMemoryTriageStore
 import grit.core.visibility.Integrity
@@ -60,6 +70,31 @@ object TurnSpeechTests extends TestSuite {
 
   private def reply(w: SpeechWorld): Option[Payload] =
     w.entries.get(w.turn.replyId)(using TestTx.fake).toOption.flatten.map(_.payload)
+
+  /** `w`'s occasion's turn run under `speaking` (Within with `occasions` by default), its
+    * draft model `drafting` and its judge `judge`.
+    */
+  private def runOccasion(
+      w: OccasionWorld,
+      judge: Classifier^,
+      occasions: Option[Occasions] = Some(Occasions.Live(Occasions.Suggested)),
+      drafting: Scripted = new Scripted((_, _) => Right(said("Planning call Thursday at 10.")))
+  ): String =
+    new InMemoryDurable().run(w.turn.workflowId)(
+      turnBodyWith(
+        w.speech.entries,
+        drafting,
+        new Before(w.speech.entries),
+        w.speech.ledger,
+        judge,
+        TurnSpeech(
+          Speaking.Within(speechLimits.copy(occasions = occasions)),
+          w.speech.store,
+          w.speech.deliveries
+        ),
+        documents = w.documents
+      )
+    )
 
   private def judged(grounded: Double, worth: Double) =
     Judged(
@@ -287,6 +322,158 @@ object TurnSpeechTests extends TestSuite {
       run(w, new Judge(Some((0.9, 0.9))))
       (outcome(w), awaited(w), reply(w)) ==>
         (Some(Outcome.Failed("no address to reply to")), Vector.empty, None)
+    }
+
+    test(
+      "heard with no reach, placed at its room's top level, a draft that would post: kept failed, nothing posted"
+    ) {
+      val w = speechWorld(replyTo = None, venue = Venue.Room("C//1"))
+      run(
+        w,
+        new Judge(Some((0.9, 0.9))),
+        Speaking.Within(speechLimits.copy(toRoom = Some(ToRoom.Suggested)))
+      )
+      (outcome(w), awaited(w), reply(w)) ==>
+        (Some(Outcome.Failed("no address to reply to")), Vector.empty, None)
+    }
+
+    test(
+      "an occasion under Occasions.Shadow, within Speaking.Within, scored to post: shadowed, never posted"
+    ) {
+      val w = occasionWorld()
+      runOccasion(w, new Judge(Some((0.9, 0.9))), Some(Occasions.Shadow(Occasions.Suggested)))
+      (outcome(w.speech).map(SpeechJson.outcomeName), awaited(w.speech), reply(w.speech)) ==>
+        (Some("shadowed"), Vector.empty, None)
+    }
+
+    test(
+      "an occasion under Occasions.Live, scored to post: posted at the room's address its speech row keeps, never moved to a thread"
+    ) {
+      // No ToRoom rate: a heard draft placed at the top level would go in its thread.
+      val w = occasionWorld()
+      runOccasion(w, new Judge(Some((0.9, 0.9))))
+      (
+        outcome(w.speech).map(SpeechJson.outcomeName),
+        awaited(w.speech),
+        reply(w.speech),
+        w.speech.store.venue(w.turn)(using TestTx.fake)
+      ) ==> (
+        Some("posted"),
+        Vector((w.turn, "C//1")),
+        Some(Payload.Message(said("Planning call Thursday at 10."))),
+        Right(Venue.Room("C//1"))
+      )
+    }
+
+    test(
+      "an occasion's turn is told its reason, and shown its document fenced in its own message"
+    ) {
+      val w = occasionWorld()
+      val drafting = new Scripted((_, _) => Right(said("Planning call Thursday at 10.")))
+      runOccasion(w, new Judge(Some((0.9, 0.9))), drafting = drafting)
+      val asked = drafting.requests.headOption
+      (
+        asked.exists(
+          _.system.contains(
+            "Nobody asked you anything. grit is writing one short post for this channel's top " +
+              "level because something the team planned is coming up: the meeting in the " +
+              "document below."
+          )
+        ),
+        asked.flatMap(_.messages.lastOption)
+      ) ==> (
+        true,
+        Some(
+          Message.User(
+            "<grit_note>\ngrit is writing one short post for this channel's top level because " +
+              "something the team planned is coming up: the meeting in the document below.\n" +
+              "</grit_note>\n\n<document>\n" + OccasionText + "\n</document>"
+          )
+        )
+      )
+    }
+
+    test(
+      "an occasion whose document is gone fails before any model is asked, its decision settled failed"
+    ) {
+      val w = occasionWorld(document = false)
+      val judge = new Judge(Some((0.9, 0.9)))
+      val drafting = new Scripted((_, _) => Right(said("Planning call Thursday at 10.")))
+      runOccasion(w, judge, drafting = drafting)
+      (outcome(w.speech), drafting.requests.size, judge.calls, awaited(w.speech)) ==>
+        (Some(Outcome.Failed("Store(its document is gone)")), 0, 0, Vector.empty)
+    }
+
+    test(
+      "an occasion's draft is judged as an occasion's: its note the message, its document first recalled, worth asked of the whole channel"
+    ) {
+      val w = occasionWorld()
+      val judge = new Judge(Some((0.9, 0.9)))
+      runOccasion(w, judge)
+      (
+        judge.states.headOption.map(_("message").str),
+        judge.states.headOption.map(_("recalled").str),
+        judge.asked.lift(1)
+      ) ==> (
+        Some(
+          "grit is writing one short post for this channel's top level because something the " +
+            "team planned is coming up: the meeting in the document below."
+        ),
+        Some(OccasionText),
+        Some(
+          "Read message, thread, draft and posted. Is this post worth putting in front of the " +
+            "whole channel now: does it tell or ask the team something useful about the meeting " +
+            "that the channel's recent talk has not already settled?"
+        )
+      )
+    }
+
+    test(
+      "an occasion's turn over a window that could search asks no needs gate and writes no query: its one model call is its draft"
+    ) {
+      val w = occasionWorld()
+      val sifter = new Sifter(needs = 0.9)
+      val drafting = new Scripted((_, _) => Right(said("Planning call Thursday at 10.")))
+      new InMemoryDurable().run(w.turn.workflowId)(
+        turnBodyWith(
+          w.speech.entries,
+          drafting,
+          new Searching(w.speech.entries, 5),
+          w.speech.ledger,
+          sifter,
+          TurnSpeech(
+            Speaking.Within(
+              speechLimits.copy(occasions = Some(Occasions.Live(Occasions.Suggested)))
+            ),
+            w.speech.store,
+            w.speech.deliveries
+          ),
+          documents = w.documents
+        )
+      )
+      (sifter.gated.size, sifter.asked, drafting.requests.size) ==> (0, Vector.empty, 1)
+    }
+
+    test("the assistant's reply in the room after an occasion settles it spoken, nothing posted") {
+      val w = occasionWorld()
+      val replied = {
+        given grit.core.store.Tx = TestTx.fake
+        val next = w.speech.entries.lockNext(conversation).getOrElse(sys.error("store"))
+        val e = grit.core.store.Entry(
+          EntryId("replied"),
+          conversation,
+          next.turnSeq,
+          None,
+          next.seq,
+          Payload.Message(said("Planning call on Thursday.")),
+          java.time.Instant.EPOCH,
+          Integrity.Member
+        )
+        w.speech.entries.insert(e)
+        e
+      }
+      runOccasion(w, new Judge(Some((0.9, 0.9))))
+      (outcome(w.speech), awaited(w.speech)) ==> (Some(Outcome.Spoken(replied.id)), Vector.empty)
     }
 
     test(
