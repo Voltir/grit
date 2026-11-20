@@ -13,8 +13,9 @@ Decision:
 
 - **An occasion is a new root of an unprompted turn.** A plugin's keeping job names it
   (`Occasion`: a room, a key, a reason, the plugin's document it is about, and an instant it
-  lapses at), and it goes the way a heard message's draft goes: decided by speech, drafted,
-  judged, and posted or shadowed at the room's top level. Its precedent is grit's own
+  lapses at). It is recorded and decided by speech's limits, and the turn it drafts is started,
+  as a heard message's is; that draft is judged and posted, or shadowed, at the room's top
+  level only once the deployment's post path reads it (a later change). Its precedent is grit's own
   continuation note (ADR 0058).
 - **It is a move, `Keeping.occasion`: spawn's first form (ADR 0068).** It starts a turn in
   another conversation, charged to the speech accounts, at most once per key, recorded as

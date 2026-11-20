@@ -6,7 +6,8 @@ import grit.core.id.DocumentVersionId
 import grit.core.place.Place
 
 /** A job's ground for grit to post unasked at `room`'s top level, about its plugin's document
-  * `about`, before `until`; at most once for `key` ([[grit.core.act.Keeping.occasion]]).
+  * `about`, before `until`; at most once for `key` in its room's top-level conversation
+  * ([[grit.core.act.Keeping.occasion]]).
   */
 final case class Occasion(
     room: Place,

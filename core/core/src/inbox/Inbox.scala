@@ -32,7 +32,7 @@ trait OccasionInbox extends caps.SharedCapability {
   /** Records `occasion`, `plugin`'s, as the first entry of a new turn of `origin`'s conversation
     * ([[grit.core.store.Payload.Occasion]]), grit's own, dated `at`, believed at `believed`, its
     * source [[grit.core.occasion.OccasionKey.source]], and returns that turn; the turn recorded
-    * before when that source was, whatever this occasion holds, so a step that re-runs gets it
+    * before when that source was in that conversation, whatever this occasion holds, so a step that re-runs gets it
     * back. Never refused over the day's cap. [[InboxError.Invalid]] for an
     * [[grit.core.store.Origin.Direct]], and when the store holds what it cannot read.
     */

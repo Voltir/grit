@@ -112,18 +112,18 @@ object PayloadJson {
   /** The stored name of a [[CloseReason]]: the same in a closing entry, a period's row and a
     * close's journal.
     */
-  /** How an occasion's reason is written: `ahead` or `open`. */
-  private def occasionReason(reason: Occasion.Reason): String = reason match {
-    case Occasion.Reason.Ahead => "ahead"
-    case Occasion.Reason.Open => "open"
-  }
-
   def reasonName(reason: CloseReason): String = reason match {
     case CloseReason.Resolved(_) => "resolved"
     case CloseReason.Lapsed => "lapsed"
     case CloseReason.Unearned => "unearned"
     case CloseReason.Ran => "ran"
     case CloseReason.Rolled => "rolled"
+  }
+
+  /** How an occasion's reason is written: `ahead` or `open`. */
+  private def occasionReason(reason: Occasion.Reason): String = reason match {
+    case Occasion.Reason.Ahead => "ahead"
+    case Occasion.Reason.Open => "open"
   }
 
   /** A resolved reason's confidence, stored beside its name; `None` for any other. */

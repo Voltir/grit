@@ -33,7 +33,9 @@ enum Occasioned extends caps.Pure {
     */
   case Held(turn: Option[TurnRef], why: Silence)
 
-  /** Decided already for its key, by another run: nothing is started. */
+  /** Decided already for its key in its room's top-level conversation, by another run: nothing
+    * is started.
+    */
   case Already
 
   /** `room`'s label is not the run's: nothing is recorded. */
