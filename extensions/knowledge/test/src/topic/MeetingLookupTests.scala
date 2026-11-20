@@ -1,9 +1,14 @@
 package grit.knowledge.topic
 
-import java.time.{LocalDate, LocalTime, ZoneOffset}
+import java.time.{Instant, LocalDate, LocalTime, ZoneOffset}
 
+import grit.core.identity.TestAccounts
 import grit.core.message.Cut
-import grit.core.visibility.{Integrity, Label}
+import grit.core.place.Place
+import grit.core.stitch.Strand
+import grit.core.store.InMemoryPrincipals
+import grit.core.visibility.{Clearance, Integrity, Label}
+import grit.dbos.sql.TestTx
 import grit.knowledge.topic.Meeting.{State, When}
 import grit.knowledge.topic.TestMeetings.{Kept, meeting, subject, text}
 
@@ -167,6 +172,41 @@ object MeetingLookupTests extends TestSuite {
         at("b", meeting(planned(18), Vector.empty, "Second."), Integrity.Outside)
       )
       lookup(most = Some(1)).answer(kept.read()).believed ==> Some(Integrity.Outside)
+    }
+
+    test("a person's card beside a meeting is never listed") {
+      val kept = Kept(at("a", meeting(planned(18), Vector("Dana Ito"), "The release review.")))
+      val card = PersonCard
+        .written(
+          None,
+          PersonKey
+            .of(InMemoryPrincipals.person(TestAccounts.account("slack:T/U-dana")))
+            .fold(sys.error, identity),
+          Strand.Name.of("Dana Ito").getOrElse(sys.error("no name")),
+          None,
+          PersonCard.Facts(Vector.empty, Vector.empty, 1, 1, day(18)),
+          Vector.empty,
+          Vector.empty,
+          day(18)
+        )
+        .told(Some("Appears to run the release review."))
+      kept.keeper
+        .write(
+          PersonKey.doc(card.key),
+          Label.Public,
+          Integrity.Member,
+          Place.Everywhere,
+          card.text.fold(sys.error, identity),
+          card.write,
+          None,
+          Instant.EPOCH.plusSeconds(10)
+        )(using TestTx.fake(Clearance.of(Label.Public)))
+        .fold(e => sys.error(e.toString), _ => ())
+      val answer = lookup(about = Some("release")).answer(kept.read()).text
+      (answer.contains("The release review."), answer.contains("as grit sees them")) ==> (
+        true,
+        false
+      )
     }
 
     test("a subject is passed over") {
