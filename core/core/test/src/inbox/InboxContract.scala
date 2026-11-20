@@ -7,8 +7,10 @@ import grit.core.id.{
   CallSlot,
   ConversationId,
   Declarer,
+  DocumentVersionId,
   EntryId,
   Href,
+  PluginName,
   ScheduleId,
   ScheduleKey,
   SourceId,
@@ -21,6 +23,7 @@ import grit.core.job.JobTests.{Count, Counting}
 import grit.core.job.ScheduleContract.hour
 import grit.core.job.{Declared, Ending, Schedule, Slot, SlotRule}
 import grit.core.message.{Cost, Message}
+import grit.core.occasion.{Occasion, OccasionKey}
 import grit.core.period.{Period, PeriodState}
 import grit.core.place.Place
 import grit.core.speech.{Reach, ReplyTo}
@@ -910,6 +913,53 @@ abstract class InboxContract extends TestSuite {
       }
     }
 
+    test(
+      "an occasion is its conversation's new turn's first entry, grit's own, believed as given"
+    ) {
+      withInbox(Uncapped) { (inbox, store) =>
+        val room = Origin.Room("T1", "occasioned")
+        inbox.hear(room, SourceId("1.0"), "morning", Account.Local, Said, Reach.Nowhere, None) ==>
+          Right(())
+        val ahead = InboxContract.occasion("ahead:standup", Occasion.Reason.Ahead)
+        inbox
+          .occasion(room, InboxContract.Plugin, ahead, PostedAt, Integrity.Member)
+          .map(_.turnSeq) ==> Right(TurnSeq.First.next)
+        (store.written(room), store.dated(room), store.believed(room).lastOption) ==> (
+          Vector(
+            (Payload.Heard("morning"), None),
+            (Payload.Occasion(Occasion.Reason.Ahead, ahead.about, ahead.key), None)
+          ),
+          Vector(Said, PostedAt),
+          Some(Integrity.Member)
+        )
+      }
+    }
+
+    test(
+      "a second occasion of one key records nothing and returns the first's turn; another plugin's of that key is its own"
+    ) {
+      withInbox(Uncapped) { (inbox, store) =>
+        val room = Origin.Room("T1", "occasioned-once")
+        val open = InboxContract.occasion("open:retro", Occasion.Reason.Open)
+        val first = inbox.occasion(room, InboxContract.Plugin, open, PostedAt, Integrity.Member)
+        val again = inbox.occasion(
+          room,
+          InboxContract.Plugin,
+          open.copy(reason = Occasion.Reason.Ahead),
+          Later,
+          Integrity.Outside
+        )
+        val other = PluginName.literal("other")
+        val theirs = inbox.occasion(room, other, open, Later, Integrity.Member)
+        (first.map(_.turnSeq), again, theirs.map(_.turnSeq)) ==>
+          (Right(TurnSeq.First), first, Right(TurnSeq.First.next))
+        store.written(room).map(_._1) ==> Vector(
+          Payload.Occasion(Occasion.Reason.Open, open.about, open.key),
+          Payload.Occasion(Occasion.Reason.Open, open.about, open.key)
+        )
+      }
+    }
+
     test("a post records nothing once its origin has anything, a repeat of itself included") {
       withInbox(Uncapped) { (inbox, store) =>
         val heard = Origin.Task("inbox", "posted-late")
@@ -979,6 +1029,20 @@ abstract class InboxContract extends TestSuite {
 }
 
 object InboxContract {
+
+  /** The plugin whose occasions the contract records. */
+  val Plugin: PluginName = PluginName.literal("meetings")
+
+  /** An occasion of `key` for `reason`, in a channel's top level, about the document version 7,
+    * lapsing at noon.
+    */
+  def occasion(key: String, reason: Occasion.Reason): Occasion = Occasion(
+    Origin.channel("T1", "occasioned"),
+    OccasionKey.of(key).getOrElse(throw new java.lang.AssertionError(key)),
+    reason,
+    DocumentVersionId.of(7).getOrElse(throw new java.lang.AssertionError("7")),
+    Instant.parse("2026-11-19T12:00:00Z")
+  )
 
   private def realm(within: String): Realm =
     Realm.of("slack", within).fold(e => throw new java.lang.AssertionError(e), identity)

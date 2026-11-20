@@ -1,9 +1,10 @@
 package grit.lifecycle.transcript
 
-import grit.core.id.{EntryId, ToolCallId}
+import grit.core.id.{DocumentVersionId, EntryId, ToolCallId}
+import grit.core.occasion.{Occasion, OccasionKey}
 import grit.core.period.{Cited, Ground}
 import grit.core.persona.Persona
-import grit.core.store.{Entry, Payload}
+import grit.core.store.{Entry, Payload, Speakers}
 import grit.core.visibility.Integrity
 
 import TestTranscripts.{called, heard, labelledBy, replied, result, said}
@@ -99,6 +100,23 @@ object LabelledTests extends TestSuite {
       labelledBy(Map(1L -> "Nick"))(posted, heard(1, "why this?")).text ==>
         fenced("[a1] Assistant: The engine's open issues.", "[h2] Nick: why this?")
       PeriodTranscript.overheard(Vector(posted, heard(1, "why this?"))) ==> true
+    }
+
+    test("an occasion is no line: a period of it and heard messages is still overheard") {
+      val occasion = TestTranscripts.entry(
+        0,
+        Payload.Occasion(
+          Occasion.Reason.Ahead,
+          DocumentVersionId.of(3).getOrElse(throw new java.lang.AssertionError("3")),
+          OccasionKey.of("ahead:standup").getOrElse(throw new java.lang.AssertionError("key"))
+        )
+      )
+      val period = Vector(occasion, heard(1, "see you there"))
+      (
+        labelledBy(Map(1L -> "Nick"))(period*).text,
+        PeriodTranscript.of(period, Speakers(Map.empty)),
+        PeriodTranscript.overheard(period)
+      ) ==> (fenced("[h1] Nick: see you there"), "Someone: see you there", true)
     }
 
     test(

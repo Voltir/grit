@@ -112,6 +112,17 @@ enum Origin {
     case Slack(_, _, _) | Room(_, _) | Tui(_, _) | Task(_, _) | Direct(_, _) => None
   }
 
+  /** The channel's top level its conversation is, or hangs under ([[Room]]): a channel's top
+    * level itself, and the channel of a thread or a legacy Slack thread; `None` for any other
+    * origin.
+    */
+  def topLevel: Option[Origin] = this match {
+    case Room(team, channel) => Some(Room(team, channel))
+    case Thread(team, channel, _) => Some(Room(team, channel))
+    case Slack(team, channel, _) => Some(Room(team, channel))
+    case Tui(_, _) | Task(_, _) | Direct(_, _) => None
+  }
+
   /** The place its conversation shares with its neighbours, within which it is stitched and
     * its strand read: a TUI session's directory, a Slack channel (`slack:{team}/{channel}`) for
     * its top level and each thread in it, a task's name (`task:{name}`), a direct message's person's

@@ -22,7 +22,7 @@ import grit.core.speech.{
   Venue
 }
 import grit.core.spend.{Day, Spend}
-import grit.core.store.{StoreError, Tx}
+import grit.core.store.{Origin, StoreError, Tx}
 import grit.core.triage.{Cues, CuesJson}
 
 /** [[SpeechStore]] over `grit.heard`, whose rows cascade from `grit.entries`, and
@@ -116,6 +116,36 @@ final class SqlSpeechStore extends SpeechStore {
           .map(as => Some(Reach(replyTo, as)))
     }
   }
+
+  def addressIn(room: Place, since: Instant)(using
+      Tx^
+  ): Either[StoreError, Option[(Origin, String)]] =
+    SqlStatements
+      .cleared(
+        s"""WITH ${SqlClearance.With}
+           |SELECT c.origin::text AS origin, h.room_to
+           |  FROM grit.heard h
+           |  JOIN grit.entries e ON e.id = h.entry_id
+           |  JOIN grit.conversations c ON c.id = h.conversation_id
+           |  JOIN grit.places r ON r.id = c.room_id
+           | WHERE h.room_to IS NOT NULL AND e.created_at >= ?
+           |   AND r.path = ARRAY(SELECT jsonb_array_elements_text(?::jsonb))
+           |   AND ${SqlClearance.conversation("c")}
+           | ORDER BY e.created_at DESC, e.seq DESC
+           | LIMIT 1""".stripMargin
+      ) { ps =>
+        ps.setObject(SqlClearance.Params + 1, OffsetDateTime.ofInstant(since, ZoneOffset.UTC))
+        ps.setString(SqlClearance.Params + 2, SqlPlaces.path(room))
+      }(rs => (rs.getString("origin"), rs.getString("room_to")))
+      .flatMap(_.headOption match {
+        case None => Right(None)
+        case Some((origin, to)) =>
+          SqlConversationStore
+            .readOrigin(ujson.read(origin))
+            .left
+            .map(why => StoreError.DatabaseError(s"a heard message's conversation: $why"))
+            .map(_.topLevel.map((_, to)))
+      })
 
   def spoken(since: Instant)(using tx: Tx^): Either[StoreError, Vector[Spoken]] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)

@@ -4,15 +4,29 @@ import java.time.Instant
 
 import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.Cost
+import grit.core.place.Place
 import grit.core.spend.{Day, Spend}
-import grit.core.store.{Entry, EntryStore, InMemoryUsageLedger, Payload, StoreError, Tx}
+import grit.core.store.{
+  ConversationStore,
+  Entry,
+  EntryStore,
+  InMemoryConversationStore,
+  InMemoryUsageLedger,
+  Origin,
+  Payload,
+  StoreError,
+  Tx
+}
 
 /** An in-memory [[SpeechStore]] for tests, keeping [[SpeechContract]], over the entries and
   * the usage ledger it is given: a posted reply's position is read from `entries`, and a
   * day's speech spend from `ledger`'s rows recorded that day for turns decided on.
   */
-final class InMemorySpeechStore(entries: EntryStore, ledger: InMemoryUsageLedger)
-    extends SpeechStore {
+final class InMemorySpeechStore(
+    entries: EntryStore,
+    ledger: InMemoryUsageLedger,
+    conversations: ConversationStore = new InMemoryConversationStore()
+) extends SpeechStore {
 
   /** Each turn's reach, with its heard entry, which it goes with (the SQL row cascades). */
   // Replaced whole by the store's own methods, which the test calls on its one thread.
@@ -41,6 +55,29 @@ final class InMemorySpeechStore(entries: EntryStore, ledger: InMemoryUsageLedger
       case None => Right(None)
       case Some((heard, kept)) => entries.get(heard).map(_.map(_ => kept))
     }
+
+  def addressIn(room: Place, since: Instant)(using
+      Tx^
+  ): Either[StoreError, Option[(Origin, String)]] =
+    reaches.toVector
+      .foldLeft[Either[StoreError, Vector[(Entry, Origin, String)]]](Right(Vector.empty)) {
+        case (found, (turn, (heard, reach))) =>
+          found.flatMap(sofar =>
+            reach.replyTo.flatMap(_.room).fold(Right(sofar)) { to =>
+              for {
+                entry <- entries.get(heard)
+                conversation <- conversations.get(turn.conversationId)
+              } yield (for {
+                e <- entry.filter(!_.createdAt.isBefore(since))
+                c <- conversation.filter(_.origin.room == room)
+              } yield (e, c.origin, to)).fold(sofar)(sofar :+ _)
+            }
+          )
+      }
+      .map(
+        _.maxByOption((e, _, _) => (e.createdAt, EntrySeq.value(e.seq)))
+          .flatMap((_, origin, to) => origin.topLevel.map((_, to)))
+      )
 
   def spoken(since: Instant)(using Tx^): Either[StoreError, Vector[Spoken]] =
     Right(

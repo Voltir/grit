@@ -14,6 +14,7 @@ import grit.core.id.{
   EntryId,
   Href,
   JobName,
+  PluginName,
   ScheduleId,
   SourceId,
   ToolCallId,
@@ -25,6 +26,7 @@ import grit.core.identity.Account
 import grit.core.inbox.{InboundId, Inbox, InboxError, Progress, Slotted}
 import grit.core.job.{InFlight, LastRun, Slot, Starting}
 import grit.core.message.Message
+import grit.core.occasion.Occasion
 import grit.core.speech.{Reach, SpeechStore}
 import grit.core.spend.{Budget, Spending}
 import grit.core.stitch.Opening
@@ -124,6 +126,19 @@ final class SqlInbox(
     SqlInbox
       .undirected(origin, "a direct message is never heard")
       .flatMap(_ => heard(origin, source, text, by, at, reach, link))
+
+  def occasion(
+      origin: Origin,
+      plugin: PluginName,
+      occasion: Occasion,
+      at: Instant,
+      believed: Integrity
+  ): Either[InboxError, TurnRef] =
+    SqlInbox
+      .undirected(origin, "an occasion begins no direct message")
+      .flatMap(_ =>
+        inTransaction(recorder.occasion(origin, plugin, occasion, at, believed)).flatMap(identity)
+      )
 
   private def heard(
       origin: Origin,

@@ -8,7 +8,16 @@ import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usa
 import grit.core.period.{CloseReason, Judgement, Probability, TestClosings}
 import grit.core.place.{Namespace, Place}
 import grit.core.spend.{Day, Spend}
-import grit.core.store.{Entry, EntryStore, Payload, PeriodStore, StoreError, Tx, UsageLedger}
+import grit.core.store.{
+  Entry,
+  EntryStore,
+  Origin,
+  Payload,
+  PeriodStore,
+  StoreError,
+  Tx,
+  UsageLedger
+}
 import grit.core.triage.{Cues, Kind, Tags}
 import grit.core.visibility.Integrity
 
@@ -38,6 +47,9 @@ abstract class SpeechContract extends TestSuite {
   protected def conversation(name: String): ConversationId
 
   /** The day a row [[ledger]] records now falls on. */
+  /** The conversation of `origin`, created when new. */
+  protected def conversationAt(origin: Origin): ConversationId
+
   protected def today: Day
 
   /** The cues [[speech]] kept with its decision on `turn`, read back as its readers read
@@ -78,6 +90,25 @@ abstract class SpeechContract extends TestSuite {
       Integrity.Member,
       Cues.Empty
     )
+
+  /** A heard message, `id`, said at `at` as `origin`'s conversation's next turn, its reach
+    * `to`: that turn.
+    */
+  private def heardAt(origin: Origin, at: Instant, to: ReplyTo, id: String): TurnRef = {
+    val c = conversationAt(origin)
+    val turn = transaction {
+      val n = right(entries.lockNext(c))
+      right(periods.openFor(c, n.turnSeq, at))
+      right(
+        entries.insert(
+          Entry(EntryId(id), c, n.turnSeq, None, n.seq, Payload.Heard("hi"), at, Integrity.Member)
+        )
+      )
+      TurnRef(c, n.turnSeq)
+    }
+    transaction(speech.heard(turn, Reach(Some(to), Set.empty))) ==> Right(())
+    turn
+  }
 
   /** A heard message as `c`'s next turn, decided on at `at` as `decision` does to it. */
   private def decide(
@@ -406,6 +437,29 @@ abstract class SpeechContract extends TestSuite {
         Vector(Venue.Thread, Venue.Thread, Venue.Thread, Venue.Room("C//3")),
         Vector(Venue.Thread, Venue.Thread, Venue.Room("C//3"))
       )
+    }
+
+    test(
+      "addressIn is the newest reach with a room address in the room since `since`, and its top-level origin"
+    ) {
+      val top = Origin.Room("T", "address-newest")
+      val thread = Origin.Thread("T", "address-newest", "1.0")
+      val elsewhere = Origin.Room("T", "address-elsewhere")
+      heardAt(thread, At, ReplyTo("C/1.0", Some("C//thread")), "address-newest:1")
+      heardAt(top, At.plusSeconds(60), ReplyTo("C/2.0", Some("C//top")), "address-newest:2")
+      heardAt(top, At.plusSeconds(120), ReplyTo("C/3.0", None), "address-newest:3")
+      heardAt(elsewhere, At.plusSeconds(180), ReplyTo("D/1", Some("D//")), "address-elsewhere:1")
+      heardAt(thread, At.plusSeconds(30), ReplyTo("C/1.0", Some("C//older")), "address-newest:4")
+      transaction(speech.addressIn(top.room, At)) ==> Right(Some((top, "C//top")))
+    }
+
+    test("addressIn finds none older than since, and the top level of a thread heard since") {
+      val top = Origin.Room("T", "address-since")
+      val thread = Origin.Thread("T", "address-since", "1.0")
+      heardAt(top, At, ReplyTo("C/1.0", Some("C//old")), "address-since:1")
+      transaction(speech.addressIn(top.room, At.plusSeconds(1))) ==> Right(None)
+      heardAt(thread, At.plusSeconds(5), ReplyTo("C/1.0", Some("C//new")), "address-since:2")
+      transaction(speech.addressIn(top.room, At.plusSeconds(1))) ==> Right(Some((top, "C//new")))
     }
 
     test("a heard message's reach keeps its room address beside its thread's") {

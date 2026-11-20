@@ -13,6 +13,7 @@ import grit.core.id.{
   TurnSeq
 }
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.occasion.{Occasion, OccasionKey}
 import grit.core.period.{CloseReason, Closing, Probability, TestClosings}
 import grit.core.place.Place
 
@@ -41,6 +42,12 @@ object PayloadJsonTests extends TestSuite {
       .copy(stop = StopReason.EndTurn, usage = Usage(Tokens(1), Tokens(1), Tokens.Zero, None)),
     Message.ToolResult(ToolCallId("c1"), "no matches", isError = true),
     assistant.copy(upstream = Some("Fireworks"))
+  )
+
+  private val occasion: Payload = Payload.Occasion(
+    Occasion.Reason.Ahead,
+    DocumentVersionId.of(7).getOrElse(throw new java.lang.AssertionError("7")),
+    OccasionKey.of("ahead:standup:2026-11-19").getOrElse(throw new java.lang.AssertionError("key"))
   )
 
   // These pin the stored form: every entry row is written in it, so a change
@@ -123,6 +130,21 @@ object PayloadJsonTests extends TestSuite {
       val stored = """{"kind":"continuation","task":7,"turn":2}"""
       PayloadJson.write(note).render() ==> stored
       PayloadJson.read(ujson.read(stored)) ==> Right(note)
+    }
+
+    test("an occasion is stored by its reason, its document's version and its key, and read back") {
+      val note = occasion
+      val stored =
+        """{"kind":"occasion","reason":"ahead","about":7,"key":"ahead:standup:2026-11-19"}"""
+      (
+        PayloadJson.write(note).render(),
+        PayloadJson.read(ujson.read(stored)),
+        PayloadJson.read(ujson.read(stored.replace("ahead\",", "later\","))).isLeft
+      ) ==> (stored, Right(note), true)
+    }
+
+    test("an occasion says nothing and counts nothing spoken") {
+      (occasion.said, occasion.spoken) ==> (None, 0L)
     }
 
     test("a continuation after a failed check keeps its command, exit code and output") {

@@ -2,8 +2,18 @@ package grit.dbos.engine
 
 import java.time.Instant
 
-import grit.core.id.{ConversationId, EntryId, EntrySeq, PeriodSeq, ToolCallId, TurnRef, TurnSeq}
+import grit.core.id.{
+  ConversationId,
+  DocumentVersionId,
+  EntryId,
+  EntrySeq,
+  PeriodSeq,
+  ToolCallId,
+  TurnRef,
+  TurnSeq
+}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.occasion.{Occasion, OccasionKey}
 import grit.core.period.{Change, Cited, CloseReason, Closing, Flows, Section, TestClosings}
 import grit.core.place.Place
 import grit.core.store.{Entry, EntrySearch, OpenPeriod, Origin, Payload, Tx}
@@ -171,6 +181,19 @@ object SearchLiveTests extends TestSuite {
         )
       )
       find(c, "freeze thursday").map(ids) ==> Right(Vector("draft:e0"))
+    }
+
+    test("an occasion is never searched: its key is no one's words") {
+      val c = conversation(
+        "occasion",
+        Payload.Occasion(
+          Occasion.Reason.Ahead,
+          DocumentVersionId.of(3).getOrElse(throw new java.lang.AssertionError("3")),
+          OccasionKey.of("ahead:offsite").getOrElse(throw new java.lang.AssertionError("key"))
+        ),
+        said("the offsite is on Friday")
+      )
+      find(c, "offsite").map(ids) ==> Right(Vector("occasion:e1"))
     }
 
     test("a limit smaller than the matches keeps the best") {

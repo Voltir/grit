@@ -3,8 +3,9 @@ package grit.core.speech
 import java.time.Instant
 
 import grit.core.id.{ConversationId, TurnRef, TurnSeq}
+import grit.core.place.Place
 import grit.core.spend.{Day, Spend}
-import grit.core.store.{StoreError, Tx}
+import grit.core.store.{Origin, StoreError, Tx}
 
 /** Where heard messages could be answered, and grit's decisions on each: kept as long as its
   * period's usage is (the ledger), so the rates and the day's speech spend count every one, and
@@ -22,6 +23,14 @@ trait SpeechStore {
     * gone or was heard before reach was kept.
     */
   def reach(turn: TurnRef)(using Tx^): Either[StoreError, Option[Reach]]
+
+  /** The channel top level ([[Origin.topLevel]]) of the newest heard message in `room` said at
+    * or after `since` whose reach has a room address ([[ReplyTo.room]]), with that address;
+    * `None` when there is none this transaction reads.
+    */
+  def addressIn(room: Place, since: Instant)(using
+      Tx^
+  ): Either[StoreError, Option[(Origin, String)]]
 
   /** Every unprompted turn decided at or after `since`, oldest first, at its stage, its venue
     * and its heard message's thread ([[Spoken]]): none answered as said to grit ([[Decision.Answering]]), which, as an addressed

@@ -8,6 +8,7 @@ import grit.core.id.{
   EntrySeq,
   Href,
   JobName,
+  PluginName,
   ScheduleId,
   SourceId,
   ToolCallId,
@@ -18,6 +19,7 @@ import grit.core.id.{
 import grit.core.identity.{Account, Principal, TestAccounts}
 import grit.core.job.{InFlight, InMemorySchedules, LastRun, Slot, Starting}
 import grit.core.message.Message
+import grit.core.occasion.{Occasion, OccasionKey}
 import grit.core.place.Place
 import grit.core.speech.{InMemorySpeechStore, Reach}
 import grit.core.spend.Budget
@@ -91,8 +93,8 @@ final class InMemoryInbox(
   /** The schedules whose slots [[startSlot]] starts. */
   val schedules: InMemorySchedules = new InMemorySchedules(records = records)
 
-  /** Where each heard message could be answered, over [[entries]] and [[ledger]]. */
-  val speech: InMemorySpeechStore = new InMemorySpeechStore(entries, ledger)
+  /** Where each heard message could be answered, over [[entries]], [[ledger]] and [[conversations]]. */
+  val speech: InMemorySpeechStore = new InMemorySpeechStore(entries, ledger, conversations)
 
   /** The turns started, oldest first; a turn started twice is here once. */
   // Replaced whole by the fake's own methods, which the test calls on its one thread.
@@ -229,6 +231,27 @@ final class InMemoryInbox(
           case _ =>
             Left(InboxError.Invalid("a task is continued only by whoever wrote its first message"))
         }
+
+  def occasion(
+      origin: Origin,
+      plugin: PluginName,
+      occasion: Occasion,
+      at: Instant,
+      believed: Integrity
+  ): Either[InboxError, TurnRef] =
+    if (origin.place.direct) Left(InboxError.Invalid("an occasion begins no direct message"))
+    else
+      recorded(
+        origin,
+        OccasionKey.source(plugin, occasion.key),
+        Payload.Occasion(occasion.reason, occasion.about, occasion.key),
+        Account.Grit,
+        labelOf(origin),
+        Some(believed),
+        at,
+        capped = false,
+        None
+      )
 
   def hear(
       origin: Origin,

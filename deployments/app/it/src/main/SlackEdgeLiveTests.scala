@@ -159,6 +159,13 @@ object SlackEdgeLiveTests extends TestSuite {
         reason: grit.core.store.WentOn,
         by: Account
     ): Either[InboxError, TurnRef] = inner.continued(origin, source, task, turn, reason, by)
+    def occasion(
+        origin: Origin,
+        plugin: grit.core.id.PluginName,
+        occasion: grit.core.occasion.Occasion,
+        at: java.time.Instant,
+        believed: grit.core.visibility.Integrity
+    ): Either[InboxError, TurnRef] = inner.occasion(origin, plugin, occasion, at, believed)
     def ingest(
         origin: Origin,
         source: SourceId,

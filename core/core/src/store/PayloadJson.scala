@@ -14,6 +14,7 @@ import grit.core.id.{
 }
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.CatalogJson
+import grit.core.occasion.{Occasion, OccasionKey}
 import grit.core.period.{CloseReason, ClosingJson, Probability}
 import grit.core.place.Place
 import grit.std.either.Traversal.traverse
@@ -41,6 +42,13 @@ object PayloadJson {
           o("reason") = r
       }
       o
+    case Payload.Occasion(reason, about, key) =>
+      ujson.Obj(
+        "kind" -> "occasion",
+        "reason" -> occasionReason(reason),
+        "about" -> ujson.Num(DocumentVersionId.value(about).toDouble),
+        "key" -> OccasionKey.value(key)
+      )
     case Payload.Summary(text) => ujson.Obj("kind" -> "summary", "text" -> text)
     case Payload.Query(text) => ujson.Obj("kind" -> "query", "text" -> text)
     case Payload.Window(entries, recalled, nearby, documents, pieces, carry, brief, digest, task) =>
@@ -104,6 +112,12 @@ object PayloadJson {
   /** The stored name of a [[CloseReason]]: the same in a closing entry, a period's row and a
     * close's journal.
     */
+  /** How an occasion's reason is written: `ahead` or `open`. */
+  private def occasionReason(reason: Occasion.Reason): String = reason match {
+    case Occasion.Reason.Ahead => "ahead"
+    case Occasion.Reason.Open => "open"
+  }
+
   def reasonName(reason: CloseReason): String = reason match {
     case CloseReason.Resolved(_) => "resolved"
     case CloseReason.Lapsed => "lapsed"
@@ -160,6 +174,18 @@ object PayloadJson {
             turn <- long(o, "turn").filterOrElse(_ >= 2, "a continuation's turn is 2 or more")
             reason <- o.value.get("reason").fold(Right(WentOn.AtLimit))(readWentOn)
           } yield Payload.Continuation(TurnSeq(task), turn.toInt, reason)
+        case "occasion" =>
+          for {
+            reason <- str(o, "reason").flatMap(r =>
+              Occasion.Reason.values
+                .find(occasionReason(_) == r)
+                .toRight(s"no occasion's reason is $r")
+            )
+            about <- long(o, "about").flatMap(
+              DocumentVersionId.of(_).toRight("a document version is a whole number from 1")
+            )
+            key <- str(o, "key").flatMap(k => OccasionKey.of(k).toRight(s"no occasion's key is $k"))
+          } yield Payload.Occasion(reason, about, key)
         case "summary" => str(o, "text").map(Payload.Summary(_))
         case "query" => str(o, "text").map(Payload.Query(_))
         case "window" =>

@@ -38,6 +38,9 @@ object SqlSpeechTests extends SpeechContract {
   protected def conversation(name: String): ConversationId =
     LiveDb.conversation(config, Origin.Task("contract", name)).id
 
+  protected def conversationAt(origin: Origin): ConversationId =
+    LiveDb.conversation(config, origin).id
+
   // A row is recorded at the transaction's time, now.
   protected def today: Day = Day.at(Instant.now(), ZoneOffset.UTC)
 

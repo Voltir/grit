@@ -2,10 +2,11 @@ package grit.dbos.engine
 
 import java.time.Instant
 
-import grit.core.id.{EntryId, EntrySeq, Href, SourceId, TriageRef, TurnRef, TurnSeq}
+import grit.core.id.{EntryId, EntrySeq, Href, PluginName, SourceId, TriageRef, TurnRef, TurnSeq}
 import grit.core.identity.Account
 import grit.core.inbox.{InboundId, InboxError}
 import grit.core.message.Message
+import grit.core.occasion.{Occasion, OccasionKey}
 import grit.core.speech.{Reach, SpeechStore}
 import grit.core.spend.{Budget, Spending}
 import grit.core.stitch.Opening
@@ -199,6 +200,30 @@ private[engine] final class Recorder(
   /** The label a conversation an edge's message begins from `origin` is created at. */
   def roomOf(origin: Origin)(using Tx^): Either[StoreError, Label] =
     SqlRooms.label(origin)
+
+  /** `occasion`, `plugin`'s, recorded at `at` as [[grit.core.inbox.Inbox.occasion]] says, grit's
+    * own, believed at `believed`, never refused over the cap.
+    */
+  def occasion(
+      origin: Origin,
+      plugin: PluginName,
+      occasion: Occasion,
+      at: Instant,
+      believed: Integrity
+  )(using Tx^): Either[StoreError, Either[InboxError, TurnRef]] =
+    roomOf(origin).flatMap(label =>
+      recorded(
+        origin,
+        OccasionKey.source(plugin, occasion.key),
+        Payload.Occasion(occasion.reason, occasion.about, occasion.key),
+        Account.Grit,
+        label,
+        Some(believed),
+        at,
+        capped = false,
+        None
+      )
+    )
 
   /** `payload` recorded as the first entry of a new turn, in the transaction open, dated `at`
     * as the period it opens is, its conversation created at `label` if it is new, believed at

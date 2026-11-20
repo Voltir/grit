@@ -25,6 +25,8 @@ In dependency order, each with the core packages it imports:
 - **`place`**: where conversations happen (ADR 0013): one containment tree, one namespace per
   source, and the weight a window gives its own conversation against the rest. Imports
   nothing in core.
+- **`occasion`**: a job's ground for grit to post unasked at a room's top level (ADR 0067), and
+  the key it is posted at most once under. ← `id`, `place`
 - **`identity`**: who someone is across sources (ADR 0032): accounts, the realms that name them,
   what a trusted realm attests, and the person the store resolves them to. An account is never
   an email address. ← `id`
@@ -51,7 +53,7 @@ In dependency order, each with the core packages it imports:
 - **`store`**: what is kept, and the transaction it is kept under: `Tx` is opened for a subject,
   at the clearance it resolves to (ADRs 0030, 0031); the stores, each a trait `grit.dbos`
   implements. ← `id`, `place`, `identity`, `visibility`, `message`, `agenda`, `model`, `period`,
-  `retention`, `prompt`
+  `retention`, `prompt`, `occasion`
 - **`route`**: which of a role's pairs a call is made with (ADR 0031): the pins cleared for what
   a transaction knows, the pin a wanted grade picks among them, the narrowing to a day's ceiling
   and the raising to a room's baseline, and what a turn says when none is. ← `model`, `store`,
@@ -74,7 +76,7 @@ In dependency order, each with the core packages it imports:
   `model`, `period`, `spend`, `classify`, `triage`
 - **`speech`**: whether grit speaks where it was not addressed (ADR 0022); never unprompted to
   a message believed below `Outside`. ← `id`, `identity`, `visibility`, `message`, `period`,
-  `place`, `spend`, `store`, `triage`
+  `place`, `spend`, `store`, `triage`, `occasion`
 - **`durable`**: steps that survive a crash, and waits for a message; a workflow's steps as a
   flow of pure step values, run over `Durable` and read over a recorded history (ADR 0038). Not
   the `flow` package below, whose values carry integrity. ← `id`, `visibility`, `store`
@@ -142,7 +144,7 @@ In dependency order, each with the core packages it imports:
 - **`job`**: jobs and their schedules (ADRs 0021, 0029). ← `id`, `clock`, `visibility`,
   `message`, `store`, `document`, `flow`, `act`
 - **`inbox`**: the `Inbox` trait the engine takes messages through. ← `id`, `identity`,
-  `message`, `store`, `spend`, `triage`, `speech`, `approval`, `job`
+  `message`, `store`, `spend`, `triage`, `speech`, `approval`, `job`, `occasion`
 - **`plugin`**: features a deployment turns on (ADR 0027), each a pure bundle of contributions
   to core's points; one plugin reads another's documents only through what it exports. ← `id`,
   `period`, `store`, `document`, `need`, `job`, `tool`

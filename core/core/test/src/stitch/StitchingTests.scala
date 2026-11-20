@@ -2,9 +2,19 @@ package grit.core.stitch
 
 import scala.concurrent.duration.*
 
-import grit.core.id.{ConversationId, EntryId, EntrySeq, PeriodSeq, StitchRef, TurnRef, TurnSeq}
+import grit.core.id.{
+  ConversationId,
+  DocumentVersionId,
+  EntryId,
+  EntrySeq,
+  PeriodSeq,
+  StitchRef,
+  TurnRef,
+  TurnSeq
+}
 import grit.core.identity.Account
 import grit.core.message.Message
+import grit.core.occasion.{Occasion, OccasionKey}
 import grit.core.period.{CloseReason, Probability, TestClosings}
 import grit.core.place.Directory
 import grit.core.store.{Conversation, Entry, EntrySearch, Origin, Payload, Speakers}
@@ -76,6 +86,16 @@ object StitchingTests extends TestSuite {
         Opening.of(session, said, turn(0)),
         Opening.of(replied, Vector.empty, turn(0))
       ) ==> Vector(None, None, None, None)
+    }
+
+    test("an occasion opens no exchange") {
+      val occasion = Payload.Occasion(
+        Occasion.Reason.Open,
+        DocumentVersionId.of(3).getOrElse(throw new java.lang.AssertionError("3")),
+        OccasionKey.of("open:retro").getOrElse(throw new java.lang.AssertionError("key"))
+      )
+      val (c, entries) = kept(Origin.Slack("T", "C1", "2.0"), occasion, Payload.Heard("monday?"))
+      Opening.of(c, entries, turn(0)) ==> None
     }
 
     test("a lexical match a week old is offered past two more recent exchanges") {
