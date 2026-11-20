@@ -1,5 +1,7 @@
 package grit.act.moves
 
+import java.time.ZoneId
+
 import grit.act.phase.Faults
 import grit.core.act.{Answer, Called, Declassifying, Dreaming, Pieced, Sorting}
 import grit.core.classify.{Question, Request}
@@ -325,10 +327,11 @@ object MovesJournal {
       system: String,
       chars: Int,
       documentChars: Int,
-      schema: JsonSchema
-  ): String = (seen, shown) match {
-    case (Vector(one), Vector()) => strand(one, system, chars, schema)
-    case _ => v2(strandsForm(seen, shown, system, chars, documentChars, schema))
+      schema: JsonSchema,
+      days: Option[ZoneId] = None
+  ): String = (seen, shown, days) match {
+    case (Vector(one), Vector(), None) => strand(one, system, chars, schema)
+    case _ => v2(strandsForm(seen, shown, system, chars, documentChars, schema, days))
   }
 
   /** As [[sameAsk]], for a summary ([[strands]]). */
@@ -339,10 +342,11 @@ object MovesJournal {
       system: String,
       chars: Int,
       documentChars: Int,
-      schema: JsonSchema
+      schema: JsonSchema,
+      days: Option[ZoneId] = None
   ): Boolean = recorded match {
     case s"v1:$_" | s"v2:$_" =>
-      recorded == strands(seen, shown, system, chars, documentChars, schema)
+      recorded == strands(seen, shown, system, chars, documentChars, schema, days)
     case _ => false
   }
 
@@ -650,14 +654,17 @@ object MovesJournal {
       system: String,
       chars: Int,
       documentChars: Int,
-      schema: JsonSchema
+      schema: JsonSchema,
+      days: Option[ZoneId] = None
   ): String =
-    "strands" + count(seen.size) + seen.map { s =>
-      text(ConversationId.value(s.root)) + text(StrandDigest.value(s.digest)) +
-        text(s.asOf.toString) + span(s)
-    }.mkString + count(shown.size) + shown
-      .map(v => text(DocumentVersionId.value(v).toString))
-      .mkString +
+    // A dated summary names its zone; an undated one's form is as it was.
+    days.fold("")(z => "days" + text(z.getId)) +
+      "strands" + count(seen.size) + seen.map { s =>
+        text(ConversationId.value(s.root)) + text(StrandDigest.value(s.digest)) +
+          text(s.asOf.toString) + span(s)
+      }.mkString + count(shown.size) + shown
+        .map(v => text(DocumentVersionId.value(v).toString))
+        .mkString +
       count(chars) + count(documentChars) + text(system) + text(ujson.write(schema.json))
 
   private def v1(form: String): String = "v1:" + sha(form)

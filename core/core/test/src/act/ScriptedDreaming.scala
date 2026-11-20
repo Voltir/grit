@@ -81,7 +81,8 @@ final class ScriptedDreaming(
       shown: Vector[DocumentVersionId],
       summary: Tainted[Dreaming.Summary[T]]
   ): Either[MoveError, Option[Dreaming.Summarised[T]]] = {
-    val Dreaming.Summary(system, chars, documentChars, reply) = Trusted.asIs(summary).extract
+    val Dreaming.Summary(system, chars, documentChars, reply, days) =
+      Trusted.asIs(summary).extract
     val readable = plugin +: needs.plugins
     val read = for {
       excerpts <- sequence(seen.map(s => reads.excerpts.excerpt(s, chars)(using opened)))
@@ -97,7 +98,7 @@ final class ScriptedDreaming(
         val believed = (strands.map(_.integrity) ++ docs.map(_._1.integrity))
           .foldLeft(summary.integrity.meet(integrity))(_.meet(_))
         val text = Dreaming.shown(
-          strands.map(_.excerpt.text),
+          strands.map(st => Dreaming.excerpted(st.excerpt, days)),
           docs.map((d, label) => (label, d.text)),
           documentChars
         )

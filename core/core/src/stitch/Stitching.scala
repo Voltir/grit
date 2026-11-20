@@ -1,6 +1,6 @@
 package grit.core.stitch
 
-import java.time.{Duration as JDuration, Instant}
+import java.time.{Duration as JDuration, Instant, ZoneId}
 
 import scala.concurrent.duration.FiniteDuration
 
@@ -290,6 +290,26 @@ object Stitching {
     def text: String =
       (opening.map(_.shown).toVector ++ Option.when(left > 0)("…") ++ latest.map(_.shown))
         .mkString("\n")
+
+    /** [[text]] with a line naming the day, in `zone`, before the first message it shows of each
+      * day (`yyyy-mm-dd:`); the `…` line is of no day. Those lines are not counted in what
+      * [[within]] fits.
+      */
+    def dated(zone: ZoneId): String = {
+      val shown: Vector[Option[Line]] =
+        opening.toVector.map(Some(_)) ++ Option.when(left > 0)(None) ++ latest.map(Some(_))
+      shown
+        .foldLeft((Vector.empty[String], Option.empty[java.time.LocalDate])) {
+          case ((out, last), Some(l)) =>
+            val day = l.at.atZone(zone).toLocalDate
+            // Draft wording, for Nick: the day line.
+            val named = if (last.contains(day)) out else out :+ s"$day:"
+            (named :+ l.shown, Some(day))
+          case ((out, last), None) => (out :+ "…", last)
+        }
+        ._1
+        .mkString("\n")
+    }
 
     /** This with a [[text]] of at most `chars`: the newest of `latest` while they fit, the rest
       * counted in `left`; when none fits, `opening` cut at a word with `…`, keeping its speaker;

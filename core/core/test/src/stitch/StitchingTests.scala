@@ -414,6 +414,26 @@ object StitchingTests extends TestSuite {
         s"$openLine\nDavid: first reply here\nDavid: second reply\nDavid: lol"
     }
 
+    test("a dated excerpt names each day it shows before that day's first message, in its zone") {
+      // Now is 2026-09-30 22:32 UTC: 2026-10-01 in Auckland, 2026-09-30 in UTC.
+      val opening = heard("a", "can we meet Monday?", 2 * 86_400)
+      val strand = Vector(
+        heard("b", "yes, at nine", 2 * 86_400 - 60),
+        heard("c", "moved to Tuesday", 600),
+        heard("d", "fine", 0)
+      )
+      val names = Speakers((opening +: strand).map(_.entry.id -> "Ana").toMap)
+      val cut = Stitching.excerpt(Some(opening), strand, names, 1_000)
+      (
+        cut.dated(java.time.ZoneOffset.UTC),
+        cut.dated(java.time.ZoneId.of("Pacific/Auckland")).linesIterator.toVector.head
+      ) ==> (
+        "2026-09-28:\nAna: can we meet Monday?\nAna: yes, at nine\n" +
+          "2026-09-30:\nAna: moved to Tuesday\nAna: fine",
+        "2026-09-29:"
+      )
+    }
+
     test(
       "a message over MessageChars is cut at a word's end with …, for the classifier and a reader"
     ) {

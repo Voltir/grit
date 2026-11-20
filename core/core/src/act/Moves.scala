@@ -1,6 +1,6 @@
 package grit.core.act
 
-import java.time.Instant
+import java.time.{Instant, ZoneId}
 
 import grit.core.classify.{Ask, Request, StateJson}
 import grit.core.document.{
@@ -23,7 +23,7 @@ import grit.core.provider.ModelRequest
 import grit.core.sanitise.{IntegrityTree, Reason, Suspicions, Verdict, Vetted}
 import grit.core.schema.{Conforming, JsonSchema, Typed}
 import grit.core.screen.{Bench, Screen, Screened}
-import grit.core.stitch.{Strand, StrandExcerpts, StrandShelf}
+import grit.core.stitch.{Stitching, Strand, StrandExcerpts, StrandShelf}
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Outcome, ToolName}
 import grit.core.visibility.{DeclassificationPolicy, Label}
@@ -532,9 +532,21 @@ object Dreaming {
   final case class Sorted[R](asked: Asked[R], among: Vector[DocumentVersionId])
 
   /** A summary's ask: `system`; the most characters of each strand shown (`chars`) and of each
-    * document (`documentChars`); and the reply it reads as.
+    * document (`documentChars`); the reply it reads as; and, when `days` names a zone, each
+    * strand shown with the day of its messages in it ([[grit.core.stitch.Stitching.Excerpt.dated]]).
     */
-  final case class Summary[T](system: String, chars: Int, documentChars: Int, reply: Typed[T])
+  final case class Summary[T](
+      system: String,
+      chars: Int,
+      documentChars: Int,
+      reply: Typed[T],
+      days: Option[ZoneId] = None
+  )
+
+  /** `e` as a summary shows a strand: [[grit.core.stitch.Stitching.Excerpt.text]], dated in
+    * `days` when it names a zone ([[Summary.days]]).
+    */
+  def excerpted(e: Stitching.Excerpt, days: Option[ZoneId]): String = days.fold(e.text)(e.dated)
 
   /** The user message a summary is asked in: each of `excerpts` fenced in `<discussion>`, then
     * each of `documents` in `<document label="{label}">`, its text's head within

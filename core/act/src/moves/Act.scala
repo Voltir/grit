@@ -1,6 +1,6 @@
 package grit.act.moves
 
-import java.time.Instant
+import java.time.{Instant, ZoneId}
 
 import grit.act.phase.{
   Asking,
@@ -153,7 +153,7 @@ private[moves] object Act {
   ) extends Acted
 
   /** The summary `name` of `seen` and `shown`, after `system`: the strands' messages read
-    * through `excerpts`, each within `chars`; then each of `shown` that `documents` reads and
+    * through `excerpts`, each within `chars`, dated in `days` when it names a zone; then each of `shown` that `documents` reads and
     * whose plugin is one of `readable`, its head within `documentChars`; its reply read by
     * `reply`, under `digest`.
     */
@@ -166,6 +166,7 @@ private[moves] object Act {
       chars: Int,
       documentChars: Int,
       reply: Typed[T],
+      days: Option[ZoneId],
       excerpts: StrandExcerpts,
       documents: DocumentSearch,
       readable: Vector[PluginName],
@@ -438,7 +439,7 @@ private[moves] object Act {
           case Right(None) => AskMade.Refused(AskMade.Kind.StrandChanged, Changed, s.digest)
           case Right(Some((strands, documents))) =>
             val text = Dreaming.shown(
-              strands.map(_.excerpt.text),
+              strands.map(st => Dreaming.excerpted(st.excerpt, s.days)),
               documents.map((d, label) => (label, d.text)),
               s.documentChars
             )

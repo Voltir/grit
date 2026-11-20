@@ -55,7 +55,9 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
   // 10: a meeting's lead drops a line repeating its head; an open's write ask is told its topic
   // is new; an undated meeting is never pinned (its scan's `meetings` hold no `newest`); a write
   // reply holding call markup is refused.
-  val version: Int = 10
+  // 11: a write ask shows each message under its day, and a meeting's day may be reckoned from
+  // a relative one; a meeting whose day has passed is offered to no strand said after it.
+  val version: Int = 11
 
   def write(params: TopicParams): ujson.Value = TopicParams.write(params)
 
@@ -192,16 +194,19 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
         st: Strand.Digested,
         topics: Vector[(TopicKey, DocumentVersionId)]
     ): Sorting.Among[TopicDream.Placed] = {
-      val versions = topics.toMap
+      val said = LocalDate.ofInstant(st.touched, zone)
+      val passed = scan.passedBy(said)
+      val offered = topics.filterNot((k, _) => passed.contains(k))
+      val versions = offered.toMap
       val short = st.chars < TopicDream.ShortChars
-      val newest = if (short) Vector.empty else topics.take(TopicDream.Newest).map(_._1)
-      val meetings = scan.meetingsNear(LocalDate.ofInstant(st.touched, zone))
+      val newest = if (short) Vector.empty else offered.take(TopicDream.Newest).map(_._1)
+      val meetings = scan.meetingsNear(said)
       val pinned = (byRef ++ meetings ++ scan.nearOf(st.id) ++ newest).distinct.flatMap(k =>
         versions.get(k).map(v => (TopicDream.Placed.Into(k, v), v))
       )
       Sorting.Among(
         pinned,
-        into(topics),
+        into(offered),
         if (short) TopicDream.ShortFill else TopicDream.Fill - pinned.size
       )
     }
@@ -349,7 +354,9 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
       TopicDream.Chars,
       // The whole topic, bounded by Topic.Passages.
       Int.MaxValue,
-      TopicDream.WriteReply
+      TopicDream.WriteReply,
+      // Each message's day is shown, so a relative day can be reckoned from it.
+      days = Some(zone)
     )
     moves.summarise(
       CardMoves.numbered(names._1, i),
@@ -637,7 +644,9 @@ object TopicDream {
                                          "`proposed` until a day is agreed, `planned` once it is, " +
                                          "`held` once the messages say it took place; its `day` " +
                                          "(yyyy-mm-dd) and `start` (HH:MM) when the messages fix " +
-                                         "them, else null; and `who`: everyone taking part, those " +
+                                         "them, a weekday or a relative day (\"Monday\", " +
+                                         "\"today\", \"tomorrow\") reckoned from the day it was " +
+                                         "said, else null; and `who`: everyone taking part, those " +
                                          "the topic already names included, as the messages write " +
                                          "them, else null."
                                      } else "Give `meeting` null.")
