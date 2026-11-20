@@ -5,16 +5,14 @@ import scala.quoted.{Expr, Quotes}
 import grit.std.literal.Literal
 
 /** A plugin's wording of an occasion: why grit posts, and what to write; 1 to 2,000 characters,
-  * not blank. A plugin makes one only by [[OccasionBrief.literal]], from a constant in its code;
-  * core's reader of stored entries makes one from what it recorded.
+  * not blank. A plugin makes one only from a constant ([[OccasionBrief.literal]]); core reads
+  * back those it stored.
   */
 opaque type OccasionBrief = String
 
 object OccasionBrief {
 
-  /** `text` as a brief. Text [[read]] refuses does not compile, with its reason; nor does text
-    * that is not a constant.
-    */
+  /** `text` as a brief; text [[read]] refuses, or that is not a constant, does not compile. */
   inline def literal(inline text: String): OccasionBrief = ${ literalOf('text) }
 
   private def literalOf(text: Expr[String])(using Quotes): Expr[OccasionBrief] =

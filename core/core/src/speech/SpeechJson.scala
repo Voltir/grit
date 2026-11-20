@@ -61,50 +61,35 @@ object SpeechJson {
     * fraction dropped.
     */
   def writeSilence(s: Silence): ujson.Value = {
-    val detail: Vector[(String, ujson.Value)] = s match {
-      case Silence.Off | Silence.NoAddress | Silence.OverBudget => Vector.empty
-      case Silence.Below(at) => Vector("at" -> ujson.Str(Integrity.written(at)))
-      case Silence.Stale(age) => Vector("seconds" -> ujson.Num(age.toSeconds.toDouble))
-      case Silence.Continued(by) => Vector("by" -> ujson.Str(EntryId.value(by)))
-      case Silence.Unweighed(why) => Vector("why" -> ujson.Str(why))
-      case Silence.Gated(first, rest) =>
-        Vector("failed" -> ujson.Arr.from((first +: rest).map(GateJson.writeFailed)))
-      case Silence.Unasked(reading) => Vector("reading" -> GateJson.writeReading(reading))
-      case Silence.AskedOf(other) => Vector("other" -> ujson.Str(Account.written(other)))
-      case Silence.Spoken(by) => Vector("by" -> ujson.Str(EntryId.value(by)))
-      case Silence.Unanswered(previous) =>
-        Vector("previous" -> ujson.Str(WorkflowId.value(previous.workflowId)))
-      case Silence.Lapsed(until) => Vector("until" -> ujson.Str(until.toString))
-      case Silence.Occasions(n) => Vector("n" -> ujson.Num(n))
-      case Silence.Thread(n) => Vector("n" -> ujson.Num(n))
-      case Silence.Room(n) => Vector("n" -> ujson.Num(n))
-      case Silence.Deployment(n) => Vector("n" -> ujson.Num(n))
-      case Silence.OverSpeechCap(spent, cap) =>
-        Vector("spent" -> writeSpend(spent), "cap" -> ujson.Str(cap.usd.toString))
-    }
-    kind(silenceName(s), detail*)
+    val (name, detail) = named(s)
+    kind(name, detail*)
   }
 
   /** The stored name of `why`'s kind, under `kind` in [[writeSilence]]'s form. */
-  def silenceName(why: Silence): String = why match {
-    case Silence.Off => "off"
-    case Silence.NoAddress => "no_address"
-    case Silence.Below(_) => "below_outside"
-    case Silence.Stale(_) => "stale"
-    case Silence.Continued(_) => "continued"
-    case Silence.Unweighed(_) => "unweighed"
-    case Silence.Gated(_, _) => "gated"
-    case Silence.Unasked(_) => "unasked"
-    case Silence.AskedOf(_) => "asked_of"
-    case Silence.Spoken(_) => "spoken"
-    case Silence.Unanswered(_) => "unanswered"
-    case Silence.Lapsed(_) => "lapsed"
-    case Silence.Occasions(_) => "occasions"
-    case Silence.Thread(_) => "thread"
-    case Silence.Room(_) => "room"
-    case Silence.Deployment(_) => "deployment"
-    case Silence.OverSpeechCap(_, _) => "over_speech_cap"
-    case Silence.OverBudget => "over_budget"
+  def silenceName(why: Silence): String = named(why)._1
+
+  private def named(s: Silence): (String, Seq[(String, ujson.Value)]) = s match {
+    case Silence.Off => ("off", Nil)
+    case Silence.NoAddress => ("no_address", Nil)
+    case Silence.Below(at) => ("below_outside", Seq("at" -> ujson.Str(Integrity.written(at))))
+    case Silence.Stale(age) => ("stale", Seq("seconds" -> ujson.Num(age.toSeconds.toDouble)))
+    case Silence.Continued(by) => ("continued", Seq("by" -> ujson.Str(EntryId.value(by))))
+    case Silence.Unweighed(why) => ("unweighed", Seq("why" -> ujson.Str(why)))
+    case Silence.Gated(first, rest) =>
+      ("gated", Seq("failed" -> ujson.Arr.from((first +: rest).map(GateJson.writeFailed))))
+    case Silence.Unasked(reading) => ("unasked", Seq("reading" -> GateJson.writeReading(reading)))
+    case Silence.AskedOf(other) => ("asked_of", Seq("other" -> ujson.Str(Account.written(other))))
+    case Silence.Spoken(by) => ("spoken", Seq("by" -> ujson.Str(EntryId.value(by))))
+    case Silence.Unanswered(previous) =>
+      ("unanswered", Seq("previous" -> ujson.Str(WorkflowId.value(previous.workflowId))))
+    case Silence.Lapsed(until) => ("lapsed", Seq("until" -> ujson.Str(until.toString)))
+    case Silence.Occasions(n) => ("occasions", Seq("n" -> ujson.Num(n)))
+    case Silence.Thread(n) => ("thread", Seq("n" -> ujson.Num(n)))
+    case Silence.Room(n) => ("room", Seq("n" -> ujson.Num(n)))
+    case Silence.Deployment(n) => ("deployment", Seq("n" -> ujson.Num(n)))
+    case Silence.OverSpeechCap(spent, cap) =>
+      ("over_speech_cap", Seq("spent" -> writeSpend(spent), "cap" -> ujson.Str(cap.usd.toString)))
+    case Silence.OverBudget => ("over_budget", Nil)
   }
 
   /** A silence as [[writeSilence]] writes it; an earlier build's `chatter` reads as `Gated` on

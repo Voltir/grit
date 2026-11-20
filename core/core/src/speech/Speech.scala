@@ -331,7 +331,7 @@ object Speech {
       case _ => Venue.Thread
     }
 
-  /** How many of `spoken`'s turns decided within `rate.per` before `at` are `which`. */
+  /** As [[posted]] counts, at any stage. */
   private def within(spoken: Vector[Spoken], rate: Rate, at: Instant)(
       which: Spoken => Boolean
   ): Int =
@@ -363,11 +363,9 @@ object Speech {
     * addressed one could be: with no address, by the gate (none under [[Speaking.Off]]), or
     * over the budget.
     *
-    * An occasion is held [[Silence.Off]] without [[Limits.occasions]]; below
-    * [[Integrity.Outside]] and lapsed, as [[unrecorded]] holds it; by another unprompted turn
-    * drafting in its conversation ([[Silence.Unanswered]]); at the occasion rate
-    * ([[Silence.Occasions]]); then by the room and deployment rates, the speech cap and the
-    * budget, as a heard message is; else it is `Drafting(turn, Venue.Room(to))`.
+    * An occasion is held as [[unrecorded]] holds it, then by another unprompted turn drafting in
+    * its conversation, the occasion rate, and the heard message's checks from the room rate on;
+    * else it is `Drafting(turn, Venue.Room(to))`.
     */
   def decide(
       speaking: Speaking,
@@ -376,93 +374,81 @@ object Speech {
       budget: Budget,
       now: Instant
   ): Decision = root match {
-    case heard: Heard => decideHeard(speaking, heard, ledger, budget, now)
     case o: OccasionRoot =>
-      occasioning(speaking) match {
-        case None => Decision.Held(Silence.Off)
-        case Some((limits, rate)) =>
-          first(
-            beforeRecorded(o.occasion, Some(o.to), o.believed, now) ++ Vector(
-              () => unanswered(ledger, o.turn, None),
-              () => {
-                val n = within(ledger.turns, rate, now)(t =>
-                  t.root == Spoken.Root.Occasion && t.room == o.occasion.room
-                )
-                Option.when(n >= rate.count)(Silence.Occasions(n))
-              }
-            ) ++ spent(limits, o.occasion.room, ledger, budget, now)
-          ).fold(Decision.Drafting(o.turn, Venue.Room(o.to)))(Decision.Held(_))
+      val room = o.occasion.room
+      first(
+        Vector(
+          () => unrecorded(speaking, o.occasion, Some(o.to), o.believed, now),
+          () => unanswered(ledger, o.turn, None)
+        ) ++ occasioning(speaking).toVector.flatMap((limits, rate) =>
+          (() => {
+            val n =
+              within(ledger.turns, rate, now)(t => t.root == Spoken.Root.Occasion && t.room == room)
+            Option.when(n >= rate.count)(Silence.Occasions(n))
+          }) +: spent(limits, room, ledger, budget, now)
+        )
+      ).fold(Decision.Drafting(o.turn, Venue.Room(o.to)))(Decision.Held(_))
+    case heard: Heard =>
+      def here(t: Spoken): Boolean = t.turn.conversationId == heard.turn.conversationId
+      // The thread rate counts the heard message's thread wherever its posts were recorded: a
+      // channel's top level is one conversation of many threads (ADR 0060). Without a thread on
+      // either side, the conversation.
+      def inThread(t: Spoken): Boolean = (t.thread, heard.reach.replyTo.flatMap(_.within)) match {
+        case (Some(theirs), Some(ours)) => theirs == ours
+        case _ => here(t)
       }
-  }
-
-  private def decideHeard(
-      speaking: Speaking,
-      heard: Heard,
-      ledger: Ledger,
-      budget: Budget,
-      now: Instant
-  ): Decision = {
-    def here(t: Spoken): Boolean = t.turn.conversationId == heard.turn.conversationId
-    // The thread rate counts the heard message's thread wherever its posts were recorded: a
-    // channel's top level is one conversation of many threads (ADR 0060). Without a thread on
-    // either side, the conversation.
-    def inThread(t: Spoken): Boolean = (t.thread, heard.reach.replyTo.flatMap(_.within)) match {
-      case (Some(theirs), Some(ours)) => theirs == ours
-      case _ => here(t)
-    }
-    // Placement never holds: a gate that fails or is unread, a spent rate or no address is the
-    // thread.
-    def placed(limits: Limits): Venue =
-      (limits.toRoom, heard.reach.replyTo.flatMap(_.room), heard.tags) match {
-        case (Some(r), Some(to), Tags.Weighed(answers, _, _))
-            if r.gate.check(answers, heard.cues) == Gate.Checked.Passes &&
-              posted(ledger.turns, r.rate, now)(t => atTop(t) && t.room == heard.room) <
-              r.rate.count =>
-          Venue.Room(to)
-        case _ => Venue.Thread
+      // Placement never holds: a gate that fails or is unread, a spent rate or no address is the
+      // thread.
+      def placed(limits: Limits): Venue =
+        (limits.toRoom, heard.reach.replyTo.flatMap(_.room), heard.tags) match {
+          case (Some(r), Some(to), Tags.Weighed(answers, _, _))
+              if r.gate.check(answers, heard.cues) == Gate.Checked.Passes &&
+                posted(ledger.turns, r.rate, now)(t => atTop(t) && t.room == heard.room) <
+                r.rate.count =>
+            Venue.Room(to)
+          case _ => Venue.Thread
+        }
+      val checks: Limits => Vector[() -> Option[Silence]] = limits =>
+        Vector(
+          () => Option.when(heard.reach.replyTo.isEmpty)(Silence.NoAddress),
+          () =>
+            Option.when(heard.integrity.belowOutside)(
+              Silence.Below(heard.integrity)
+            ),
+          () => {
+            val age = JDuration.between(heard.said, now).toNanos.nanos
+            Option.when(age > limits.fresh)(Silence.Stale(age))
+          },
+          () => heard.cues.continued.map(Silence.Continued(_)),
+          () => gated(limits, heard),
+          () => heard.cues.spoken.map(Silence.Spoken(_)),
+          () => unanswered(ledger, heard.turn, Some(heard.seq)),
+          () => {
+            val n = posted(ledger.turns, limits.thread, now)(inThread)
+            Option.when(n >= limits.thread.count)(Silence.Thread(n))
+          }
+        ) ++ spent(limits, heard.room, ledger, budget, now)
+      val limited = limitsOf(speaking)
+      (Tags.directed(heard.tags), heard.reach.replyTo) match {
+        case (true, None) => Decision.Held(Silence.NoAddress)
+        case (true, Some(to)) =>
+          limited
+            .flatMap(gated(_, heard))
+            .orElse(Option.when(!budget.admits(ledger.all))(Silence.OverBudget))
+            .fold(Decision.Answering(heard.turn, to.thread))(Decision.Held(_))
+        case (false, _) =>
+          limited match {
+            case None => Decision.Held(Silence.Off)
+            case Some(limits) =>
+              first(checks(limits))
+                .fold(Decision.Drafting(heard.turn, placed(limits)))(Decision.Held(_))
+          }
       }
-    val checks: Limits => Vector[() -> Option[Silence]] = limits =>
-      Vector(
-        () => Option.when(heard.reach.replyTo.isEmpty)(Silence.NoAddress),
-        () =>
-          Option.when(heard.integrity.belowOutside)(
-            Silence.Below(heard.integrity)
-          ),
-        () => {
-          val age = JDuration.between(heard.said, now).toNanos.nanos
-          Option.when(age > limits.fresh)(Silence.Stale(age))
-        },
-        () => heard.cues.continued.map(Silence.Continued(_)),
-        () => gated(limits, heard),
-        () => heard.cues.spoken.map(Silence.Spoken(_)),
-        () => unanswered(ledger, heard.turn, Some(heard.seq)),
-        () => {
-          val n = posted(ledger.turns, limits.thread, now)(inThread)
-          Option.when(n >= limits.thread.count)(Silence.Thread(n))
-        }
-      ) ++ spent(limits, heard.room, ledger, budget, now)
-    val limited = limitsOf(speaking)
-    (Tags.directed(heard.tags), heard.reach.replyTo) match {
-      case (true, None) => Decision.Held(Silence.NoAddress)
-      case (true, Some(to)) =>
-        limited
-          .flatMap(gated(_, heard))
-          .orElse(Option.when(!budget.admits(ledger.all))(Silence.OverBudget))
-          .fold(Decision.Answering(heard.turn, to.thread))(Decision.Held(_))
-      case (false, _) =>
-        limited match {
-          case None => Decision.Held(Silence.Off)
-          case Some(limits) =>
-            first(checks(limits))
-              .fold(Decision.Drafting(heard.turn, placed(limits)))(Decision.Held(_))
-        }
-    }
   }
 
   /** The decision made on `root` at `now` ([[decide]]) over the ledger `speech` and `spending`
-    * hold ([[Ledger.read]]), and whether it was kept on its turn ([[SpeechStore.decided]]):
-    * `false` when one was kept for that turn before, which stands; the decision returned is then
-    * the one made now, kept nowhere.
+    * hold, and whether it was kept on its turn ([[SpeechStore.decided]]): `false` when one was
+    * kept before, which stands, this one kept nowhere.
     */
   def kept(
       speech: SpeechStore,
@@ -478,9 +464,8 @@ object Speech {
       kept <- speech.decided(root, decision, now)
     } yield (decision, kept)
 
-  /** The first unprompted turn in `turn`'s conversation drafting, or posted after `after`, as
-    * [[Silence.Unanswered]]. Per conversation, not per thread: grit drafting, or having posted
-    * since, anywhere in the conversation answers a message as far as grit can tell.
+  /** The first unprompted turn in `turn`'s conversation, not only its thread, drafting or posted
+    * after `after`: as far as grit can tell, either answers it.
     */
   private def unanswered(ledger: Ledger, turn: TurnRef, after: Option[EntrySeq]): Option[Silence] =
     ledger.turns
@@ -542,22 +527,10 @@ object Speech {
       believed: Integrity,
       now: Instant
   ): Option[Silence] =
-    occasioning(speaking).fold(Some(Silence.Off))(_ =>
-      first(beforeRecorded(occasion, to, believed, now))
-    )
-
-  /** [[unrecorded]]'s checks after [[Silence.Off]], in its order. */
-  private def beforeRecorded(
-      occasion: Occasion,
-      to: Option[String],
-      believed: Integrity,
-      now: Instant
-  ): Vector[() -> Option[Silence]] =
-    Vector(
-      () => Option.when(to.isEmpty)(Silence.NoAddress),
-      () => Option.when(believed.belowOutside)(Silence.Below(believed)),
-      () => Option.when(now.isAfter(occasion.until))(Silence.Lapsed(occasion.until))
-    )
+    if (occasioning(speaking).isEmpty) Some(Silence.Off)
+    else if (to.isEmpty) Some(Silence.NoAddress)
+    else if (believed.belowOutside) Some(Silence.Below(believed))
+    else Option.when(now.isAfter(occasion.until))(Silence.Lapsed(occasion.until))
 
   /** The limits `speaking` drafts occasions under, and their occasion rate; `None` without
     * [[Limits.occasions]].
@@ -619,10 +592,8 @@ object Speech {
       if (!(j.score >= limits.postAt)) Outcome.Below(j, limits.postAt)
       else if (believed.belowOutside) Outcome.Untrusted(j, believed)
       else as(Cleared.Scored(j))
-    val under = root match {
-      case Spoken.Root.Heard => speaking
-      case Spoken.Root.Occasion => occasioning(speaking).fold(Speaking.Off)(_ => speaking)
-    }
+    val under =
+      if (root == Spoken.Root.Occasion && occasioning(speaking).isEmpty) Speaking.Off else speaking
     (under, judged) match {
       case (Speaking.Off, _) => Outcome.Withdrawn
       case (_, Left(why)) => Outcome.Unjudged(why)

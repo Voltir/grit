@@ -37,56 +37,45 @@ private[triage] object Speak {
       entry: EntryId,
       tags: Tags,
       now: Instant
-  )(using Tx^): Either[String, Decision] =
-    speaking match {
-      case Speaking.Off if !Tags.directed(tags) => Right(Decision.Held(Silence.Off))
-      case _ => decide(records, speaking, budget, horizon, triage, entry, tags, now)
-    }
-
-  private def decide(
-      records: TriageRecords,
-      speaking: Speaking,
-      budget: Budget,
-      horizon: FiniteDuration,
-      triage: TriageRef,
-      entry: EntryId,
-      tags: Tags,
-      now: Instant
   )(using Tx^): Either[String, Decision] = {
     val turn = TurnRef(triage.period.conversationId, triage.turn)
-    (for {
-      found <- records.entries.get(entry)
-      conversation <- records.conversations.get(turn.conversationId)
-      reach <- records.speech.reach(turn)
-      decided <- (found, conversation) match {
-        case (Some(e), Some(c)) =>
-          val reached = reach.getOrElse(Reach.Nowhere)
-          for {
-            cues <- cuesOf(records, horizon, e, c, reached, now)
-            heard = Heard.of(turn, e, c.origin, reached, tags, cues)
-            (decision, kept) <- Speech.kept(
-              records.speech,
-              records.spending,
-              speaking,
-              budget,
-              heard,
-              now
-            )
-            _ <- decision match {
-              case Decision.Answering(_, to) if kept =>
-                records.deliveries
-                  .await(turn, to)
-                  .flatMap(_ => records.acknowledgements.want(turn, to, now))
-              case _ => Right(())
-            }
-          } yield Some(decision)
-        case _ => Right(None)
-      }
-    } yield decided).left
-      .map(_.described)
-      .flatMap(
-        _.toRight(s"${WorkflowId.value(turn.workflowId)}: the message or its conversation is gone")
-      )
+    if (speaking == Speaking.Off && !Tags.directed(tags)) Right(Decision.Held(Silence.Off))
+    else
+      (for {
+        found <- records.entries.get(entry)
+        conversation <- records.conversations.get(turn.conversationId)
+        reach <- records.speech.reach(turn)
+        decided <- (found, conversation) match {
+          case (Some(e), Some(c)) =>
+            val reached = reach.getOrElse(Reach.Nowhere)
+            for {
+              cues <- cuesOf(records, horizon, e, c, reached, now)
+              heard = Heard.of(turn, e, c.origin, reached, tags, cues)
+              (decision, kept) <- Speech.kept(
+                records.speech,
+                records.spending,
+                speaking,
+                budget,
+                heard,
+                now
+              )
+              _ <- decision match {
+                case Decision.Answering(_, to) if kept =>
+                  records.deliveries
+                    .await(turn, to)
+                    .flatMap(_ => records.acknowledgements.want(turn, to, now))
+                case _ => Right(())
+              }
+            } yield Some(decision)
+          case _ => Right(None)
+        }
+      } yield decided).left
+        .map(_.described)
+        .flatMap(
+          _.toRight(
+            s"${WorkflowId.value(turn.workflowId)}: the message or its conversation is gone"
+          )
+        )
   }
 
   /** What code reads around `heard`, of `conversation`, whose reach is `reach`, until `now`

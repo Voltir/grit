@@ -499,8 +499,8 @@ object DurableMoves {
     protected def made[I, O](flow: Flow[MovesEnv, I, Nothing, O], in: I): O =
       steps.run(flow.over[R](moves), in).merge
 
-    /** Why a move `name` of `kind`, an occasion's in `room`, may not be made now; when it may,
-      * its name is spent and its kind counted, an occasion by its room.
+    /** Why a move `name` of `kind` (an occasion's, in `room`) may not be made now; when it may,
+      * its name is spent and its kind counted.
       */
     protected def refused(
         name: MoveName,

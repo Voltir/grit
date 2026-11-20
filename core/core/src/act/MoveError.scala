@@ -58,7 +58,7 @@ object MoveError {
   def said(error: MoveError): String = error match {
     case Below(_) => "it came from somewhere not trusted enough to keep"
     case Repeated(name) => s"the move ${MoveName.value(name)} was made already"
-    case RoomTaken(room) => s"the run named an occasion in ${room.written} already"
+    case RoomTaken(room) => s"the run named one occasion in ${room.written} already"
     case OverLimit(kind, limit) => s"the run reached its limit of $limit ${plural(kind)}"
     case Capped => "the day's recorded spend reached its cap"
     case Model(why) => why
