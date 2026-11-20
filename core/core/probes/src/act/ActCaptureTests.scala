@@ -5,7 +5,7 @@ import grit.core.durable.Probes.{classpath, erased, flowsInto, heldImpure, optio
 
 import utest.*
 
-/** What capture checking rejects about acting (ADR 0034): the acting value is data; a job is
+/** What capture checking rejects about acting (ADR 0068): the acting value is data; a job is
   * handed its moves for one run and keeps none, and makes no model call but through them; a
   * keep's body reaches its keeper and transaction alone, and returns nothing that holds either;
   * a reply's reader (`grit.core.schema.Typed`'s `read`) makes no move.

@@ -1,6 +1,6 @@
 # grit.act
 
-What an actor's moves do (ADR 0034): an ask of a model or of the deployment's classifier, and
+What an actor's moves do (ADR 0068): an ask of a model or of the deployment's classifier, and
 a call of a hosted tool, as phases written over `grit.core`'s traits and its flows, never DBOS,
 so its tests run over core's in-memory fakes (`InMemoryDurable`, `InMemoryEdges`,
 `InMemoryUsageLedger`, `InMemorySchedules`). A phase takes its caller's step names, the form

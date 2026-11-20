@@ -120,7 +120,7 @@ object RecordJobHistories {
         d.run(turn.workflowId)(Run.body(w.env(), jobs(2)))
         turn.workflowId
       },
-      // A job's moves (ADR 0034), each a shape its steps can leave.
+      // A job's moves (ADR 0068), each a shape its steps can leave.
       record("run-asked")((w, d) => probed(w, d, 1)),
       // A JSON ask whose first reply its schema refused, repaired once to an answer the
       // world's model gives nothing else, so a replay that asked it again would differ.

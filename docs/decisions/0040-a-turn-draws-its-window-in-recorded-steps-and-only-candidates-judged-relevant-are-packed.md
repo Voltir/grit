@@ -32,7 +32,7 @@ Decision:
   grit draws its window with no query and still replies; on a heard message it ends the turn,
   kept as nothing recalled, with no query, search, draft, judge or summary. No answer searches.
 - **Each call is a move of its own.** `ask:query` writes the query, and `ask:relevance-0` to
-  `ask:relevance-2` judge the found candidates, each a judgment (ADR 0034): admitted against the
+  `ask:relevance-2` judge the found candidates, each a judgment (ADR 0068): admitted against the
   day's cap, recorded with its cost, made at most once. Between them `search` records the first
   60 found and counts the rest. A turn resumed between steps repeats no call before.
 - **The first 30 found are judged, ten to a call**, each passing at a probability of 0.5 or

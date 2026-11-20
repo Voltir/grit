@@ -18,7 +18,7 @@ Decision:
   semantics grit owns because the thesis fails without each: memory (entries never
   rewritten, periods closing into grounded records), the window (each model call's context
   assembled from memory), the turn (moves chosen by a planner: the model's loop, or a job's
-  Scala plan, ADR 0034), place (where a conversation happens and what is hosted there),
+  Scala plan, ADR 0068), place (where a conversation happens and what is hosted there),
   identity (principals, ADR 0032), budget (spend bounded per sponsor).
 - **Semantics are compiled; reach is declared.** What changes what a turn does (plugins,
   jobs, the turn's steps) is code compiled into the trusted base. What extends where grit

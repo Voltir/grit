@@ -135,7 +135,7 @@ In dependency order, each with the core packages it imports:
 - **`recipe`**: what a call's input shows beyond its own thread, and how a turn is shaped.
   Nothing in core imports it. ← `id`, `place`, `message`, `classify`, `period`, `store`,
   `triage`, `context`, `stitch`
-- **`act`**: what an actor may do, and under what (ADR 0034): who acts, its moves within their
+- **`act`**: what an actor may do, and under what (ADR 0068): who acts, its moves within their
   limits, and what they come to; and the declassifying move's model-facing text. ← `id`,
   `place`, `visibility`, `message`, `classify`, `store`, `document`, `period`, `spend`,
   `durable`, `flow`, `provider`, `tool`, `schema`, `sanitise`, `stitch`, `screen`

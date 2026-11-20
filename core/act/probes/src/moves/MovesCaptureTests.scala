@@ -5,7 +5,7 @@ import grit.core.durable.Probes.classpath
 
 import utest.*
 
-/** What capture checking rejects about [[DurableMoves]] (ADR 0034): what a run's body returns,
+/** What capture checking rejects about [[DurableMoves]] (ADR 0068): what a run's body returns,
   * through `plain` or `keeping`, cannot carry its moves out, and the body makes no step of its
   * own beside them, so the run's next step may use the program's `Steps` they were made
   * through. A judgment's writing pose reads its reply purely, so it cannot ask a model again

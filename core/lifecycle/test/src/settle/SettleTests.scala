@@ -58,7 +58,7 @@ object SettleTests extends TestSuite {
       (weigher.calls, same.activity.flatMap(_.verdict)) ==> (0, None)
     }
 
-    // A settle's ask is a move (ADR 0034): admitted under the deployment's daily cap against
+    // A settle's ask is a move (ADR 0068): admitted under the deployment's daily cap against
     // what every conversation spent that day, as a job's is.
     test("a settle over the day's cap asks no classifier: its verdict is unanswered, for the cap") {
       val w = new World

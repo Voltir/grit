@@ -279,7 +279,7 @@ object grit extends Module {
     }
   }
 
-  /* What an actor's moves do (ADR 0034): an ask's and a call's phases over core's traits and
+  /* What an actor's moves do (ADR 0068): an ask's and a call's phases over core's traits and
    * Durable, never DBOS, in their caller's step names and recorded forms.
    * Names only core. core/act/README.md. */
   object act extends GritPublished with Placed {

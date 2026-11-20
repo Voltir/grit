@@ -113,7 +113,7 @@ A job's version moves when what its runs do changes: a run started under another
 is superseded, and its slot runs again at the current one when no later slot is due. What
 `Deployment.of` refuses of jobs and schedules is in its doc, beside every other refusal.
 
-**A job's moves** ([ADR 0034](decisions/0034-turns-and-jobs-act-through-three-moves-ask-call-and-keep-made-under-an-acting-value.md)).
+**A job's moves** ([ADR 0068](decisions/0068-turns-and-jobs-act-through-moves-ask-call-keep-and-spawn-made-under-an-acting-value.md)).
 A job is pure: everything its run does outside itself it does through the moves it is handed,
 from `grit.core.act`, each under a `MoveName` used once per run. A `PlainJob`, the deployment's
 or a plugin's, is handed `Moves`: `ask`, one reply to what it poses, typed by its shape (a

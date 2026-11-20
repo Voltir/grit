@@ -53,7 +53,7 @@ Decision:
 Consequences:
 
 - A plugin's code never holds a message's text, only the links in it as `Href`s
-  (`StrandShelf.links`) and its author's name as their account gives it; ADR 0034's moves gain a read inside a keep and an ask core frames. A
+  (`StrandShelf.links`) and its author's name as their account gives it; ADR 0068's moves gain a read inside a keep and an ask core frames. A
   planted link can place a card the plugin already reads into a write already capped by the
   guest's strand, which is the influence a sort's placing has.
 - A sort's classifier reads the guest's words as its state, and they can move a probability:

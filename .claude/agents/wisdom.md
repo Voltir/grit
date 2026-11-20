@@ -15,7 +15,7 @@ carried forward as a transcript.
 - **Spatial semantics:** places and rooms, under a Bell–LaPadula label lattice of levels and
   compartments. A turn reads up to room ∧ asker (ADR 0030). A write out of grit names its
   place, and a service is both a place and a party (ADR 0031). Turns and jobs act only through
-  `ask`, `call` and `keep` under an acting value (ADR 0034). Edges reach the engine only
+  `ask`, `call` and `keep` under an acting value (ADR 0068). Edges reach the engine only
   through Postgres (ADR 0002).
 - **Purity:** a signature without a capability is a promise of purity. Effects are capabilities
   in the signature, and capture and separation checking enforce them (ADR 0003,

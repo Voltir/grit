@@ -42,7 +42,7 @@ area`, and the README in its folder (package order, and what the code cannot say
 | `grit.prose` | `words`, `form`, `markdown`, `json`, `index` | std | prose as edge-neutral blocks, read from markdown; each edge renders them |
 | `grit.tui` | `model`, `components`, `wire`, `runtime` | core | the terminal UI library; core only from `components`/`runtime` |
 | `grit.tui.examples` | `grit.tui.examples` | tui | runnable demos |
-| `grit.act` | `phase`, `moves` | core | what an actor's moves do (ADR 0034), the steps the turn, jobs and the lifecycle share; names core (and prose) alone |
+| `grit.act` | `phase`, `moves` | core | what an actor's moves do (ADR 0068), the steps the turn, jobs and the lifecycle share; names core (and prose) alone |
 | `grit.turn` | `grit.turn` | core, act | the durable turn's body, and a turn read back from the steps it recorded |
 | `grit.lifecycle` | `transcript`, `close`, `settle`, `stitch`, `triage`, `shadow`, `post` | core, act | the engine's workflows besides the turn; their asks are moves |
 | `grit.job` | `run`, `clock` | core, act | jobs (ADR 0029): a job's run, and the clock edge that starts it; names no `grit.turn` |

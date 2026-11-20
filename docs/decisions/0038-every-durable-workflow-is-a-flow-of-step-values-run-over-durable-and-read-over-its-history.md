@@ -38,7 +38,7 @@ Decision:
   it bound. A turn's integrity level is a value of its loop's state, the meet of what each
   gate recorded (ADR 0036).
 - **One step grammar** for the turn and jobs: `ask:<key>`, `call:<key>`, `keep:<key>`, phases
-  after a colon (ADR 0034). The lifecycle's asks are moves.
+  after a colon (ADR 0068). The lifecycle's asks are moves.
 
 Consequences: a new step is one value in one place; a rename, reorder or unreadable output
 fails both the replay gate and the read gate. A workflow written as a flow takes more lines

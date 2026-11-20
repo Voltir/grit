@@ -28,7 +28,7 @@ a store that cannot be written, or a provider that fails, fails the turn.
   its slot (`CallSlot.key`), addressed to a **workspace, never an edge**: the conversation's
   directory, or a service place (ADR 0031) its deployment links it to (`WorksIn`). An edge
   registers the places it hosts (`grit.edges`, `grit.edge_places`); `Edges.authorize`, when an
-  edge claims, is the one routing decision. A request, which records its principal (ADR 0034),
+  edge claims, is the one routing decision. A request, which records its principal (ADR 0068),
   moves only by conditional updates. The claim is the attempt marker: an orphaned claim is
   settled by the tool's declared `Retry` (`Rerun` claims it again; `Interrupt` answers
   `Interrupted`), never by its gate. The edge writes the answer on the row and rings the turn;

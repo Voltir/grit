@@ -42,7 +42,7 @@ Decision:
   is due. Nothing is cancelled out from under DBOS. A run whose workflow ended without its
   reply was superseded under another version, and failed under the current one or with its
   job gone.
-- **A run makes its moves as ADR 0034 says**, each recorded under the name its plan gives it
+- **A run makes its moves as ADR 0068 says**, each recorded under the name its plan gives it
   with a digest of what it does. Its spend is recorded under the run's conversation, so its
   schedule's principal's; the daily cap refuses an ask, never a start; a call whose tool asks
   a person first is never sent. A run resumed under another version after its moves ends in

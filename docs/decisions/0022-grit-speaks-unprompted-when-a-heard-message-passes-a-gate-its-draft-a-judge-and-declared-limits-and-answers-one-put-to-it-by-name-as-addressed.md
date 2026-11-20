@@ -1,6 +1,6 @@
 # 0022. grit speaks unprompted when a heard message passes a gate, its draft a judge, and declared limits; one put to it by name is answered as addressed
 
-Status: accepted (2026-09-30); revised (2026-11-07)
+Status: accepted (2026-09-30); revised (2026-11-19)
 
 Context: a listened channel (ADR 0020) is kept, but grit only answered what was said to it.
 A deployment also wants grit to join in when it is worth interrupting. Turned down: a
@@ -20,6 +20,9 @@ Decision:
   A gate (`grit.core.triage.Gate`) is a closed set of forms a deployment composes: a bound on
   a named answer's reading, all of some gates, or any. A gate reading a question live triage does not ask is
   refused at declaration (`SpeechUnread`).
+- **An unprompted turn has two roots**: a heard message, decided here, and an occasion a
+  plugin's job names (ADR 0067), decided by the same checks from no address on and drafted,
+  judged and posted as a heard message's draft is.
 - **Triage considers each heard message it tagged** (`Speech.decide`), a few seconds after it
   was said (`Triage.Wait`), holding on the first check that fails, in `Silence`'s order: off,
   no address, believed below `Outside` (ADR 0036), stale, its author said more (the later

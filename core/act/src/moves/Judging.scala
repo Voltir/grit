@@ -22,7 +22,7 @@ import grit.core.route.Routed
 import grit.core.spend.Budget
 import grit.core.visibility.{Label, Subject}
 
-/** An engine workflow's judgment as a move (ADR 0034): its classifier or model asks admitted
+/** An engine workflow's judgment as a move (ADR 0068): its classifier or model asks admitted
   * against the day's spend and their costs kept in the ledger, as a job's are, its request read
   * in its own step.
   */

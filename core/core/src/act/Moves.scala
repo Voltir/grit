@@ -119,7 +119,7 @@ enum Called {
   case Interrupted
 }
 
-/** A planner's moves (ADR 0034), each made under its run's [[Acting]] at most once, as durable
+/** A planner's moves (ADR 0068), each made under its run's [[Acting]] at most once, as durable
   * steps named for it: a run resumed after a crash gets each move's result back without making
   * it again. So a run makes the same moves, by name, with the same inputs, in the same order,
   * every time: its code between moves reads only its `JobRun` and its moves' results, and a move

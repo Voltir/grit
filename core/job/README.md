@@ -14,7 +14,7 @@ own conversation, but its body is a job's, not the model's.
   returns the reply already kept; otherwise, under the current version, it writes the reply, its
   await where the schedule reports, and the slot marked replied in one transaction, and under
   another version, or with the job gone, writes nothing. A run resumed under another version
-  after it made moves ends in error at `reply`, and the clock edge supersedes it (ADR 0034:
+  after it made moves ends in error at `reply`, and the clock edge supersedes it (ADR 0068:
   moves are not reused across versions). Its histories, under `test/histories/`, are replayed
   by `JobReplayTests` under the engine's epoch, and read over its flow by `JobReadTests`.
 - **`clock`**: `ClockEdge`, grit's clock edge, which hosts no place. Each pass starts, through

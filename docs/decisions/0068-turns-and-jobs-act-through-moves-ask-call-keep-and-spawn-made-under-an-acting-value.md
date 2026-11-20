@@ -1,6 +1,6 @@
-# 0034. Turns and jobs act through three moves, ask, call and keep, made under an acting value
+# 0068. Turns and jobs act through moves, ask, call, keep and spawn, made under an acting value
 
-Status: accepted (2026-10-08); revised (2026-10-22)
+Status: accepted (2026-11-19)
 
 Context: the turn called models through `Provider` and edges' tools through `ToolRequest`, with
 spend, ADR 0031's label checks and approvals woven into its own steps. A job's run (ADR 0029)
@@ -12,13 +12,15 @@ step's record).
 
 Decision:
 
-- **Three moves, a closed set.** A move is what touches its acting's own accounts, which no
+- **A closed set of moves.** A move is what touches its acting's own accounts, which no
   edge can do for it. `ask`: one model response, admitted by its actor's allowance, routed to a
   cleared pair or not made (ADR 0031), and recorded in the usage ledger at the estimate of the
   request sent. `call`: one hosted tool request (ADR 0017), checked as ADR 0031 says and gated
-  as its actor's gates say. `keep`: one transaction over the acting plugin's own documents. A
-  future `spawn` derives an acting from it. Everything that acts on the world is a `call` of a
-  hosted tool, those grit hosts itself included; no plugin is given `Durable`.
+  as its actor's gates say. `keep`: one transaction over the acting plugin's own documents.
+  `spawn`: a turn started in another conversation; its one form is `Keeping.occasion`, an
+  unprompted turn at a room's top level, decided and charged as speech (ADR 0067). Everything
+  that acts on the world is a `call` of a hosted tool, those grit hosts itself included; no
+  plugin is given `Durable`.
 - **An ask poses one of a closed set of shapes**, its reply typed by its shape: text; JSON the
   model gives as one required tool's arguments, held to a schema that is a value, checked in the
   subset every provider's strict mode accepts and repaired once; or a judgment, questions about
@@ -33,11 +35,13 @@ Decision:
   its schedule's principal, each ask admitted against the daily cap, no gated call sent. A
   request whose principal cannot be read is not sent.
 - **A derived actor is no more than its parent**: its clearance met with its parent's and its
-  budget carved from its parent's. How is not yet decided.
+  budget carved from its parent's. An occasion's turn reads at its room's label, which must be
+  its run's; the general form is not yet decided.
 - **The rules are written once**: the acting value and the planner's moves in core, their
   durable steps in `grit.act`, which the turn, jobs and the lifecycle share. One step grammar
   (ADR 0038): a planner's moves are `ask:{name}`, `call:{name}` and `keep:{name}`, with
-  `piece:{name}` a keep of a file's pieces (ADR 0046), the turn's
+  `piece:{name}` a keep of a file's pieces (ADR 0046), `occasion:{name}` with its phases
+  `:decide` and `:start` a spawn, the turn's
   `ask:n` and `call:n:j`. The lifecycle's classifier calls and the close's summary call are
   moves (`Judging`), each charged to its turn under its own workflow.
 - **A planner makes its moves through `Moves`**: each named, at most once per run, within its
@@ -49,7 +53,7 @@ Decision:
   abort the transaction its output is recorded in, and DBOS keeps a thrown step as the run's
   permanent result.
 - **Whose a job is says what it may do**: a plain job asks and calls; a plugin's keeping job
-  also keeps, under its plugin's document terms; a dreaming job's keeps may also read strands
+  also keeps, under its plugin's document terms, and names occasions; a dreaming job's keeps may also read strands
   by id and count, and core summarises one for its asks (ADR 0066). A deployment with either
   for a plugin declaring no documents is refused.
 - **Every result carries a bound on its content's label**: for now, its actor's floor. A label
