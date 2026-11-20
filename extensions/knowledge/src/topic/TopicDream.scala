@@ -647,7 +647,7 @@ object TopicDream {
       s"passages. You are shown the discussions and the cards attached to it on $day and the " +
       s"other cards it holds, each discussion a `<$Discussion>` of messages under their speakers' " +
       s"names and each card a `<$Document>` describing a file, its label in `label`" +
-      // Draft wording, for Nick: an open is told its topic is new, so it narrates no absence.
+      // An open is told its topic is new, so it narrates no absence.
       (if (opened)
          ". This topic is new: write its lead and first passage from what you are shown alone."
        else
