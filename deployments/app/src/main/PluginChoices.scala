@@ -113,7 +113,7 @@ private[main] object PluginChoices {
             .toRight(s"topics: $TopicSeedVar is yyyy-mm-dd: $d")
       }
       plugin <- TopicDocuments
-        .of(name, labels, java.time.LocalTime.of(5, 0), zone, visibility, cards, seed)
+        .of(name, labels, java.time.LocalTime.of(5, 0), zone, visibility, cards, seed, None)
         .left
         .map(why => s"topics: $why")
     } yield plugin

@@ -37,9 +37,10 @@ object TopicDocumentsTests extends TestSuite {
       labels: Vector[Label],
       visibility: Visibility = Visibility.Shipped,
       cards: Option[Exports[CardShelf]] = None,
-      seedUntil: Option[java.time.LocalDate] = None
+      seedUntil: Option[java.time.LocalDate] = None,
+      foldAt: Option[Double] = None
   ) =
-    TopicDocuments.of(Name, labels, At, ZoneOffset.UTC, visibility, cards, seedUntil)
+    TopicDocuments.of(Name, labels, At, ZoneOffset.UTC, visibility, cards, seedUntil, foldAt)
 
   private val Internal: Label = Label.at(Level.Internal)
   private val Secret: Label = Label.at(Level.Confidential)
@@ -49,7 +50,16 @@ object TopicDocumentsTests extends TestSuite {
 
   /** The plugin at internal, its days in a zone other than UTC. */
   private val plugin: TopicDocuments = TopicDocuments
-    .of(Name, Vector(Internal), At, ZoneId.of("Pacific/Auckland"), Visibility.Shipped, None, None)
+    .of(
+      Name,
+      Vector(Internal),
+      At,
+      ZoneId.of("Pacific/Auckland"),
+      Visibility.Shipped,
+      None,
+      None,
+      None
+    )
     .fold(sys.error, identity)
 
   private final class FakeDb(clearance: Label) extends Db {
@@ -135,6 +145,35 @@ object TopicDocumentsTests extends TestSuite {
             Some(until)
           )
         )
+      )
+    }
+
+    test(
+      "a deployment's foldAt reaches every label's nightly and backfill runs; one outside 0.90 to 1 is refused, naming foldAt"
+    ) {
+      val plugin = of(Vector(Label.Public, Internal), foldAt = Some(0.95))
+      val day = java.time.LocalDate.parse("2026-10-30")
+      (
+        plugin.map(_.schedules.map(_.params)),
+        plugin.flatMap(_.backfill(Vector(day), 2, Instant.EPOCH)).map(_.map(_.params.foldAt)),
+        of(Vector(Label.Public), foldAt = Some(0.89)).left.map(_.contains("foldAt")),
+        of(Vector(Label.Public), foldAt = Some(1.01)).left.map(_.contains("foldAt"))
+      ) ==> (
+        Right(
+          Vector.fill(2)(
+            TopicParams(
+              TopicDocuments.PerRun,
+              TopicDocuments.Recent,
+              TopicDocuments.Recent,
+              None,
+              None,
+              foldAt = Some(0.95)
+            )
+          )
+        ),
+        Right(Vector(Some(0.95), Some(0.95))),
+        Left(true),
+        Left(true)
       )
     }
 

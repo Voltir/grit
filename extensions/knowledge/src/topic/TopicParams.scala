@@ -47,6 +47,14 @@ object TopicParams {
   /** 8: the most topics a run sorts against the others to merge; a schedule may lower it. */
   val Merges: Int = 8
 
+  /** `p` as a run's [[TopicParams.foldAt]], or why not: `p` not from [[TopicDream.FoldAt]] to 1. */
+  def folding(p: Double): Either[String, Double] =
+    if (p >= TopicDream.FoldAt && p <= 1) Right(p) else Left(foldAtIs(p.toString))
+
+  // Draft wording, for Nick.
+  private def foldAtIs(p: String): String =
+    s"foldAt, a number from ${TopicDream.FoldAt} to 1, not $p"
+
   /** 32: the most strands a run sorts; a schedule may lower it. */
   val Sorts: Int = 32
 
@@ -130,12 +138,11 @@ object TopicParams {
         case None => Right(None)
         case Some(n) =>
           n.numOpt
-            .filter(n => n >= TopicDream.FoldAt && n <= 1)
+            .toRight(foldAtIs(n.toString))
+            .flatMap(folding)
             .map(Some(_))
-            .toRight(
-              // Draft wording, for Nick.
-              s"a topics run's parameters hold foldAt, a number from ${TopicDream.FoldAt} to 1: $shown"
-            )
+            .left
+            .map(why => s"a topics run's parameters hold $why: $shown")
       }
       // A run settles after its window ends, so the next night's window must still reach it.
       _ <- Either.cond(

@@ -45,7 +45,8 @@ final class TopicDocuments private (
     zone: ZoneId,
     terms: DocumentTerms,
     cards: Option[Exports[CardShelf]],
-    seedUntil: Option[LocalDate]
+    seedUntil: Option[LocalDate],
+    foldAt: Option[Double]
 ) extends Plugin {
 
   private val labels: Vector[Label] = keyed.map(_._2)
@@ -79,7 +80,8 @@ final class TopicDocuments private (
           TopicDocuments.Recent,
           TopicDocuments.Recent,
           None,
-          seedUntil
+          seedUntil,
+          foldAt = foldAt
         ),
         l
       )
@@ -111,7 +113,14 @@ final class TopicDocuments private (
               key,
               dream,
               SlotRule.Once(started, Grace.Zero),
-              TopicParams(perRun, TopicDocuments.Recent, TopicDocuments.Recent, Some(day), None),
+              TopicParams(
+                perRun,
+                TopicDocuments.Recent,
+                TopicDocuments.Recent,
+                Some(day),
+                None,
+                foldAt = foldAt
+              ),
               l
             )
           }
@@ -264,8 +273,11 @@ object TopicDocuments {
 
   /** The plugin at `labels`, its runs daily `at` in `zone`, reading `cards`' cards when given,
     * each night's run until `seedUntil` (its day included) seeding ([[TopicParams.seedUntil]]),
-    * under the deployment's `visibility`; or why not: no label, one given twice, one holding a
-    * compartment `visibility` does not declare, or one whose written form makes no schedule key.
+    * each nightly and backfill run folding the merges it proposes at `foldAt` or more
+    * ([[TopicParams.foldAt]]; none folded when `None`), under the deployment's `visibility`; or
+    * why not: no label, one given twice, one holding a compartment `visibility` does not
+    * declare, one whose written form makes no schedule key, or `foldAt` not from
+    * [[grit.knowledge.topic.TopicDream.FoldAt]] to 1 ([[TopicParams.folding]]).
     */
   def of(
       name: PluginName,
@@ -274,12 +286,23 @@ object TopicDocuments {
       zone: ZoneId,
       visibility: Visibility,
       cards: Option[Exports[CardShelf]],
-      seedUntil: Option[LocalDate]
+      seedUntil: Option[LocalDate],
+      foldAt: Option[Double]
   ): Either[String, TopicDocuments] =
     for {
       keyed <- DreamSchedules.keyed("topics", Nightly, labels, visibility)
       terms <- DocLabel
         .of("topic")
         .flatMap(DocumentTerms.of(_, DocWeight.Unscaled, 30.days, Bound * labels.size))
-    } yield new TopicDocuments(name, keyed, SlotRule.Daily(at, zone), zone, terms, cards, seedUntil)
+      fold <- foldAt.fold(Right(None))(TopicParams.folding(_).map(Some(_)))
+    } yield new TopicDocuments(
+      name,
+      keyed,
+      SlotRule.Daily(at, zone),
+      zone,
+      terms,
+      cards,
+      seedUntil,
+      fold
+    )
 }

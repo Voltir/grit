@@ -182,7 +182,8 @@ each and the item shown within `TopicDream.SortChars`: about 2,100 tokens a sort
 written that night may have moved to another day, so it is shown to no merge sort, and a meeting
 waits for the next night's run. A yes at `TopicDream.FoldAt` or more for the likeliest proposes
 folding the item into it (ADR 0064), and the reply names it. At the schedule's `foldAt` or more
-(`TopicParams.foldAt`, absent by default, so a run only proposes), it is folded at once
+(`TopicParams.foldAt`, which the deployment passes to `TopicDocuments.of` for every nightly and
+backfill run; absent by default, so a run only proposes), it is folded at once
 (`fold-{i}`): both topics refused unless still at the versions the sort saw, the keeper kept as
 `Topic.folded` under its own key, believed at no more than the sort and the topic folded into
 it, and the other withdrawn; the reply names it as folded. A refused fold is named in the reply
