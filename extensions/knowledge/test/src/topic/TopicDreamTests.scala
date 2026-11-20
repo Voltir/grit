@@ -962,7 +962,7 @@ object TopicDreamTests extends TestSuite {
     }
 
     test(
-      "a dated meeting from its strand's day to +14 days is pinned; a passed or undated one never is"
+      "a dated meeting from Grace days before its strand's day to 14 after is pinned; an undated one never is"
     ) {
       def live(name: String, day: Option[String]) = TopicScan.Live(
         right(TopicKey.strand(ConversationId(name))),
@@ -983,8 +983,8 @@ object TopicDreamTests extends TestSuite {
         0,
         Vector.empty,
         Vector(
-          live("back1", Some("2026-11-18")),
-          live("same", Some("2026-11-19")),
+          live("back2", Some("2026-11-17")),
+          live("back3", Some("2026-11-16")),
           live("ahead14", Some("2026-12-03")),
           live("ahead15", Some("2026-12-04")),
           live("undated", None),
@@ -992,37 +992,53 @@ object TopicDreamTests extends TestSuite {
         )
       )
       scan.meetingsNear(LocalDate.parse("2026-11-19")).map(TopicKey.value) ==>
-        Vector("same", "ahead14").map(n => s"topic:strand-$n")
+        Vector("back2", "ahead14").map(n => s"topic:strand-$n")
     }
 
-    test("a meeting whose day has passed is not offered to a strand said on a later day") {
+    test(
+      "a meeting is offered to a strand said Grace days after its day, and a held reply holds it; one said later is not offered it"
+    ) {
       val w = new StrandWorld
       val _ = strand(w, "C1", "the review, tuesday at nine")
       val runs = new Runs(w)
-      val planned = ujson.Obj(
+      def meeting(state: String) = ujson.Obj(
         "lead" -> Lead,
         "passage" -> Passage,
         "meeting" -> ujson.Obj(
-          "state" -> "planned",
+          "state" -> state,
           "day" -> "2026-10-13",
           "start" -> "09:00",
           "who" -> ujson.Arr("Ana")
         )
       )
-      val _ = runs.run(sort = judging("new_meeting"), write = _ => planned)
-      // The meeting's own day, then the day after it.
-      val _ = strand(w, "C2", "notes from the review", 86_400)
-      val _ = strand(w, "C3", "more notes from the review", 2 * 86_400)
+      val _ = runs.run(sort = judging("new_meeting"), write = _ => meeting("planned"))
+      // Said 2026-10-15, two days after the meeting.
+      val _ = strand(w, "C2", "notes from the review", 3 * 86_400)
+      val _ = runs.run(
+        sort = judging("1"),
+        write = _ => meeting("held"),
+        day = Some(Day.plusDays(3)),
+        now = StrandWorld.at(3 * 86_400 + 3600)
+      )
+      val held = runs.kept.map((_, text) => text.linesIterator.next())
+      // Said 2026-10-16, three days after it.
+      val _ = strand(w, "C3", "more notes from the review", 4 * 86_400)
       val _ = runs.run(
         sort = asideAll,
-        day = Some(Day.plusDays(2)),
-        now = StrandWorld.at(2 * 86_400 + 3600)
+        day = Some(Day.plusDays(4)),
+        now = StrandWorld.at(4 * 86_400 + 3600)
       )
-      runs.asked
-        .filter(a => a.kind == "sort" && a.shown.contains("notes from the review"))
-        .map(a => (a.shown.linesIterator.next(), a.shown.contains("Meeting, planned"))) ==> Vector(
-        ("Someone: notes from the review", true),
-        ("Someone: more notes from the review", false)
+      (
+        held,
+        runs.asked
+          .filter(a => a.kind == "sort" && a.shown.contains("notes from the review"))
+          .map(a => (a.shown.linesIterator.next(), a.shown.contains("Meeting, ")))
+      ) ==> (
+        Vector("Meeting, held Tuesday 2026-10-13, with Ana."),
+        Vector(
+          ("Someone: notes from the review", true),
+          ("Someone: more notes from the review", false)
+        )
       )
     }
 

@@ -68,20 +68,25 @@ private[topic] object TopicScan {
       near.collectFirst { case (r, ks) if r == id => ks }.getOrElse(Vector.empty)
 
     /** The meetings a strand said on `day` is pinned, at most [[Meetings]], newest first: those
-      * whose day is from `day` to 14 after. One with no day has none to be near, and is never
-      * pinned: pinned on its newest passage, each join renewed the pin.
+      * whose day is from [[Meeting.Grace]] days before `day` to 14 after. One with no day has
+      * none to be near, and is never pinned: pinned on its newest passage, each join renewed the
+      * pin.
       */
     def meetingsNear(day: LocalDate): Vector[TopicKey] =
       meetings
-        .filter(m => m.day.exists(d => !d.isBefore(day) && !d.isAfter(day.plusDays(14))))
+        .filter(m =>
+          m.day.exists(d =>
+            !d.isBefore(day.minusDays(Meeting.Grace)) && !d.isAfter(day.plusDays(14))
+          )
+        )
         .map(_.key)
         .take(Meetings)
 
-    /** The meetings whose day is before `day`: passed, they take no talk said on `day`, which
-      * opens a meeting of its own.
+    /** The meetings whose day is more than [[Meeting.Grace]] days before `day`: passed, they
+      * take no talk said on `day`, whatever their state.
       */
     def passedBy(day: LocalDate): Set[TopicKey] =
-      meetings.filter(_.day.exists(_.isBefore(day))).map(_.key).toSet
+      meetings.filter(_.day.exists(_.isBefore(day.minusDays(Meeting.Grace)))).map(_.key).toSet
   }
 
   /** Of each topic of `topics`, the current versions of at most [[Holds]] of the cards of the

@@ -39,9 +39,14 @@ object Meeting {
   /** A meeting newly opened: proposed, its day not yet known, with no one named. */
   val Opened: Meeting = Meeting(State.Proposed(None), Vector.empty)
 
+  /** The days after a meeting's day that talk of it is still taken: a write may date it so far
+    * back, and a strand said so late is still offered it.
+    */
+  val Grace: Long = 2
+
   /** `was` as a write's `reply` refines it on the run's `day`: `{"state": "proposed" | "planned"
     * | "held", "day": "YYYY-MM-DD", "start": "HH:MM", "who": [name]}`, each field optional, a
-    * missing, bad or empty one leaving `was`'s; a day more than 2 days before `day`, or more than
+    * missing, bad or empty one leaving `was`'s; a day more than [[Grace]] days before `day`, or more than
     * `ahead` days after it, left out; planned with no day proposed; held with no day held on
     * `day`; held after `day` planned; and a meeting once held kept held as it was, whatever the
     * reply.
@@ -64,7 +69,7 @@ object Meeting {
       val newDay = field("day")
         .flatMap(_.strOpt)
         .flatMap(t => scala.util.Try(LocalDate.parse(t)).toOption)
-        .filter(d => !d.isBefore(day.minusDays(2)) && !d.isAfter(day.plusDays(ahead)))
+        .filter(d => !d.isBefore(day.minusDays(Grace)) && !d.isAfter(day.plusDays(ahead)))
       val newStart =
         field("start").flatMap(_.strOpt).flatMap(t => scala.util.Try(LocalTime.parse(t)).toOption)
       val when = newDay

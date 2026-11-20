@@ -56,7 +56,8 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
   // is new; an undated meeting is never pinned (its scan's `meetings` hold no `newest`); a write
   // reply holding call markup is refused.
   // 11: a write ask shows each message under its day, and a meeting's day may be reckoned from
-  // a relative one; a meeting whose day has passed is offered to no strand said after it.
+  // a relative one; a meeting is offered to no strand said more than Meeting.Grace days after
+  // its day.
   val version: Int = 11
 
   def write(params: TopicParams): ujson.Value = TopicParams.write(params)
