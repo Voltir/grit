@@ -893,43 +893,41 @@ private[plugin] final class ProjectCommands(
       for {
         project <- loaded(own.documents, args.key.project)
         where <- recorded(own.documents, project, args.key)
-        kept <- stored(own.documents.versions(where._1, where._2, HistoryMost))
-        readable <- versionsRead(
-          own.documents,
-          project,
-          kept.collect { case DocumentVersion.Holding(d) => d }
-        )
-        text <- args.diff match {
-          case None =>
-            refuse(Traversal.sequence(kept.map(row(readable))))
-              .map(AnswerText.versions(_, "No version is kept."))
-          case Some((from, to)) =>
-            // Its id, as its newest version holds it: the key it is stored under is never shown.
-            val id = kept
-              .collectFirst { case DocumentVersion.Holding(d) => readable(d).toOption }
-              .flatten
-              .fold(args.key.value)(_.head.key.value)
-            def file(n: Long): Either[Stop, String] =
-              kept
-                .collectFirst {
-                  case DocumentVersion.Holding(d) if DocumentVersionId.value(d.version) == n => d
-                }
-                .toRight(
-                  Stop.Refused(
-                    s"$id has no version $n among its $HistoryMost newest kept"
-                  )
+        text <- keptVersions(own.documents, project, where._1, where._2).flatMap {
+          (kept: Vector[DocumentVersion], readable: Document -> Either[String, Artifact]) =>
+            args.diff match {
+              case None =>
+                refuse(Traversal.sequence(kept.map(row(readable))))
+                  .map(AnswerText.versions(_, "No version is kept."))
+              case Some((from, to)) =>
+                // Its id, as its newest version holds it: the key it is stored under is never shown.
+                val id = kept
+                  .collectFirst { case DocumentVersion.Holding(d) => readable(d).toOption }
+                  .flatten
+                  .fold(args.key.value)(_.head.key.value)
+                def file(n: Long): Either[Stop, String] =
+                  kept
+                    .collectFirst {
+                      case DocumentVersion.Holding(d) if DocumentVersionId.value(d.version) == n =>
+                        d
+                    }
+                    .toRight(
+                      Stop.Refused(
+                        s"$id has no version $n among its $HistoryMost newest kept"
+                      )
+                    )
+                    .flatMap(d => refuse(readable(d)))
+                    .map(ProjectMarkdown.text)
+                for {
+                  older <- file(from)
+                  newer <- file(to)
+                } yield AnswerText.diff(
+                  s"$id version $from",
+                  older,
+                  s"$id version $to",
+                  newer
                 )
-                .flatMap(d => refuse(readable(d)))
-                .map(ProjectMarkdown.text)
-            for {
-              older <- file(from)
-              newer <- file(to)
-            } yield AnswerText.diff(
-              s"$id version $from",
-              older,
-              s"$id version $to",
-              newer
-            )
+            }
         }
       } yield text
     }
@@ -1310,12 +1308,17 @@ private[plugin] final class ProjectCommands(
     val spec: ToolSpec[Claiming] = ToolSpec(
       ToolName("project_claim"),
       "Claims an artifact for a session or agent to work in a role, until project_release " +
-        "frees it; the artifact itself is not changed. Keeps the artifact's brief for what it " +
+        "frees it; the artifact itself is not changed. Give `key`, or `oldest` (`project`, " +
+        "`kind`, `state`): of that kind's artifacts in that state that no one holds, the one " +
+        "that entered it first; its answer names the artifact claimed. " +
+        "Keeps the artifact's brief for what it " +
         "is claimed for, which that session is shown when its view is next rebuilt. Answers a " +
         "JSON object: `claimed`, a sentence saying what was claimed; `brief`, `kept` or " +
         "`none`; and with `none`, `note`, saying why. Refused, naming who holds it, when it " +
         "is claimed already; refused, naming the artifact, when what it is claimed for works " +
-        "another; and refused for a role the project's method lacks. A role the method says " +
+        "another; refused for a role, a kind or a state the project's method lacks; refused " +
+        "for both or neither of `key` and `oldest`; and refused, saying there is nothing to " +
+        "take, when `oldest` finds none. A role the method says " +
         "covers claims everything under the artifact too: such a claim is refused, naming " +
         "the other, when another session or agent holds one at, above or under it in that " +
         "role or another that covers. Claims made at the same " +
@@ -1382,7 +1385,33 @@ private[plugin] final class ProjectCommands(
           live <- stored(claims.live(at))
           key <- args.target match {
             case Claiming.Target.Key(ref) => resolved(project, ref)
-            case Claiming.Target.Oldest(_, _, _) => Left(Stop.Refused("`oldest` is not served"))
+            case Claiming.Target.Oldest(p, kind, state) =>
+              for {
+                _ <- stateOf(method, kind, state)
+                dated <- Traversal.traverse(
+                  project.documents.filter((_, a) => a.head.kind == kind && a.head.state == state)
+                ) { (d, a) =>
+                  keptVersions(own, project, d.key, d.label).map(
+                    (kept: Vector[DocumentVersion], read: Document -> Either[String, Artifact]) =>
+                      a.head.key -> entered(kept, read, state).getOrElse(d.written)
+                  )
+                }
+                oldest <- oldestFirst(
+                  method,
+                  whole,
+                  ids(project),
+                  live,
+                  args.role,
+                  args.holder,
+                  dated
+                ).headOption
+                  .toRight(
+                    Stop.Refused(
+                      s"nothing to take: no ${KindName.value(kind)} in ${StateName.value(state)} " +
+                        s"of ${ProjectKey.value(p)} is unclaimed"
+                    )
+                  )
+              } yield oldest
           }
           found <- artifact(project, key)
           (document, a) = found
@@ -2497,6 +2526,42 @@ private[plugin] object ProjectCommands {
           )
         )
     }
+
+  /** The versions of an artifact of `project` kept under `key` at `label` that `own` reads, newest
+    * first, at most [[HistoryMost]], with how each reads ([[versionsRead]]).
+    */
+  private[plugin] def keptVersions(own: DocumentShelf, project: Loaded, key: DocKey, label: Label)(
+      using Tx^
+  ): Either[Stop, (Vector[DocumentVersion], Document -> Either[String, Artifact])] =
+    for {
+      kept <- stored(own.versions(key, label, HistoryMost))
+      read <- versionsRead(own, project, kept.collect { case DocumentVersion.Holding(d) => d })
+    } yield (kept, read)
+
+  /** `state`, when `kind` is one of `method`'s and has it; else a refusal naming theirs. */
+  private[plugin] def stateOf(
+      method: Method,
+      kind: KindName,
+      state: StateName
+  ): Either[Stop, StateName] =
+    method.kinds
+      .find(_.name == kind)
+      .toRight(
+        Stop.Refused(
+          s"${KindName.value(kind)} is no kind of method ${MethodName.value(method.name)}; " +
+            "its kinds: " + method.kinds.map(k => KindName.value(k.name)).mkString(", ")
+        )
+      )
+      .flatMap(k =>
+        k.all
+          .find(_ == state)
+          .toRight(
+            Stop.Refused(
+              s"${KindName.value(kind)} has no state ${StateName.value(state)}; its states: " +
+                k.all.map(StateName.value).mkString(", ")
+            )
+          )
+      )
 
   /** The id of each artifact of `project`, by the key its document is kept under. */
   private[plugin] def ids(project: Loaded): Map[DocKey, ArtifactKey] =

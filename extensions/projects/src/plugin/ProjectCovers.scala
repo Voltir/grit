@@ -5,13 +5,13 @@ import java.time.Instant
 import scala.annotation.tailrec
 
 import grit.core.claim.{Claim, ClaimRole, Claimed, Claims}
-import grit.core.document.Document
+import grit.core.document.{Document, DocumentVersion}
 import grit.core.id.{ClaimHolder, DocKey}
 import grit.core.identity.Principal
 import grit.core.store.Tx
 import grit.projects.artifact.{Artifact, Project}
 import grit.projects.method.{Cover, Method}
-import grit.projects.name.{ArtifactKey, ProjectKey}
+import grit.projects.name.{ArtifactKey, ProjectKey, StateName}
 
 import ProjectArgs.*
 import ProjectCommands.*
@@ -119,6 +119,49 @@ private[plugin] object ProjectCovers {
   /** How `key` is named in `project`: its head's [[ArtifactHead.called]], or its id. */
   private[plugin] def calledIn(project: Project, key: ArtifactKey): String =
     project.artifacts.find(_.head.key == key).fold(key.value)(_.head.called)
+
+  /** Of `entered`, artifacts of `project` each with when it entered its state, those no claim
+    * among `live` holds or covers, and on which a claim as `role` for `holder` is [[uncovered]]:
+    * the first to enter first, ties by number.
+    */
+  private[plugin] def oldestFirst(
+      method: Method,
+      project: Project,
+      ids: Map[DocKey, ArtifactKey],
+      live: Vector[Claim],
+      role: ClaimRole,
+      holder: ClaimHolder,
+      entered: Vector[(ArtifactKey, Instant)]
+  ): Vector[ArtifactKey] = {
+    val held = live.flatMap(c => ids.get(c.subject)).toSet
+    val covered = covering(method, live, ids).map(_.key)
+    entered
+      .filter((key, _) =>
+        !held(key) && !covered.exists(atOrAbove(project, _, key)) &&
+          uncovered(method, project, ids, live, key, role, holder).isRight
+      )
+      .sortBy((key, when) => (when, key.number))
+      .map(_._1)
+  }
+
+  /** When an artifact whose kept versions are `kept`, newest first, each read by `read`, entered
+    * `state`: when the oldest of the unbroken run of newest versions in `state` was written, the
+    * version that moved it there or, when that is no longer among `kept`, the earliest kept in
+    * it. A withdrawal or a version that does not read ends the run; `None` when the newest is not
+    * in `state`.
+    */
+  private[plugin] def entered(
+      kept: Vector[DocumentVersion],
+      read: Document -> Either[String, Artifact],
+      state: StateName
+  ): Option[Instant] =
+    kept
+      .takeWhile {
+        case DocumentVersion.Holding(d) => read(d).exists(_.head.state == state)
+        case DocumentVersion.Withdrawal(_, _) => false
+      }
+      .lastOption
+      .collect { case DocumentVersion.Holding(d) => d.written }
 
   /** Nothing, or why a claim on `key` as `role` for `holder` may not be made in `project`: it
     * would cover, and another holder's covering claim among `live` overlaps it.
