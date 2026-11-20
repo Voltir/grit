@@ -10,6 +10,7 @@ import grit.core.id.{CallSlot, PluginName, ScheduleKey}
 import grit.core.job.{Declared, Grace, Job, NotOwn, OwnJobs, ScheduleDesk, SlotRule}
 import grit.core.message.Cost
 import grit.core.need.{Needs, PluginReads, Unneeded}
+import grit.core.place.Place
 import grit.core.plugin.{Documents, Exports, Plugin, PluginRun, PluginTool}
 import grit.core.store.Reads
 import grit.core.tool.{
@@ -46,7 +47,8 @@ final class TopicDocuments private (
     terms: DocumentTerms,
     cards: Option[Exports[CardShelf]],
     seedUntil: Option[LocalDate],
-    foldAt: Option[Double]
+    foldAt: Option[Double],
+    aheadIn: Vector[Place]
 ) extends Plugin {
 
   private val labels: Vector[Label] = keyed.map(_._2)
@@ -81,7 +83,8 @@ final class TopicDocuments private (
           TopicDocuments.Recent,
           None,
           seedUntil,
-          foldAt = foldAt
+          foldAt = foldAt,
+          aheadIn = aheadIn
         ),
         l
       )
@@ -274,7 +277,9 @@ object TopicDocuments {
   /** The plugin at `labels`, its runs daily `at` in `zone`, reading `cards`' cards when given,
     * each night's run until `seedUntil` (its day included) seeding ([[TopicParams.seedUntil]]),
     * each nightly and backfill run folding the merges it proposes at `foldAt` or more
-    * ([[TopicParams.foldAt]]; none folded when `None`), under the deployment's `visibility`; or
+    * ([[TopicParams.foldAt]]; none folded when `None`), each nightly run speaking ahead of a
+    * meeting in `aheadIn`'s rooms alone ([[TopicParams.aheadIn]]), under the deployment's
+    * `visibility`; or
     * why not: no label, one given twice, one holding a compartment `visibility` does not
     * declare, one whose written form makes no schedule key, or `foldAt` not from
     * [[grit.knowledge.topic.TopicDream.FoldAt]] to 1 ([[TopicParams.folding]]).
@@ -287,7 +292,8 @@ object TopicDocuments {
       visibility: Visibility,
       cards: Option[Exports[CardShelf]],
       seedUntil: Option[LocalDate],
-      foldAt: Option[Double]
+      foldAt: Option[Double],
+      aheadIn: Vector[Place] = Vector.empty
   ): Either[String, TopicDocuments] =
     for {
       keyed <- DreamSchedules.keyed("topics", Nightly, labels, visibility)
@@ -303,6 +309,7 @@ object TopicDocuments {
       terms,
       cards,
       seedUntil,
-      fold
+      fold,
+      aheadIn
     )
 }

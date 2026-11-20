@@ -34,8 +34,11 @@ import grit.std.either.Proven
   * withdraws, what each ask is shown, how a reply is read and what a topic's version refers to:
   * the module's README, "A topics run". Replies [[Gathered.line]], which holds no
   * cost: its asks' cost is read from the spend ledger ([[grit.core.store.UsageLedger]]), each
-  * recorded under its run's workflow. Its `limits`: asks `perRunMost`, judgments
-  * [[TopicParams.Sorts]] + [[TopicScan.Cards]] + [[TopicParams.Merges]]; no calls.
+  * recorded under its run's workflow. Given rooms ([[TopicParams.aheadIn]]), it ends by naming
+  * occasions ahead of meetings ([[MeetingsAhead.named]]), its reply's line followed by that
+  * phase's. Its `limits`: asks `perRunMost`, judgments [[TopicParams.Sorts]] +
+  * [[TopicScan.Cards]] + [[TopicParams.Merges]] + [[MeetingsAhead.Asks]], occasions
+  * [[MeetingsAhead.Asks]]; no calls.
   */
 final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[CardShelf]])
     extends DreamingJob[TopicParams] {
@@ -64,7 +67,9 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
   // its scan's meetings hold their start),
   // and none a meeting written that night; a fold at its params' foldAt or more is made
   // (`fold-{i}`).
-  val version: Int = 13
+  // 14: a nightly run given rooms ends by naming an occasion for each meeting due in one
+  // (`ahead`, `ahead-sort-{i}`, `occasion-{i}`; MeetingsAhead).
+  val version: Int = 14
 
   def write(params: TopicParams): ujson.Value = TopicParams.write(params)
 
@@ -72,7 +77,12 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
 
   override val limits: MoveLimits =
     MoveLimits
-      .of(perRunMost.max(0), 0, TopicParams.Sorts + TopicScan.Cards + TopicParams.Merges)
+      .of(
+        perRunMost.max(0),
+        0,
+        TopicParams.Sorts + TopicScan.Cards + TopicParams.Merges + MeetingsAhead.Asks,
+        MeetingsAhead.Asks
+      )
       .getOrElse(MoveLimits.Zero)
 
   def run(run: Trusted[JobRun[TopicParams]], moves: Dreaming^): String = {
@@ -165,7 +175,9 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
               case (next, None) => (next, reviewed, versions)
             }
           }
-        merged(run, moves, scan, versions, meetings, wrote).line
+        val line = merged(run, moves, scan, versions, meetings, wrote).line
+        if (params.aheadIn.isEmpty) line
+        else line + MeetingsAhead.named(run.tainted.map(_.params.aheadIn), zone, end, moves)
     }
   }
 

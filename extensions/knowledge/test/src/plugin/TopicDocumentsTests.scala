@@ -11,6 +11,7 @@ import grit.core.id.{PluginName, ScheduleKey, TestCallSlots, ToolCallId}
 import grit.core.job.{Grace, InMemorySchedules, OwnJobs, ScheduleDesk, SlotRule}
 import grit.core.message.AssistantBlock
 import grit.core.need.{Needs, PluginReads}
+import grit.core.place.Place
 import grit.core.plugin.{Exports, InMemoryPlugins, PluginTool}
 import grit.core.store.{Db, StoreError, Tx}
 import grit.core.tool.{Bound, CallError, Outcome, Repairs, ToolName, Toolbox}
@@ -38,9 +39,20 @@ object TopicDocumentsTests extends TestSuite {
       visibility: Visibility = Visibility.Shipped,
       cards: Option[Exports[CardShelf]] = None,
       seedUntil: Option[java.time.LocalDate] = None,
-      foldAt: Option[Double] = None
+      foldAt: Option[Double] = None,
+      aheadIn: Vector[Place] = Vector.empty
   ) =
-    TopicDocuments.of(Name, labels, At, ZoneOffset.UTC, visibility, cards, seedUntil, foldAt)
+    TopicDocuments.of(
+      Name,
+      labels,
+      At,
+      ZoneOffset.UTC,
+      visibility,
+      cards,
+      seedUntil,
+      foldAt,
+      aheadIn
+    )
 
   private val Internal: Label = Label.at(Level.Internal)
   private val Secret: Label = Label.at(Level.Confidential)
@@ -130,6 +142,19 @@ object TopicDocumentsTests extends TestSuite {
           Some(("topic", 2 * TopicDocuments.Bound))
         )
       )
+    }
+
+    test("a deployment's aheadIn reaches every label's nightly run, and no backfill's") {
+      val rooms = Vector(TestLabels.place("slack:T1/C-a"))
+      of(Vector(Label.Public, Label.at(Level.Internal)), aheadIn = rooms).flatMap(p =>
+        p.backfill(Vector(LocalDate.parse("2026-10-30")), 1, Instant.EPOCH)
+          .map(b =>
+            (
+              p.schedules.map(_.params).collect { case t: TopicParams => t.aheadIn },
+              b.map(_.params.aheadIn)
+            )
+          )
+      ) ==> Right((Vector.fill(2)(rooms), Vector.fill(2)(Vector.empty)))
     }
 
     test("a seed day reaches every label's schedule as its runs' seedUntil") {

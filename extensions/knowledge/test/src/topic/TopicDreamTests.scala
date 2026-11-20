@@ -117,7 +117,7 @@ object TopicDreamTests extends TestSuite {
       * labelled as `rooms` records them; its asks reading no document `unread` holds to; sorting
       * at most `merges` topics to merge, none unless a test of merges says, folding those at
       * `foldAt` or more, the topic `meanwhile` names rewritten with its lead as the first merge
-      * sort these runs make is judged: its reply.
+      * sort these runs make is judged; speaking ahead of meetings in `aheadIn`: its reply.
       */
     def run(
         perRun: Int = 64,
@@ -134,7 +134,8 @@ object TopicDreamTests extends TestSuite {
         merges: Int = 0,
         sorts: Int = TopicParams.Sorts,
         foldAt: Option[Double] = None,
-        meanwhile: Option[(String, String)] = None
+        meanwhile: Option[(String, String)] = None,
+        aheadIn: Vector[Place] = Vector.empty
     ): String = {
       val dream = new TopicDream(most, ZoneOffset.UTC, Some(Cards))
       heard.run()
@@ -185,7 +186,8 @@ object TopicDreamTests extends TestSuite {
               TopicParams.KeepFor,
               merges,
               sorts = sorts,
-              foldAt = foldAt
+              foldAt = foldAt,
+              aheadIn = aheadIn
             ),
             now,
             now
@@ -467,6 +469,17 @@ object TopicDreamTests extends TestSuite {
         .toMap,
       Map.empty
     )
+
+  /** The room [[Runs.topic]]'s strands are of. */
+  private val AheadRoom: Place = right(Place.read("slack:T/C1"))
+
+  /** A meeting of two planned for [[Day]] at 15:00, five hours after [[Now]]. */
+  private val Ahead: Topic.Kind = Topic.Kind.Meeting(
+    Meeting.of(
+      Meeting.State.Planned(Meeting.When(Day, Some(java.time.LocalTime.of(15, 0)))),
+      Vector("Ana", "Ben")
+    )
+  )
 
   private val Internal: Label = Label.at(Level.Internal)
 
@@ -2166,6 +2179,55 @@ object TopicDreamTests extends TestSuite {
         // The review is a verdict on the night's write, so it shows that write, not the fold.
         Vector(key(c) -> false)
       )
+    }
+
+    test(
+      "a run given rooms sorts a planned meeting of two due in its strands' room, and names an occasion when judged unsettled"
+    ) {
+      val runs = new Runs(new StrandWorld)
+      runs.topic(name = "m", from = Vector("s1"), kind = Ahead)
+      val reply = runs.run(sort = judging("unsettled"), aheadIn = Vector(AheadRoom))
+      (reply, runs.asked.map(_.kind)) ==> (
+        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the " +
+          "next run; meetings ahead: 1 in its rooms within 24 hours, 0 naming fewer than two " +
+          "people, 0 past the 3 a run asks about; 0 judged settled, 0 started, 1 held (1 off), " +
+          "0 already noted",
+        Vector("sort")
+      )
+    }
+
+    test("a meeting judged settled names no occasion") {
+      val runs = new Runs(new StrandWorld)
+      runs.topic(name = "m", from = Vector("s1"), kind = Ahead)
+      runs.run(sort = judging("settled"), aheadIn = Vector(AheadRoom)) ==>
+        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the " +
+        "next run; meetings ahead: 1 in its rooms within 24 hours, 0 naming fewer than two " +
+        "people, 0 past the 3 a run asks about; 1 judged settled, 0 started, 0 held, 0 " +
+        "already noted"
+    }
+
+    test(
+      "a run given no rooms has no ahead phase, and one made after its day's end finds no meeting due"
+    ) {
+      val next = Topic.Kind.Meeting(
+        Meeting.of(
+          Meeting.State.Planned(Meeting.When(Day.plusDays(1), Some(java.time.LocalTime.of(10, 0)))),
+          Vector("Ana", "Ben")
+        )
+      )
+      def asks(now: Instant, rooms: Vector[Place]): (Option[String], Int) = {
+        val runs = new Runs(new StrandWorld)
+        runs.topic(name = "m", from = Vector("s1"), kind = next)
+        val reply = runs.run(now = now, sort = judging("unsettled"), aheadIn = rooms)
+        (reply.split("; meetings ahead: ").lift(1).map(_.take(14)), runs.asked.size)
+      }
+      (
+        asks(Now, Vector.empty),
+        asks(
+          Day.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant.plusSeconds(1),
+          Vector(AheadRoom)
+        )
+      ) ==> ((None, 0), (Some("0 in its rooms"), 0))
     }
   }
 }

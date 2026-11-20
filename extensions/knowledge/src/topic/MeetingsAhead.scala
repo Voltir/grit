@@ -4,13 +4,16 @@ import java.time.{Instant, LocalDate, ZoneId}
 
 import scala.concurrent.duration.*
 
-import grit.core.act.Sorting
+import grit.core.act.{Dreaming, MoveError, MoveName, Occasioned, Sorting}
 import grit.core.classify.{Criterion, Decision}
 import grit.core.document.Document
 import grit.core.durable.Journaled
+import grit.core.flow.{Tainted, Trusted}
 import grit.core.id.{DocumentVersionId, ShortHash}
 import grit.core.occasion.{Occasion, OccasionBrief, OccasionKey}
 import grit.core.place.Place
+import grit.core.speech.SpeechJson
+import grit.knowledge.card.CardMoves
 import grit.knowledge.ref.TopicKey
 import grit.std.collect.Collect
 import grit.std.either.Proven
@@ -136,6 +139,89 @@ object MeetingsAhead {
 
   private[topic] def occasion(due: Due): Occasion =
     Occasion(due.room, due.key, Brief, due.version, due.start)
+
+  private val Scan: MoveName = MoveName.literal("ahead")
+
+  private enum Sorted {
+    case Refused(why: String)
+    case Unasked
+    case Settled
+    case Named(occasioned: Either[MoveError, Occasioned])
+  }
+
+  /** A topics run's last phase, for a day ending at `end` in `zone`: its documents scanned
+    * (`ahead`) for the meetings [[due]] in `rooms`, none when `end` is before the scan; each
+    * sorted (`ahead-sort-{i}`) by [[Unsettled]], and an occasion named (`occasion-{i}`) for
+    * each judged unsettled at [[YesAt]] or more. Replies what each came to, to follow the run's
+    * own line.
+    */
+  private[topic] def named(
+      rooms: Tainted[Vector[Place]],
+      zone: ZoneId,
+      end: Instant,
+      moves: Dreaming^
+  ): String =
+    moves.scan(Scan, rooms)((rs, keeper, _, _, at) =>
+      if (end.isBefore(at)) Right(Found(at, Vector.empty, 0, 0, 0))
+      else keeper.newest(Int.MaxValue).map(due(_, rs, zone, at))
+    ) match {
+      case Left(e) => s"; meetings ahead not read: ${MoveError.said(e)}"
+      case Right(found) =>
+        reply(
+          found,
+          found.asking.zipWithIndex.map((d, i) =>
+            moves.sort(
+              CardMoves.numbered("ahead-sort", i),
+              Dreaming.Item.Document(d.version),
+              Sorting.Among(Vector.empty, Vector.empty, 0),
+              rooms.map(_ => Unsettled)
+            ) match {
+              case Left(e) => Sorted.Refused(MoveError.said(e))
+              case Right(None) => Sorted.Unasked
+              case Right(Some(sorted)) =>
+                val answer = sorted.asked.reply
+                if (Trusted.asIs(answer).extract.probability(Judged.Unsettled) < YesAt)
+                  Sorted.Settled
+                else
+                  Sorted.Named(
+                    moves.occasion(CardMoves.numbered("occasion", i), answer.map(_ => occasion(d)))
+                  )
+            }
+          )
+        )
+    }
+
+  private def reply(found: Found, sorted: Vector[Sorted]): String = {
+    def counted(whys: Vector[String]): String =
+      Collect.counted(whys).map((w, n) => s"$n $w").mkString(", ")
+    val occasioned = sorted.collect { case Sorted.Named(o) => o }
+    val held = occasioned.collect {
+      case Right(Occasioned.Held(_, why)) => SpeechJson.silenceName(why)
+      case Right(Occasioned.Mislabelled(_)) => "mislabelled"
+      case Right(Occasioned.Unread(_)) => "unread"
+    }
+    val failed = sorted.collect {
+      case Sorted.Refused(why) => why
+      case Sorted.Unasked => "unsorted"
+      case Sorted.Named(Left(e)) => MoveError.said(e)
+      case Sorted.Named(Right(Occasioned.Unstarted(_, _))) => "unstarted"
+    }
+    val started = occasioned.count {
+      case Right(Occasioned.Started(_)) => true
+      case _ => false
+    }
+    val already = occasioned.count {
+      case Right(Occasioned.Already) => true
+      case _ => false
+    }
+    val settled = sorted.count(_ == Sorted.Settled)
+    val heldPart = if (held.isEmpty) "0 held" else s"${held.size} held (${counted(held)})"
+    val failedPart = if (failed.isEmpty) "" else s", ${failed.size} failed (${counted(failed)})"
+    s"; meetings ahead: ${found.within} in its rooms within ${Window.toHours} hours, " +
+      s"${found.fewer} naming fewer than two people, ${found.left} past the $Asks a run asks " +
+      s"about; $settled judged settled, $started started, $heldPart, $already already " +
+      s"noted$failedPart"
+  }
 
   given Journaled[Found] = Journaled.json(
     f =>

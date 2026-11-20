@@ -4,6 +4,7 @@ import java.time.LocalDate
 
 import scala.concurrent.duration.*
 
+import grit.core.place.Place
 import grit.core.stitch.Strand
 
 /** What a topics run is told: at most how many topics it writes (`perRun`); how far back a
@@ -17,7 +18,9 @@ import grit.core.stitch.Strand
   * its slot in its job's zone when none: a backfill names a past day, and its strands are read
   * as they stood at that day's end; and the last day it seeds on (`seedUntil`): a run for that
   * day or one before reads the cards written within [[TopicParams.SeedReach]] instead of
-  * `cardRecent`, so each night offers the next batch of the cards no run has placed.
+  * `cardRecent`, so each night offers the next batch of the cards no run has placed; and the
+  * rooms in which it may speak ahead of a meeting (`aheadIn`, by [[MeetingsAhead.due]]), none
+  * when empty.
   */
 final case class TopicParams(
     perRun: Int,
@@ -30,7 +33,8 @@ final case class TopicParams(
     merges: Int = TopicParams.Merges,
     cut: Strand.Cut = Strand.Cut.Default,
     sorts: Int = TopicParams.Sorts,
-    foldAt: Option[Double] = None
+    foldAt: Option[Double] = None,
+    aheadIn: Vector[Place] = Vector.empty
 ) extends caps.Pure
 
 object TopicParams {
@@ -59,7 +63,8 @@ object TopicParams {
   val Sorts: Int = 32
 
   /** Its record: `{"perRun", "recent", "cardRecent", "asideFor", "keepFor", "merges", "cut",
-    * "sorts", "day"?, "seedUntil"?, "foldAt"?}`, the cut as [[Strand.Cut.write]] writes it, durations
+    * "sorts", "day"?, "seedUntil"?, "foldAt"?, "aheadIn"?}`, `aheadIn` only when not empty, the
+    * cut as [[Strand.Cut.write]] writes it, durations
     * ISO-8601, the days `yyyy-mm-dd`.
     */
   def write(p: TopicParams): ujson.Value = {
@@ -77,6 +82,7 @@ object TopicParams {
     p.day.foreach(d => o("day") = d.toString)
     p.seedUntil.foreach(d => o("seedUntil") = d.toString)
     p.foldAt.foreach(f => o("foldAt") = f)
+    if (p.aheadIn.nonEmpty) { o("aheadIn") = ujson.Arr.from(p.aheadIn.map(_.written)) }
     o
   }
 
@@ -84,7 +90,8 @@ object TopicParams {
     * `merges` [[Merges]], `cut` [[Strand.Cut.Default]] and `sorts` [[Sorts]] when absent (kept
     * before they were), or why `v` holds none: `perRun` not a whole number at least 1, `merges`
     * not one from 0 to [[Merges]], `sorts` not one from 1 to [[Sorts]], `foldAt` (none when
-    * absent) not a number from [[TopicDream.FoldAt]] to 1, no cut, `recent` under a
+    * absent) not a number from [[TopicDream.FoldAt]] to 1, `aheadIn` (empty when absent) not an
+    * array of places, no cut, `recent` under a
     * day and the cut's settle, a duration not positive ISO-8601, or a day not `yyyy-mm-dd`.
     */
   def read(v: ujson.Value): Either[String, TopicParams] = {
@@ -144,6 +151,16 @@ object TopicParams {
             .left
             .map(why => s"a topics run's parameters hold $why: $shown")
       }
+      aheadIn <- o.get("aheadIn") match {
+        case None => Right(Vector.empty)
+        case Some(a) =>
+          a.arrOpt
+            .flatMap(rs =>
+              Option(rs.toVector.flatMap(_.strOpt.flatMap(Place.read(_).toOption)))
+                .filter(_.size == rs.size)
+            )
+            .toRight(s"a topics run's parameters hold aheadIn, an array of places: $shown")
+      }
       // A run settles after its window ends, so the next night's window must still reach it.
       _ <- Either.cond(
         recent >= 1.day + cut.settle.getSeconds.seconds,
@@ -161,7 +178,8 @@ object TopicParams {
       merges,
       cut,
       sorts,
-      foldAt
+      foldAt,
+      aheadIn
     )
   }
 

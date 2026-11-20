@@ -7,6 +7,7 @@ import grit.core.durable.Journaled
 import grit.core.id.{ConversationId, DocumentVersionId}
 import grit.core.place.Place
 import grit.core.stitch.StrandDigest
+import grit.core.visibility.TestLabels
 import grit.knowledge.ref.TopicKey
 import grit.prose.form.{Block, Doc, Mark, Span, Text}
 
@@ -612,6 +613,27 @@ object TopicCodecTests extends TestSuite {
         at(1.0).map(_.foldAt),
         TopicDream.FoldAt
       ) ==> (Right(p), Right(None), Left(true), Left(true), Right(Some(1.0)), 0.90)
+    }
+
+    test(
+      "a topics run's aheadIn reads back as written, none written or read when empty; a room not a place is refused, naming aheadIn"
+    ) {
+      import scala.concurrent.duration.*
+      val rooms = Vector(TestLabels.place("slack:T1/C-a"), TestLabels.place("slack:T1/C-b"))
+      val p = TopicParams(3, 2.days, 4.days, None, None, aheadIn = rooms)
+      val stored = ujson.Obj("perRun" -> 3, "recent" -> "PT48H", "cardRecent" -> "PT96H")
+      val bad = ujson.Obj(
+        "perRun" -> 3,
+        "recent" -> "PT48H",
+        "cardRecent" -> "PT96H",
+        "aheadIn" -> ujson.Arr(1)
+      )
+      (
+        TopicParams.read(TopicParams.write(p)),
+        TopicParams.read(stored).map(_.aheadIn),
+        TopicParams.write(p.copy(aheadIn = Vector.empty)).obj.contains("aheadIn"),
+        TopicParams.read(bad).left.map(_.contains("hold aheadIn"))
+      ) ==> (Right(p), Right(Vector.empty), false, Left(true))
     }
 
     test("a write reply holding call markup is refused, never kept as prose") {
