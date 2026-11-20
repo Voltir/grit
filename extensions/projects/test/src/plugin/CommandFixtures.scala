@@ -278,47 +278,57 @@ object CommandFixtures {
   def oldForm(
       store: Store,
       artifacts: (key: String, data: ujson.Value, believed: Integrity)*
-  ): Unit = {
-    def key(k: String): DocKey =
-      DocKey.of(k).fold(why => throw new java.lang.AssertionError(why), identity)
-    def ref(kind: String): grit.core.document.DocRef =
-      grit.core.document.DocRef
-        .of(kind, "p")
-        .fold(why => throw new java.lang.AssertionError(why), identity)
-    inTx {
-      for {
-        index <- store.keeper.current(key("p"), Label.Public)
-        d <- index.toRight(StoreError.Invalid("no index"))
-        _ <- store.keeper.write(
-          d.key,
-          d.label,
-          d.integrity,
-          d.place,
-          d.text,
-          ujson.Obj.from(d.data.obj.toSeq.filterNot(_._1 == "next")),
-          None,
-          at,
-          Set(ref("pinned"))
-        )
-      } yield ()
-    }.fold(e => throw new java.lang.AssertionError(e.toString), identity)
-    artifacts.foreach { a =>
-      inTx(
-        store.keeper.write(
-          key(a.key),
-          Label.Public,
-          a.believed,
-          Place.Everywhere,
-          grit.core.document.DocText
-            .of("Old.")
-            .fold(why => throw new java.lang.AssertionError(why), identity),
-          a.data,
-          None,
-          at,
-          Set(ref("project"))
-        )
-      ).fold(e => throw new java.lang.AssertionError(e.toString), _ => ())
-    }
+  ): Unit =
+    inTx(oldFormThrough(store.keeper, Label.Public, at, artifacts*))
+      .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+
+  /** Project `p`, started, put back in the old form through `keeper` at `at`, as [[oldForm]]
+    * does, its index the one current at `label` and each of `artifacts` kept at `label`; or what
+    * the store refuses.
+    */
+  def oldFormThrough(
+      keeper: DocumentKeeper^,
+      label: Label,
+      at: Instant,
+      artifacts: (key: String, data: ujson.Value, believed: Integrity)*
+  )(using Tx^): Either[StoreError, Unit] = {
+    def read[A](e: Either[String, A]): Either[StoreError, A] = e.left.map(StoreError.Invalid(_))
+    for {
+      key <- read(DocKey.of("p"))
+      index <- keeper.current(key, label)
+      d <- index.toRight(StoreError.Invalid("no index"))
+      pinned <- read(grit.core.document.DocRef.of("pinned", "p"))
+      _ <- keeper.write(
+        d.key,
+        d.label,
+        d.integrity,
+        d.place,
+        d.text,
+        ujson.Obj.from(d.data.obj.toSeq.filterNot(_._1 == "next")),
+        None,
+        at,
+        Set(pinned)
+      )
+      text <- read(grit.core.document.DocText.of("Old."))
+      project <- read(grit.core.document.DocRef.of("project", "p"))
+      _ <- artifacts.foldLeft[Either[StoreError, Unit]](Right(())) { (so, a) =>
+        for {
+          _ <- so
+          k <- read(DocKey.of(a.key))
+          _ <- keeper.write(
+            k,
+            label,
+            a.believed,
+            Place.Everywhere,
+            text,
+            a.data,
+            None,
+            at,
+            Set(project)
+          )
+        } yield ()
+      }
+    } yield ()
   }
 
   /** Project `p`, started, as a re-key leaves [[oldForm]]'s `artifacts`: numbered in key order,
@@ -418,21 +428,32 @@ object CommandFixtures {
       projects,
       store,
       "project_keep",
-      (naming(projects, store, local) ++ Vector[(String, ujson.Value)](
-        "kind" -> kind,
-        "title" -> s"Title $local",
-        "body" -> body
-      ) ++ more)*
+      (naming(projects, store, local) ++ keepFields(local, kind, body) ++ more)*
     )
 
-  /** How a keep names artifact `p/<local>`: by that key when the project has it, else as a new
-    * artifact taking `local` as its handle.
+  /** The fields of a keep of `p/<local>` besides its naming: of `kind`, titled `Title <local>`,
+    * holding `body`.
+    */
+  def keepFields(local: String, kind: String, body: String): Vector[(String, ujson.Value)] =
+    Vector("kind" -> kind, "title" -> s"Title $local", "body" -> body)
+
+  /** How a keep names artifact `p/<local>` ([[named]]), asking `project_show` whether the project
+    * has it.
     */
   def naming(projects: Projects, store: Store, local: String): Vector[(String, ujson.Value)] =
-    ask(projects, store, "project_show", "key" -> s"p/$local", "head" -> true) match {
-      case CommandOutcome.Done(_) => Vector("key" -> s"p/$local")
-      case CommandOutcome.Refused(_) => Vector("project" -> "p", "handle" -> local)
-    }
+    named(
+      local,
+      ask(projects, store, "project_show", "key" -> s"p/$local", "head" -> true) match {
+        case CommandOutcome.Done(_) => true
+        case CommandOutcome.Refused(_) => false
+      }
+    )
+
+  /** How a keep names artifact `p/<local>`: by that key when the project `has` it, else as a new
+    * artifact taking `local` as its handle.
+    */
+  def named(local: String, has: Boolean): Vector[(String, ujson.Value)] =
+    if (has) Vector("key" -> s"p/$local") else Vector("project" -> "p", "handle" -> local)
 
   def shown(projects: Projects, store: Store, key: String): String =
     done(ask(projects, store, "project_show", "key" -> key))

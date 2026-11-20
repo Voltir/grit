@@ -18,7 +18,7 @@ import grit.core.tool.ToolName
 import grit.core.visibility.Integrity
 import grit.core.visibility.{Clearance, Label, Level}
 import grit.dbos.sql.LiveDb
-import grit.projects.artifact.{Artifact, ArtifactJson}
+import grit.projects.artifact.{Artifact, ArtifactJson, OldFormFixtures}
 import grit.projects.method.{ArtifactKind, Method, MethodFixtures, TransitionChecks}
 import grit.projects.plugin.{CommandFixtures, Projects}
 
@@ -121,22 +121,17 @@ object ProjectsLiveTests extends TestSuite {
       body: String,
       more: (String, ujson.Value)*
   ) = {
-    // A new version of the one of that handle when it is kept, else a new artifact.
-    val naming: Vector[(String, ujson.Value)] =
-      ran(commands, ann, room, ToolName("project_show"), "key" -> s"p/$local") match {
-        case Right(CommandOutcome.Done(_)) => Vector("key" -> s"p/$local")
-        case _ => Vector("project" -> "p", "handle" -> local)
-      }
+    val has = ran(commands, ann, room, ToolName("project_show"), "key" -> s"p/$local") match {
+      case Right(CommandOutcome.Done(_)) => true
+      case _ => false
+    }
     ran(
       commands,
       ann,
       room,
       ToolName("project_keep"),
-      (naming ++ Vector[(String, ujson.Value)](
-        "kind" -> "note",
-        "title" -> s"Title $local",
-        "body" -> body
-      ) ++ more)*
+      (CommandFixtures.named(local, has) ++ CommandFixtures.keepFields(local, "note", body) ++
+        more)*
     ).map(_.getClass)
   }
 
@@ -888,64 +883,15 @@ object ProjectsLiveTests extends TestSuite {
           ran(commands, ann, desk, ToolName("project_new"), "project" -> "p")
           val internal = Label.at(Level.Internal)
           // Project p as the old form left it: its index with no next, and two artifacts keyed by
-          // name, p/b kept by a turn, believed lower than a person's own word.
-          val old = Vector(
-            (
-              "p/a",
-              Integrity.Authority,
-              """{"head":{"kind":"note","state":"open","title":"A",""" +
-                """"parent":null,"cites":["p/b"],"by":"ann"},"body":{"v":1,"notes":["p/b"],""" +
-                """"blocks":[{"type":"para","text":[{"t":"See "},{"t":"b","n":[0]}]}]}}"""
-            ),
-            (
-              "p/b",
-              Integrity.Member,
-              """{"head":{"kind":"note","state":"open","title":"B",""" +
-                """"parent":null,"cites":[],"by":null},"body":{"v":1,"notes":[],""" +
-                """"blocks":[{"type":"para","text":[{"t":"Plain."}]}]}}"""
-            )
-          )
-          def written[A](e: Either[String, A]): Either[StoreError, A] =
-            e.left.map(StoreError.Invalid(_))
+          // name, p/b believed lower than a person's own word.
           LiveDb.transaction(config, Clearance.inRoom(desk, internal, internal)) {
-            val keeper = engine.keeper(Projects.Name, Projects.Terms)
-            for {
-              key <- written(DocKey.of("p"))
-              index <- keeper
-                .current(key, internal)
-                .flatMap(_.toRight(StoreError.Invalid("no index")))
-              _ <- keeper.write(
-                key,
-                internal,
-                index.integrity,
-                index.place,
-                index.text,
-                ujson.Obj.from(index.data.obj.toSeq.filterNot(_._1 == "next")),
-                None,
-                at,
-                Set(DocRef.of("pinned", "p").fold(sys.error, identity))
-              )
-              _ <- old.foldLeft[Either[StoreError, Unit]](Right(())) {
-                case (so, (k, believed, data)) =>
-                  for {
-                    _ <- so
-                    under <- written(DocKey.of(k))
-                    text <- written(DocText.of("Old."))
-                    ref <- written(DocRef.of("project", "p"))
-                    _ <- keeper.write(
-                      under,
-                      internal,
-                      believed,
-                      Place.Everywhere,
-                      text,
-                      ujson.read(data),
-                      None,
-                      at,
-                      Set(ref)
-                    )
-                  } yield ()
-              }
-            } yield ()
+            CommandFixtures.oldFormThrough(
+              engine.keeper(Projects.Name, Projects.Terms),
+              internal,
+              at,
+              ("p/a", OldFormFixtures.data("A", cites = Vector("p/b")), Integrity.Authority),
+              ("p/b", OldFormFixtures.data("B", says = "Plain"), Integrity.Member)
+            )
           } ==> Right(())
           val rekeyed = commands.run(
             ann,
