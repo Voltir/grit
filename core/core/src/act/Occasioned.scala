@@ -24,7 +24,6 @@ import grit.core.visibility.Integrity
 /** What [[Keeping.occasion]] made of an occasion. */
 enum Occasioned extends caps.Pure {
 
-  /** Its turn, `turn`, was decided to be drafted, and started. */
   case Started(turn: TurnRef)
 
   /** Held for `why`: no turn runs. `turn` is `None` when nothing was decided for its key, held by
