@@ -2,7 +2,7 @@ package grit.core.store
 
 import java.time.ZoneId
 
-import grit.core.id.EntryId
+import grit.core.id.{EntryId, PrincipalId}
 import grit.core.identity.Account
 
 /** The accounts actions come through, and the names they go by; and whose names a window
@@ -34,9 +34,22 @@ trait Principals {
     * not inbound, or whose account no source has placed.
     */
   def zoneOf(entry: EntryId)(using Tx^): Either[StoreError, Option[ZoneId]]
+
+  /** Of `entries`, each inbound one a person wrote, by its [[Principals.Author]]: grit's are not
+    * among them, nor an entry that is not inbound.
+    */
+  def authors(entries: Vector[EntryId])(using
+      Tx^
+  ): Either[StoreError, Map[EntryId, Principals.Author]]
 }
 
 object Principals {
+
+  /** Who wrote an inbound entry: the `person` its account is linked to now, and the `name` that
+    * account goes by and the `zone` its source places it in, when it has them.
+    */
+  final case class Author(person: PrincipalId, name: Option[String], zone: Option[ZoneId])
+      extends caps.Pure
 
   /** Why `account` may not be named `name`, as [[Principals.name]] refuses it; `None` when it
     * may. Every store refuses by this one rule.

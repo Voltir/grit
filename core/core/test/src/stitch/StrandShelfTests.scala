@@ -1,7 +1,10 @@
 package grit.core.stitch
 
+import java.time.ZoneId
+
 import grit.core.id.{EntryId, Href}
-import grit.core.store.{Origin, Tx}
+import grit.core.identity.{Account, TestAccounts}
+import grit.core.store.{InMemoryPrincipals, Origin, Tx}
 import grit.core.visibility.{Clearance, Integrity, Label, Recorded, TestLabels}
 import grit.dbos.sql.TestTx
 
@@ -48,6 +51,66 @@ object StrandShelfTests extends TestSuite {
       seen.map(s => (s.root, s.members, s.said, s.chars, s.since, s.touched, s.asOf)) ==>
         Vector((a.id, Vector(a.id, c.id, b.id), 3, 3 + 300 + 5, at(0), at(60), at(600)))
       seen.map(_.room) ==> Vector(Origin.Slack("T", "C1", "1.0").room)
+    }
+
+    test(
+      "speakers counts each person's messages, most first and ties by id, and leaves out grit's"
+    ) {
+      val w = new StrandWorld
+      val (dana, bo, cy) =
+        (
+          TestAccounts.account("slack:T/U-dana"),
+          TestAccounts.account("slack:T/U-bo"),
+          TestAccounts.account("slack:T/U-cy")
+        )
+      val london = ZoneId.of("Europe/London")
+      given Tx = TestTx.fake
+      right(w.principals.name(dana, "Dana"))
+      right(w.principals.zoned(dana, london))
+      val a = w.thread("C1", "1.0")
+      w.say(a, "the plan", 0, by = Some(dana))
+      w.say(a, "noted", 10, by = Some(cy))
+      w.say(a, "the nightly report", 20, posted = true)
+      w.say(a, "grit's own, inbound", 30, by = Some(Account.Grit))
+      w.say(a, "and the numbers", 40, by = Some(dana))
+      w.say(a, "thanks", 50, by = Some(bo))
+      right(w.shelf.speakers(w.of(a, at(600)))) ==> Vector(
+        Vector(
+          Strand.Spoke(InMemoryPrincipals.person(dana), 2, Strand.Name.of("Dana"), Some(london)),
+          Strand.Spoke(InMemoryPrincipals.person(bo), 1, None, None),
+          Strand.Spoke(InMemoryPrincipals.person(cy), 1, None, None)
+        )
+      )
+    }
+
+    test("speakers counts no message its transaction does not read") {
+      val w = new StrandWorld
+      val (ana, dana) =
+        (TestAccounts.account("slack:T/U-ana"), TestAccounts.account("slack:T/U-dana"))
+      val shut = w.room("C2", TestLabels.Trial)
+      w.say(shut, "the trial's numbers", 0, source = Some("1.0"), by = Some(ana))
+      val b = w.under("C2", "1.0")
+      w.say(b, "they look good", 60, by = Some(dana))
+      w.say(b, "said after asOf", 900, by = Some(ana))
+      given Tx = TestTx.fake(Clearance.of(Label.Public), TestLabels.Trialled)
+      val seen = right(w.shelf.units(at(0), at(600), Strand.Cut.Default)).filter(_.root == b.id)
+      right(w.shelf.speakers(seen)) ==>
+        Vector(Vector(Strand.Spoke(InMemoryPrincipals.person(dana), 1, None, None)))
+    }
+
+    test("a strand no person spoke in has no speakers") {
+      val w = new StrandWorld
+      val a = w.thread("C1", "1.0")
+      w.say(a, "the nightly report", 0, posted = true)
+      w.say(a, "heard from no account", 10)
+      given Tx = TestTx.fake
+      right(w.shelf.speakers(w.of(a, at(600)))) ==> Vector(Vector.empty)
+    }
+
+    test("a name is trimmed; one blank, of two lines or over 80 characters is none") {
+      Vector("  Dana Ito ", "", "   ", "Dana\nIto", "x" * 80, "x" * 81)
+        .map(t => Strand.Name.of(t).map(Strand.Name.value)) ==>
+        Vector(Some("Dana Ito"), None, None, None, Some("x" * 80), None)
     }
 
     test(

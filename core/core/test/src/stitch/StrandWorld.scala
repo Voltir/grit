@@ -3,7 +3,7 @@ package grit.core.stitch
 import java.time.Instant
 
 import grit.core.id.{CloseRef, ConversationId, EntryId, SourceId, TurnRef}
-import grit.core.identity.TestAccounts
+import grit.core.identity.{Account, TestAccounts}
 import grit.core.inbox.InboundId
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.{CloseReason, Probability, TestClosings}
@@ -41,9 +41,10 @@ final class StrandWorld(start: Instant = StrandWorld.At) {
       .fold(Origin.Task("none", ConversationId.value(c)))(_.origin)
   val periods = new InMemoryPeriodStore(entries, originOf)
   val stitches = new InMemoryStitchStore(entries, originOf)
-  val shelf: StrandShelf = StrandShelf.over(stitches, conversations)
+  val principals = new InMemoryPrincipals
+  val shelf: StrandShelf = StrandShelf.over(stitches, conversations, principals)
   val excerpts: StrandExcerpts =
-    StrandExcerpts.over(stitches, conversations, new InMemoryPrincipals)
+    StrandExcerpts.over(stitches, conversations, principals)
 
   def thread(channel: String, ts: String): Conversation = right(
     conversations.findOrCreate(
@@ -72,7 +73,7 @@ final class StrandWorld(start: Instant = StrandWorld.At) {
   )
 
   /** `text` heard in `c` `seconds` after `start` (posted by grit when `posted`), kept under the
-    * inbound id of `source` when it has one.
+    * inbound id of `source` when it has one, and written through `by` when it is given.
     */
   def say(
       c: Conversation,
@@ -80,7 +81,8 @@ final class StrandWorld(start: Instant = StrandWorld.At) {
       seconds: Long,
       integrity: Integrity = Integrity.Member,
       source: Option[String] = None,
-      posted: Boolean = false
+      posted: Boolean = false,
+      by: Option[Account] = None
   ): Entry = {
     given Tx = TestTx.fake
     val next = right(entries.lockNext(c.id))
@@ -98,6 +100,7 @@ final class StrandWorld(start: Instant = StrandWorld.At) {
       integrity
     )
     right(entries.insert(e))
+    by.foreach(a => principals.authored(e.id, a))
     e
   }
 

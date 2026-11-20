@@ -450,7 +450,7 @@ private[grit] object Launch {
           runtime.keeper,
           plugin => runtime.pieceKeeper(plugin, PieceKeeper.Bound),
           Dreaming.Reads(
-            StrandShelf.over(runtime.stitches, runtime.conversations),
+            StrandShelf.over(runtime.stitches, runtime.conversations, runtime.principals),
             // A dreaming job's plugin is always among the deployment's: none other is asked.
             plugin => needs.getOrElse(plugin, Needs.over(plugin, Vector.empty)),
             StrandExcerpts.over(runtime.stitches, runtime.conversations, runtime.principals),

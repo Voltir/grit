@@ -18,8 +18,10 @@ Decision:
 
 - **A dreaming job is a third kind of plugin job** (`DreamingJob`, handed `Dreaming`). Its
   keeps may also read the strands of the rooms its transaction reads, by ids, counts and a
-  content digest of their messages (`StrandShelf`, `Strand.Digested`): nothing a model would
-  read leaves a scan.
+  content digest of their messages (`StrandShelf`, `Strand.Digested`), and who wrote in each,
+  by person, count, name and zone (`StrandShelf.speakers`): nothing a model would read leaves a
+  scan but a speaker's name, bounded to one short line (`Strand.Name`), which a model is shown
+  only inside a fenced user message, never in system text.
 - **Core summarises for it.** `Dreaming.summarise` is an ask whose step reads the members'
   messages itself (`StrandExcerpts`), shows them as a reader's excerpt within the summary's
   characters, and records only the JSON ask's own form under a digest of the strands' ids. Its
@@ -51,7 +53,7 @@ Decision:
 Consequences:
 
 - A plugin's code never holds a message's text, only the links in it as `Href`s
-  (`StrandShelf.links`); ADR 0034's moves gain a read inside a keep and an ask core frames. A
+  (`StrandShelf.links`) and its author's name as their account gives it; ADR 0034's moves gain a read inside a keep and an ask core frames. A
   planted link can place a card the plugin already reads into a write already capped by the
   guest's strand, which is the influence a sort's placing has.
 - A sort's classifier reads the guest's words as its state, and they can move a probability:

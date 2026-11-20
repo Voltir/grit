@@ -2,7 +2,7 @@ package grit.core.store
 
 import java.time.ZoneId
 
-import grit.core.id.{EntryId, Href}
+import grit.core.id.{EntryId, Href, PrincipalId, TestPrincipalIds}
 import grit.core.identity.Account
 
 /** An in-memory [[Principals]] for tests, keeping [[PrincipalsContract]]. It ignores the `Tx`.
@@ -55,6 +55,22 @@ final class InMemoryPrincipals extends Principals {
   def zoneOf(entry: EntryId)(using Tx^): Either[StoreError, Option[ZoneId]] =
     Right(authors.get(entry).flatMap(zones.get))
 
+  def authors(entries: Vector[EntryId])(using
+      Tx^
+  ): Either[StoreError, Map[EntryId, Principals.Author]] =
+    Right(
+      entries
+        .flatMap(e =>
+          authors
+            .get(e)
+            .filter(_ != Account.Grit)
+            .map(a =>
+              e -> Principals.Author(InMemoryPrincipals.person(a), names.get(a), zones.get(a))
+            )
+        )
+        .toMap
+    )
+
   def speakers(entries: Vector[EntryId])(using Tx^): Either[StoreError, Speakers] =
     Right(
       Speakers(
@@ -62,4 +78,13 @@ final class InMemoryPrincipals extends Principals {
         entries.flatMap(e => links.get(e).map(e -> _)).toMap
       )
     )
+}
+
+object InMemoryPrincipals {
+
+  /** The person `account` is linked to in memory: each account a person of its own, as an
+    * account no realm attests is its home alone in SQL, its id spelled as the account is
+    * written (so [[Account.Local]]'s is [[PrincipalId.Local]]).
+    */
+  def person(account: Account): PrincipalId = TestPrincipalIds.stored(Account.written(account))
 }

@@ -1,8 +1,8 @@
 package grit.core.stitch
 
-import java.time.{Duration, Instant}
+import java.time.{Duration, Instant, ZoneId}
 
-import grit.core.id.{ConversationId, EntryId}
+import grit.core.id.{ConversationId, EntryId, PrincipalId}
 import grit.core.place.Place
 import grit.core.store.Entry
 import grit.core.visibility.{Integrity, Label}
@@ -260,4 +260,35 @@ object Strand {
     * together ([[StrandExcerpts]]).
     */
   final case class Shown(excerpt: Stitching.Excerpt, integrity: Integrity)
+
+  /** A name as its account goes by it, as a strand's speaker: trimmed, not blank, at most
+    * [[Name.Chars]] characters and holding no control character, so one line. Text a person
+    * chose: it reaches a model only inside a fenced user message, never in system text.
+    */
+  opaque type Name = String
+
+  object Name {
+
+    /** 80: the most characters of a [[Name]]. */
+    val Chars: Int = 80
+
+    /** `text`, trimmed, as a name; `None` for one blank, past [[Chars]] or holding a control
+      * character (a line break among them).
+      */
+    def of(text: String): Option[Name] = {
+      val t = text.trim
+      Option.when(t.nonEmpty && t.length <= Chars && !t.exists(_.isControl))(t)
+    }
+
+    def value(n: Name): String = n
+
+    given CanEqual[Name, Name] = CanEqual.derived
+  }
+
+  /** A person who wrote in a strand: `said` of its messages, their [[Name]] when the account of
+    * their newest message has one that reads as one, and the zone that account's source places
+    * them in, when it does ([[grit.core.store.Principals.Author]]).
+    */
+  final case class Spoke(person: PrincipalId, said: Int, name: Option[Name], zone: Option[ZoneId])
+      extends caps.Pure
 }

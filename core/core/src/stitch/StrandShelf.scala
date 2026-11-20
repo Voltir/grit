@@ -2,9 +2,9 @@ package grit.core.stitch
 
 import java.time.Instant
 
-import grit.core.id.{ConversationId, Href}
+import grit.core.id.{ConversationId, Href, PrincipalId}
 import grit.core.message.Cut
-import grit.core.store.{Conversation, ConversationStore, Origin, StoreError, Tx}
+import grit.core.store.{Conversation, ConversationStore, Origin, Principals, StoreError, Tx}
 
 /** The strands of the rooms a transaction reads ([[Strand.Digested]]). Each read takes each
   * strand's messages once, text and all, and keeps only their ids, count and lengths.
@@ -23,6 +23,15 @@ trait StrandShelf {
     * among them and a run read by its span: the one part of their text a run's code is handed.
     */
   def links(seen: Strand.Digested)(using Tx^): Either[StoreError, Vector[Href]]
+
+  /** For each of `seen`, in its order, each person who wrote one of the messages [[links]] reads
+    * of it, most messages first, ties by id; never grit, nor an account linked to no person. Ids,
+    * counts, names and zones alone: a strand's text stays on
+    * [[grit.core.act.Dreaming.summarise]]'s route.
+    */
+  def speakers(seen: Vector[Strand.Digested])(using
+      Tx^
+  ): Either[StoreError, Vector[Vector[Strand.Spoke]]]
 
   /** The strands whose room's label in force is the transaction's floor
     * ([[grit.core.store.Tx.floor]]) that a run places, oldest touched first: each stitched
@@ -43,11 +52,15 @@ trait StrandShelf {
 
 object StrandShelf {
 
-  /** The shelf over `stitches`, where strands are linked and said in, and `conversations`,
-    * where each root's room is.
+  /** The shelf over `stitches`, where strands are linked and said in, `conversations`, where
+    * each root's room is, and `principals`, who wrote each message.
     */
-  def over(stitches: StitchStore, conversations: ConversationStore): StrandShelf =
-    new Over(stitches, conversations)
+  def over(
+      stitches: StitchStore,
+      conversations: ConversationStore,
+      principals: Principals
+  ): StrandShelf =
+    new Over(stitches, conversations, principals)
 
   /** What `root`'s strand said before `asOf`: the root's messages and its followers', oldest
     * first. The one read both a [[Strand.Digested]] and a [[StrandExcerpts]] read are made of.
@@ -120,8 +133,11 @@ object StrandShelf {
       }
   }
 
-  private final class Over(stitches: StitchStore, conversations: ConversationStore)
-      extends StrandShelf {
+  private final class Over(
+      stitches: StitchStore,
+      conversations: ConversationStore,
+      principals: Principals
+  ) extends StrandShelf {
 
     /** Each strand with at least one follower, a member of which had a message said from
       * `from` until before `until`, as it stood at `until`, at every label read.
@@ -148,6 +164,41 @@ object StrandShelf {
           .flatMap(Stitching.spoken)
           .flatMap(Href.in)
           .distinct
+      )
+
+    def speakers(seen: Vector[Strand.Digested])(using
+        Tx^
+    ): Either[StoreError, Vector[Vector[Strand.Spoke]]] =
+      each(seen)(s =>
+        placing(stitches, conversations, s).map(p =>
+          (p.opening.toVector ++ p.placed)
+            .distinctBy(_.entry.id)
+            .sortBy(_.entry.createdAt)
+            .map(_.entry.id)
+        )
+      ).flatMap(said =>
+        principals
+          .authors(said.flatten.distinct)
+          .map(authors =>
+            said.map { entries =>
+              val wrote = entries.flatMap(authors.get)
+              wrote
+                .map(_.person)
+                .distinct
+                .map { person =>
+                  val theirs = wrote.filter(_.person == person)
+                  // The newest message's account names them: `wrote` keeps the strand's order.
+                  val newest = theirs.lastOption
+                  Strand.Spoke(
+                    person,
+                    theirs.size,
+                    newest.flatMap(_.name).flatMap(Strand.Name.of),
+                    newest.flatMap(_.zone)
+                  )
+                }
+                .sortBy(s => (-s.said, PrincipalId.value(s.person)))
+            }
+          )
       )
 
     def units(from: Instant, until: Instant, cut: Strand.Cut)(using

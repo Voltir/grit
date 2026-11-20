@@ -2,7 +2,7 @@ package grit.core.store
 
 import java.time.ZoneId
 
-import grit.core.id.{EntryId, Href}
+import grit.core.id.{EntryId, Href, PrincipalId}
 import grit.core.identity.{Account, TestAccounts}
 
 import utest.*
@@ -88,6 +88,30 @@ abstract class PrincipalsContract extends TestSuite {
         Left(StoreError.Invalid("local is placed by no source"))
       transaction(principals.zoned(Account.Grit, pacific)) ==>
         Left(StoreError.Invalid("grit is placed by no source"))
+    }
+
+    test(
+      "an inbound entry's author is its account's person, with the account's name and zone; grit's, and entries not inbound, have none"
+    ) {
+      val principals = fresh()
+      val lisbon = ZoneId.of("Europe/Lisbon")
+      val bo = TestAccounts.account("slack:T1/U2")
+      transaction(principals.name(ana, "Ana Lima")) ==> Right(())
+      transaction(principals.zoned(ana, lisbon)) ==> Right(())
+      val first = said(principals, ana, None)
+      val second = said(principals, ana, None)
+      val his = said(principals, bo, None)
+      val mine = said(principals, Account.Local, None)
+      val grits = said(principals, Account.Grit, None)
+      val none = EntryId("reply:nobody:0")
+      val authors = transaction(principals.authors(Vector(first, second, his, mine, grits, none)))
+        .fold(e => throw new java.lang.AssertionError(s"store failed: $e"), identity)
+      authors.keySet ==> Set(first, second, his, mine)
+      Vector(first, his, mine).map(e => authors.get(e).map(a => (a.name, a.zone))) ==>
+        Vector(Some((Some("Ana Lima"), Some(lisbon))), Some((None, None)), Some((None, None)))
+      authors.get(mine).map(_.person) ==> Some(PrincipalId.Local)
+      assert(authors.get(first).map(_.person) == authors.get(second).map(_.person))
+      assert(authors.get(first).map(_.person) != authors.get(his).map(_.person))
     }
   }
 }

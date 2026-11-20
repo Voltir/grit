@@ -4,7 +4,7 @@ import java.time.ZoneId
 
 import scala.util.{Try, Using}
 
-import grit.core.id.{EntryId, Href}
+import grit.core.id.{EntryId, Href, PrincipalIds}
 import grit.core.identity.Account
 import grit.core.store.{Principals, Speakers, StoreError, Tx}
 
@@ -82,6 +82,39 @@ final class SqlPrincipals extends Principals {
       }
     }
   }
+
+  def authors(entries: Vector[EntryId])(using
+      tx: Tx^
+  ): Either[StoreError, Map[EntryId, Principals.Author]] =
+    if (entries.isEmpty) Right(Map.empty)
+    else {
+      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+      attempt {
+        Using.resource(
+          conn.prepareStatement(
+            """SELECT a.entry_id, a.principal_id, n.name, n.zone
+              |  FROM grit.authors a
+              |  JOIN grit.identities n ON n.account = a.account
+              | WHERE a.kind = 'person'
+              |   AND a.entry_id IN (SELECT jsonb_array_elements_text(?::jsonb))""".stripMargin
+          )
+        ) { ps =>
+          // The ids go as JSON, so no Java array crosses JDBC (separation checking).
+          ps.setString(1, ujson.Arr.from(entries.map(e => ujson.Str(EntryId.value(e)))).render())
+          Using.resource(ps.executeQuery()) { rs =>
+            val authors = Map.newBuilder[EntryId, Principals.Author]
+            while (rs.next())
+              authors += EntryId(rs.getString(1)) -> Principals.Author(
+                PrincipalIds.stored(rs.getString(2)),
+                Option(rs.getString(3)),
+                // Written from a ZoneId (zoned); one this JVM's zone rules no longer know is none.
+                Option(rs.getString(4)).flatMap(z => Try(ZoneId.of(z)).toOption)
+              )
+            authors.result()
+          }
+        }
+      }
+    }
 
   def speakers(entries: Vector[EntryId])(using tx: Tx^): Either[StoreError, Speakers] =
     if (entries.isEmpty) Right(Speakers.none)
