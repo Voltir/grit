@@ -5,9 +5,8 @@ import grit.act.phase.Placing
 import grit.core.clock.Clock
 import grit.core.document.DocumentSearch
 import grit.core.edge.{Acknowledgements, Deliveries}
-import grit.core.id.TurnRef
 import grit.core.recipe.RoomReads
-import grit.core.speech.{Speaking, SpeechStore}
+import grit.core.speech.{SpeechStore, Unprompted}
 import grit.core.spend.{Budget, Spending}
 import grit.core.stitch.{StitchStore, Tuning}
 import grit.core.store.{ConversationStore, Db, EntrySearch, EntryStore, PeriodStore, Principals}
@@ -17,7 +16,7 @@ import grit.core.triage.{Corpora, TriageStore}
   * keeps its tags ([[TriageRecords]]), `moves`, whose classifier its ask goes to, admitted by
   * `budget`, `db` to read the thread
   * outside a transaction, `clock` to say when the tags were made, whether grit then drafts a
-  * reply ([[TriageSpeech]]), how its strand is read and, in a triage begun before openings
+  * reply ([[grit.core.speech.Unprompted]]), how its strand is read and, in a triage begun before openings
   * were placed on their own, its opening stitched (`tuning`), what its opening's placement is
   * waited on through (`placing`), the deployment's knowledge `sources`, those covering a message's
   * conversation asked about one by one, and `questions`, the set it asks
@@ -29,7 +28,7 @@ final case class TriageEnv(
     budget: Budget,
     db: Db^,
     clock: Clock^,
-    speech: TriageSpeech^,
+    speech: Unprompted^,
     tuning: Tuning,
     placing: Placing.Env^,
     sources: Corpora,
@@ -59,14 +58,4 @@ final case class TriageRecords(
     rooms: RoomReads,
     periods: PeriodStore,
     documents: DocumentSearch
-)
-
-/** Whether and within what grit speaks where it was not addressed (`speaking`, read when a
-  * message is considered), the deployment's `budget`, and `start`, which queues the heard
-  * message's turn once grit drafts a reply to it; why not, when it could not.
-  */
-final case class TriageSpeech(
-    speaking: Speaking,
-    budget: Budget,
-    start: TurnRef => Either[String, Unit]
 )

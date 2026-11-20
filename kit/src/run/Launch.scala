@@ -42,7 +42,7 @@ import grit.lifecycle.post.{PostEnv, Posting}
 import grit.lifecycle.settle.{Settle, SettleEnv, SettleRecords}
 import grit.lifecycle.shadow.{Shadow, ShadowAsking, ShadowEnv, ShadowVariant}
 import grit.lifecycle.stitch.{Stitch, StitchEnv}
-import grit.lifecycle.triage.{Mentions, Triage, TriageEnv, TriageRecords, TriageSpeech}
+import grit.lifecycle.triage.{Mentions, Triage, TriageEnv, TriageRecords}
 import grit.models.{CatalogModels, JevClassifier, JevConfig, Seed, StubClassifier, StubModels}
 import grit.std.either.Proven
 import grit.tools.{About, Administering, Cleared, FileReading, MessageIds, Probes, Tuning}
@@ -401,7 +401,7 @@ private[grit] object Launch {
           d.budget,
           db,
           clock,
-          TriageSpeech(
+          grit.core.speech.Unprompted(
             d.speaking,
             d.budget,
             turn => runtime.startTurn(turn).left.map(_.toString)

@@ -450,7 +450,7 @@ object TriageFixtures {
           Budget(ZoneOffset.UTC, cap),
           db,
           clock,
-          TriageSpeech(
+          grit.core.speech.Unprompted(
             speaking,
             Budget(ZoneOffset.UTC, None),
             turn => start(turn).map(_ => started = started :+ turn)

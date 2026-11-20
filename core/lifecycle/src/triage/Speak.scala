@@ -60,23 +60,18 @@ private[triage] object Speak {
       now: Instant
   )(using Tx^): Either[String, Decision] = {
     val turn = TurnRef(triage.period.conversationId, triage.turn)
-    val day = budget.today(now)
     (for {
       found <- records.entries.get(entry)
       conversation <- records.conversations.get(turn.conversationId)
       reach <- records.speech.reach(turn)
-      spoken <- limits.fold[Either[StoreError, Vector[grit.core.speech.Spoken]]](
-        Right(Vector.empty)
-      )(l => records.speech.spoken(l.from(now)))
-      speech <- records.speech.spentOn(day)
-      all <- records.spending.on(day)
+      ledger <- Ledger.read(records.speech, records.spending, limits, budget, now)
       decided <- (found, conversation) match {
         case (Some(e), Some(c)) =>
           val reached = reach.getOrElse(Reach.Nowhere)
           for {
             cues <- cuesOf(records, horizon, e, c, reached, now)
             heard = Heard.of(turn, e, c.origin, reached, tags, cues)
-            decision = Speech.decide(speaking, heard, Ledger(spoken, speech, all), budget, now)
+            decision = Speech.decide(speaking, heard, ledger, budget, now)
             kept <- records.speech.decided(heard, decision, now)
             _ <- decision match {
               case Decision.Answering(_, to) if kept =>

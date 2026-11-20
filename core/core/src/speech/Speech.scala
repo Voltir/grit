@@ -10,8 +10,8 @@ import grit.core.message.{Cost, Usage}
 import grit.core.occasion.Occasion
 import grit.core.period.Probability
 import grit.core.place.Place
-import grit.core.spend.{Budget, DailyCap, Spend}
-import grit.core.store.{Entry, Origin, Tx}
+import grit.core.spend.{Budget, DailyCap, Spend, Spending}
+import grit.core.store.{Entry, Origin, StoreError, Tx}
 import grit.core.triage.{Cues, Gate, Reading, Tags}
 import grit.core.visibility.Integrity
 
@@ -101,6 +101,30 @@ final case class Spoken(
   * of the limits' windows, and what was spent today on speech (`speech`) and in all (`all`).
   */
 final case class Ledger(turns: Vector[Spoken], speech: Spend, all: Spend)
+
+object Ledger {
+
+  /** The ledger at `now`, read from `speech` and `spending`: the turns decided since
+    * `limits`' longest window began ([[Limits.from]]; none without limits), and what was spent
+    * on the day `budget` says `now` falls on.
+    */
+  def read(
+      speech: SpeechStore,
+      spending: Spending,
+      limits: Option[Limits],
+      budget: Budget,
+      now: Instant
+  )(using Tx^): Either[StoreError, Ledger] = {
+    val day = budget.today(now)
+    for {
+      spoken <- limits.fold[Either[StoreError, Vector[Spoken]]](Right(Vector.empty))(l =>
+        speech.spoken(l.from(now))
+      )
+      spent <- speech.spentOn(day)
+      all <- spending.on(day)
+    } yield Ledger(spoken, spent, all)
+  }
+}
 
 /** What grit decided about a heard message. */
 enum Decision {

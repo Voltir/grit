@@ -280,7 +280,7 @@ object LiveTurn {
             uncapped,
             engine.db,
             Clock.system(),
-            grit.lifecycle.triage.TriageSpeech(
+            grit.core.speech.Unprompted(
               grit.core.speech.Speaking.Off,
               engine.budget,
               turn => engine.inbox.startTurn(turn).left.map(_.toString)

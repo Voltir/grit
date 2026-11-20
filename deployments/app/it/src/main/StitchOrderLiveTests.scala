@@ -20,7 +20,7 @@ import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.TestPostgres
 import grit.lifecycle.stitch.{Stitch, StitchEnv}
-import grit.lifecycle.triage.{Triage, TriageEnv, TriageRecords, TriageSpeech}
+import grit.lifecycle.triage.{Triage, TriageEnv, TriageRecords}
 import grit.models.StubClassifier
 import grit.turn.Turn
 
@@ -199,7 +199,8 @@ object StitchOrderLiveTests extends TestSuite {
           Budget(java.time.ZoneOffset.UTC, None),
           engine.db,
           Clock.system(),
-          TriageSpeech(Speaking.Off, Budget(java.time.ZoneOffset.UTC, None), _ => Right(())),
+          grit.core.speech
+            .Unprompted(Speaking.Off, Budget(java.time.ZoneOffset.UTC, None), _ => Right(())),
           Tuning.Default,
           grit.act.phase.Placing
             .Env(
