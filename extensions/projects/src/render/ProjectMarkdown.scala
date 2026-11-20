@@ -57,9 +57,10 @@ object ProjectMarkdown {
   def shown(artifact: Artifact, version: DocumentVersionId): String =
     filed(artifact.head, Some(version), Body.markdown(artifact.body))
 
-  /** `text` as [[shown]] writes it, read back: the artifact, and the version it was kept as; or
-    * why not: front matter that is not [[shown]]'s (an exported file's, with no `version`, among
-    * them), a version that is no whole number of 1 or more, or what [[read]] refuses of one artifact's file.
+  /** `text` as [[shown]] writes it, read back: the artifact, and the version it was kept as; or why
+    * not: front matter that is not [[shown]]'s (an exported file's, with no `version`, among them),
+    * a version that is no whole number of 1 or more, or what [[read]] refuses of one artifact's
+    * file.
     */
   def readShown(text: String): Either[String, (Artifact, DocumentVersionId)] =
     for {
@@ -74,8 +75,8 @@ object ProjectMarkdown {
   private def filed(head: ArtifactHead, version: Option[DocumentVersionId], text: String): String =
     fronted(head, version) + "\n" + text + "\n"
 
-  /** `artifact` kept as `version` without its whole body: [[shown]]'s front matter, then its body's first
-    * paragraph whole ([[Body.lead]]), then `Sections: ` and its `##` headings' titles, `; `
+  /** `artifact` kept as `version` without its whole body: [[shown]]'s front matter, then its body's
+    * first paragraph whole ([[Body.lead]]), then `Sections: ` and its `##` headings' titles, `; `
     * between them (`none` when it has none), with the size of its body ([[AnswerText.size]]):
     * `Sections: Goal; Reads (2.4 KB in all)`.
     */

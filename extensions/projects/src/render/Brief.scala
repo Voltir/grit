@@ -28,16 +28,16 @@ enum BriefRefusal extends caps.Pure {
   * claim, after every command that changes its project, and `project_brief` show the same text.
   *
   * The header line is `<key> | <kind> | <state> | <title> | <method> v<version> | pin <digest>`,
-  * the digest its first [[PinDigits]] hex characters. `n` in a pointer, and the size [[BriefRefusal.Over]]
-  * carries, are the characters of the artifact's body markdown, and of the text before `## Cited`.
-  * The links followed, up to the view's depth, are every `cites`, in a head and a body, and the
-  * `parent` of the artifact and of each of its ancestors, never of an artifact reached by a cite;
-  * a path may pass through artifacts of kinds the view does not name, but only artifacts of its
-  * kinds are cited, and none it carries. Pointers replace the farthest whole
+  * the digest its first [[PinDigits]] hex characters. `n` in a pointer, and the size
+  * [[BriefRefusal.Over]] carries, are the characters of the artifact's body markdown, and of the
+  * text before `## Cited`. The links followed, up to the view's depth, are every `cites`, in a head
+  * and a body, and the `parent` of the artifact and of each of its ancestors, never of an artifact
+  * reached by a cite; a path may pass through artifacts of kinds the view does not name, but only
+  * artifacts of its kinds are cited, and none it carries. Pointers replace the farthest whole
   * citations first; then each pointer, nearest first, is given whole again if it still fits.
-  * `pointed` lists the keys shown as pointers, and a citation that does not fit even as a
-  * pointer is left out. `shows` lists every artifact whose words the text holds, whole or as a
-  * pointer, in the order it shows them: `artifact`, each carried, then each cited.
+  * `pointed` lists the keys shown as pointers, and a citation that does not fit even as a pointer
+  * is left out. `shows` lists every artifact whose words the text holds, whole or as a pointer, in
+  * the order it shows them: `artifact`, each carried, then each cited.
   */
 final case class Brief private (
     artifact: ArtifactKey,

@@ -240,10 +240,10 @@ object Method {
       s"version ${method.version}, whose rules have changed since the project started; " +
       "declare a new version of the method rather than changing this one"
 
-  /** These as a method, or every reason not ([[MethodRefusal]]): a version under 1; a kind,
-    * state, role or check named twice; an end state, a transition (its action's kind among them),
-    * a role view or a kind's nesting naming a kind or state not declared; a transition from an end state; a check
-    * not in `compiled`; a state its kind's first cannot reach.
+  /** These as a method, or every reason not ([[MethodRefusal]]): a version under 1; a kind, state,
+    * role or check named twice; an end state, a transition (its action's kind among them), a role
+    * view or a kind's nesting naming a kind or state not declared; a transition from an end state;
+    * a check not in `compiled`; a state its kind's first cannot reach.
     */
   def of(
       name: MethodName,

@@ -49,11 +49,11 @@ object AnswerText {
     * listed; ended: true lists them.` (for one, `1 ended one not listed; ended: true lists
     * it.`). Then, past the first `skip` rows, at most `most`, one line each:
     * `<key> (<kind>, <state>): <title> · under <parent> · <size> KB · changed <day> · <beneath>
-    * under it · <lead>`, leaving out what `parts` does not show, the parent when there is none,
-    * and `beneath` when it is 0; `<size> KB` is [[size]], `<day>` the UTC date it was `written`. When rows are left past them, a last line:
-    * `<n> more not shown; skip: <next> shows the next, or <narrow>.` With `skip` at or past the
-    * end, `No line past <n>.` in place of the rows. With no row, the one line `No artifact
-    * matches.`, then the ended count when above 0.
+    * under it · <lead>`, leaving out what `parts` does not show, the parent when there is none, and
+    * `beneath` when it is 0; `<size> KB` is [[size]], `<day>` the UTC date it was `written`. When
+    * rows are left past them, a last line: `<n> more not shown; skip: <next> shows the next, or
+    * <narrow>.` With `skip` at or past the end, `No line past <n>.` in place of the rows. With no
+    * row, the one line `No artifact matches.`, then the ended count when above 0.
     */
   def listed(
       rows: Vector[(artifact: Artifact, written: Instant, beneath: Int)],
@@ -115,7 +115,9 @@ object AnswerText {
       page ++ Option.when(left > 0)(s"$left more not shown${after(skip + page.size)}")
     }
 
-  /** Each name `name` gives among `among` and the heads it gives it to, most first, then by name. */
+  /** Each name `name` gives among `among` and the heads it gives it to, most first, then by
+    * name.
+    */
   private def groupByName(
       among: Vector[ArtifactHead],
       name: ArtifactHead -> String
@@ -155,8 +157,8 @@ object AnswerText {
   def named(h: ArtifactHead): String =
     s"${h.called} (${KindName.value(h.kind)}, ${StateName.value(h.state)})"
 
-  /** `<id> <handle> (<kind>, <state>): <title>` ([[ArtifactHead.called]]), the kind and the state each only
-    * when asked for, the parentheses only when either is.
+  /** `<id> <handle> (<kind>, <state>): <title>` ([[ArtifactHead.called]]), the kind and the state
+    * each only when asked for, the parentheses only when either is.
     */
   private def head(h: ArtifactHead, kind: Boolean, state: Boolean): String = {
     val named =

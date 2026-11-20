@@ -133,10 +133,10 @@ object ArtifactJson {
     )
 
   /** The project [[projectData]] wrote as `json`, or why not: a field missing or malformed, a
-    * stored body [[Body.fromStored]] refuses, or what [[Project.of]] refuses. It reads too the
-    * old form, each artifact beside its key `<project>/<name>` and its head without an id: each
-    * takes `<name>` as its handle, its place in the list, from 1, as its number and
-    * [[Rank.Middle]] as its rank, and every reference names a handle. Refused for artifacts of both forms.
+    * stored body [[Body.fromStored]] refuses, or what [[Project.of]] refuses. It reads too the old
+    * form, each artifact beside its key `<project>/<name>` and its head without an id: each takes
+    * `<name>` as its handle, its place in the list, from 1, as its number and [[Rank.Middle]] as
+    * its rank, and every reference names a handle. Refused for artifacts of both forms.
     */
   def projectFrom(json: ujson.Value): Either[String, Project] =
     for {
