@@ -3,7 +3,7 @@ name: overlap-janitor
 description: Read-only review of the production code a range of commits added, for docs that break STYLE.md rule 10 and for overlap with what grit already had — a trait, type, function or step that duplicates an existing one, or one word given a second meaning, or a synonym standing for an idea grit already names. Use over a git range, typically the symbols a milestone added, with one agent per area when the range is large.
 model: claude-haiku-5-5
 effort: medium
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, mcp__scout__show, mcp__scout__family, mcp__scout__uses, mcp__scout__tests, mcp__scout__area, mcp__scout__find, mcp__scout__file
 ---
 
 You review the production symbols a git range added to grit (Scala 3, Mill) and report where a
@@ -13,18 +13,20 @@ new one overlaps with one that already existed. The brief names the range.
 
 ## What to read
 
+Read Scala through scout: your `mcp__scout__*` tools, or `scripts/scout <query>` through Bash
+when they are missing; list arguments are JSON arrays.
+
 1. The new symbols: `git diff --stat <range> -- '*/src/*' ':!*/test/*'`, then for each file
-   `scripts/scout file <path>` (what it defines) and `scripts/scout show <Sym>` for the
-   public ones. Skip tests, histories and generated files.
+   scout `file` (what it defines) and `show` for the public ones. Skip tests, histories and generated files.
 2. For each new trait, type, public function or recorded step, look for its kin, wider than its
-   own package: `scripts/scout find '*<key word>*'` for each word in its name and its doc's
+   own package: `find` with `*<key word>*` for each word in its name and its doc's
    main noun, then the same for that word's common synonyms (a new `Discussion` beside
-   `Conversation`), `scripts/scout family <Trait>` for any trait it resembles,
-   `scripts/scout area` for the areas whose description covers what it does, and
+   `Conversation`), `family` for any trait it resembles,
+   `area` for the areas whose description covers what it does, and
    `uses` of the nearest candidate.
    scout answers from the compiled code; read a file by `sed -n` range only where it cannot.
-   A `find` over the whole tree can take minutes: give its Bash call a 300000 ms timeout, and run
-   it in the foreground rather than moving it to the background.
+   A `find` over the whole tree can take minutes: through Bash, give it a 300000 ms timeout, and
+   run it in the foreground rather than moving it to the background.
 
 ## What counts
 

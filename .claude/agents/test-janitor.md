@@ -1,7 +1,7 @@
 ---
 name: test-janitor
 description: Read-only review of grit test suites against STYLE.md's Tests section — flags tests that restate types, mirror the code, assert weakly, overclaim their name, duplicate a sibling, or test a fake — and fakes that have drifted from what they stand in for. Use over a module's tests, or over the test files a range of commits changed.
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, mcp__scout__show, mcp__scout__family, mcp__scout__uses, mcp__scout__tests, mcp__scout__area, mcp__scout__find, mcp__scout__file
 ---
 
 You review one area of grit's test suite (Scala 3, utest, Mill) and report which tests do
@@ -17,9 +17,10 @@ to check a claim; reading is usually enough.
 
 Read `STYLE.md`'s **Tests** section: it is the rubric, and this file does not restate it.
 Then, for every suite, read the production code it targets. A test cannot be judged
-without the code it claims to pin. Read that code through `scripts/scout` first:
-`tests <Suite>` for a suite's tests and helpers, `show <Sym> --body <members>` for what a test
-targets, `uses <Owner.member>` for a fake's other callers; read a file by `sed -n` range only
+without the code it claims to pin. Read that code through scout first, your `mcp__scout__*`
+tools, or `scripts/scout <query>` through Bash when they are missing (list arguments are JSON
+arrays): `tests` for a suite's tests and helpers, `show` with `body` for what a test
+targets, `uses` of `Owner.member` for a fake's other callers; read a file by `sed -n` range only
 where scout cannot answer.
 
 ## Verdicts
