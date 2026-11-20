@@ -150,7 +150,7 @@ object TopicParams {
       case None => Right(None)
       case Some(d) =>
         d.strOpt
-          .flatMap(t => scala.util.Try(LocalDate.parse(t)).toOption)
+          .flatMap(Passage.day)
           .map(Some(_))
           .toRight(s"a topics run's $key is yyyy-mm-dd: $shown")
     }

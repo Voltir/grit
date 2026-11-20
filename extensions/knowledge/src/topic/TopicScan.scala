@@ -677,7 +677,7 @@ private[topic] object TopicScan {
       case None => Right(None)
       case Some(d) =>
         d.strOpt
-          .flatMap(t => scala.util.Try(LocalDate.parse(t)).toOption)
+          .flatMap(Passage.day)
           .map(Some(_))
           .toRight(s"a live meeting's $key is no date")
     }

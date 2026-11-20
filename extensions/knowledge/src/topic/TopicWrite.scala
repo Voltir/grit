@@ -124,7 +124,7 @@ private[topic] object TopicWrite {
         day <- r
           .get("day")
           .flatMap(_.strOpt)
-          .flatMap(d => scala.util.Try(LocalDate.parse(d)).toOption)
+          .flatMap(Passage.day)
         opened <- r.get("opened").flatMap(_.boolOpt)
         cards <- r.get("cards").flatMap(_.arrOpt)
       } yield Today(day, opened, cards.toVector.flatMap(_.strOpt))

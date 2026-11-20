@@ -120,7 +120,7 @@ private object TopicJson {
     for {
       o <- obj(v, "a passage")
       day <- string(o.get("day"), "a passage's day").flatMap(d =>
-        Try(LocalDate.parse(d)).toOption.toRight(s"a passage's day is no date: $d")
+        Passage.day(d).toRight(s"a passage's day is no date: $d")
       )
       from <- readLineage(o.get("from"))
       body <- o.get("body").toRight("a passage with no body").flatMap(readDoc)

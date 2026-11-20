@@ -157,3 +157,12 @@ object Topic {
 
 /** What one day's pass added to a topic: on `day`, written `from` what it lists. */
 final case class Passage(day: LocalDate, from: Lineage, body: Doc[TopicNote]) extends caps.Pure
+
+object Passage {
+
+  /** The day `text` writes as yyyy-mm-dd, as a passage's day, a meeting's and a run's are
+    * stored; `None` when it writes none.
+    */
+  private[knowledge] def day(text: String): Option[LocalDate] =
+    scala.util.Try(LocalDate.parse(text)).toOption
+}

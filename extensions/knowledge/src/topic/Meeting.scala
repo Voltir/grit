@@ -134,7 +134,7 @@ object Meeting {
         case State.Held(d) => Some(When(d, None))
       }
       def date(key: String) =
-        field(key).flatMap(_.strOpt).flatMap(t => scala.util.Try(LocalDate.parse(t)).toOption)
+        field(key).flatMap(_.strOpt).flatMap(Passage.day)
       val said = for {
         s <- date("said")
         as <- field("as").flatMap(_.strOpt).flatMap(As.read)
@@ -191,7 +191,7 @@ object Meeting {
   private[topic] def read(v: ujson.Value): Either[String, Meeting] = {
     val o = v.objOpt
     def text(key: String) = o.flatMap(_.get(key)).flatMap(_.strOpt)
-    val day = text("day").map(t => scala.util.Try(LocalDate.parse(t)).toOption)
+    val day = text("day").map(Passage.day)
     val start = text("start").map(t => scala.util.Try(LocalTime.parse(t)).toOption)
     for {
       d <- day.fold[Either[String, Option[LocalDate]]](Right(None))(
