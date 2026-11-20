@@ -22,28 +22,11 @@ import grit.knowledge.ref.TopicKey
 import grit.std.collect.Collect
 import grit.std.either.Proven
 
-/** What a run of `meetings-ahead` is told: the rooms it may name occasions in. */
 final case class AheadParams(rooms: Vector[Place]) extends caps.Pure
 
-/** The job `meetings-ahead`, its days in `zone`, reading at most `bound` of its plugin's current
-  * documents. A run names occasions for the meetings its topics plan, each passing these checks
-  * in order, cheapest first, measured from its scan's recorded instant `at`:
-  *   - its topic's room, that of its newest passage written from a strand, is one of `rooms`;
-  *   - it starts after `at` and within [[MeetingsAhead.Lead]] (one with no start is passed
-  *     over);
-  *   - it names two people or more ([[Meeting.who]]);
-  *   - not covered: of the strands spoken in within [[MeetingsAhead.Since]] before `at` (top
-  *     levels cut by [[Strand.Cut.Default]]), none its topic was written from (by root and first
-  *     message) was touched within [[MeetingsAhead.Covered]], or holds messages its topic has not
-  *     read (a digest other than its lineage's);
-  *   - sorted by the deployment's classifier ([[Dreaming.sort]] of its document by
-  *     [[MeetingsAhead.Unsettled]], its head within [[Occasion.DocumentChars]]), `unsettled` at
-  *     [[MeetingsAhead.YesAt]] or more; a sort that asks nothing names none.
-  *
-  * Only the soonest in each room is sorted, at most [[MeetingsAhead.Asks]] a run, soonest first.
-  * Each occasion (`occasion-{i}`) is in its topic's room, keyed [[MeetingsAhead.key]], worded
-  * [[MeetingsAhead.Brief]], until its start, believed as its sort's answer. A meeting arranged
-  * today is not seen until the nightly topics run writes it. Replies [[MeetingsAhead.reply]].
+/** The job `meetings-ahead`: a run names an occasion for each planned meeting about to start
+  * that talk left unsettled, the soonest in each of its rooms. A meeting arranged today is not
+  * seen until the nightly topics run writes it.
   */
 final class MeetingsAhead(zone: ZoneId, bound: Int) extends DreamingJob[AheadParams] {
 
@@ -118,29 +101,22 @@ object MeetingsAhead {
 
   val Name: JobName = JobName.literal("meetings-ahead")
 
-  /** 3 hours: how soon before its start a meeting is looked at. */
   val Lead: FiniteDuration = 3.hours
 
-  /** 3 hours: how recently talk in its topic's strand covers a meeting. */
   val Covered: FiniteDuration = 3.hours
 
-  /** 24 hours: how far back a run reads the strands spoken in. */
   val Since: FiniteDuration = 24.hours
 
-  /** 3: the most meetings one run sorts. */
   val Asks: Int = 3
 
-  /** 0.5: `unsettled`'s probability at or above which an occasion is named. */
   val YesAt: Double = 0.5
 
   private val Scan: MoveName = MoveName.literal("meetings")
 
-  /** What a meeting's sort may answer. */
   enum Judged extends caps.Pure {
     case Unsettled, Settled
   }
 
-  // Draft wording, for Nick (J1).
   val Unsettled: Sorting[Judged, Decision[Judged]] = Proven.right(
     Sorting.choice(
       "This document is what a team said about one meeting it planned. Does the talk since it " +
@@ -165,7 +141,6 @@ object MeetingsAhead {
     // Two keys, neither a number, and 1 is within Chosen.
   )
 
-  // Draft wording, for Nick (B1).
   val Brief: OccasionBrief = OccasionBrief.literal(
     "A meeting the team planned starts within the next few hours: the one in the document " +
       "below. Talk since it was arranged left something unsettled for it, or a detail missing. " +
@@ -176,9 +151,7 @@ object MeetingsAhead {
       "points yourself."
   )
 
-  /** `ahead:{topic}:{day}`: the topic key's [[ShortHash]] and the day, ISO; 33 characters a key
-    * holds, so always one.
-    */
+  /** `ahead:{the topic key's ShortHash}:{day}`: 33 characters, so always a key. */
   def key(topic: TopicKey, day: LocalDate): OccasionKey =
     Proven.right(
       OccasionKey
@@ -186,15 +159,10 @@ object MeetingsAhead {
         .toRight(s"no occasion key for ${TopicKey.value(topic)} on $day")
     )
 
-  /** A meeting to sort: its topic's current version, its room, its start, and its key. */
   final case class Due(version: DocumentVersionId, room: Place, start: Instant, key: OccasionKey)
       extends caps.Pure
 
-  /** What a run's scan found at `at`: the meetings to sort, soonest first; of the meetings in
-    * its rooms starting within [[Lead]] (`within`), how many named fewer than two people
-    * (`fewer`), were covered (`covered`), or were left past one a room and [[Asks]] a run
-    * (`left`).
-    */
+  /** A scan's meetings to sort, and how many of those within [[Lead]] each check passed over. */
   final case class Found(
       at: Instant,
       asking: Vector[Due],
@@ -204,7 +172,6 @@ object MeetingsAhead {
       left: Int
   ) extends caps.Pure
 
-  /** What became of a meeting's sort. */
   enum Sorted {
     case Refused(why: String)
     case Unasked
@@ -212,7 +179,6 @@ object MeetingsAhead {
     case Named(occasioned: Either[MoveError, Occasioned])
   }
 
-  /** The scan [[MeetingsAhead]] makes at `at`, over `keeper`'s newest `bound` documents. */
   private[topic] def scanned(
       rooms: Vector[Place],
       keeper: DocumentShelf,
@@ -265,29 +231,16 @@ object MeetingsAhead {
         }
     }
 
-  /** The occasion `due` names. */
   private[topic] def occasion(due: Due): Occasion =
     Occasion(due.room, due.key, Brief, due.version, due.start)
 
-  /** The room of `passage`'s last strand, when it was written from one. */
   private def roomOf(passage: Passage): Option[Place] =
     passage.from.tags.reverse.collectFirst { case Lineage.Tag.Strand(_, room, _, _) => room }
 
   private val Clock = DateTimeFormatter.ofPattern("HH:mm")
 
-  /** A run's reply when it lists no room: it reads nothing. */
-  // Draft wording, for Nick (R1).
   val Roomless: String = "Meetings ahead: no room to raise occasions in."
 
-  /** A run's reply, at its scan's instant in `zone` (Wording for Nick, R1): `Meetings ahead at
-    * {HH:mm}: {n} in its rooms starting within 3 hours, {p} naming fewer than two people, {c}
-    * talked of in the last 3 hours, {k} left for a later run; {u} judged settled, {s} started,
-    * {h} held ({why, counted}), {a} already noted`, then `, {f} failed ({why, counted})` when
-    * any failed, and a full stop. Held: each silence as speech names it, `mislabelled` and
-    * `unread`; failed: `unstarted`, `unsorted` for a sort that asked nothing, and each move
-    * refused, as its error says.
-    */
-  // Draft wording, for Nick (R1).
   def reply(found: Found, zone: ZoneId, sorted: Vector[Sorted]): String = {
     def counted(whys: Vector[String]): String =
       Collect.counted(whys).map((w, n) => s"$n $w").mkString(", ")
@@ -321,9 +274,6 @@ object MeetingsAhead {
       s"settled, $started started, $heldPart, $already already noted$failedPart."
   }
 
-  /** `{"at", "asking": [{"version", "room", "start", "key"}], "within", "fewer", "covered",
-    * "left"}`, a room as [[Place.written]] writes it and instants ISO-8601.
-    */
   given Journaled[Found] = Journaled.json(
     f =>
       ujson.Obj(

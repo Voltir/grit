@@ -109,10 +109,8 @@ object TurnOffer {
     * to grit: drafted, unjudged, and posted through speech
     * ([[grit.core.speech.Speech.postNamed]]); no offer records it now. An offer recorded
     * before roots existed is `Addressed`. `Occasion` is grit's own note of a job's occasion
-    * ([[grit.core.store.Payload.Occasion]]): offered as a `Heard` turn at a channel's top level,
-    * told [[TurnPrompt.occasion]] of its brief, drafted from its document with no search,
-    * judged, and posted as an occasion's ([[grit.core.speech.Spoken.Root.Occasion]]) at the
-    * address its decision kept.
+    * ([[grit.core.store.Payload.Occasion]]), drafted with no search and posted where its
+    * decision placed it.
     */
   enum Root {
     case Addressed, Heard, Named, ByName, Occasion
@@ -138,8 +136,8 @@ object TurnOffer {
     * decided to answer it as said to grit, [[grit.core.speech.Decision.Answering]]), `Heard`
     * for any other heard message, `Occasion` when it is an occasion
     * ([[grit.core.store.Payload.Occasion]]), else `Addressed`; a `ByName` turn is offered, told
-    * and shaped as an `Addressed` one, an `Occasion` one as a `Heard` one said at a channel's
-    * top level, told [[TurnPrompt.occasion]]. A `Heard` or `Occasion` turn records `venue`,
+    * and shaped as an `Addressed` one, an `Occasion` one as a `Heard` one at its room's top
+    * level. A `Heard` or `Occasion` turn records `venue`,
     * where its decision placed its draft; any other, its thread.
     *
     * `tooling.recipe` shapes it by its root ([[grit.core.recipe.Rooted]]: a heard message at

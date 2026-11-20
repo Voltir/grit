@@ -34,9 +34,6 @@ private[moves] object OccasionMove {
       keeper: DocumentKeeper
   ) extends Act.Acted
 
-  /** `move`'s occasion, recorded as the first entry of `turn`, believed at `believed`, its room's
-    * reply address `to`.
-    */
   final case class Recorded(move: Move, turn: TurnRef, to: String, believed: Integrity)
       extends Act.Move {
     def name: MoveName = move.name
@@ -196,9 +193,6 @@ private[moves] object OccasionMove {
       }
   )
 
-  /** `{"ended":occasioned}` or `{"recorded":turn,"to":address,"believed":integrity}`, the
-    * integrity as [[Integrity.written]] writes it.
-    */
   private[moves] given recorded: Journaled[Either[Occasioned, (TurnRef, String, Integrity)]] =
     orEnded(
       (t, to, believed) =>

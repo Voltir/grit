@@ -43,10 +43,7 @@ object TurnJudge {
       posted: At = At.Thread
   )
 
-  /** Where a judged draft goes, which picks what its worth is asked as: in its thread; at its
-    * room's top level ([[grit.core.speech.Venue.Room]]), which must say what it answers; or at a
-    * channel's top level on an occasion, worth the whole channel's reading now.
-    */
+  /** Where a judged draft goes, which picks its worth question. */
   enum At {
     case Thread, Top, Occasion
   }
@@ -114,7 +111,6 @@ object TurnJudge {
       "answers: it is posted where its readers did not see message."
   )
 
-  // Draft wording, for Nick (T2, after the lead every worth question has).
   private val worthOnOccasion = yesNo(
     "Read message, thread, draft and posted. Is this post worth putting in front of the whole " +
       "channel now: does it tell or ask the team something useful that the channel's recent " +
@@ -169,9 +165,8 @@ object TurnJudge {
     * record among the window's entries whose earlier messages the thread does
     * not show whole (some cut whole or cut inside, or none in it), then each of the turn's own
     * tool results but a failed one, under its call as a person is shown it: a strand is context,
-    * not recall. `atTop` when the draft goes at its room's top level. For a turn rooted on an
-    * occasion (`showing.occasion`), the message is its brief and recalled begins with its
-    * document's text, judged [[At.Occasion]].
+    * not recall. `atTop` when the draft goes at its room's top level. For an occasion's, the message
+    * is its brief and recalled begins with its document.
     */
   private[turn] def state(
       all: Vector[Entry],

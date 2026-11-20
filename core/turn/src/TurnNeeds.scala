@@ -55,9 +55,6 @@ object TurnNeeds {
   /** Why the gate asked nothing of a turn whose window could find nothing by searching. */
   val NothingToSearch: String = "nothing to search"
 
-  /** Why the gate asked nothing of a turn rooted on an occasion, and its window drew with no
-    * search: its window's note, after "no query: ".
-    */
   val OnOccasion: String = "an occasion's turn draws on its document alone"
 
   /** The roots of a turn that ends when the gate rejects its message: a heard message grit

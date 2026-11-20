@@ -294,11 +294,6 @@ private[turn] object TurnShown {
     } yield Showing(parts, mine, named, occasion)
   }
 
-  /** The brief and the document's head, its first [[Occasion.DocumentChars]], of the
-    * occasion that is the first of `mine`, a turn's own entries; `None` when it begins with
-    * none. `Invalid("its document is gone")` when the document is not kept or not read by the
-    * transaction.
-    */
   private def occasionOf(documents: DocumentSearch, mine: Vector[Entry])(using
       Tx^
   ): Either[StoreError, Option[(OccasionBrief, String)]] =
@@ -339,7 +334,7 @@ private[turn] object TurnShown {
 
   /** What [[shown]] read: `parts`, the window's, oldest first, the turn's own last; `mine`,
     * the turn's own entries; `named`, the speakers of all of them; `occasion`, when `mine`
-    * begins with an occasion, its brief and its document's head as [[occasionOf]] reads them.
+    * begins with an occasion, its brief and its document's head.
     */
   final case class Showing(
       parts: Vector[Part],

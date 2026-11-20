@@ -287,12 +287,6 @@ object TurnPrompt {
         s"add that the channel does not already say, reply with exactly: $Pass"
     )
 
-  /** What a turn rooted on an occasion worded `brief` is told, an edge-layer fragment of its
-    * own: nobody asked it; it writes one short post for its channel's top level; `brief`; from
-    * the document it is shown alone; without introducing itself; or exactly [[Pass]] when the
-    * channel's recent talk already says it.
-    */
-  // Draft wording, for Nick (T1).
   def occasion(brief: OccasionBrief): Fragment =
     Fragment(
       Layer.Edge,
@@ -304,10 +298,6 @@ object TurnPrompt {
         s"reply with exactly: $Pass"
     )
 
-  /** The message a turn rooted on an occasion is shown as its own: grit's note, then `text`,
-    * its document's head, fenced as a document.
-    */
-  // Draft wording, for Nick (T3).
   def occasionShown(text: String): String =
     Fenced.noted(Vector("The document this post is about.")) + "\n\n" +
       Fenced.in(Tag.Document, text).rendered

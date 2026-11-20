@@ -19,8 +19,8 @@ final case class Occasion(
 
 object Occasion {
 
-  /** 1,200: the most characters of its document, its head, that an occasion's turn is shown
-    * and its judge recalls; what a plugin judging whether to name one reads of it.
+  /** The head of its document an occasion's turn is shown; a plugin judging whether to name
+    * one reads the same.
     */
   val DocumentChars: Int = 1_200
 }

@@ -44,9 +44,7 @@ import grit.knowledge.topic.{
   * cards otherwise. Its documents: label "topic", weight 1, kept 30 days after a version stops
   * being current, bounded at [[TopicDocuments.Bound]] times its labels; at each start, a
   * document at a label not among them is withdrawn ([[Documents.sweep]]); it posts nothing. Its
-  * tool `meetings` lists its meetings a turn reads ([[TopicDocuments.meetings]]). Given rooms
-  * to raise occasions in ([[TopicDocuments.of]]), its job [[MeetingsAhead]] names its meetings'
-  * occasions there every hour, at each label.
+  * tool `meetings` lists its meetings a turn reads ([[TopicDocuments.meetings]]).
   */
 final class TopicDocuments private (
     val name: PluginName,
@@ -297,9 +295,8 @@ object TopicDocuments {
     * why not: no label, one given twice, one holding a compartment `visibility` does not
     * declare, one whose written form makes no schedule key, or `foldAt` not from
     * [[grit.knowledge.topic.TopicDream.FoldAt]] to 1 ([[TopicParams.folding]]). With rooms
-    * `aheadIn`, each label also gets a schedule of [[MeetingsAhead]], keyed
-    * `meetings-ahead-{label}` (the label as its nightly schedule's key writes it), every
-    * [[Interval.Hour]], raising occasions in those rooms alone, at that label.
+    * `aheadIn`, each label also gets an hourly `meetings-ahead-{label}` schedule raising
+    * occasions in those rooms alone.
     */
   def of(
       name: PluginName,

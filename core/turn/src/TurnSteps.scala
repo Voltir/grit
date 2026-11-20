@@ -1058,8 +1058,6 @@ private[turn] object TurnSteps {
         }
         .toRight(TurnFailure.Store(s"${WorkflowId.value(turn.workflowId)} has no draft"))
       reach <- store.reach(turn).left.map(TurnFailure.ofStore)
-      // An occasion was heard nowhere: its address is its decision's, at its room's top level;
-      // a heard message's, its reach's, placed when it posts.
       address = spoken match {
         case Spoken.Root.Occasion =>
           venue match {
