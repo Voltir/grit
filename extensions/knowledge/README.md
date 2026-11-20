@@ -174,15 +174,24 @@ version touches nothing.
 After its writes, a run sorts at most `merges` (`TopicParams.Merges` unless its schedule says)
 of the floor's topics written from fewer than two discussions, oldest written first, but those
 it wrote that night and those set aside at their version within `asideFor`
-(`TopicScan.Scanned.single`). Each is a document sorted (`merge-{i}`) by a yes or no for each
-of the 8 other topics of the floor its text matches best (`TopicDream.sortTopic`), each and the
-item shown within `TopicDream.SortChars`: about 2,100 tokens a sort. A yes at
-`TopicDream.FoldAt` or more for the likeliest proposes folding the item into it (ADR 0064): the
-reply names it, and no topic is withdrawn. A later sort of the run is not shown a topic proposed
-to fold away, and a proposed keeper is not sorted. Each sorted, and each proposed keeper, is set
-aside at its version (`merge-aside`), so it is sorted again only once it is written or
-`asideFor` has passed. A topic of two discussions or more is never sorted to merge, though it
-is shown to one that is.
+(`TopicScan.Scanned.single`), and those no other topic of the floor may fold with by kind: a
+subject folds with a subject, a meeting with a meeting of its own day, an undated meeting with
+none (`Topic.Foldable`). Each is a document sorted (`merge-{i}`) by a yes or no for each of the 8
+other topics of the floor it may fold with that its text matches best (`TopicDream.sortTopic`),
+each and the item shown within `TopicDream.SortChars`: about 2,100 tokens a sort. A meeting
+written that night may have moved to another day, so it is shown to no merge sort, and a meeting
+waits for the next night's run. A yes at `TopicDream.FoldAt` or more for the likeliest proposes
+folding the item into it (ADR 0064), and the reply names it. At the schedule's `foldAt` or more
+(`TopicParams.foldAt`, absent by default, so a run only proposes), it is folded at once
+(`fold-{i}`): both topics refused unless still at the versions the sort saw, the keeper kept as
+`Topic.folded` under its own key, believed at no more than the sort and the topic folded into
+it, and the other withdrawn; the reply names it as folded. A refused fold is named in the reply
+as not written and stays a proposal, left for the next run. A later sort of the run is not shown
+a topic folded or proposed to fold away, is shown a keeper at its version since its fold, and a
+proposed keeper is not sorted. Each sorted but not refused, and each keeper, is set aside at its
+version (`merge-aside`), so it is sorted again only once it is written or `asideFor` has passed.
+A topic of two discussions or more is never sorted to merge, though it is shown to one that is.
+At most `merges` are sorted, so at most that many folded; a fold asks no model.
 
 ## A turn's read of meetings
 

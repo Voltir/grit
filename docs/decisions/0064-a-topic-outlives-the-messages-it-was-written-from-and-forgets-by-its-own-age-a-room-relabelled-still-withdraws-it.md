@@ -34,8 +34,11 @@ more, folds into that one (`Topic.folded`). The topic of one discussion is alway
 withdrawn, never one of two or more. Its passages move under their own days, each naming it in
 its lineage, so no passage is lost and each moved one can be traced; its claims are numbered past
 the keeper's. Its key is withdrawn with no alias: the keeper refers to its strand, so what grows
-there attaches to the keeper. Until a person's marks on a night's proposals set `FoldAt`, a run
-replies the folds it would make and makes none.
+there attaches to the keeper. Only topics of one kind fold: a subject with a subject, a meeting
+with a meeting of its own day, an undated meeting with none (`Topic.Foldable`), so a merge sort
+is shown no other. A run folds only at its schedule's `foldAt` or more, a mark no lower than
+`FoldAt`; with none, until a person's marks on a night's proposals set it, a run replies the
+folds it would make and makes none.
 
 Consequences: a topic is remembered for as long as its own clock says, whatever the raw
 retention of the rooms it was written from, and the run reads no strands to prune. A room moved
