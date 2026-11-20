@@ -73,8 +73,10 @@ object OldFormTests extends TestSuite {
         Vector("name" -> "project_move", "key" -> "p/a", "state" -> "closed"),
         Vector("name" -> "project_show", "key" -> "p/a"),
         Vector("name" -> "project_list", "project" -> "p"),
-        Vector("name" -> "project_claim", "key" -> "p/a", "role" -> "builder", "holder" -> "h")
-      ).map(args => ask(projects, store, args.head._2.str, args.tail*)) ==> Vector.fill(6)(refused)
+        Vector("name" -> "project_claim", "key" -> "p/a", "role" -> "builder", "holder" -> "h"),
+        Vector("name" -> "project_reorder", "artifact" -> "p/b", "before" -> "p/a"),
+        Vector("name" -> "project_split", "artifact" -> "p/a", "version" -> 1)
+      ).map(args => ask(projects, store, args.head._2.str, args.tail*)) ==> Vector.fill(8)(refused)
     }
     test("a re-key keeps how far each artifact was believed, a turn's lower") {
       val (projects, store) = oldProject()
@@ -164,6 +166,18 @@ object OldFormTests extends TestSuite {
         "--- p/1 version 4\n+++ p/1 version 6"
       )
     }
+    test("a room above the re-key's table reads a re-keyed artifact's versions through it") {
+      val (projects, store) = oldProject()
+      val later = at.plusSeconds(60)
+      done(askAt(later)(projects, store, "project_rekey", "project" -> "p"))
+      val trial = grit.core.visibility.Clearance.of(grit.core.visibility.TestLabels.Trial)
+      askBy(direct(), later, trial)(projects, store, "project_history", "key" -> "p/1") ==>
+        CommandOutcome.Done(
+          "6 2026-10-27T12:01:00Z by nick (open): A title\n" +
+            "4 2026-10-27T12:00:00Z by nick (open): A title"
+        )
+    }
+
     test(
       "an old-form artifact above a re-keyed project's index refuses it, and no re-key numbers it"
     ) {

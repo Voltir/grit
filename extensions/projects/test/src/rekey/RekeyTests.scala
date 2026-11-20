@@ -104,6 +104,28 @@ object RekeyTests extends TestSuite {
         ) ==>
         Right(Vector("p/4 m9", "p/2 m10", "p/1 notes"))
     }
+    test("milestones of one M number, and every other artifact, are ranked by their numbers") {
+      // Numbered z, q, a, b by when each was first kept: neither their keys nor their titles
+      // are in that order.
+      Project
+        .of(
+          p,
+          pin,
+          planned(
+            old("p/z", "Zeta", 0),
+            old("p/q", "M3: zz", 1),
+            old("p/a", "Alpha", 2),
+            old("p/b", "M3: aa", 3)
+          ).artifacts.map(_.after)
+        )
+        .map(
+          _.artifacts
+            .sorted(using ArtifactHead.ranked.on[Artifact](_.head))
+            .map(_.head.called)
+        ) ==>
+        Right(Vector("p/2 q", "p/4 b", "p/1 z", "p/3 a"))
+    }
+
     test("nothing a plan writes is of the old form, so a second plan finds nothing to re-key") {
       left(planned(roadmap*)).collect {
         case (d, _) if ArtifactJson.isOldForm(d) => DocKey.value(d.key)

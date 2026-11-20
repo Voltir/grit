@@ -88,6 +88,17 @@ object CoveringTests extends TestSuite {
         refusedOver("above", "p/1 a", "p/3 c", "h1")
       )
     }
+    test("a covering claim under its own holder's is refused as a second claim, not an overlap") {
+      val projects = plugin()
+      val store = covered()
+      chain(projects, store)
+      done(claimed(projects, store, "p/a", "manager", "h1"))
+      claimed(projects, store, "p/c", "manager", "h1") ==> CommandOutcome.Refused(
+        "h1 works p/1 a already, claimed since 2026-10-27T12:00:00Z; it lapses at " +
+          "2026-10-27T14:00:00Z unless they keep working; release it with project_release first"
+      )
+    }
+
     test("a covering claim over a plain one is made") {
       val projects = plugin()
       val store = covered()
