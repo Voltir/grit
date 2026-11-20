@@ -431,21 +431,22 @@ final class InMemoryDocuments extends DocumentStore {
           Right(())
         }
 
-      def holds(version: DocumentVersionId)(using Tx^): Either[StoreError, Boolean] =
+      def held(version: DocumentVersionId)(using Tx^): Either[StoreError, Option[Integrity]] =
         Right(
           rows
             .get(DocumentVersionId.value(version))
-            .exists(r => r.plugin == plugin && r.superseded.isEmpty && r.text.nonEmpty && reads(r))
+            .filter(r => r.plugin == plugin && r.superseded.isEmpty && r.text.nonEmpty && reads(r))
+            .map(_.integrity)
         )
 
       def forReview(version: DocumentVersionId, day: LocalDate, at: Instant)(using
           Tx^
       ): Either[StoreError, Boolean] = {
         val v = DocumentVersionId.value(version)
-        holds(version).map(held =>
+        held(version).map(believed =>
           rows
             .get(v)
-            .filter(_ => held)
+            .filter(_ => believed.nonEmpty)
             .map(r => UpFor(plugin, r.key, r.label, day))
             .filterNot(ups.contains)
             .fold(false) { u =>

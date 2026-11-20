@@ -55,9 +55,10 @@ private[grit] object Occasioned {
   /** What the move's first check found of `occasion`, believed at `believed`, at `now`, before
     * anything is recorded: why it ends there (`Left`: `Mislabelled` when its room's label is not
     * this transaction's floor, `Unread` when `keeper` does not hold its document, `Held(None, _)`
-    * as [[Speech.unrecorded]] holds it under `speaking`, its address `None` when no
-    * reach with a room address was kept in its room within [[Occasions.Heard]] or the room is
-    * quiet); else the top level of its room, and its reply address there.
+    * as [[Speech.unrecorded]] holds it under `speaking`, believed at no more than its document,
+    * its address `None` when no reach with a room address was kept in its room within
+    * [[Occasions.Heard]] or the room is quiet); else the top level of its room, its reply address
+    * there, and what it is believed at: `believed` met with its document's belief.
     */
   def found(
       occasion: Occasion,
@@ -66,22 +67,24 @@ private[grit] object Occasioned {
       speaking: Speaking,
       believed: Integrity,
       now: Instant
-  )(using tx: Tx^): Either[StoreError, Either[Occasioned, (Origin, String)]] =
+  )(using tx: Tx^): Either[StoreError, Either[Occasioned, (Origin, String, Integrity)]] =
     if (Tx.roomLabel(occasion.room) != Tx.floor(tx))
       Right(Left(Mislabelled(occasion.room)))
     else
-      keeper.holds(occasion.about).flatMap {
-        case false => Right(Left(Unread(occasion.about)))
-        case true =>
+      keeper.held(occasion.about).flatMap {
+        case None => Right(Left(Unread(occasion.about)))
+        case Some(document) =>
+          val most = believed.meet(document)
           speech
             .addressIn(occasion.room, now.minusNanos(Occasions.Heard.toNanos))
             .map { address =>
               val reached = address.filterNot(_ => Tx.quiet(occasion.room))
               Speech
-                .unrecorded(speaking, occasion, reached.map(_._2), believed, now)
+                .unrecorded(speaking, occasion, reached.map(_._2), most, now)
                 .map(why => Held(None, why))
                 .toLeft(reached)
                 .flatMap(_.toRight(Held(None, Silence.NoAddress)))
+                .map((origin, to) => (origin, to, most))
             }
       }
 

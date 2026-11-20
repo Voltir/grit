@@ -6,6 +6,7 @@ import grit.core.act.Occasioned
 import grit.core.durable.Journaled
 import grit.core.id.{ConversationId, DocumentVersionId, TurnRef, TurnSeq}
 import grit.core.speech.Silence
+import grit.core.visibility.Integrity
 
 import utest.*
 
@@ -43,14 +44,15 @@ object OccasionJournalTests extends TestSuite {
     }
 
     test(
-      "the first step records an end as its case's bytes, or the turn recorded and its address"
+      "the first step records an end as its case's bytes, or the turn recorded, its address and what it is believed at"
     ) {
       val j = OccasionMove.recorded
-      val ended: Either[Occasioned, (TurnRef, String)] = Left(Occasioned.Already)
-      val made: Either[Occasioned, (TurnRef, String)] = Right((turn, "C1"))
+      val ended: Either[Occasioned, (TurnRef, String, Integrity)] = Left(Occasioned.Already)
+      val made: Either[Occasioned, (TurnRef, String, Integrity)] =
+        Right((turn, "C1", Integrity.Outside))
       (j.encode(ended), j.encode(made), round(ended)(using j), round(made)(using j)) ==> (
         """{"ended":{"already":true}}""",
-        """{"recorded":"c:0","to":"C1"}""",
+        """{"recorded":"c:0","to":"C1","believed":"outside"}""",
         Right(ended),
         Right(made)
       )

@@ -33,6 +33,9 @@ object JobReplayTests extends TestSuite {
     "keep:scan" -> 1024, // the strands a dreaming run scanned, by ids and counts
     "keep:gather" -> 1536, // two strands and the versions to show, by ids and counts
     "keep:bench" -> 384, // a bench's verdict and each example's deciding answer
+    "occasion" -> 192, // the occasion's turn, its address and belief, or what it ended as
+    "occasion:decide" -> 128, // that it drafts, or what it ended as
+    "occasion:start" -> 128, // its turn started, or why not
     "DBOS.recv" -> 64, // an edge's ring
     "DBOS.sleep" -> 64, // when the wait ends
     "reply" -> 256 // the run's reply
@@ -65,6 +68,11 @@ object JobReplayTests extends TestSuite {
     */
   private def declassified(history: History): Boolean =
     history.steps.exists(_.name == "keep:bench")
+
+  /** Whether `history` named an occasion: it holds [[Announcing]]'s, by the name it was
+    * recorded under.
+    */
+  private def occasioned(history: History): Boolean = history.steps.exists(_.name == "occasion:o")
 
   /** A step's family as [[Budgets]] holds it: a dreaming run's scan, and a bench's keep, apart
     * from other keeps.
@@ -130,7 +138,8 @@ object JobReplayTests extends TestSuite {
         "run-declassified-retried",
         "run-declassified-sourced-first",
         "run-declassified-sourced-after",
-        "run-bench-failed"
+        "run-bench-failed",
+        "run-occasioned"
       ).map(_ + ".json")
       expected.filterNot(runs.contains) ==> Vector()
     }
@@ -151,13 +160,21 @@ object JobReplayTests extends TestSuite {
 
     test("every run history that asked or called replays under today's body, at its own version") {
       failing(
-        h => moved(h) && !kept(h) && !dreamed(h) && !gathered(h) && !declassified(h),
+        h =>
+          moved(h) && !kept(h) && !dreamed(h) && !gathered(h) && !declassified(h) &&
+            !occasioned(h),
         jobsOf(probing(1))
       ) ==> Vector()
     }
 
     test("every run history that kept replays under today's body, its keeping job at its version") {
       failing(kept, keepingJobs(new Noting(1))) ==> Vector()
+    }
+
+    test(
+      "every run history that named an occasion replays under today's body, its keeping job at its version"
+    ) {
+      failing(occasioned, keepingJobs(new Announcing(1))) ==> Vector()
     }
 
     test(
@@ -183,7 +200,7 @@ object JobReplayTests extends TestSuite {
       val replied = histories.collect {
         case (path, Right(h))
             if moved(h) && !kept(h) && !dreamed(h) && !gathered(h) && !declassified(h) &&
-              recorded(h).nonEmpty =>
+              !occasioned(h) && recorded(h).nonEmpty =>
           (path, h)
       }
       // Every one that recorded a reply is compared: one whose reply no longer parses would

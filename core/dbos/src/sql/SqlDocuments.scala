@@ -338,7 +338,7 @@ private[sql] object SqlDocuments {
 
   /** That the row aliased `d` is a version, the first parameter after [[SqlClearance.With]]'s, of
     * the plugin, the second, current, not a withdrawal and read at the transaction's clearance:
-    * what [[DocumentKeeper.holds]] and [[DocumentKeeper.forReview]] both check.
+    * what [[DocumentKeeper.held]] and [[DocumentKeeper.forReview]] both check.
     */
   private val Held: String =
     s"d.version = ? AND d.plugin = ? AND d.superseded_at IS NULL AND d.body IS NOT NULL " +
@@ -821,16 +821,17 @@ private[sql] object SqlDocuments {
         ps.setInt(6, row.policy.version)
       }.flatMap(n => Either.cond(n > 0, (), StoreError.Invalid("no such policy version is kept")))
 
-    def holds(version: DocumentVersionId)(using Tx^): Either[StoreError, Boolean] =
+    def held(version: DocumentVersionId)(using Tx^): Either[StoreError, Option[Integrity]] =
       SqlStatements
         .cleared(
           s"""WITH ${SqlClearance.With}
-             |SELECT 1 FROM grit.documents d WHERE $Held""".stripMargin
+             |SELECT integrity_level, integrity_compartments FROM $Labelled d
+             | WHERE $Held""".stripMargin
         ) { ps =>
           ps.setLong(SqlClearance.Params + 1, DocumentVersionId.value(version))
           ps.setString(SqlClearance.Params + 2, PluginName.value(plugin))
-        }(_ => ())
-        .map(_.nonEmpty)
+        }(SqlIntegrity.read)
+        .map(_.headOption)
 
     def forReview(version: DocumentVersionId, day: LocalDate, at: Instant)(using
         tx: Tx^

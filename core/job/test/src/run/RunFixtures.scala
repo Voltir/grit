@@ -73,6 +73,7 @@ import grit.core.id.{
   PrincipalId,
   ScheduleId,
   ScheduleKey,
+  SourceId,
   TestCallSlots,
   TurnRef,
   TurnSeq,
@@ -97,10 +98,11 @@ import grit.core.job.{
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.model.Grade
 import grit.core.need.Needs
+import grit.core.occasion.{Occasion, OccasionKey}
 import grit.core.place.{Namespace, Place, Service}
 import grit.core.provider.ModelRequest
 import grit.core.schema.{JsonSchema, Typed}
-import grit.core.speech.{Speaking, Unprompted}
+import grit.core.speech.{Limits, Occasions, Reach, ReplyTo, Speaking, Unprompted}
 import grit.core.spend.{Budget, DailyCap}
 import grit.core.stitch.{Strand, StrandWorld}
 import grit.core.store.{
@@ -115,6 +117,7 @@ import grit.core.store.{
   UsageLedger
 }
 import grit.core.tool.{Outcome, Retry, ToolName, ToolSet}
+import grit.core.triage.Tags
 import grit.core.visibility.Integrity
 import grit.core.visibility.{
   Clearance,
@@ -469,6 +472,67 @@ object RunFixtures {
   }
 
   /** The label a keep was kept at, in its written form. */
+  /** `remind` at `version` as [[Notes]]' keeping job that names an occasion: its run keeps the
+    * document `about` at the floor in its keep `about`, then makes, in its move `o`, an `Ahead`
+    * occasion about it at [[Announced]]'s room's top level, keyed `ahead:about`, due until a day
+    * after its slot; it replies what came of it, or why it stopped.
+    */
+  final class Announcing(val version: Int) extends KeepingJob[Count] {
+    val name = remind.name
+    def write(params: Count): ujson.Value = remind.write(params)
+    def read(params: ujson.Value): Either[String, Count] = remind.read(params)
+    override val limits: MoveLimits =
+      MoveLimits.of(0, 0, 0, occasions = 1).fold(sys.error, identity)
+    def run(run: Trusted[JobRun[Count]], moves: Keeping^): String =
+      (for {
+        about <- moves.keep(move("about"), run.tainted) { (_, keeper, at) =>
+          (for {
+            key <- DocKey.of("about")
+            text <- DocText.of("the planning call is on Thursday at 10")
+          } yield (key, text)) match {
+            case Left(why) => Left(StoreError.Invalid(why))
+            case Right((key, text)) =>
+              keeper
+                .write(
+                  key,
+                  Label.Public,
+                  Integrity.Member,
+                  Announced.Room.room,
+                  text,
+                  ujson.Obj(),
+                  None,
+                  at
+                )
+                .map {
+                  case Written.Versioned(v, _, _) => Noted(DocumentVersionId.value(v).toString)
+                  case Written.Unchanged(v, _) => Noted(DocumentVersionId.value(v).toString)
+                }
+          }
+        }
+        version <- about.label.toLongOption
+          .flatMap(DocumentVersionId.of)
+          .toRight(MoveError.Store(s"kept no version: ${about.label}"))
+        key <- OccasionKey.of("ahead:about").toRight(MoveError.Store("no key"))
+        made <- moves.occasion(
+          move("o"),
+          run.tainted.map(r =>
+            Occasion(
+              Announced.Room.room,
+              key,
+              grit.core.occasion.TestOccasions.Brief,
+              version,
+              r.nominal.plusSeconds(86400)
+            )
+          )
+        )
+      } yield made).fold(MoveError.said, _.toString)
+  }
+
+  /** Where [[Announcing]]'s occasion is: a channel's top level, with a message heard in it. */
+  object Announced {
+    val Room: Origin.Room = Origin.Room("T1", "C1")
+  }
+
   final case class Noted(label: String) extends caps.Pure
   object Noted {
     given Journaled[Noted] =
@@ -524,7 +588,8 @@ object RunFixtures {
       judged: Vector[Either[ClassifierError, Answers]] = Vector(),
       calling: Int = 1,
       upstream: Option[String] = None,
-      declassing: Boolean = false
+      declassing: Boolean = false,
+      occasions: Boolean = false
   ) extends caps.SharedCapability {
     val inbox: InMemoryInbox = InMemoryInbox.fresh()
     val deliveries: InMemoryDeliveries = new InMemoryDeliveries
@@ -574,6 +639,23 @@ object RunFixtures {
       val b = strands.thread(room, "2.0")
       val _ = strands.say(a, "the deploy is stuck", 0)
       strands.follow(strands.say(b, "still stuck?", 60), a)
+    }
+
+    /** A message heard in [[Announced]]'s room's thread an hour before [[Due]], its reach at
+      * the room's address `C//1`: where an occasion there may post.
+      */
+    def heardInRoom(): Unit = {
+      val _ = inbox
+        .hear(
+          Announced.Room,
+          SourceId("m1"),
+          "hello",
+          grit.core.identity.Account.Local,
+          Due.minusSeconds(3600),
+          Reach(Some(ReplyTo("1.0", Some("C//1"))), Set.empty),
+          None
+        )
+        .fold(e => sys.error(s"$e"), identity)
     }
 
     /** [[Notes]]' terms in force, so a summary reads its documents. */
@@ -697,11 +779,21 @@ object RunFixtures {
           clock
         ),
         new NoFiles,
-        // No job here names an occasion: grit never speaks on one.
+        // Grit speaks on occasions only in a world told to: no other job here names one.
         Occasioning(
           inbox,
           inbox.speech,
-          Unprompted(Speaking.Off, budget, turn => inbox.startTurn(turn).left.map(_.toString))
+          Unprompted(
+            if (!occasions) Speaking.Off
+            else
+              Speaking.Within(
+                Limits
+                  .suggested(DailyCap.of("1").fold(sys.error, identity), Tags.V1.gate)
+                  .copy(occasions = Some(Occasions(Occasions.Suggested)))
+              ),
+            budget,
+            turn => inbox.startTurn(turn).left.map(_.toString)
+          )
         ),
         budget,
         (plugin, terms) => documents.keeper(plugin, terms),

@@ -1710,7 +1710,7 @@ abstract class DocumentContract extends TestSuite {
     }
 
     test(
-      "holds is true of one of the plugin's current documents, and of no version superseded, withdrawn or another plugin's"
+      "held is what one of the plugin's current documents is believed at, and none of a version superseded, withdrawn or another plugin's"
     ) {
       val (p, q) = (name("doc-holds"), name("doc-holds-q"))
       val k = keeper(p, terms())
@@ -1719,8 +1719,8 @@ abstract class DocumentContract extends TestSuite {
       val theirs = put(keeper(q, terms()), "k", "theirs", 2)
       val gone = put(k, "gone", "gone", 2)
       transaction(ok(k.withdraw(key("gone"), Label.Public, at(3))))
-      transaction(Vector(first, second, theirs, gone).map(v => ok(k.holds(v)))) ==>
-        Vector(false, true, false, false)
+      transaction(Vector(first, second, theirs, gone).map(v => ok(k.held(v)))) ==>
+        Vector(None, Some(Integrity.Member), None, None)
     }
 
     test(

@@ -1,0 +1,32 @@
+{
+  "workflow": "run",
+  "id": "c2:0",
+  "epoch": "2026-10-18",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "read-slot",
+      "output": "{\"kind\":\"read\",\"slot\":\"declared:deployment:announce@2026-10-07T09:00:00Z\",\"job\":\"remind\",\"version\":1,\"started\":\"2026-10-07T09:00:00Z\",\"params\":1,\"report\":{\"kind\":\"kept\"},\"integrity\":\"authority+unmapped\"}"
+    },
+    {
+      "name": "keep:about",
+      "output": "{\"kept\":\"\\\"1\\\"\"}"
+    },
+    {
+      "name": "occasion:o",
+      "output": "{\"kept\":\"{\\\"recorded\\\":\\\"c1:1\\\",\\\"to\\\":\\\"C//1\\\",\\\"believed\\\":\\\"member\\\"}\"}"
+    },
+    {
+      "name": "occasion:o:decide",
+      "output": "{\"kept\":\"{\\\"drafting\\\":true}\"}"
+    },
+    {
+      "name": "occasion:o:start",
+      "output": "{\"kept\":\"{\\\"started\\\":\\\"c1:1\\\"}\"}"
+    },
+    {
+      "name": "reply",
+      "output": "{\"kind\":\"replied\",\"text\":\"Started(TurnRef(c1,1))\"}"
+    }
+  ]
+}

@@ -144,10 +144,10 @@ class ScriptedKeeping(
               .map(_.described)
             ended <- found match {
               case Left(ended) => Right(ended)
-              case Right((origin, to)) =>
+              case Right((origin, to, most)) =>
                 for {
                   turn <- o.inbox
-                    .occasion(origin, plugin, occasion, at, believed)
+                    .occasion(origin, plugin, occasion, at, most)
                     .left
                     .map(_.toString)
                   decided <- Occasioned
@@ -155,7 +155,7 @@ class ScriptedKeeping(
                       occasion,
                       turn,
                       to,
-                      believed,
+                      most,
                       speaking,
                       o.budget,
                       speech,

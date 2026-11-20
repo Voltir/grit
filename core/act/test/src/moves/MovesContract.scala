@@ -96,6 +96,7 @@ import grit.core.tool.ToolName
 import grit.core.triage.Tags
 import grit.core.visibility.Integrity
 import grit.core.visibility.{
+  Clearance,
   Compartments,
   DeclassificationPolicy,
   Label,
@@ -1797,6 +1798,57 @@ abstract class MovesContract extends TestSuite {
       (got, recorded(inbox, "k")) ==> (Said("Held(None,NoAddress)"), false)
     }
 
+    test("an occasion is believed at no more than its document: its entry at the meet of the two") {
+      val inbox = heard(InMemoryInbox.fresh())
+      val got = occasioning(OneOccasion, inbox, new InMemoryDocuments)(m =>
+        Said(
+          occasioned(
+            m.occasion(
+              name("o"),
+              TestTainted.at(occasion(about(m, Integrity.Outside), "k"), Integrity.Authority)
+            )
+          )
+        )
+      )
+      (
+        got,
+        inbox.started.map(t => inbox.entries.believed(t)(using TestTx.fake).map(Integrity.written))
+      ) ==> (Said("Started"), Vector(Right("outside")))
+    }
+
+    test(
+      "an occasion about a document believed below Outside is Held Below with no turn, nothing recorded"
+    ) {
+      val inbox = heard(InMemoryInbox.fresh())
+      val documents = new InMemoryDocuments
+      val low = documents
+        .keeper(MovesWorld.Notes, MovesWorld.NotesTerms)
+        .write(
+          DocKey.of("low").fold(e => throw new java.lang.AssertionError(e), identity),
+          Label.Public,
+          Integrity.Untrusted,
+          Here,
+          DocText.of("low").fold(e => throw new java.lang.AssertionError(e), identity),
+          ujson.Obj(),
+          None,
+          OccasionAt
+        )(using TestTx.fake(Clearance.of(Floor)))
+        .map {
+          case Written.Versioned(v, _, _) => v
+          case Written.Unchanged(v, _) => v
+        }
+        .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
+      val got = occasioning(OneOccasion, inbox, documents)(m =>
+        Said(
+          occasioned(m.occasion(name("o"), TestTainted.at(occasion(low, "k"), Integrity.Authority)))
+        )
+      )
+      (got, recorded(inbox, "k")) ==> (
+        Said(s"Held(None,${Silence.Below(Integrity.Untrusted)})"),
+        false
+      )
+    }
+
     test("an occasion believed below Outside is Held Below with no turn, nothing recorded") {
       val inbox = heard(InMemoryInbox.fresh())
       val got = occasioning(OneOccasion, inbox, new InMemoryDocuments)(m =>
@@ -2551,11 +2603,11 @@ object MovesContract {
     )
   }
 
-  /** The version of the plugin's document `about`, kept by a keep of `m`'s at its floor: written
-    * when it is not current, read back when it is.
+  /** The version of the plugin's document `about`, kept by a keep of `m`'s at its floor from
+    * what is believed at `believed`: written when it is not current, read back when it is.
     */
-  def about(m: Keeping^): DocumentVersionId =
-    m.keep(name("doc"), From)((_, keeper, at) =>
+  def about(m: Keeping^, believed: Integrity = Believed): DocumentVersionId =
+    m.keep(name("doc"), TestTainted.at((), believed))((_, keeper, at) =>
       keeper
         .write(
           DocKey.of("about").fold(e => throw new java.lang.AssertionError(e), identity),
