@@ -36,32 +36,36 @@ object Topic {
   }
 
   /** What a topic may be folded with, by its kind: a `Subject` with any subject, a meeting
-    * `On` its day with a meeting of that same day, and a meeting with no day yet (`Undated`)
-    * with none.
+    * `On` its day with a meeting of that same day but one stated to start at another time, and
+    * a meeting with no day yet (`Undated`) with none.
     */
   enum Foldable extends caps.Pure {
     case Subject
-    case On(day: LocalDate)
+    case On(when: grit.knowledge.topic.Meeting.When)
     case Undated
 
     /** Whether a topic of this and one of `other` may be folded, one into the other. */
     def foldsWith(other: Foldable): Boolean = (this, other) match {
       case (Subject, Subject) => true
-      case (On(a), On(b)) => a == b
+      case (On(a), On(b)) =>
+        a.day == b.day && a.start.zip(b.start).forall((x, y) => x == y)
       case _ => false
     }
   }
 
   object Foldable {
 
-    /** A topic of `kind`'s: a meeting's by its day ([[grit.knowledge.topic.Meeting.when]]). */
+    /** A topic of `kind`'s: a meeting's by its day and start
+      * ([[grit.knowledge.topic.Meeting.when]]).
+      */
     def of(kind: Kind): Foldable = kind match {
       case Kind.Subject => Subject
-      case Kind.Meeting(m) => meeting(m.when.map(_.day))
+      case Kind.Meeting(m) => meeting(m.when)
     }
 
-    /** A meeting's, of `day` when it has one. */
-    def meeting(day: Option[LocalDate]): Foldable = day.fold(Undated)(On(_))
+    /** A meeting's, `when` it has a day. */
+    def meeting(when: Option[grit.knowledge.topic.Meeting.When]): Foldable =
+      when.fold(Undated)(On(_))
   }
 
   /** Its data, `{"v":3, "kind", "lead", "passages"}`, its kind `"subject"` or `{"meeting": …}`,

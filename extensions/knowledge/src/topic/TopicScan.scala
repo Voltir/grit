@@ -92,7 +92,7 @@ private[topic] object TopicScan {
       * of the floor's `meetings` (one opened since the scan among them).
       */
     def foldable(key: TopicKey): Topic.Foldable =
-      meetings.find(_.key == key).fold(Topic.Foldable.Subject)(m => Topic.Foldable.meeting(m.day))
+      meetings.find(_.key == key).fold(Topic.Foldable.Subject)(m => Topic.Foldable.meeting(m.when))
   }
 
   /** Of each topic of `topics`, the current versions of at most [[Holds]] of the cards of the
@@ -115,11 +115,13 @@ private[topic] object TopicScan {
   final case class Linked(strand: Strand.Id, units: Vector[Ref], cards: Vector[CardShelf.Seen])
       extends caps.Pure
 
-  /** A meeting kept at the floor, as a sort may be pinned it: its `key` and `version`, and the
-    * `day` it is proposed, planned or held for when it has one.
+  /** A meeting kept at the floor, as a sort may be pinned it: its `key` and `version`, and
+    * `when` it is proposed, planned or held for, when it has a day.
     */
-  final case class Live(key: TopicKey, version: DocumentVersionId, day: Option[LocalDate])
-      extends caps.Pure
+  final case class Live(key: TopicKey, version: DocumentVersionId, when: Option[Meeting.When])
+      extends caps.Pure {
+    def day: Option[LocalDate] = when.map(_.day)
+  }
 
   /** 8: the most meetings a strand's sort is pinned ([[Scanned.meetingsNear]]). */
   val Meetings: Int = 8
@@ -238,7 +240,7 @@ private[topic] object TopicScan {
       .sortBy((_, v, _) => -DocumentVersionId.value(v))
       .collect { case (k, v, h) =>
         h.topic.kind match {
-          case Topic.Kind.Meeting(m) => Some(Live(k, v, m.when.map(_.day)))
+          case Topic.Kind.Meeting(m) => Some(Live(k, v, m.when))
           case Topic.Kind.Subject => None
         }
       }
@@ -677,7 +679,10 @@ private[topic] object TopicScan {
 
   private def liveJson(m: Live): ujson.Value = {
     val o = lead(m.key, m.version)
-    m.day.foreach(d => o("day") = d.toString)
+    m.when.foreach { w =>
+      o("day") = w.day.toString
+      w.start.foreach(t => o("start") = t.toString)
+    }
     o
   }
 
@@ -694,7 +699,19 @@ private[topic] object TopicScan {
       kv <- readLead(v)
       // A scan recorded before v10 also holds a "newest", now read by none.
       d <- day("day")
-    } yield Live(kv._1, kv._2, d)
+      start <- v.objOpt.flatMap(_.get("start")) match {
+        case None => Right(None)
+        case Some(t) =>
+          t.strOpt
+            .flatMap(s => scala.util.Try(java.time.LocalTime.parse(s)).toOption)
+            .map(Some(_))
+            .toRight("a live meeting's start is no time")
+      }
+      when <- (d, start) match {
+        case (None, Some(_)) => Left("a live meeting has a start and no day")
+        case _ => Right(d.map(Meeting.When(_, start)))
+      }
+    } yield Live(kv._1, kv._2, when)
   }
 
   private def holdsJson(h: (TopicKey, Vector[DocumentVersionId])): ujson.Value = ujson.Obj(

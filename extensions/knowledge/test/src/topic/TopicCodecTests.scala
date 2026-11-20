@@ -535,6 +535,40 @@ object TopicCodecTests extends TestSuite {
     }
 
     test(
+      "a scan's meetings round-trip with their day and start, and one recorded with only a day reads no start"
+    ) {
+      val codec = summon[Journaled[TopicScan.Scanned]]
+      def scan(meetings: TopicScan.Live*): TopicScan.Scanned = TopicScan.Scanned(
+        Vector.empty,
+        Vector.empty,
+        Vector.empty,
+        Vector.empty,
+        Vector.empty,
+        0,
+        0,
+        0,
+        Vector.empty,
+        0,
+        0,
+        Vector.empty,
+        meetings.toVector
+      )
+      val day = LocalDate.parse("2026-10-13")
+      val nine = Meeting.When(day, Some(java.time.LocalTime.of(9, 0)))
+      val held = scan(
+        TopicScan.Live(key, version(3), Some(nine)),
+        TopicScan.Live(other, version(5), None)
+      )
+      val recorded = """{"attached":[],"strands":[],"cards":[],"topics":[],""" +
+        """"near":[],"withdrew":0,"unchanged":0,"left":0,"linked":[],""" +
+        s""""meetings":[{"key":"${TopicKey.value(key)}","version":3,"day":"2026-10-13"}]}"""
+      (codec.decode(codec.encode(held)), codec.decode(recorded)) ==> (
+        Right(held),
+        Right(scan(TopicScan.Live(key, version(3), Some(Meeting.When(day, None)))))
+      )
+    }
+
+    test(
       "a topics run's parameters read back as written, merges among them; ones kept before merges read it as Merges, 8"
     ) {
       import scala.concurrent.duration.*

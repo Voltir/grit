@@ -220,5 +220,23 @@ object TopicFoldTests extends TestSuite {
         keyed(7) -> version(7)
       )
     }
+
+    test(
+      "a scan offers to merge no meeting whose only others of its day start at another time; one with no start pairs with either"
+    ) {
+      def at(d: Int, h: Option[Int]) = TestMeetings.meeting(
+        Meeting.State.Planned(Meeting.When(day(d), h.map(java.time.LocalTime.of(_, 0)))),
+        Vector.empty,
+        "m"
+      )
+      val topics = Vector(
+        (keyed(1), version(1), at(1, Some(9))),
+        (keyed(2), version(2), at(1, Some(14))),
+        (keyed(3), version(3), at(2, Some(9))),
+        (keyed(4), version(4), at(2, None))
+      )
+      TopicScan.single(topics, Vector.empty, 8) ==>
+        Vector(keyed(3) -> version(3), keyed(4) -> version(4))
+    }
   }
 }

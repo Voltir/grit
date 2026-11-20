@@ -60,7 +60,8 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
   // its day.
   // 12: a meeting's write gives its day only as written, else `said` and `as`, which code
   // reckons (Meeting.reckon).
-  // 13: a merge sort sorts and shows only the topics its item may fold with (Topic.Foldable),
+  // 13: a merge sort sorts and shows only the topics its item may fold with (Topic.Foldable;
+  // its scan's meetings hold their start),
   // and none a meeting written that night; a fold at its params' foldAt or more is made
   // (`fold-{i}`).
   val version: Int = 13
@@ -832,7 +833,7 @@ object TopicDream {
         (),
         // Draft wording, for Nick.
         StoreError.Invalid(
-          "a subject and a meeting, or meetings of two days, never fold"
+          "a subject and a meeting, or two meetings not of one day and start, never fold"
         )
       )
       kept <- TopicWrite.kept(

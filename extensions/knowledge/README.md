@@ -175,8 +175,8 @@ After its writes, a run sorts at most `merges` (`TopicParams.Merges` unless its 
 of the floor's topics written from fewer than two discussions, oldest written first, but those
 it wrote that night and those set aside at their version within `asideFor`
 (`TopicScan.Scanned.single`), and those no other topic of the floor may fold with by kind: a
-subject folds with a subject, a meeting with a meeting of its own day, an undated meeting with
-none (`Topic.Foldable`). Each is a document sorted (`merge-{i}`) by a yes or no for each of the 8
+subject folds with a subject, a meeting with a meeting of its own day unless both state
+different starts, an undated meeting with none (`Topic.Foldable`). Each is a document sorted (`merge-{i}`) by a yes or no for each of the 8
 other topics of the floor it may fold with that its text matches best (`TopicDream.sortTopic`),
 each and the item shown within `TopicDream.SortChars`: about 2,100 tokens a sort. A meeting
 written that night may have moved to another day, so it is shown to no merge sort, and a meeting

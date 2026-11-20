@@ -993,7 +993,7 @@ object TopicDreamTests extends TestSuite {
       def live(name: String, day: Option[String]) = TopicScan.Live(
         right(TopicKey.strand(ConversationId(name))),
         DocumentVersionId.of(1).getOrElse(throw new java.lang.AssertionError("version")),
-        day.map(LocalDate.parse)
+        day.map(d => Meeting.When(LocalDate.parse(d), None))
       )
       val scan = TopicScan.Scanned(
         Vector.empty,
@@ -1929,9 +1929,27 @@ object TopicDreamTests extends TestSuite {
       )
     }
 
-    /** A meeting planned for `day`, no one named. */
-    def planned(day: LocalDate): Topic.Kind =
-      Topic.Kind.Meeting(Meeting.of(Meeting.State.Planned(Meeting.When(day, None)), Vector.empty))
+    /** A meeting planned for `day`, at `start` when given, no one named. */
+    def planned(day: LocalDate, start: Option[java.time.LocalTime] = None): Topic.Kind =
+      Topic.Kind.Meeting(Meeting.of(Meeting.State.Planned(Meeting.When(day, start)), Vector.empty))
+
+    test(
+      "a meeting's merge sort is shown no meeting of its day at another start, but one with no start"
+    ) {
+      val w = new StrandWorld
+      val runs = new Runs(w)
+      val nine = Some(java.time.LocalTime.of(9, 0))
+      val two = Some(java.time.LocalTime.of(14, 0))
+      runs.topic(name = "nine", lead = "The review at nine.", kind = planned(Day, nine))
+      runs.topic(name = "two", lead = "The review at two.", kind = planned(Day, two))
+      runs.topic(name = "any", lead = "The review, some time.", kind = planned(Day))
+      val _ = runs.run(sort = judging("new_topic"), merges = TopicParams.Merges)
+      runs.asked.map(_.shown.linesIterator.filter(_.startsWith("The ")).toVector) ==> Vector(
+        Vector("The review at nine.", "The review, some time."),
+        Vector("The review at two.", "The review, some time."),
+        Vector("The review, some time.", "The review at two.", "The review at nine.")
+      )
+    }
 
     test(
       "a subject's merge sort is shown no meeting, and a meeting's only the meetings of its day"
@@ -2095,7 +2113,7 @@ object TopicDreamTests extends TestSuite {
       (folded, runs.kept.map(_._1)) ==> (
         Left(
           StoreError.Invalid(
-            "a subject and a meeting, or meetings of two days, never fold"
+            "a subject and a meeting, or two meetings not of one day and start, never fold"
           )
         ),
         Vector("topic:strand-one", "topic:strand-tue")
