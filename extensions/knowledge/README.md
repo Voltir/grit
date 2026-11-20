@@ -57,7 +57,8 @@ Packages, in one-way order (each names only those before it):
   with refs to what it was written from and links; and a topic's review as an edge posts it
   (`TopicPrompt`: its lead, whether the day opened it, that day's strands by root and its
   cards' titles) with the four verdicts a rater gives it (`TopicVerdict`); and `MeetingsAhead`,
-  the topics run's last phase, which names an occasion for a meeting coming up. Its code never
+  the topics run's last phase, which books `MeetingAhead`, the job that names an occasion for
+  a meeting about to start. Its code never
   holds a message's or a card's text. Imports `ref`, `card` and `grit.prose`; never `sync` or a
   source.
 - **`declassify`**: `CardDeclassify`, the dreaming job `cards-declassify`, which reads the
@@ -198,17 +199,22 @@ At most `merges` are sorted, so at most that many folded; a fold asks no model.
 ## Meetings ahead
 
 A deployment that gives `TopicDocuments.of` rooms (`aheadIn`) has each nightly topics run end by
-raising occasions in those rooms alone (ADR 0067), after it has written that night's topics. It
-reads its label's topics and takes each meeting planned to start within the next 24 hours (one
-with a day and no time: that day, when it is today), naming two people or more, in the listed
-room its topic's strands were most written from. The soonest such meeting of each room, three a
-run at most, is sorted by the classifier over the topic's document (is something unsettled or
-missing?), and one judged unsettled is named an occasion until its start: grit may then post
-once at that room's top level, as speech's limits and its turn's judge decide, at most once a
-meeting a day (its key). The post comes when the run names it, the night before or early that
-morning, never nearer the start. A backfill, or a run made after its day ended, names none. The
-run's reply counts what each check passed over and what each occasion came to;
-`scripts/occasions` reads what was decided, by shape.
+booking runs that raise occasions in those rooms alone (ADR 0067), after it has written that
+night's topics. It reads its label's topics and takes each meeting planned to start within the
+next 24 hours (one with a day and no time: that day, when it is today), naming two people or
+more, in the listed room its topic's strands were most written from. The soonest such meeting
+of each room, three a run at most, is sorted by the classifier over the topic's document (is
+something unsettled or missing?), and for one judged unsettled the run books a run of
+`meeting-ahead` (`Keeping.later`) ten minutes before its start, or at 08:45 on the day of one
+with no time. A backfill, or a run made after its day ended, books none.
+
+The booked run reads the topic again. It names nothing when the meeting is no longer planned,
+names one person, or starts at another time; a meeting that gained a time since reads as moved,
+and one moved later that day is left to the next night's run. When the topic was written since
+its booking it is sorted again. Otherwise it names the occasion until the meeting's start (an
+undated one's, until its day's end): grit may then post once at that room's top level, as
+speech's limits and its turn's judge decide, at most once a meeting a day (its key). Each run's
+reply says what it came to; `scripts/occasions` reads what was decided, by shape.
 
 ## A turn's read of meetings
 

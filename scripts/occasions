@@ -10,7 +10,7 @@
 #   scripts/occasions grit_example 14
 #
 # An occasion held before its entry was recorded (off, no address, a quiet room, below
-# outside, lapsed) keeps no speech row: the topics run's reply counts it (meetings ahead), as it
+# outside, lapsed) keeps no speech row: the meeting-ahead run's reply says it, as the topics run's
 # counts the meetings its checks passed over.
 set -euo pipefail
 
