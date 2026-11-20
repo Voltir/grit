@@ -144,6 +144,23 @@ object TopicCodecTests extends TestSuite {
       Meeting.of(Meeting.State.Proposed(None), names :+ " " :+ ("x" * 81)).who ==> names.take(12)
     }
 
+    test(
+      "when: proposed with a day and planned give their day and start, held its day with no start; proposed with none gives none"
+    ) {
+      val at = Meeting.When(LocalDate.of(2026, 11, 18), Some(java.time.LocalTime.of(9, 30)))
+      Vector(
+        Meeting.State.Proposed(Some(at)),
+        Meeting.State.Planned(at),
+        Meeting.State.Held(LocalDate.of(2026, 11, 16)),
+        Meeting.State.Proposed(None)
+      ).map(s => Meeting.of(s, Vector.empty).when) ==> Vector(
+        Some(at),
+        Some(at),
+        Some(Meeting.When(LocalDate.of(2026, 11, 16), None)),
+        None
+      )
+    }
+
     val day = LocalDate.of(2026, 11, 19)
     def reply(fields: (String, ujson.Value)*) = Some(ujson.Obj.from(fields))
 

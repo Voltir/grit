@@ -232,13 +232,7 @@ private[topic] object TopicScan {
       .sortBy((_, v, _) => -DocumentVersionId.value(v))
       .collect { case (k, v, h) =>
         h.topic.kind match {
-          case Topic.Kind.Meeting(m) =>
-            val day = m.state match {
-              case Meeting.State.Proposed(w) => w.map(_.day)
-              case Meeting.State.Planned(w) => Some(w.day)
-              case Meeting.State.Held(d) => Some(d)
-            }
-            Some(Live(k, v, day))
+          case Topic.Kind.Meeting(m) => Some(Live(k, v, m.when.map(_.day)))
           case Topic.Kind.Subject => None
         }
       }

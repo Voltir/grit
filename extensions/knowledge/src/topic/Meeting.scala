@@ -9,7 +9,17 @@ import grit.core.clock.Utc
 /** One meeting a topic tracks ([[Topic.Kind.Meeting]]): where it stands, and who is in it, as
   * written, each name once.
   */
-final case class Meeting private (state: Meeting.State, who: Vector[String]) extends caps.Pure
+final case class Meeting private (state: Meeting.State, who: Vector[String]) extends caps.Pure {
+
+  /** Its day and start: proposed for a day, planned, or held (held has no start); `None` when
+    * proposed with no day yet.
+    */
+  def when: Option[Meeting.When] = state match {
+    case Meeting.State.Proposed(w) => w
+    case Meeting.State.Planned(w) => Some(w)
+    case Meeting.State.Held(d) => Some(Meeting.When(d, None))
+  }
+}
 
 object Meeting {
 
@@ -162,14 +172,14 @@ object Meeting {
 
   /** `m` as a topic's data holds it: `{"state", "day"?, "start"?, "who": [...]}`. */
   private[topic] def write(m: Meeting): ujson.Value = {
-    val (state, when) = m.state match {
-      case State.Proposed(w) => ("proposed", w)
-      case State.Planned(w) => ("planned", Some(w))
-      case State.Held(d) => ("held", Some(When(d, None)))
+    val state = m.state match {
+      case State.Proposed(_) => "proposed"
+      case State.Planned(_) => "planned"
+      case State.Held(_) => "held"
     }
     ujson.Obj.from(
       Vector("state" -> ujson.Str(state)) ++
-        when.toVector.flatMap(w =>
+        m.when.toVector.flatMap(w =>
           ("day" -> ujson.Str(w.day.toString)) +: w.start.toVector.map(s =>
             "start" -> ujson.Str(s.toString)
           )
