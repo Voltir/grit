@@ -285,10 +285,15 @@ object Strand {
     given CanEqual[Name, Name] = CanEqual.derived
   }
 
-  /** A person who wrote in a strand: `said` of its messages, their [[Name]] when the account of
-    * their newest message has one that reads as one, and the zone that account's source places
-    * them in, when it does ([[grit.core.store.Principals.Author]]).
+  /** A person who wrote in a strand: `said` of its messages, the `last` of them said, their
+    * [[Name]] when the account of that message has one that reads as one, and the zone that
+    * account's source places them in, when it does ([[grit.core.store.Principals.Author]]).
     */
-  final case class Spoke(person: PrincipalId, said: Int, name: Option[Name], zone: Option[ZoneId])
-      extends caps.Pure
+  final case class Spoke(
+      person: PrincipalId,
+      said: Int,
+      last: Instant,
+      name: Option[Name],
+      zone: Option[ZoneId]
+  ) extends caps.Pure
 }

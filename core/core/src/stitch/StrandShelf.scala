@@ -26,7 +26,7 @@ trait StrandShelf {
 
   /** For each of `seen`, in its order, each person who wrote one of the messages [[links]] reads
     * of it, most messages first, ties by id; never grit, nor an account linked to no person. Ids,
-    * counts, names and zones alone: a strand's text stays on
+    * counts, times, names and zones alone: a strand's text stays on
     * [[grit.core.act.Dreaming.summarise]]'s route.
     */
   def speakers(seen: Vector[Strand.Digested])(using
@@ -174,26 +174,28 @@ object StrandShelf {
           (p.opening.toVector ++ p.placed)
             .distinctBy(_.entry.id)
             .sortBy(_.entry.createdAt)
-            .map(_.entry.id)
+            .map(m => (m.entry.id, m.entry.createdAt))
         )
       ).flatMap(said =>
         principals
-          .authors(said.flatten.distinct)
+          .authors(said.flatten.map(_._1).distinct)
           .map(authors =>
             said.map { entries =>
-              val wrote = entries.flatMap(authors.get)
+              val wrote = entries.flatMap((id, at) => authors.get(id).map(_ -> at))
               wrote
-                .map(_.person)
+                .map(_._1.person)
                 .distinct
-                .map { person =>
-                  val theirs = wrote.filter(_.person == person)
-                  // The newest message's account names them: `wrote` keeps the strand's order.
-                  val newest = theirs.lastOption
-                  Strand.Spoke(
-                    person,
-                    theirs.size,
-                    newest.flatMap(_.name).flatMap(Strand.Name.of),
-                    newest.flatMap(_.zone)
+                .flatMap { person =>
+                  val theirs = wrote.filter(_._1.person == person)
+                  // Their newest message's account names them: `wrote` keeps the strand's order.
+                  theirs.lastOption.map((newest, at) =>
+                    Strand.Spoke(
+                      person,
+                      theirs.size,
+                      at,
+                      newest.name.flatMap(Strand.Name.of),
+                      newest.zone
+                    )
                   )
                 }
                 .sortBy(s => (-s.said, PrincipalId.value(s.person)))

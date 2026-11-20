@@ -76,9 +76,15 @@ object StrandShelfTests extends TestSuite {
       w.say(a, "thanks", 50, by = Some(bo))
       right(w.shelf.speakers(w.of(a, at(600)))) ==> Vector(
         Vector(
-          Strand.Spoke(InMemoryPrincipals.person(dana), 2, Strand.Name.of("Dana"), Some(london)),
-          Strand.Spoke(InMemoryPrincipals.person(bo), 1, None, None),
-          Strand.Spoke(InMemoryPrincipals.person(cy), 1, None, None)
+          Strand.Spoke(
+            InMemoryPrincipals.person(dana),
+            2,
+            at(40),
+            Strand.Name.of("Dana"),
+            Some(london)
+          ),
+          Strand.Spoke(InMemoryPrincipals.person(bo), 1, at(50), None, None),
+          Strand.Spoke(InMemoryPrincipals.person(cy), 1, at(10), None, None)
         )
       )
     }
@@ -95,7 +101,7 @@ object StrandShelfTests extends TestSuite {
       given Tx = TestTx.fake(Clearance.of(Label.Public), TestLabels.Trialled)
       val seen = right(w.shelf.units(at(0), at(600), Strand.Cut.Default)).filter(_.root == b.id)
       right(w.shelf.speakers(seen)) ==>
-        Vector(Vector(Strand.Spoke(InMemoryPrincipals.person(dana), 1, None, None)))
+        Vector(Vector(Strand.Spoke(InMemoryPrincipals.person(dana), 1, at(60), None, None)))
     }
 
     test("a strand no person spoke in has no speakers") {
