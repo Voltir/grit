@@ -1079,6 +1079,35 @@ object TopicDreamTests extends TestSuite {
       )
     }
 
+    test(
+      "a meeting's write is told to name a day by said and as, and its head is the day they reckon"
+    ) {
+      val w = new StrandWorld
+      val _ = strand(w, "C1", "the review, tomorrow at nine?")
+      val runs = new Runs(w)
+      val named = ujson.Obj(
+        "lead" -> Lead,
+        "passage" -> Passage,
+        "meeting" -> ujson.Obj(
+          "state" -> "planned",
+          "day" -> ujson.Null,
+          "said" -> "2026-10-12",
+          "as" -> "tomorrow",
+          "start" -> "09:00",
+          "who" -> ujson.Arr("Ana")
+        )
+      )
+      val _ = runs.run(sort = judging("new_meeting"), write = _ => named)
+      (
+        runs.kept.map((_, text) => text.linesIterator.next()),
+        runs.asked
+          .filter(_.kind == "write")
+          .map(
+            _.system.contains("`said`: the date on the day line above the message that names it")
+          )
+      ) ==> (Vector("Meeting, planned for Tuesday 2026-10-13 at 09:00, with Ana."), Vector(true))
+    }
+
     test("new_meeting opens a proposed meeting") {
       val w = new StrandWorld
       val a = strand(w, "C1", "a call on the budget, monday or tuesday?")

@@ -137,7 +137,8 @@ head of its newest passage), cut further only if the request would pass the clas
 
 A topic is a subject or one meeting, fixed when it opens (`Topic.Kind`); a meeting's head
 (`Meeting`: proposed, planned or held, its day and start, who) is its text's first line, refined
-by each write's reply (`Meeting.refined`). A strand's sort is shown, chosen by ids alone, the
+by each write's reply (`Meeting.refined`): a day the messages write, or one code reckons from the
+day a message was said and how it names the day (`Meeting.As`, `Meeting.reckon`). A strand's sort is shown, chosen by ids alone, the
 topics attached to by ref, the meetings near its day (`Scanned.meetingsNear`: dated from 2 days
 before to 14 after, never an undated one; at most 8), those it shares
 something with (`TopicScan.Scanned.near`: written from the same strand, holding a card it links,

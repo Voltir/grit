@@ -192,6 +192,68 @@ object TopicCodecTests extends TestSuite {
       ) ==> (16, true, Vector())
     }
 
+    test("refined, given no day, takes the one its said and as reckon; a written day wins") {
+      val friday = date("2026-11-13")
+      (
+        Meeting
+          .refined(
+            Meeting.Opened,
+            reply(
+              "state" -> "planned",
+              "said" -> "2026-11-13",
+              "as" -> "Monday",
+              "start" -> "09:30"
+            ),
+            friday,
+            90
+          )
+          .state,
+        Meeting
+          .refined(
+            Meeting.Opened,
+            reply("state" -> "held", "said" -> "2026-11-18", "as" -> "Monday"),
+            date("2026-11-18"),
+            90
+          )
+          .state,
+        Meeting
+          .refined(
+            Meeting.Opened,
+            reply(
+              "state" -> "planned",
+              "day" -> "2026-11-17",
+              "said" -> "2026-11-13",
+              "as" -> "Monday"
+            ),
+            friday,
+            90
+          )
+          .state
+      ) ==> (
+        Meeting.State.Planned(
+          Meeting.When(date("2026-11-16"), Some(java.time.LocalTime.of(9, 30)))
+        ),
+        Meeting.State.Held(date("2026-11-16")),
+        Meeting.State.Planned(Meeting.When(date("2026-11-17"), None))
+      )
+    }
+
+    test(
+      "refined reckons nothing, keeping what it had, from a said missing, unreadable or after the run's day, or an as outside its words"
+    ) {
+      val ana = Meeting.of(
+        Meeting.State.Planned(Meeting.When(date("2026-11-20"), None)),
+        Vector("Ana")
+      )
+      Vector(
+        reply("as" -> "Monday"),
+        reply("said" -> "last Friday", "as" -> "Monday"),
+        reply("said" -> "2026-11-14", "as" -> "today"),
+        reply("said" -> "2026-11-13", "as" -> "monday"),
+        reply("said" -> "2026-11-13", "as" -> "next week")
+      ).map(Meeting.refined(ana, _, date("2026-11-13"), 90)) ==> Vector.fill(5)(ana)
+    }
+
     test("refined drops a day 3 days back") {
       Meeting.refined(
         Meeting.Opened,

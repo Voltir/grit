@@ -101,8 +101,9 @@ object Meeting {
   }
 
   /** `was` as a write's `reply` refines it on the run's `day`: `{"state": "proposed" | "planned"
-    * | "held", "day": "YYYY-MM-DD", "start": "HH:MM", "who": [name]}`, each field optional, a
-    * missing, bad or empty one leaving `was`'s; a day more than [[Grace]] days before `day`, or more than
+    * | "held", "day": "YYYY-MM-DD", "said": "YYYY-MM-DD", "as": one of [[As.Words]], "start":
+    * "HH:MM", "who": [name]}`, each field optional, a missing, bad or empty one leaving `was`'s;
+    * with no `day`, the day `said` and `as` reckon ([[reckon]]), bounded alike; a day more than [[Grace]] days before `day`, or more than
     * `ahead` days after it, left out; planned with no day proposed; held with no day held on
     * `day`; held after `day` planned; and a meeting once held kept held as it was, whatever the
     * reply.
@@ -122,9 +123,15 @@ object Meeting {
         case State.Planned(w) => Some(w)
         case State.Held(d) => Some(When(d, None))
       }
-      val newDay = field("day")
-        .flatMap(_.strOpt)
-        .flatMap(t => scala.util.Try(LocalDate.parse(t)).toOption)
+      def date(key: String) =
+        field(key).flatMap(_.strOpt).flatMap(t => scala.util.Try(LocalDate.parse(t)).toOption)
+      val said = for {
+        s <- date("said")
+        as <- field("as").flatMap(_.strOpt).flatMap(As.read)
+        d <- reckon(s, as, field("state").flatMap(_.strOpt).contains("held"), day)
+      } yield d
+      val newDay = date("day")
+        .orElse(said)
         .filter(d => !d.isBefore(day.minusDays(Grace)) && !d.isAfter(day.plusDays(ahead)))
       val newStart =
         field("start").flatMap(_.strOpt).flatMap(t => scala.util.Try(LocalTime.parse(t)).toOption)

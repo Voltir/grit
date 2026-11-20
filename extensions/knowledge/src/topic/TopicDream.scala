@@ -58,7 +58,9 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
   // 11: a write ask shows each message under its day, and a meeting's day may be reckoned from
   // a relative one; a meeting is offered to no strand said more than Meeting.Grace days after
   // its day.
-  val version: Int = 11
+  // 12: a meeting's write gives its day only as written, else `said` and `as`, which code
+  // reckons (Meeting.reckon).
+  val version: Int = 12
 
   def write(params: TopicParams): ujson.Value = TopicParams.write(params)
 
@@ -644,12 +646,16 @@ object TopicDream {
                                        "This topic is one meeting. Give `meeting`: its `state`, " +
                                          "`proposed` until a day is agreed, `planned` once it is, " +
                                          "`held` once the messages say it took place; its `day` " +
-                                         "(yyyy-mm-dd) and `start` (HH:MM) when the messages fix " +
-                                         "them, a weekday or a relative day (\"Monday\", " +
-                                         "\"today\", \"tomorrow\") reckoned from the day it was " +
-                                         "said, else null; and `who`: everyone taking part, those " +
-                                         "the topic already names included, as the messages write " +
-                                         "them, else null."
+                                         "(yyyy-mm-dd) only when the messages write its date, else " +
+                                         "null; when they name its day another way, even " +
+                                         "tentatively, `said`: the date on the day line above the " +
+                                         "message that names it, and `as`: `today`, `tomorrow`, a " +
+                                         "weekday's name (`Monday`) or `next` and one (`next " +
+                                         "Monday`), as that message says it, a time named with no " +
+                                         "day being `today`; else both null; its `start` (HH:MM) " +
+                                         "when the messages fix it, else null; and `who`: everyone " +
+                                         "taking part, those the topic already names included, as " +
+                                         "the messages write them, else null."
                                      } else "Give `meeting` null.")
 
   private def writeTopic(day: LocalDate, opened: Boolean): String =
@@ -698,7 +704,16 @@ object TopicDream {
             ),
             "day" -> ujson.Obj(
               "type" -> ujson.Arr("string", "null"),
-              "description" -> "yyyy-mm-dd"
+              "description" -> "yyyy-mm-dd, only a date the messages write"
+            ),
+            "said" -> ujson.Obj(
+              "type" -> ujson.Arr("string", "null"),
+              "description" -> "yyyy-mm-dd: the day line above the message naming the day"
+            ),
+            "as" -> ujson.Obj(
+              "type" -> ujson.Arr("string", "null"),
+              "description" -> "how that message names the day",
+              "enum" -> ujson.Arr.from(Meeting.As.Words.map(ujson.Str(_)) :+ ujson.Null)
             ),
             "start" -> ujson.Obj(
               "type" -> ujson.Arr("string", "null"),
@@ -709,7 +724,7 @@ object TopicDream {
               "items" -> ujson.Obj("type" -> "string")
             )
           ),
-          "required" -> ujson.Arr("state", "day", "start", "who"),
+          "required" -> ujson.Arr("state", "day", "said", "as", "start", "who"),
           "additionalProperties" -> false
         )
       ),
