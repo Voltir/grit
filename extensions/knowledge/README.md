@@ -56,7 +56,9 @@ Packages, in one-way order (each names only those before it):
   per label), and once per topic touched for its new lead and the day's passage, and keeps it
   with refs to what it was written from and links; and a topic's review as an edge posts it
   (`TopicPrompt`: its lead, whether the day opened it, that day's strands by root and its
-  cards' titles) with the four verdicts a rater gives it (`TopicVerdict`). Its code never
+  cards' titles) with the four verdicts a rater gives it (`TopicVerdict`); and `MeetingsAhead`,
+  the dreaming job `meetings-ahead`, which names an occasion for a meeting about to start. Its
+  code never
   holds a message's or a card's text. Imports `ref`, `card` and `grit.prose`; never `sync` or a
   source.
 - **`declassify`**: `CardDeclassify`, the dreaming job `cards-declassify`, which reads the
@@ -193,6 +195,21 @@ proposed keeper is not sorted. Each sorted but not refused, and each keeper, is 
 version (`merge-aside`), so it is sorted again only once it is written or `asideFor` has passed.
 A topic of two discussions or more is never sorted to merge, though it is shown to one that is.
 At most `merges` are sorted, so at most that many folded; a fold asks no model.
+
+## A meetings-ahead run
+
+A deployment that gives `TopicDocuments.of` rooms (`aheadIn`) gets, at each label, an hourly
+schedule of `MeetingsAhead` raising occasions in those rooms alone (ADR 0067). A run reads its
+label's topics and the strands spoken in that day, and passes over a meeting, cheapest check
+first, unless its topic was last written from a listed room, it starts within three hours, it
+names two people or more, and nobody has talked in its own strands in the last three hours or
+since the topic was written. The soonest such meeting of each room, three a run at most, is
+sorted by the classifier over the topic's document (is something unsettled or missing?), and
+one judged unsettled is named an occasion: grit may then post once at that room's top level,
+as speech's limits and its turn's judge decide, at most once a meeting a day (its key). A
+meeting arranged today is not seen until the nightly topics run writes it. Its reply counts
+what each check passed over and what each occasion came to; `scripts/occasions` reads what
+was decided, by shape.
 
 ## A turn's read of meetings
 

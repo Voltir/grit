@@ -11,13 +11,14 @@ name a plugin's meetings); a new edge operation to find a room's address (ADR 00
 
 Decision:
 
-- **An occasion is a new root of an unprompted turn.** A plugin's keeping job names it
+- **An occasion is a new root of an unprompted turn.** A plugin's job names it
   (`Occasion`: a room, a key, a brief, the plugin's document it is about, and an instant it
   lapses at). The brief is the plugin's own wording of why grit posts and what to write, a
   constant in its code (`OccasionBrief.literal`): core names no kind of occasion. It is
   recorded and decided by speech's limits, and the turn it drafts is started, as a heard
-  message's is; that draft is judged and posted, or shadowed, at the room's top level only
-  once the deployment's post path reads it (a later change). Its precedent is grit's own
+  message's is; that turn drafts from the document's head alone, its prompt carrying the
+  brief, and its draft is judged and posted, or shadowed under the deployment's speaking, at
+  the room's top level at the address its decision kept. Its precedent is grit's own
   continuation note (ADR 0058).
 - **It is a move, `Keeping.occasion`: spawn's first form (ADR 0068).** It starts a turn in
   another conversation, charged to the speech accounts, at most once per key, recorded as
@@ -33,7 +34,8 @@ Decision:
 - **The address is the room's newest kept heard reach with a room address within a week**,
   and the room is not quiet. No address is no occasion.
 - **Labels.** A room at another label than the run's is refused. The entry is believed at
-  what the job's input was believed at; below `Outside` it is held.
+  the meet of what the job's input and the document were believed at; below `Outside` it is
+  held.
 - **The decision holds on the first failing check**: off, no address, below `Outside`, lapsed,
   another unprompted turn drafting in the conversation (either way round, with heard drafts),
   the occasion rate, the room and deployment rates, the speech cap, the budget. One
