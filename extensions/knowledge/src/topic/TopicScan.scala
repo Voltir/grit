@@ -551,11 +551,8 @@ private[topic] object TopicScan {
   private def offered(c: CardShelf.Seen, floor: Label): Boolean =
     c.kind == UnitKind.File && c.label == floor
 
-  private def isStrand(s: Strand.Digested)(t: Lineage.Tag): Boolean = t match {
-    case Lineage.Tag.Strand(root, _, digest, first) =>
-      Strand.Id(root, first) == s.id && digest == s.digest
-    case _ => false
-  }
+  private def isStrand(s: Strand.Digested)(t: Lineage.Tag): Boolean =
+    t.strand.contains((s.id, s.digest))
 
   /** The topic among `held` that refers to `ref`, the most recently written, if any. */
   private def referred(

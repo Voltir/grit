@@ -8,7 +8,7 @@ import grit.core.clock.SetClock
 import grit.core.document.DocLabel
 import grit.core.flow.TestTainted
 import grit.core.id.{PluginName, ScheduleKey, TestCallSlots, ToolCallId}
-import grit.core.job.{Grace, InMemorySchedules, OwnJobs, ScheduleDesk, SlotRule}
+import grit.core.job.{Grace, InMemorySchedules, Interval, OwnJobs, ScheduleDesk, SlotRule}
 import grit.core.message.AssistantBlock
 import grit.core.need.{Needs, PluginReads}
 import grit.core.plugin.{Exports, InMemoryPlugins, PluginTool}
@@ -18,7 +18,7 @@ import grit.core.visibility.{Clearance, Integrity, Label, Level, Subject, TestLa
 import grit.dbos.sql.TestTx
 import grit.knowledge.card.CardShelf
 import grit.knowledge.topic.TestMeetings.{Kept, meeting, text}
-import grit.knowledge.topic.{Meeting, MeetingLookup, TopicParams}
+import grit.knowledge.topic.{AheadParams, Meeting, MeetingLookup, MeetingsAhead, TopicParams}
 
 import utest.*
 
@@ -38,9 +38,20 @@ object TopicDocumentsTests extends TestSuite {
       visibility: Visibility = Visibility.Shipped,
       cards: Option[Exports[CardShelf]] = None,
       seedUntil: Option[java.time.LocalDate] = None,
-      foldAt: Option[Double] = None
+      foldAt: Option[Double] = None,
+      aheadIn: Vector[grit.core.place.Place] = Vector.empty
   ) =
-    TopicDocuments.of(Name, labels, At, ZoneOffset.UTC, visibility, cards, seedUntil, foldAt)
+    TopicDocuments.of(
+      Name,
+      labels,
+      At,
+      ZoneOffset.UTC,
+      visibility,
+      cards,
+      seedUntil,
+      foldAt,
+      aheadIn
+    )
 
   private val Internal: Label = Label.at(Level.Internal)
   private val Secret: Label = Label.at(Level.Confidential)
@@ -129,6 +140,46 @@ object TopicDocumentsTests extends TestSuite {
           ),
           Some(("topic", 2 * TopicDocuments.Bound))
         )
+      )
+    }
+
+    test(
+      "given rooms, each label also gets an hourly meetings-ahead schedule raising in those rooms, at that label; given none, no such job"
+    ) {
+      val internal = Label.at(Level.Internal)
+      val rooms = Vector(grit.core.place.Place.Everywhere)
+      def ahead(p: TopicDocuments) =
+        (
+          p.schedules.collect {
+            case d if d.job.name == MeetingsAhead.Name =>
+              (ScheduleKey.value(d.key), d.rule, Label.written(d.clearance), d.params)
+          },
+          p.jobs.map(_.name).contains(MeetingsAhead.Name)
+        )
+      (
+        of(Vector(Label.Public, internal), aheadIn = rooms).map(ahead),
+        of(Vector(Label.Public)).map(ahead)
+      ) ==> (
+        Right(
+          (
+            Vector(
+              (
+                "meetings-ahead-public",
+                SlotRule.Every(Interval.Hour),
+                "public",
+                AheadParams(rooms)
+              ),
+              (
+                "meetings-ahead-internal",
+                SlotRule.Every(Interval.Hour),
+                "internal",
+                AheadParams(rooms)
+              )
+            ),
+            true
+          )
+        ),
+        Right((Vector.empty, false))
       )
     }
 

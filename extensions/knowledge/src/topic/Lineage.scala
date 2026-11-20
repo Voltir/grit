@@ -27,6 +27,12 @@ object Lineage {
 
     /** Another topic's version. */
     case Topic(version: DocumentVersionId)
+
+    /** A strand's id and the digest it was written at; `None` for a card or a topic. */
+    def strand: Option[(grit.core.stitch.Strand.Id, StrandDigest)] = this match {
+      case Strand(root, _, digest, first) => Some((grit.core.stitch.Strand.Id(root, first), digest))
+      case Card(_) | Topic(_) => None
+    }
   }
 
   /** `tags`, each once where first named. */

@@ -6,10 +6,11 @@ import scala.concurrent.duration.*
 
 import grit.core.clock.Utc
 import grit.core.document.{DocLabel, DocWeight, DocumentTerms}
-import grit.core.id.{CallSlot, PluginName, ScheduleKey}
-import grit.core.job.{Declared, Grace, Job, NotOwn, OwnJobs, ScheduleDesk, SlotRule}
+import grit.core.id.{CallSlot, JobName, PluginName, ScheduleKey}
+import grit.core.job.{Declared, Grace, Interval, Job, NotOwn, OwnJobs, ScheduleDesk, SlotRule}
 import grit.core.message.Cost
 import grit.core.need.{Needs, PluginReads, Unneeded}
+import grit.core.place.Place
 import grit.core.plugin.{Documents, Exports, Plugin, PluginRun, PluginTool}
 import grit.core.store.Reads
 import grit.core.tool.{
@@ -26,7 +27,14 @@ import grit.core.tool.{
 }
 import grit.core.visibility.{Label, Visibility}
 import grit.knowledge.card.CardShelf
-import grit.knowledge.topic.{MeetingLookup, Passage, TopicDream, TopicParams}
+import grit.knowledge.topic.{
+  AheadParams,
+  MeetingLookup,
+  MeetingsAhead,
+  Passage,
+  TopicDream,
+  TopicParams
+}
 
 /** The topics plugin: one topic per subject its runs find, by its job [[TopicDream]], daily at
   * `at` in `zone`, on a schedule per label in `labels`, keyed `topics-dream-{label}` with the
@@ -36,7 +44,9 @@ import grit.knowledge.topic.{MeetingLookup, Passage, TopicDream, TopicParams}
   * cards otherwise. Its documents: label "topic", weight 1, kept 30 days after a version stops
   * being current, bounded at [[TopicDocuments.Bound]] times its labels; at each start, a
   * document at a label not among them is withdrawn ([[Documents.sweep]]); it posts nothing. Its
-  * tool `meetings` lists its meetings a turn reads ([[TopicDocuments.meetings]]).
+  * tool `meetings` lists its meetings a turn reads ([[TopicDocuments.meetings]]). Given rooms
+  * to raise occasions in ([[TopicDocuments.of]]), its job [[MeetingsAhead]] names its meetings'
+  * occasions there every hour, at each label.
   */
 final class TopicDocuments private (
     val name: PluginName,
@@ -46,7 +56,9 @@ final class TopicDocuments private (
     terms: DocumentTerms,
     cards: Option[Exports[CardShelf]],
     seedUntil: Option[LocalDate],
-    foldAt: Option[Double]
+    foldAt: Option[Double],
+    ahead: Vector[(ScheduleKey, Label)],
+    aheadIn: Vector[Place]
 ) extends Plugin {
 
   private val labels: Vector[Label] = keyed.map(_._2)
@@ -64,7 +76,10 @@ final class TopicDocuments private (
 
   override val documents: Option[Documents] = Some(DreamSchedules.documents(terms, labels))
 
-  override val jobs: Vector[Job[?]] = Vector(dream)
+  private val meetingsAhead = new MeetingsAhead(zone, TopicDocuments.Bound * labels.size)
+
+  override val jobs: Vector[Job[?]] =
+    Vector(dream) ++ Option.when(aheadIn.nonEmpty)(meetingsAhead)
 
   override val tools: Vector[PluginTool[?]] =
     Vector(TopicDocuments.meetings(TopicDocuments.Bound * labels.size, zone))
@@ -85,7 +100,11 @@ final class TopicDocuments private (
         ),
         l
       )
-    )
+    ) ++ (if (aheadIn.isEmpty) Vector.empty
+          else
+            ahead.map((key, l) =>
+              Declared(key, meetingsAhead, SlotRule.Every(Interval.Hour), AheadParams(aheadIn), l)
+            ))
 
   /** The runs that backfill `days`, in the order given, at each of its labels in turn: each a
     * once schedule of its job, due from `started` with no grace, keyed
@@ -277,7 +296,10 @@ object TopicDocuments {
     * ([[TopicParams.foldAt]]; none folded when `None`), under the deployment's `visibility`; or
     * why not: no label, one given twice, one holding a compartment `visibility` does not
     * declare, one whose written form makes no schedule key, or `foldAt` not from
-    * [[grit.knowledge.topic.TopicDream.FoldAt]] to 1 ([[TopicParams.folding]]).
+    * [[grit.knowledge.topic.TopicDream.FoldAt]] to 1 ([[TopicParams.folding]]). With rooms
+    * `aheadIn`, each label also gets a schedule of [[MeetingsAhead]], keyed
+    * `meetings-ahead-{label}` (the label as its nightly schedule's key writes it), every
+    * [[Interval.Hour]], raising occasions in those rooms alone, at that label.
     */
   def of(
       name: PluginName,
@@ -287,10 +309,12 @@ object TopicDocuments {
       visibility: Visibility,
       cards: Option[Exports[CardShelf]],
       seedUntil: Option[LocalDate],
-      foldAt: Option[Double]
+      foldAt: Option[Double],
+      aheadIn: Vector[Place] = Vector.empty
   ): Either[String, TopicDocuments] =
     for {
       keyed <- DreamSchedules.keyed("topics", Nightly, labels, visibility)
+      ahead <- DreamSchedules.keyed("topics", JobName.value(MeetingsAhead.Name), labels, visibility)
       terms <- DocLabel
         .of("topic")
         .flatMap(DocumentTerms.of(_, DocWeight.Unscaled, 30.days, Bound * labels.size))
@@ -303,6 +327,8 @@ object TopicDocuments {
       terms,
       cards,
       seedUntil,
-      fold
+      fold,
+      ahead,
+      aheadIn
     )
 }
