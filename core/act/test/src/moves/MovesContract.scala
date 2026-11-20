@@ -72,7 +72,7 @@ import grit.core.identity.Account
 import grit.core.inbox.InMemoryInbox
 import grit.core.message.{AssistantBlock, Message, StopReason}
 import grit.core.need.{Needs, PluginReads}
-import grit.core.occasion.{Occasion, OccasionKey}
+import grit.core.occasion.{Occasion, OccasionKey, TestOccasions}
 import grit.core.period.Probability
 import grit.core.place.{Namespace, Place, Service}
 import grit.core.plugin.{Exports, InMemoryPlugins}
@@ -2547,7 +2547,7 @@ object MovesContract {
     Occasion(
       Channel.room,
       OccasionKey.of(key).getOrElse(throw new java.lang.AssertionError(key)),
-      Occasion.Reason.Ahead,
+      TestOccasions.Brief,
       about,
       until
     )

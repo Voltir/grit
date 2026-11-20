@@ -14,7 +14,7 @@ import grit.core.id.{
 }
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.CatalogJson
-import grit.core.occasion.{Occasion, OccasionKey}
+import grit.core.occasion.{OccasionBrief, OccasionKey}
 import grit.core.period.{CloseReason, ClosingJson, Probability}
 import grit.core.place.Place
 import grit.std.either.Traversal.traverse
@@ -42,10 +42,10 @@ object PayloadJson {
           o("reason") = r
       }
       o
-    case Payload.Occasion(reason, about, key) =>
+    case Payload.Occasion(brief, about, key) =>
       ujson.Obj(
         "kind" -> "occasion",
-        "reason" -> occasionReason(reason),
+        "brief" -> OccasionBrief.value(brief),
         "about" -> ujson.Num(DocumentVersionId.value(about).toDouble),
         "key" -> OccasionKey.value(key)
       )
@@ -120,12 +120,6 @@ object PayloadJson {
     case CloseReason.Rolled => "rolled"
   }
 
-  /** How an occasion's reason is written: `ahead` or `open`. */
-  private def occasionReason(reason: Occasion.Reason): String = reason match {
-    case Occasion.Reason.Ahead => "ahead"
-    case Occasion.Reason.Open => "open"
-  }
-
   /** A resolved reason's confidence, stored beside its name; `None` for any other. */
   def reasonConfidence(reason: CloseReason): Option[Double] = reason match {
     case CloseReason.Resolved(c) => Some(Probability.value(c))
@@ -176,16 +170,12 @@ object PayloadJson {
           } yield Payload.Continuation(TurnSeq(task), turn.toInt, reason)
         case "occasion" =>
           for {
-            reason <- str(o, "reason").flatMap(r =>
-              Occasion.Reason.values
-                .find(occasionReason(_) == r)
-                .toRight(s"no occasion's reason is $r")
-            )
+            brief <- str(o, "brief").flatMap(OccasionBrief.read)
             about <- long(o, "about").flatMap(
               DocumentVersionId.of(_).toRight("a document version is a whole number from 1")
             )
             key <- str(o, "key").flatMap(k => OccasionKey.of(k).toRight(s"no occasion's key is $k"))
-          } yield Payload.Occasion(reason, about, key)
+          } yield Payload.Occasion(brief, about, key)
         case "summary" => str(o, "text").map(Payload.Summary(_))
         case "query" => str(o, "text").map(Payload.Query(_))
         case "window" =>

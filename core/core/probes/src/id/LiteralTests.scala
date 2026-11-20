@@ -22,6 +22,7 @@ object LiteralTests extends TestSuite {
       |import grit.core.act.MoveName
       |import grit.core.document.{DocLabel, DocText}
       |import grit.core.id.{DocKey, Harness, JobName, PluginName, QuestionName}
+      |import grit.core.occasion.OccasionBrief
       |import grit.core.place.Service
       |import grit.core.review.ReviewWord
       |import grit.core.visibility.GroupName
@@ -40,6 +41,7 @@ object LiteralTests extends TestSuite {
        |val service: Service = Service.literal("slack")
        |val word: ReviewWord = ReviewWord.literal("merge")
        |val move: MoveName = MoveName.literal("${"a" * 200}")
+       |val brief: OccasionBrief = OccasionBrief.literal("${"a" * 2000}")
        |""".stripMargin
 
   /** Each type's refused constant, its probe, and the reason its `of` gives. */
@@ -63,10 +65,17 @@ object LiteralTests extends TestSuite {
     """val n: MoveName = MoveName.literal("a:record")""" ->
       "a move's name holds no ':' and no control character",
     """val n: MoveName = MoveName.literal("a\tb")""" ->
-      "a move's name holds no ':' and no control character"
+      "a move's name holds no ':' and no control character",
+    """val n: OccasionBrief = OccasionBrief.literal(" ")""" -> "an occasion's brief is not blank",
+    s"""val n: OccasionBrief = OccasionBrief.literal("${"a" * 2001}")""" ->
+      "an occasion's brief is at most 2,000 characters"
   )
 
   private val built = """def n(s: String): DocKey = DocKey.literal(s)"""
+
+  private val builtBrief = """def n(s: String): OccasionBrief = OccasionBrief.literal(s)"""
+
+  private val readBrief = """val n = OccasionBrief.read("Say what was planned.")"""
 
   private val impureReader =
     """def checked(text: Expr[String], c: caps.SharedCapability^)(using Quotes): Expr[String] =
@@ -80,7 +89,8 @@ object LiteralTests extends TestSuite {
   private lazy val compiled =
     Probes.batch(
       prelude,
-      accepted :: built :: impureReader :: newService :: newWord :: refused.map(_._1)
+      accepted :: built :: builtBrief :: readBrief :: impureReader :: newService :: newWord :: refused
+        .map(_._1)
     )
 
   val tests = Tests {
@@ -93,7 +103,13 @@ object LiteralTests extends TestSuite {
     }
 
     test("text that is not a constant does not compile") {
-      compiled.errors(built) ==> List("a literal is a string constant")
+      List(built, builtBrief).map(compiled.errors) ==>
+        List.fill(2)(List("a literal is a string constant"))
+    }
+
+    test("a plugin builds an occasion's brief from no runtime text: its reader is core's alone") {
+      compiled.errors(readBrief).map(e => e.take(e.indexOf(" from "))) ==>
+        List("method read cannot be accessed as a member of grit.core.occasion.OccasionBrief.type")
     }
 
     test("a literal's reader may hold no capability") {

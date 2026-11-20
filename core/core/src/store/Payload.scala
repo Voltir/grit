@@ -47,12 +47,12 @@ enum Payload {
   case Continuation(task: TurnSeq, turn: Int, reason: WentOn)
 
   /** grit's own note that an unprompted turn begins with, on a job's occasion
-    * ([[grit.core.act.Keeping.occasion]]): its reason, the version of its plugin's document it
-    * is about, and its key, recorded through [[grit.core.inbox.Inbox.occasion]]. Shown only to
+    * ([[grit.core.act.Keeping.occasion]]): its plugin's brief, the version of its plugin's
+    * document it is about, and its key, recorded through [[grit.core.inbox.Inbox.occasion]]. Shown only to
     * its own turn, never searched, said by nobody, and not a period's activity.
     */
   case Occasion(
-      reason: grit.core.occasion.Occasion.Reason,
+      brief: grit.core.occasion.OccasionBrief,
       about: DocumentVersionId,
       key: grit.core.occasion.OccasionKey
   )

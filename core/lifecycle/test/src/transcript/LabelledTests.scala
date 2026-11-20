@@ -1,7 +1,7 @@
 package grit.lifecycle.transcript
 
 import grit.core.id.{DocumentVersionId, EntryId, ToolCallId}
-import grit.core.occasion.{Occasion, OccasionKey}
+import grit.core.occasion.{Occasion, OccasionKey, TestOccasions}
 import grit.core.period.{Cited, Ground}
 import grit.core.persona.Persona
 import grit.core.store.{Entry, Payload, Speakers}
@@ -106,7 +106,7 @@ object LabelledTests extends TestSuite {
       val occasion = TestTranscripts.entry(
         0,
         Payload.Occasion(
-          Occasion.Reason.Ahead,
+          TestOccasions.Brief,
           DocumentVersionId.of(3).getOrElse(throw new java.lang.AssertionError("3")),
           OccasionKey.of("ahead:standup").getOrElse(throw new java.lang.AssertionError("key"))
         )

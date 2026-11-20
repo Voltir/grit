@@ -13,7 +13,7 @@ import grit.core.id.{
   TurnSeq
 }
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.occasion.{Occasion, OccasionKey}
+import grit.core.occasion.{Occasion, OccasionKey, TestOccasions}
 import grit.core.period.{CloseReason, Closing, Probability, TestClosings}
 import grit.core.place.Place
 
@@ -45,7 +45,7 @@ object PayloadJsonTests extends TestSuite {
   )
 
   private val occasion: Payload = Payload.Occasion(
-    Occasion.Reason.Ahead,
+    TestOccasions.Brief,
     DocumentVersionId.of(7).getOrElse(throw new java.lang.AssertionError("7")),
     OccasionKey.of("ahead:standup:2026-11-19").getOrElse(throw new java.lang.AssertionError("key"))
   )
@@ -132,14 +132,16 @@ object PayloadJsonTests extends TestSuite {
       PayloadJson.read(ujson.read(stored)) ==> Right(note)
     }
 
-    test("an occasion is stored by its reason, its document's version and its key, and read back") {
+    test("an occasion is stored by its brief, its document's version and its key, and read back") {
       val note = occasion
       val stored =
-        """{"kind":"occasion","reason":"ahead","about":7,"key":"ahead:standup:2026-11-19"}"""
+        """{"kind":"occasion","brief":"Say what the room planned, from the document.","about":7,"key":"ahead:standup:2026-11-19"}"""
       (
         PayloadJson.write(note).render(),
         PayloadJson.read(ujson.read(stored)),
-        PayloadJson.read(ujson.read(stored.replace("ahead\",", "later\","))).isLeft
+        PayloadJson
+          .read(ujson.read(stored.replace("Say what the room planned, from the document.", " ")))
+          .isLeft
       ) ==> (stored, Right(note), true)
     }
 

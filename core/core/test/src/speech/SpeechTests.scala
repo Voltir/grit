@@ -10,7 +10,7 @@ import grit.core.id.QuestionName
 import grit.core.id.{ConversationId, DocumentVersionId, EntryId, EntrySeq, TurnRef, TurnSeq}
 import grit.core.identity.TestAccounts
 import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
-import grit.core.occasion.{Occasion, OccasionKey}
+import grit.core.occasion.{Occasion, OccasionKey, TestOccasions}
 import grit.core.period.Probability
 import grit.core.place.{Namespace, Place}
 import grit.core.spend.{Budget, DailyCap, Spend}
@@ -108,7 +108,7 @@ object SpeechTests extends TestSuite {
   private val ahead = Occasion(
     room,
     OccasionKey.of("ahead:standup").getOrElse(sys.error("a key")),
-    Occasion.Reason.Ahead,
+    TestOccasions.Brief,
     DocumentVersionId.of(4).getOrElse(sys.error("a version")),
     now.plusSeconds(3600)
   )

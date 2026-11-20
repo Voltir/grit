@@ -14,7 +14,7 @@ import grit.core.id.{
 }
 import grit.core.identity.TestAccounts
 import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
-import grit.core.occasion.{Occasion, OccasionKey}
+import grit.core.occasion.{Occasion, OccasionKey, TestOccasions}
 import grit.core.period.{CloseReason, Judgement, Probability, TestClosings}
 import grit.core.place.{Namespace, Place}
 import grit.core.spend.{Day, Spend}
@@ -148,7 +148,7 @@ abstract class SpeechContract extends TestSuite {
 
   /** The note an occasion's turn begins with. */
   private val occasionNote = Payload.Occasion(
-    Occasion.Reason.Ahead,
+    TestOccasions.Brief,
     DocumentVersionId.of(5).getOrElse(throw new java.lang.AssertionError("5")),
     OccasionKey.of("ahead:review").getOrElse(throw new java.lang.AssertionError("key"))
   )

@@ -244,7 +244,7 @@ final class InMemoryInbox(
       recorded(
         origin,
         OccasionKey.source(plugin, occasion.key),
-        Payload.Occasion(occasion.reason, occasion.about, occasion.key),
+        Payload.Occasion(occasion.brief, occasion.about, occasion.key),
         Account.Grit,
         labelOf(origin),
         Some(believed),

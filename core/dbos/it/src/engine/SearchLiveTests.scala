@@ -13,7 +13,7 @@ import grit.core.id.{
   TurnSeq
 }
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.occasion.{Occasion, OccasionKey}
+import grit.core.occasion.{Occasion, OccasionKey, TestOccasions}
 import grit.core.period.{Change, Cited, CloseReason, Closing, Flows, Section, TestClosings}
 import grit.core.place.Place
 import grit.core.store.{Entry, EntrySearch, OpenPeriod, Origin, Payload, Tx}
@@ -187,7 +187,7 @@ object SearchLiveTests extends TestSuite {
       val c = conversation(
         "occasion",
         Payload.Occasion(
-          Occasion.Reason.Ahead,
+          TestOccasions.Brief,
           DocumentVersionId.of(3).getOrElse(throw new java.lang.AssertionError("3")),
           OccasionKey.of("ahead:offsite").getOrElse(throw new java.lang.AssertionError("key"))
         ),

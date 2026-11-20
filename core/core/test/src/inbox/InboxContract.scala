@@ -23,7 +23,7 @@ import grit.core.job.JobTests.{Count, Counting}
 import grit.core.job.ScheduleContract.hour
 import grit.core.job.{Declared, Ending, Schedule, Slot, SlotRule}
 import grit.core.message.{Cost, Message}
-import grit.core.occasion.{Occasion, OccasionKey}
+import grit.core.occasion.{Occasion, OccasionBrief, OccasionKey, TestOccasions}
 import grit.core.period.{Period, PeriodState}
 import grit.core.place.Place
 import grit.core.speech.{Reach, ReplyTo}
@@ -920,14 +920,14 @@ abstract class InboxContract extends TestSuite {
         val room = Origin.Room("T1", "occasioned")
         inbox.hear(room, SourceId("1.0"), "morning", Account.Local, Said, Reach.Nowhere, None) ==>
           Right(())
-        val ahead = InboxContract.occasion("ahead:standup", Occasion.Reason.Ahead)
+        val ahead = InboxContract.occasion("ahead:standup")
         inbox
           .occasion(room, InboxContract.Plugin, ahead, PostedAt, Integrity.Member)
           .map(_.turnSeq) ==> Right(TurnSeq.First.next)
         (store.written(room), store.dated(room), store.believed(room).lastOption) ==> (
           Vector(
             (Payload.Heard("morning"), None),
-            (Payload.Occasion(Occasion.Reason.Ahead, ahead.about, ahead.key), None)
+            (Payload.Occasion(TestOccasions.Brief, ahead.about, ahead.key), None)
           ),
           Vector(Said, PostedAt),
           Some(Integrity.Member)
@@ -940,12 +940,12 @@ abstract class InboxContract extends TestSuite {
     ) {
       withInbox(Uncapped) { (inbox, store) =>
         val room = Origin.Room("T1", "occasioned-once")
-        val open = InboxContract.occasion("open:retro", Occasion.Reason.Open)
+        val open = InboxContract.occasion("open:retro")
         val first = inbox.occasion(room, InboxContract.Plugin, open, PostedAt, Integrity.Member)
         val again = inbox.occasion(
           room,
           InboxContract.Plugin,
-          open.copy(reason = Occasion.Reason.Ahead),
+          open.copy(brief = OccasionBrief.literal("Another wording.")),
           Later,
           Integrity.Outside
         )
@@ -954,8 +954,8 @@ abstract class InboxContract extends TestSuite {
         (first.map(_.turnSeq), again, theirs.map(_.turnSeq)) ==>
           (Right(TurnSeq.First), first, Right(TurnSeq.First.next))
         store.written(room).map(_._1) ==> Vector(
-          Payload.Occasion(Occasion.Reason.Open, open.about, open.key),
-          Payload.Occasion(Occasion.Reason.Open, open.about, open.key)
+          Payload.Occasion(TestOccasions.Brief, open.about, open.key),
+          Payload.Occasion(TestOccasions.Brief, open.about, open.key)
         )
       }
     }
@@ -1033,13 +1033,13 @@ object InboxContract {
   /** The plugin whose occasions the contract records. */
   val Plugin: PluginName = PluginName.literal("meetings")
 
-  /** An occasion of `key` for `reason`, in a channel's top level, about the document version 7,
-    * lapsing at noon.
+  /** An occasion of `key`, in a channel's top level, about the document version 7, lapsing at
+    * noon.
     */
-  def occasion(key: String, reason: Occasion.Reason): Occasion = Occasion(
+  def occasion(key: String): Occasion = Occasion(
     Origin.channel("T1", "occasioned"),
     OccasionKey.of(key).getOrElse(throw new java.lang.AssertionError(key)),
-    reason,
+    TestOccasions.Brief,
     DocumentVersionId.of(7).getOrElse(throw new java.lang.AssertionError("7")),
     Instant.parse("2026-11-19T12:00:00Z")
   )
