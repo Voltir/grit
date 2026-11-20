@@ -191,33 +191,40 @@ private[moves] object OccasionMove {
   )
 
   /** `{"ended":occasioned}` or `{"recorded":turn,"to":address}`. */
-  private[moves] given recorded: Journaled[Either[Occasioned, (TurnRef, String)]] = Journaled.json(
-    {
-      case Left(ended) => ujson.Obj("ended" -> ujson.read(occasioned.encode(ended)))
-      case Right((t, to)) => ujson.Obj("recorded" -> id(t), "to" -> to)
-    },
-    v =>
-      v.objOpt.toRight("occasion: expected an object").flatMap { o =>
-        (o.get("ended"), o.get("recorded").flatMap(_.strOpt), o.get("to").flatMap(_.strOpt)) match {
-          case (Some(ended), _, _) => occasioned.decode(ended.render()).map(Left(_))
-          case (_, Some(t), Some(to)) => turn(t).map(r => Right((r, to)))
-          case _ => Left("occasion: expected ended, or recorded and to")
-        }
+  private[moves] given recorded: Journaled[Either[Occasioned, (TurnRef, String)]] = orEnded(
+    (t, to) => ujson.Obj("recorded" -> id(t), "to" -> to),
+    o =>
+      (o.get("recorded").flatMap(_.strOpt), o.get("to").flatMap(_.strOpt)) match {
+        case (Some(t), Some(to)) => turn(t).map((_, to))
+        case _ => Left("occasion: expected ended, or recorded and to")
       }
   )
 
   /** `{"ended":occasioned}` or `{"drafting":true}`. */
-  private[moves] given decision: Journaled[Either[Occasioned, Unit]] = Journaled.json(
+  private[moves] given decision: Journaled[Either[Occasioned, Unit]] = orEnded(
+    _ => ujson.Obj("drafting" -> true),
+    o =>
+      Either.cond(
+        o.get("drafting").flatMap(_.boolOpt).contains(true),
+        (),
+        "occasion: expected ended or drafting"
+      )
+  )
+
+  /** `{"ended":occasioned}` for a move that ended, else `write`'s form, which `read` reads. */
+  private def orEnded[A](
+      write: A -> ujson.Obj,
+      read: collection.Map[String, ujson.Value] -> Either[String, A]
+  ): Journaled[Either[Occasioned, A]] = Journaled.json(
     {
       case Left(ended) => ujson.Obj("ended" -> ujson.read(occasioned.encode(ended)))
-      case Right(()) => ujson.Obj("drafting" -> true)
+      case Right(a) => write(a)
     },
     v =>
       v.objOpt.toRight("occasion: expected an object").flatMap { o =>
         o.get("ended") match {
           case Some(ended) => occasioned.decode(ended.render()).map(Left(_))
-          case None if o.get("drafting").flatMap(_.boolOpt).contains(true) => Right(Right(()))
-          case None => Left("occasion: expected ended or drafting")
+          case None => read(o).map(Right(_))
         }
       }
   )
