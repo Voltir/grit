@@ -1,6 +1,6 @@
 # 0049. A project's method is versioned data whose checks are compiled in, and a project is one value held to its export by a round-trip law
 
-Status: accepted (2026-10-27); revised (2026-11-18)
+Status: accepted (2026-10-27); revised (2026-11-19)
 
 Context: the projects plugin keeps a project's artifacts (a change, a design, a task) and moves
 each from state to state as the project's methodology allows. Methodologies differ by team and
@@ -39,8 +39,8 @@ Decision:
   reads it. A declaration from a room that writes at another label is refused, and a caller who
   cannot read `methodsAt` finds no method declared: a deployment gives a label every caller of
   the plugin's commands reads.
-- **A project is one value** (`Project`): its key, its pin and its artifacts, each a head (key,
-  id, handle, kind, state, title, parent, cites, author) and a body, with no link to an artifact
+- **A project is one value** (`Project`): its key, its pin and its artifacts, each a head (id,
+  handle, kind, state, title, parent, rank, cites, author) and a body, with no link to an artifact
   it lacks and no parent cycle. An id is a number the project mints, never a title (ADR 0063).
 - **Each has an export and its reader, held together by a round-trip law**: a project's
   (`ProjectMarkdown`, a file per artifact plus one for its key and pin; read after render keeps
@@ -49,11 +49,10 @@ Decision:
   names artifacts by id and handle, never by the key a document is stored under. Each
   artifact's file is at its parents' numbers then its own, `12.md` with its children under
   `12/`, so a retitle or a new handle moves no file and a new parent does; a file elsewhere
-  is refused. Carrying no store key, a project rebuilt from its export would keep each
-  artifact under its id, and an old key would then resolve only as a handle.
+  is refused. A project rebuilt from its export keeps each artifact under its id.
 - **A project lives in the plugin's ledger documents** (ADR 0028), no table of its own: one per
-  artifact, under the key it was first kept under, and an index holding its pin and the next
-  id, written only by the plugin's commands (ADR 0053), each
+  artifact, under the key it was first kept under, and an index holding its pin, the next
+  id and who started it, written only by the plugin's commands (ADR 0053), each
   in one transaction. A keep never changes a state.
 - **A claim is one of the plugin's claims** (`grit.core.claim.Claims`, ADR 0050), never a
   document. A harness's holder is one rule, `ClaimHolders.of`, computed by the commands edge
@@ -62,14 +61,13 @@ Decision:
 Consequences:
 
 - A team changes its method by declaring a new version, not by releasing grit; a project keeps
-  its pinned version until `project_migrate` moves it, renaming kinds and states as asked.
-- Who may make a transition is method data: one of `Movers.People` is made only by a caller
-  giving the command directly and believed at `Authority` (ADR 0062's proxy, not an identity),
-  and a worked example can state it (`Expect.RefusedPersonOnly`). A turn, or a session believed
+  its pinned version until `project_migrate` moves it, renaming kinds and states and
+  re-kinding artifacts as asked.
+- Who may make a transition is method data: one of `Movers.Person` is made only by a caller
+  giving the command directly and believed at `Authority`, and a worked example can state it
+  (`Expect.RefusedPersonOnly`). A turn, or a session believed
   lower, moves as an agent.
 - A check needing a parameter is a compiled check of its own until checks take arguments.
-  OpenSpec and the elephant-goldfish model, as method data, cannot say a section by pattern, a
-  merge below `##`, or a goldfish's freshness.
 - The exports are for reading and diffing; the law keeps them a faithful picture. A backup is
   the database's, and the method documents travel inside it; a deployment that keeps its methods
   as files declares them from those files, as its deploy and restore test do.

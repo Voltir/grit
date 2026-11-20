@@ -8,7 +8,9 @@ import grit.projects.name.KindName
   */
 enum TurnCommands extends caps.Pure {
 
-  /** The reads, `project_new`, `project_keep`, `project_edit` and `project_move`. */
+  /** The reads, `project_new`, `project_keep`, `project_edit`, `project_reorder`, `project_split`
+    * and `project_move`.
+    */
   case Shipped
 
   /** `project_propose` alone, which keeps a new artifact of `kind` in its kind's first state and
