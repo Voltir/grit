@@ -1,6 +1,8 @@
 package grit.knowledge.topic
 
-import java.time.{LocalDate, LocalTime}
+import java.time.format.TextStyle
+import java.time.{DayOfWeek, LocalDate, LocalTime}
+import java.util.Locale
 
 import grit.core.clock.Utc
 
@@ -45,6 +47,58 @@ object Meeting {
     * back, and a strand said so late is still offered it.
     */
   val Grace: Long = 2
+
+  /** How a message names a meeting's day other than by its date, as a write reply's `as` gives
+    * it.
+    */
+  enum As extends caps.Pure {
+    case Today
+    case Tomorrow
+    case On(day: DayOfWeek)
+    case Next(day: DayOfWeek)
+  }
+
+  object As {
+
+    private def named(d: DayOfWeek): String = d.getDisplayName(TextStyle.FULL, Locale.ENGLISH)
+
+    private val Read: Vector[(String, As)] =
+      Vector("today" -> Today, "tomorrow" -> Tomorrow) ++
+        DayOfWeek.values.toVector.map(d => named(d) -> On(d)) ++
+        DayOfWeek.values.toVector.map(d => s"next ${named(d)}" -> Next(d))
+
+    /** Its words, `today`, `tomorrow`, `Monday` … `Sunday` and `next Monday` … `next Sunday`:
+      * a write reply's schema offers these alone.
+      */
+    val Words: Vector[String] = Read.map(_._1)
+
+    /** The one of [[Words]] `word` is, written exactly so. */
+    def read(word: String): Option[As] = Read.collectFirst { case (w, a) if w == word => a }
+  }
+
+  /** The day `as`, said on `said`, names: `Today` `said` and `Tomorrow` the day after; `On(d)`
+    * the first `d` after `said` (a week on when `said` is a `d`), or when `held` the last on or
+    * before it; `Next(d)` the first `d` after `said`. None when `said` is after the run's `day`.
+    */
+  private[topic] def reckon(
+      said: LocalDate,
+      as: As,
+      held: Boolean,
+      day: LocalDate
+  ): Option[LocalDate] = Option.when(!said.isAfter(day))(as match {
+    case As.Today => said
+    case As.Tomorrow => said.plusDays(1)
+    case As.On(d) if held =>
+      said.minusDays(Math.floorMod(said.getDayOfWeek.ordinal - d.ordinal, 7).toLong)
+    case As.On(d) => after(said, d)
+    case As.Next(d) => after(said, d)
+  })
+
+  // The first `d` after `said`: a week on when `said` is one.
+  private def after(said: LocalDate, d: DayOfWeek): LocalDate = {
+    val ahead = Math.floorMod(d.ordinal - said.getDayOfWeek.ordinal, 7)
+    said.plusDays(if (ahead == 0) 7L else ahead.toLong)
+  }
 
   /** `was` as a write's `reply` refines it on the run's `day`: `{"state": "proposed" | "planned"
     * | "held", "day": "YYYY-MM-DD", "start": "HH:MM", "who": [name]}`, each field optional, a

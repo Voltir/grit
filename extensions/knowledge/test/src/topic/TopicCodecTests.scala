@@ -147,6 +147,51 @@ object TopicCodecTests extends TestSuite {
     val day = LocalDate.of(2026, 11, 19)
     def reply(fields: (String, ujson.Value)*) = Some(ujson.Obj.from(fields))
 
+    def date(s: String) = LocalDate.parse(s)
+    def as(word: String) = Meeting.As.read(word).getOrElse(throw new java.lang.AssertionError(word))
+
+    test("reckon: a weekday is the first after the day it was said, a week on when said on it") {
+      (
+        Meeting.reckon(date("2026-10-30"), as("Monday"), held = false, date("2026-10-30")),
+        Meeting.reckon(date("2026-11-16"), as("Monday"), held = false, date("2026-11-16"))
+      ) ==> (Some(date("2026-11-02")), Some(date("2026-11-23")))
+    }
+
+    test("reckon: a held meeting's weekday is the last on or before the day it was said") {
+      (
+        Meeting.reckon(date("2026-11-18"), as("Monday"), held = true, date("2026-11-18")),
+        Meeting.reckon(date("2026-11-16"), as("Monday"), held = true, date("2026-11-16"))
+      ) ==> (Some(date("2026-11-16")), Some(date("2026-11-16")))
+    }
+
+    test("reckon: next and a weekday is the first such weekday after the day it was said") {
+      (
+        Meeting.reckon(date("2026-10-30"), as("next Monday"), held = false, date("2026-10-30")),
+        Meeting.reckon(date("2026-11-16"), as("next Monday"), held = false, date("2026-11-16"))
+      ) ==> (Some(date("2026-11-02")), Some(date("2026-11-23")))
+    }
+
+    test("reckon: today is the day it was said, tomorrow the day after") {
+      (
+        Meeting.reckon(date("2026-11-16"), as("today"), held = false, date("2026-11-17")),
+        Meeting.reckon(date("2026-11-16"), as("tomorrow"), held = false, date("2026-11-17"))
+      ) ==> (Some(date("2026-11-16")), Some(date("2026-11-17")))
+    }
+
+    test("reckon: a day said after the run's day reckons nothing") {
+      Meeting.reckon(date("2026-11-20"), as("today"), held = false, date("2026-11-19")) ==> None
+    }
+
+    test("As reads its words alone, as a write reply's schema lists them") {
+      (
+        Meeting.As.Words.size,
+        Meeting.As.Words.forall(w => Meeting.As.read(w).nonEmpty),
+        Vector("monday", "Mon", "next week", "yesterday", "this Monday", "").flatMap(
+          Meeting.As.read
+        )
+      ) ==> (16, true, Vector())
+    }
+
     test("refined drops a day 3 days back") {
       Meeting.refined(
         Meeting.Opened,
