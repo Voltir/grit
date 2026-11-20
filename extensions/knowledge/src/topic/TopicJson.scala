@@ -159,7 +159,7 @@ private object TopicJson {
       }
     )
 
-  private def lineage(l: Lineage): ujson.Value = ujson.Arr.from(l.tags.map(tag))
+  def lineage(l: Lineage): ujson.Value = ujson.Arr.from(l.tags.map(tag))
 
   private def tag(t: Lineage.Tag): ujson.Obj = t match {
     case Lineage.Tag.Strand(root, room, digest, first) =>
@@ -176,7 +176,7 @@ private object TopicJson {
       ujson.Obj("topic" -> DocumentVersionId.value(version).toDouble)
   }
 
-  private def readLineage(v: Option[ujson.Value]): Read[Lineage] =
+  def readLineage(v: Option[ujson.Value]): Read[Lineage] =
     array(v, "a lineage").flatMap(traverse(_)(readTag)).map(Lineage.of)
 
   private def readTag(t: ujson.Value): Read[Lineage.Tag] =
@@ -199,7 +199,7 @@ private object TopicJson {
       }
     )
 
-  private def version(v: ujson.Value): Read[DocumentVersionId] =
+  def version(v: ujson.Value): Read[DocumentVersionId] =
     v.numOpt
       .filter(_.isWhole)
       .flatMap(n => DocumentVersionId.of(n.toLong))
@@ -267,7 +267,7 @@ private object TopicJson {
       from <- readLineage(o.get("from"))
     } yield Claim(id, key, certainty, relations, from)
 
-  private def topicKey(v: Option[ujson.Value], what: String): Read[TopicKey] =
+  def topicKey(v: Option[ujson.Value], what: String): Read[TopicKey] =
     string(v, what).flatMap(k =>
       DocKey.of(k).toOption.flatMap(TopicKey.read).toRight(s"$what is no topic's key: $k")
     )
