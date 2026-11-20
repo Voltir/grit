@@ -16,6 +16,17 @@ read between calls. The CLI (`scripts/scout <query> … --root .`) is the fallba
 tools are missing; `scripts/scout <query> --help` gives each query's flags and says which
 printed lines are the file's own text.
 
+**Compile before the first query.** scout answers from the `.tasty` files of the last compile
+in the `root` you pass, not from the source. In a checkout whose compile state you did not make
+(a new worktree, a branch just switched, pulled or rebased, files another session changed),
+first compile the modules you will ask about: `./mill <module>.compile`, and
+`<module>.test.compile` for test sources. That costs less than working from stale answers. A
+stale answer shows itself as a `[stale: …]` tag on a file, a `-- not file text, changed since
+its .tasty` line, a `-- not loaded:` line, or no match for a symbol the source has. Whoever
+briefs an agent that may not run Mill compiles the root the brief names, at the commit the
+brief is about, before launching it. When that agent meets a stale answer anyway, it reads
+those files by `grep` and `sed -n` range, and says so in its report.
+
 **Which query, for what** (MCP arguments; a list argument is a JSON array of quoted strings,
 `["Turn"]`, never a bare word or one comma-joined string):
 

@@ -15,7 +15,8 @@ committed on your branch.
 ## Before anything else
 
 Read `CLAUDE.md`, `extensions/tui/CLAUDE.md` (and `extensions/tui/README.md` if the spike touches the
-TUI), `docs/capture-checking.md` and `STYLE.md`. They hold hard-won rules and every
+TUI), `docs/capture-checking.md`, `STYLE.md` and `.claude/rules/reading-scala.md` (scout, with
+`root` your worktree, compiled before your first query). They hold hard-won rules and every
 capture-checking trap met so far. Check the traps list before you debug a compile error.
 
 ## Rules

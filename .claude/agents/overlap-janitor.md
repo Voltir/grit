@@ -14,7 +14,11 @@ new one overlaps with one that already existed. The brief names the range.
 ## What to read
 
 Read Scala through scout: your `mcp__scout__*` tools, or `scripts/scout <query>` through Bash
-when they are missing; list arguments are JSON arrays.
+when they are missing; list arguments are JSON arrays. scout answers from the last compile in
+the checkout, which your brief's author runs at the range's head
+(read `.claude/rules/reading-scala.md`'s "Compile before the first query" before your first
+query: it lists the signs of a stale answer). When an answer is stale, read those files by
+`sed -n` range, and say so in your report.
 
 1. The new symbols: `git diff --stat <range> -- '*/src/*' ':!*/test/*'`, then for each file
    scout `file` (what it defines) and `show` for the public ones. Skip tests, histories and generated files.

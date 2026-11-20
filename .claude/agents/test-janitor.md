@@ -21,7 +21,10 @@ without the code it claims to pin. Read that code through scout first, your `mcp
 tools, or `scripts/scout <query>` through Bash when they are missing (list arguments are JSON
 arrays): `tests` for a suite's tests and helpers, `show` with `body` for what a test
 targets, `uses` of `Owner.member` for a fake's other callers; read a file by `sed -n` range only
-where scout cannot answer.
+where scout cannot answer. scout answers from the last compile in the checkout, which your
+brief's author runs (read `.claude/rules/reading-scala.md`'s "Compile before the first query"
+before your first query: it lists the signs of a stale answer). When an answer is stale, read
+those files by `sed -n` range, and say so in your report.
 
 ## Verdicts
 

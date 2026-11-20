@@ -80,7 +80,9 @@ of the current epoch: guard it with `Durable.patch`, or start a new `Turn.Epoch`
 
 Read Scala through scout first: the `scout` MCP server, or `scripts/scout` (a native binary built
 outside this repository; the script says where it looks). It answers from the compiler's TASTy, in
-less text than a file read, and works in any worktree (`--root`). How to use it, what not to read
+less text than a file read, and works in any worktree (`--root`), but only as of that worktree's
+last compile: compile a fresh worktree or a switched branch before asking it, or before briefing
+an agent on it. How to use it, what not to read
 and how to edit from its text: [`.claude/rules/reading-scala.md`](.claude/rules/reading-scala.md),
 which loads when a `.scala` file is first touched. Metals is for the editor
 ([`docs/editor-tooling.md`](docs/editor-tooling.md)).

@@ -29,7 +29,10 @@ section usually settles a question; read its alternatives only when the question
 
 - **Code:** scout first, by `.claude/rules/reading-scala.md`: your `mcp__scout__*` tools, or
   `scripts/scout <query>` through Bash when they are missing; list arguments are JSON arrays.
-  A branch or worktree: pass its path as `root` (`--root <path>`). Fall back to Grep and
+  A branch or worktree: pass its path as `root` (`--root <path>`). scout answers from that
+  root's last compile, which your brief's author runs (that file's "Compile before the first
+  query" lists the signs of a stale answer). When an answer is stale, read those files by line
+  range, and say so. Fall back to Grep and
   line-range Reads for what it can't answer, and say so.
 - **Structure:** enola's queries (`explore`, `traverse`, `find_path`, `impact_analysis`) for
   how modules and packages depend on each other. Import-edge and module facts are sound;

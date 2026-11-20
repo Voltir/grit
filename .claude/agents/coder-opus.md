@@ -30,7 +30,8 @@ Never read `.env`. No model calls unless the brief allows one and states a budge
 ## Reading and editing code
 
 Before your first query, read `.claude/rules/reading-scala.md`: how Scala is read and edited
-here (scout first, with `root` your worktree; what not to read; editing from scout's text). It
+here (scout first, with `root` your worktree, compiled before your first query; what not to read;
+editing from scout's text). It
 is the one home of those rules; this definition does not repeat them.
 
 ## Rules
