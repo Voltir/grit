@@ -1,11 +1,11 @@
 package grit.core.clock
 
 import java.time.format.DateTimeFormatter
-import java.time.{Instant, ZoneId, ZoneOffset}
+import java.time.{Instant, LocalDate, ZoneId, ZoneOffset}
 import java.util.Locale
 
 /** An instant as grit writes it for a model or a person to read: in UTC, said so, or in a zone,
-  * named by its short name.
+  * named by its short name; and a day, after its weekday.
   */
 object Utc {
 
@@ -51,6 +51,11 @@ object Utc {
 
   /** `zone`, or `UTC` when it is UTC under another name (`Z`, `Etc/UTC`), so it is said as UTC. */
   def canonical(zone: ZoneId): ZoneId = if (zone.normalized == ZoneOffset.UTC) Zone else zone
+
+  private val WeekdayDate = DateTimeFormatter.ofPattern("EEEE yyyy-MM-dd", Locale.ENGLISH)
+
+  /** `day` after its weekday's whole English name: `Monday 2026-10-12`. */
+  def toWeekday(day: LocalDate): String = WeekdayDate.format(day)
 
   private val TimeOfDay = DateTimeFormatter.ofPattern("HH:mm 'UTC'").withZone(ZoneOffset.UTC)
 

@@ -2,6 +2,8 @@ package grit.knowledge.topic
 
 import java.time.{LocalDate, LocalTime}
 
+import grit.core.clock.Utc
+
 /** One meeting a topic tracks ([[Topic.Kind.Meeting]]): where it stands, and who is in it, as
   * written, each name once.
   */
@@ -146,7 +148,7 @@ object Meeting {
   /** Its head line, the first line of its document's text. */
   private[topic] def head(m: Meeting): String = {
     def at(w: When) =
-      s"${w.day.getDayOfWeek.toString.toLowerCase.capitalize} ${w.day}" +
+      Utc.toWeekday(w.day) +
         w.start.fold("")(s => s" at $s")
     val names =
       if (m.who.size <= 1) m.who.mkString

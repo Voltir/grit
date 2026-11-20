@@ -1,8 +1,6 @@
 package grit.core.stitch
 
-import java.time.format.TextStyle
 import java.time.{Duration as JDuration, Instant, ZoneId}
-import java.util.Locale
 
 import scala.concurrent.duration.FiniteDuration
 
@@ -16,6 +14,7 @@ import grit.core.classify.{
   Request,
   StateJson
 }
+import grit.core.clock.Utc
 import grit.core.id.ConversationId
 import grit.core.id.{EntryId, TurnRef}
 import grit.core.message.{AssistantBlock, Cut, Message}
@@ -305,8 +304,7 @@ object Stitching {
           case ((out, last), Some(l)) =>
             val day = l.at.atZone(zone).toLocalDate
             // Draft wording, for Nick: the day line, in a meeting head's form.
-            val weekday = day.getDayOfWeek.getDisplayName(TextStyle.FULL, Locale.ENGLISH)
-            val named = if (last.contains(day)) out else out :+ s"$weekday $day:"
+            val named = if (last.contains(day)) out else out :+ s"${Utc.toWeekday(day)}:"
             (named :+ l.shown, Some(day))
           case ((out, last), None) => (out :+ "…", last)
         }
