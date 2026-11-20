@@ -7,9 +7,10 @@ import scala.concurrent.duration.*
 
 import grit.core.classify.Answer
 import grit.core.id.QuestionName
-import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnRef, TurnSeq}
+import grit.core.id.{ConversationId, DocumentVersionId, EntryId, EntrySeq, TurnRef, TurnSeq}
 import grit.core.identity.TestAccounts
 import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
+import grit.core.occasion.{Occasion, OccasionKey}
 import grit.core.period.Probability
 import grit.core.place.{Namespace, Place}
 import grit.core.spend.{Budget, DailyCap, Spend}
@@ -100,6 +101,39 @@ object SpeechTests extends TestSuite {
     Speech.decide(s, h, l, b, now)
 
   private def held(why: Silence) = Decision.Held(why)
+
+  // An occasion at the room's top level, its turn in that conversation, lapsing in an hour, and
+  // limits that draft on occasions live.
+  private val topTurn = TurnRef(ConversationId("top"), TurnSeq(9))
+  private val ahead = Occasion(
+    room,
+    OccasionKey.of("ahead:standup").getOrElse(sys.error("a key")),
+    Occasion.Reason.Ahead,
+    DocumentVersionId.of(4).getOrElse(sys.error("a version")),
+    now.plusSeconds(3600)
+  )
+  private val occasions =
+    Speaking.Within(limits.copy(occasions = Some(Occasions.Live(Occasions.Suggested))))
+  private def occasioned(
+      s: Speaking = occasions,
+      l: Ledger = empty,
+      to: Option[String] = Some("C//"),
+      believed: Integrity = Integrity.Member,
+      b: Budget = budget,
+      at: Instant = now
+  ) =
+    Speech.occasion(s, topTurn, ahead, to, believed, l, b, at)
+
+  /** A decision on an occasion of `conversation`, at `stage`, decided `at`, in `in`. */
+  private def occasionAt(conversation: String, at: Instant, stage: Stage, in: Place = room) =
+    Spoken(
+      TurnRef(ConversationId(conversation), TurnSeq(1)),
+      in,
+      at,
+      stage,
+      Venue.Room("C//"),
+      occasion = true
+    )
 
   private val half = p(0.5)
   private val notChatter = Bound.Below(Reading.Chosen(Tags.V1.kind, "chatter"), half)
@@ -509,6 +543,116 @@ object SpeechTests extends TestSuite {
       )
       decide(loud, s = Speaking.Within(toGritLimits.copy(toRoom = placing.toRoom))) ==>
         Decision.Answering(turn, "C/1")
+    }
+
+    test("an occasion drafts at Venue.Room, its room's address") {
+      occasioned() ==> Decision.Drafting(topTurn, Venue.Room("C//"))
+    }
+
+    test("an occasion is held off without occasions") {
+      (
+        occasioned(s = within),
+        occasioned(s = Speaking.Shadow(limits)),
+        occasioned(s = Speaking.Off)
+      ) ==> (held(Silence.Off), held(Silence.Off), held(Silence.Off))
+    }
+
+    test("an occasion is held lapsed past until, and not at it") {
+      (occasioned(at = ahead.until.plusSeconds(1)), occasioned(at = ahead.until)) ==>
+        (held(Silence.Lapsed(ahead.until)), Decision.Drafting(topTurn, Venue.Room("C//")))
+    }
+
+    test("an occasion is held by a heard draft drafting in the conversation, and by no other") {
+      val drafting = TurnRef(ConversationId("top"), TurnSeq(3))
+      val elsewhere = Spoken(TurnRef(ConversationId("c"), TurnSeq(2)), room, now, Stage.Drafting)
+      val postedHere = Spoken(TurnRef(ConversationId("top"), TurnSeq(4)), room, now, Stage.Settled)
+      (
+        occasioned(l = empty.copy(turns = Vector(Spoken(drafting, room, now, Stage.Drafting)))),
+        occasioned(l = empty.copy(turns = Vector(elsewhere, postedHere)))
+      ) ==> (held(Silence.Unanswered(drafting)), Decision.Drafting(topTurn, Venue.Room("C//")))
+    }
+
+    test("an occasion is held at the occasion rate, counting shadowed decisions") {
+      val shadowed = occasionAt("earlier", now.minusSeconds(60 * 60), Stage.Settled)
+      val old = occasionAt("older", now.minusSeconds(25 * 60 * 60), Stage.Settled)
+      val other = occasionAt("there", now.minusSeconds(60), Stage.Settled, otherRoom)
+      val heardHere = Spoken(TurnRef(ConversationId("t"), TurnSeq(1)), room, now, Stage.Settled)
+      (
+        occasioned(l = empty.copy(turns = Vector(shadowed))),
+        occasioned(l = empty.copy(turns = Vector(old, other, heardHere)))
+      ) ==> (held(Silence.Occasions(1)), Decision.Drafting(topTurn, Venue.Room("C//")))
+    }
+
+    test(
+      "an occasion's checks hold in order, the room's and deployment's rates, the cap and the budget last"
+    ) {
+      val capped = Budget(ZoneOffset.UTC, DailyCap.of("1").toOption)
+      val drafting = Spoken(TurnRef(ConversationId("top"), TurnSeq(3)), room, now, Stage.Drafting)
+      val rate = occasionAt("earlier", now.minusSeconds(60), Stage.Settled)
+      val roomPosts = (1 to 2).toVector.map(i => posted(s"r$i", 1, now.minusSeconds(60)))
+      val elsewhere =
+        (1 to 8).toVector.map(i => posted(s"x$i", 1, now.minusSeconds(3 * 60 * 60), otherRoom))
+      val speech = Spend(3, Cost.Exact(BigDecimal("0.25")))
+      val all = Spend(9, Cost.Exact(BigDecimal("1.5")))
+      val ledgers = Vector(
+        Ledger(Vector(drafting, rate) ++ roomPosts ++ elsewhere, speech, all),
+        Ledger(Vector(rate) ++ roomPosts ++ elsewhere, speech, all),
+        Ledger(roomPosts ++ elsewhere, speech, all),
+        Ledger(
+          roomPosts.take(1) ++ elsewhere ++ roomPosts.drop(1).map(_.copy(room = otherRoom)),
+          speech,
+          all
+        ),
+        Ledger(roomPosts.take(1) ++ elsewhere, speech, all),
+        Ledger(Vector.empty, Spend.Zero, all)
+      )
+      (
+        occasioned(l = ledgers(0), to = None, believed = Integrity.Untrusted, b = capped),
+        occasioned(l = ledgers(0), believed = Integrity.Untrusted, b = capped),
+        occasioned(l = ledgers(0), b = capped, at = ahead.until.plusSeconds(1)),
+        ledgers.map(l => occasioned(l = l, b = capped)),
+        occasioned(l = ledgers(5))
+      ) ==> (
+        held(Silence.NoAddress),
+        held(Silence.Below(Integrity.Untrusted)),
+        held(Silence.Lapsed(ahead.until)),
+        Vector(
+          held(Silence.Unanswered(drafting.turn)),
+          held(Silence.Occasions(1)),
+          held(Silence.Room(2)),
+          held(Silence.Deployment(10)),
+          held(Silence.OverSpeechCap(speech, cap)),
+          held(Silence.OverBudget)
+        ),
+        Decision.Drafting(topTurn, Venue.Room("C//"))
+      )
+    }
+
+    test("a heard draft is held by a drafting occasion in its conversation") {
+      val occasion = occasionAt("c", now.minusSeconds(10), Stage.Drafting)
+      decide(l = empty.copy(turns = Vector(occasion))) ==> held(Silence.Unanswered(occasion.turn))
+    }
+
+    test(
+      "forOccasion is Shadow under Speaking.Shadow with Occasions.Live, and the lesser mode always"
+    ) {
+      val live = limits.copy(occasions = Some(Occasions.Live(Occasions.Suggested)))
+      val shadow = limits.copy(occasions = Some(Occasions.Shadow(Occasions.Suggested)))
+      Vector(
+        Speech.forOccasion(Speaking.Shadow(live)),
+        Speech.forOccasion(Speaking.Within(live)),
+        Speech.forOccasion(Speaking.Within(shadow)),
+        Speech.forOccasion(Speaking.Shadow(shadow)),
+        Speech.forOccasion(Speaking.Within(limits)),
+        Speech.forOccasion(Speaking.Off)
+      ) ==> Vector(
+        Speaking.Shadow(live),
+        Speaking.Within(live),
+        Speaking.Shadow(shadow),
+        Speaking.Shadow(shadow),
+        Speaking.Off,
+        Speaking.Off
+      )
     }
 
     test("a rate needs a count of at least 1 and a positive window") {

@@ -2,9 +2,19 @@ package grit.core.speech
 
 import java.time.Instant
 
-import grit.core.id.{CloseRef, ConversationId, EntryId, EntrySeq, PluginName, TurnRef, TurnSeq}
+import grit.core.id.{
+  CloseRef,
+  ConversationId,
+  DocumentVersionId,
+  EntryId,
+  EntrySeq,
+  PluginName,
+  TurnRef,
+  TurnSeq
+}
 import grit.core.identity.TestAccounts
 import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
+import grit.core.occasion.{Occasion, OccasionKey}
 import grit.core.period.{CloseReason, Judgement, Probability, TestClosings}
 import grit.core.place.{Namespace, Place}
 import grit.core.spend.{Day, Spend}
@@ -135,6 +145,13 @@ abstract class SpeechContract extends TestSuite {
     transaction(right(speech.spoken(since))).filter(_.turn.conversationId == c)
 
   private val judged = Judged(p(0.6), p(0.8), "jev", usage)
+
+  /** The note an occasion's turn begins with. */
+  private val occasionNote = Payload.Occasion(
+    Occasion.Reason.Ahead,
+    DocumentVersionId.of(5).getOrElse(throw new java.lang.AssertionError("5")),
+    OccasionKey.of("ahead:review").getOrElse(throw new java.lang.AssertionError("key"))
+  )
 
   val tests = Tests {
     test("a heard message's reach is kept, the first one standing; none for another turn") {
@@ -460,6 +477,46 @@ abstract class SpeechContract extends TestSuite {
       transaction(speech.addressIn(top.room, At.plusSeconds(1))) ==> Right(None)
       heardAt(thread, At.plusSeconds(5), ReplyTo("C/1.0", Some("C//new")), "address-since:2")
       transaction(speech.addressIn(top.room, At.plusSeconds(1))) ==> Right(Some((top, "C//new")))
+    }
+
+    test(
+      "an occasion's decision is kept once, counts as an occasion's in the room's ledger at its venue, and is forgotten with its turns"
+    ) {
+      val c = conversationAt(Origin.Room("T", "occasioned"))
+      val turn = next(c, occasionNote, "occasioned:o")
+      val drafting = Decision.Drafting(turn, Venue.Room("C//"))
+      (
+        transaction(speech.occasioned(turn, room, drafting, At)),
+        transaction(speech.occasioned(turn, room, Decision.Held(Silence.OverBudget), At)),
+        mine(c, At),
+        transaction(speech.venue(turn))
+      ) ==> (
+        Right(true),
+        Right(false),
+        Vector(Spoken(turn, room, At, Stage.Drafting, Venue.Room("C//"), None, occasion = true)),
+        Right(Venue.Room("C//"))
+      )
+      transaction(speech.forget(c, turn.turnSeq, turn.turnSeq)) ==> Right(())
+      (mine(c, At), transaction(speech.venue(turn))) ==> (Vector.empty, Right(Venue.Thread))
+    }
+
+    test("a shadowed occasion is Settled and counts in no post rate; a held one is not spoken") {
+      val c = conversationAt(Origin.Room("T", "occasion-shadowed"))
+      val shadowed = next(c, occasionNote, "occasion-shadowed:o1")
+      val heldOne = next(c, occasionNote, "occasion-shadowed:o2")
+      transaction(
+        speech.occasioned(shadowed, room, Decision.Drafting(shadowed, Venue.Room("C//")), At)
+      ) ==>
+        Right(true)
+      transaction(speech.occasioned(heldOne, room, Decision.Held(Silence.Occasions(1)), At)) ==>
+        Right(true)
+      transaction(
+        speech.drafted(shadowed, Outcome.Shadowed(Cleared.Scored(judged)), Some("hi"), At)
+      ) ==>
+        Right(true)
+      mine(c, At).map(s => (s.turn, s.stage, s.occasion)) ==> Vector(
+        (shadowed, Stage.Settled, true)
+      )
     }
 
     test("a heard message's reach keeps its room address beside its thread's") {

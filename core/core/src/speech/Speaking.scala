@@ -39,6 +39,8 @@ enum Speaking {
   * spend under `spend`. A draft: its weakest judged score ([[Judged.score]]) at or above
   * `postAt`, and nobody having spoken since its root. Where it goes: its message's thread, or
   * its room's top level when `toRoom` places it there ([[Venue]]); `None` is always the thread.
+  * Whether grit also posts on an occasion a job names ([[Speech.occasion]]): `occasions`, never
+  * when `None`.
   */
 final case class Limits(
     drafts: Gate,
@@ -48,7 +50,8 @@ final case class Limits(
     room: Rate,
     deployment: Rate,
     spend: DailyCap,
-    toRoom: Option[ToRoom] = None
+    toRoom: Option[ToRoom] = None,
+    occasions: Option[Occasions] = None
 ) {
 
   /** The earliest instant any of its rates reaches back to from `now`: what a decision at
@@ -56,7 +59,7 @@ final case class Limits(
     */
   def from(now: Instant): Instant =
     now.minusNanos(
-      (Vector(thread, room, deployment) ++ toRoom.map(_.rate))
+      (Vector(thread, room, deployment) ++ toRoom.map(_.rate) ++ occasions.map(_.room))
         .foldLeft(0L)((m, r) => math.max(m, r.per.toNanos))
     )
 }
@@ -76,6 +79,28 @@ object Limits {
     Rate(10, 24.hours),
     spend
   )
+}
+
+/** How grit speaks on an occasion a job names ([[grit.core.act.Keeping.occasion]]), beside its
+  * replies to heard messages: shadowed (drafted and judged, never posted) or live, at most
+  * `room.count` occasions decided to be drafted in one room within `room.per`, shadowed or not.
+  */
+enum Occasions {
+  case Shadow(room: Rate)
+  case Live(room: Rate)
+
+  def room: Rate
+}
+
+object Occasions {
+
+  /** 7 days: how recently someone must have been heard in a room, at an address grit may post
+    * at, for grit to post there on an occasion ([[SpeechStore.addressIn]]'s `since`).
+    */
+  val Heard: FiniteDuration = 7.days
+
+  /** 1 occasion a room in 24 hours. */
+  val Suggested: Rate = Rate(1, 24.hours)
 }
 
 /** When an unprompted draft is posted at its room's top level instead of its message's thread

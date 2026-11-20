@@ -37,6 +37,15 @@ final class InMemorySpeechStore(
   @caps.unsafe.untrackedCaptures
   var decisions = Vector.empty[(Heard, Decision, Instant)]
 
+  /** Each occasion's decision, in the order it was kept: its turn, room, decision and when. */
+  @caps.unsafe.untrackedCaptures
+  var occasions = Vector.empty[(TurnRef, Place, Decision, Instant)]
+
+  /** Every decision kept, a heard message's or an occasion's, and whether it is an occasion's. */
+  private def kept: Vector[(TurnRef, Place, Decision, Instant, Boolean)] =
+    decisions.map((h, d, at) => (h.turn, h.room, d, at, false)) ++
+      occasions.map((t, room, d, at) => (t, room, d, at, true))
+
   @caps.unsafe.untrackedCaptures
   var outcomes = Map.empty[TurnRef, (Outcome, Option[String], Option[EntrySeq])]
 
@@ -81,22 +90,22 @@ final class InMemorySpeechStore(
 
   def spoken(since: Instant)(using Tx^): Either[StoreError, Vector[Spoken]] =
     Right(
-      decisions
+      kept
         .collect {
-          case (h, Decision.Drafting(turn, venue), at) if !at.isBefore(since) =>
+          case (_, room, Decision.Drafting(turn, venue), at, occasion) if !at.isBefore(since) =>
             val stage = outcomes.get(turn) match {
               case None => Stage.Drafting
               case Some((_, _, Some(seq))) => Stage.Posted(seq)
               case Some((_, _, None)) => Stage.Settled
             }
             val thread = reaches.get(turn).flatMap(_._2.replyTo).flatMap(_.within)
-            Spoken(turn, h.room, at, stage, venue, thread)
+            Spoken(turn, room, at, stage, venue, thread, occasion)
         }
         .sortBy(s => (s.at, WorkflowId.value(s.turn.workflowId)))
     )
 
   def spentOn(day: Day)(using Tx^): Either[StoreError, Spend] = {
-    val drafting = decisions.collect { case (_, Decision.Drafting(t, _), _) => t.workflowId }.toSet
+    val drafting = kept.collect { case (_, _, Decision.Drafting(t, _), _, _) => t.workflowId }.toSet
     Right(
       ledger.rows
         .filter((entry, workflow, _, _, _, _) =>
@@ -116,6 +125,18 @@ final class InMemorySpeechStore(
       Right(true)
     }
 
+  def occasioned(turn: TurnRef, room: Place, decision: Decision, at: Instant)(using
+      Tx^
+  ): Either[StoreError, Boolean] = decision match {
+    case Decision.Answering(_, _) => Left(StoreError.Invalid("an occasion is never answered"))
+    case Decision.Drafting(_, _) | Decision.Held(_) =>
+      if (kept.exists(_._1 == turn)) Right(false)
+      else {
+        occasions = occasions :+ ((turn, room, decision, at))
+        Right(true)
+      }
+  }
+
   def answering(turn: TurnRef)(using Tx^): Either[StoreError, Boolean] =
     Right(decisions.exists {
       case (_, Decision.Answering(t, _), _) => t == turn
@@ -124,8 +145,8 @@ final class InMemorySpeechStore(
 
   def venue(turn: TurnRef)(using Tx^): Either[StoreError, Venue] =
     Right(
-      decisions
-        .collectFirst { case (_, Decision.Drafting(t, v), _) if t == turn => v }
+      kept
+        .collectFirst { case (_, _, Decision.Drafting(t, v), _, _) if t == turn => v }
         .getOrElse(Venue.Thread)
     )
 
@@ -134,6 +155,11 @@ final class InMemorySpeechStore(
       case (h, Decision.Drafting(t, _), d) if t == turn =>
         (h, Decision.Drafting(t, Venue.Thread), d)
       case d => d
+    }
+    occasions = occasions.map {
+      case (t, room, Decision.Drafting(_, _), at) if t == turn =>
+        (t, room, Decision.Drafting(t, Venue.Thread), at)
+      case o => o
     }
     Right(())
   }
@@ -144,7 +170,7 @@ final class InMemorySpeechStore(
   def drafted(turn: TurnRef, outcome: Outcome, draft: Option[String], at: Instant)(using
       Tx^
   ): Either[StoreError, Boolean] =
-    if (!decisions.exists(d => started(d._2).contains(turn)))
+    if (!kept.exists(d => started(d._3).contains(turn)))
       Left(StoreError.Invalid(s"${turn.workflowId} was never decided on"))
     else if (outcomes.contains(turn)) Right(false)
     else {
@@ -170,6 +196,7 @@ final class InMemorySpeechStore(
         TurnSeq.value(turn.turnSeq) >= TurnSeq.value(from) &&
         TurnSeq.value(turn.turnSeq) <= TurnSeq.value(to)
     decisions = decisions.filterNot(d => on(d._1.turn))
+    occasions = occasions.filterNot(o => on(o._1))
     outcomes = outcomes.filterNot((t, _) => on(t))
     Right(())
   }

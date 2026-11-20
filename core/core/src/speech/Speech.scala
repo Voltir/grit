@@ -7,6 +7,7 @@ import scala.concurrent.duration.*
 import grit.core.id.{EntryId, EntrySeq, TurnRef}
 import grit.core.identity.Account
 import grit.core.message.{Cost, Usage}
+import grit.core.occasion.Occasion
 import grit.core.period.Probability
 import grit.core.place.Place
 import grit.core.spend.{Budget, DailyCap, Spend}
@@ -83,8 +84,8 @@ enum Stage {
 }
 
 /** An unprompted turn decided on: its `turn`, `room`, when it was decided (`at`), its stage,
-  * where its reply goes (`venue`), and the thread its heard message was in
-  * ([[ReplyTo.within]]).
+  * where its reply goes (`venue`), the thread its heard message was in ([[ReplyTo.within]]),
+  * and whether it began on an occasion ([[Speech.occasion]]) rather than a heard message.
   */
 final case class Spoken(
     turn: TurnRef,
@@ -92,7 +93,8 @@ final case class Spoken(
     at: Instant,
     stage: Stage,
     venue: Venue = Venue.Thread,
-    thread: Option[String] = None
+    thread: Option[String] = None,
+    occasion: Boolean = false
 )
 
 /** The speech ledger as a decision needs it: the unprompted turns decided within the longest
@@ -131,6 +133,9 @@ enum Silence {
     */
   case Below(at: Integrity)
 
+  /** An occasion decided after `until`, when it lapsed. */
+  case Lapsed(until: Instant)
+
   /** Said `age` before the decision, longer than `fresh`. */
   case Stale(age: FiniteDuration)
 
@@ -163,10 +168,15 @@ enum Silence {
     */
   case Spoken(by: EntryId)
 
-  /** `previous`, an unprompted turn in the same conversation, is drafting, or posted after
-    * this message.
+  /** `previous`, an unprompted turn in the same conversation, is drafting, or, for a heard
+    * message, posted after it.
     */
   case Unanswered(previous: TurnRef)
+
+  /** `n` occasions decided to be drafted in the room within the occasion rate's window
+    * ([[Occasions.room]]), shadowed or not: its count.
+    */
+  case Occasions(n: Int)
 
   /** `n` posts in the conversation within the thread rate's window: its count. */
   case Thread(n: Int)
@@ -331,7 +341,7 @@ object Speech {
           Venue.Room(to)
         case _ => Venue.Thread
       }
-    val checks: Limits => Vector[() => Option[Silence]] = limits =>
+    val checks: Limits => Vector[() -> Option[Silence]] = limits =>
       Vector(
         () => Option.when(heard.reach.replyTo.isEmpty)(Silence.NoAddress),
         () =>
@@ -360,26 +370,9 @@ object Speech {
         () => {
           val n = within(limits.thread, inThread)
           Option.when(n >= limits.thread.count)(Silence.Thread(n))
-        },
-        () => {
-          val n = within(limits.room, _.room == heard.room)
-          Option.when(n >= limits.room.count)(Silence.Room(n))
-        },
-        () => {
-          val n = within(limits.deployment, _ => true)
-          Option.when(n >= limits.deployment.count)(Silence.Deployment(n))
-        },
-        () =>
-          Option.when(priced(ledger.speech.cost) >= limits.spend.usd)(
-            Silence.OverSpeechCap(ledger.speech, limits.spend)
-          ),
-        () => Option.when(!budget.admits(ledger.all))(Silence.OverBudget)
-      )
-    val limited = speaking match {
-      case Speaking.Off => None
-      case Speaking.Shadow(limits) => Some(limits)
-      case Speaking.Within(limits) => Some(limits)
-    }
+        }
+      ) ++ spent(limits, heard.room, ledger, budget, now)
+    val limited = limitsOf(speaking)
     (Tags.directed(heard.tags), heard.reach.replyTo) match {
       case (true, None) => Decision.Held(Silence.NoAddress)
       case (true, Some(to)) =>
@@ -391,9 +384,7 @@ object Speech {
         limited match {
           case None => Decision.Held(Silence.Off)
           case Some(limits) =>
-            checks(limits).iterator
-              .map(_())
-              .collectFirst { case Some(s) => s }
+            first(checks(limits))
               .fold(Decision.Drafting(heard.turn, placed(limits)))(Decision.Held(_))
         }
     }
@@ -434,6 +425,130 @@ object Speech {
       )
       .minByOption(_.createdAt)
       .map(e => Outcome.Spoken(e.id))
+
+  /** Why grit holds `occasion` at `now` before recording it, in this order: [[Silence.Off]]
+    * without [[Limits.occasions]] (or under [[Speaking.Off]]), [[Silence.NoAddress]] when `to`,
+    * its room's reply address, is `None` (none, or the room is quiet), [[Silence.Below]] when
+    * it is believed below [[Integrity.Outside]], and [[Silence.Lapsed]] after its `until`;
+    * `None` when none holds.
+    */
+  def unrecorded(
+      speaking: Speaking,
+      occasion: Occasion,
+      to: Option[String],
+      believed: Integrity,
+      now: Instant
+  ): Option[Silence] = ready(speaking, occasion, to, believed, now).left.toOption
+
+  /** [[unrecorded]]'s checks passed: the limits, the occasion rate and the address they leave. */
+  private def ready(
+      speaking: Speaking,
+      occasion: Occasion,
+      to: Option[String],
+      believed: Integrity,
+      now: Instant
+  ): Either[Silence, (Limits, Rate, String)] =
+    for {
+      limits <- limitsOf(speaking).toRight(Silence.Off)
+      rate <- limits.occasions.map(_.room).toRight(Silence.Off)
+      address <- to.toRight(Silence.NoAddress)
+      _ <- Either.cond(!believed.belowOutside, (), Silence.Below(believed))
+      _ <- Either.cond(!now.isAfter(occasion.until), (), Silence.Lapsed(occasion.until))
+    } yield (limits, rate, address)
+
+  /** Whether grit drafts on `occasion` at `now` as `turn`, the turn its entry began, in a
+    * conversation at its room's top level with reply address `to`: held on the first of
+    * [[unrecorded]]'s checks, then another unprompted turn drafting in that conversation
+    * ([[Silence.Unanswered]]), the occasion rate ([[Silence.Occasions]]), the room's and the
+    * deployment's post rates, the speech cap and the budget, as [[decide]] checks them; else
+    * `Drafting(turn, Venue.Room(to))`.
+    */
+  def occasion(
+      speaking: Speaking,
+      turn: TurnRef,
+      occasion: Occasion,
+      to: Option[String],
+      believed: Integrity,
+      ledger: Ledger,
+      budget: Budget,
+      now: Instant
+  ): Decision =
+    ready(speaking, occasion, to, believed, now)
+      .flatMap { (limits, rate, address) =>
+        first(
+          Vector(
+            () =>
+              ledger.turns
+                .find(t =>
+                  t.turn != turn && t.turn.conversationId == turn.conversationId &&
+                    t.stage == Stage.Drafting
+                )
+                .map(t => Silence.Unanswered(t.turn)),
+            () => {
+              val n = ledger.turns.count(t =>
+                t.occasion && t.turn != turn && t.room == occasion.room &&
+                  t.at.isAfter(now.minus(JDuration.ofNanos(rate.per.toNanos)))
+              )
+              Option.when(n >= rate.count)(Silence.Occasions(n))
+            }
+          ) ++ spent(limits, occasion.room, ledger, budget, now)
+        ).toLeft(address)
+      }
+      .fold(Decision.Held(_), address => Decision.Drafting(turn, Venue.Room(address)))
+
+  /** The speaking an occasion's draft is posted under ([[post]]): [[Speaking.Off]] without
+    * [[Limits.occasions]], [[Speaking.Shadow]] under either [[Speaking.Shadow]] or
+    * [[Occasions.Shadow]], else [[Speaking.Within]].
+    */
+  def forOccasion(speaking: Speaking): Speaking = speaking match {
+    case Speaking.Off => Speaking.Off
+    case Speaking.Shadow(limits) =>
+      if (limits.occasions.isEmpty) Speaking.Off else Speaking.Shadow(limits)
+    case Speaking.Within(limits) =>
+      limits.occasions match {
+        case None => Speaking.Off
+        case Some(Occasions.Shadow(_)) => Speaking.Shadow(limits)
+        case Some(Occasions.Live(_)) => Speaking.Within(limits)
+      }
+  }
+
+  /** The limits `speaking` drafts under; `None` under [[Speaking.Off]]. */
+  private def limitsOf(speaking: Speaking): Option[Limits] = speaking match {
+    case Speaking.Off => None
+    case Speaking.Shadow(limits) => Some(limits)
+    case Speaking.Within(limits) => Some(limits)
+  }
+
+  /** The checks every unprompted turn ends on, in this order: posts in `room` within the room
+    * rate, posts in all within the deployment rate, today's speech spend against its cap, and
+    * the deployment's budget.
+    */
+  private def spent(
+      limits: Limits,
+      room: Place,
+      ledger: Ledger,
+      budget: Budget,
+      now: Instant
+  ): Vector[() -> Option[Silence]] =
+    Vector(
+      () => {
+        val n = posted(ledger.turns, limits.room, now)(_.room == room)
+        Option.when(n >= limits.room.count)(Silence.Room(n))
+      },
+      () => {
+        val n = posted(ledger.turns, limits.deployment, now)(_ => true)
+        Option.when(n >= limits.deployment.count)(Silence.Deployment(n))
+      },
+      () =>
+        Option.when(priced(ledger.speech.cost) >= limits.spend.usd)(
+          Silence.OverSpeechCap(ledger.speech, limits.spend)
+        ),
+      () => Option.when(!budget.admits(ledger.all))(Silence.OverBudget)
+    )
+
+  /** The first of `checks` that holds, run in order until one does. */
+  private def first(checks: Vector[() -> Option[Silence]]): Option[Silence] =
+    checks.iterator.map(_()).collectFirst { case Some(s) => s }
 
   /** What becomes of an unprompted draft `judged`, its turn believed at `believed`, under
     * `speaking`: `Posted` (or `Shadowed` under [[Speaking.Shadow]]) when its score is at or

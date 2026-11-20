@@ -48,7 +48,9 @@ object SpeechJsonTests extends TestSuite {
     Silence.OverSpeechCap(Spend(3, Cost.AtLeast(BigDecimal("0.25"))), cap),
     Silence.OverBudget,
     Silence.Spoken(EntryId("in:c:m9")),
-    Silence.Continued(EntryId("in:c:m10"))
+    Silence.Continued(EntryId("in:c:m10")),
+    Silence.Lapsed(java.time.Instant.parse("2026-11-19T12:00:00Z")),
+    Silence.Occasions(1)
   )
 
   private val outcomes: Vector[Outcome] = Vector(
@@ -102,6 +104,12 @@ object SpeechJsonTests extends TestSuite {
         """"key":"chatter"},"bound":"below","p":0.5,"read":1}]}}"""
       SpeechJson.writeSilence(Silence.Unasked(Reading.Key(gap, "asks"))).render() ==>
         """{"kind":"unasked","reading":{"reads":"key","name":"gap","key":"asks"}}"""
+      // An occasion's holds.
+      SpeechJson
+        .writeSilence(Silence.Lapsed(java.time.Instant.parse("2026-11-19T12:00:00Z")))
+        .render() ==>
+        """{"kind":"lapsed","until":"2026-11-19T12:00:00Z"}"""
+      SpeechJson.writeSilence(Silence.Occasions(1)).render() ==> """{"kind":"occasions","n":1}"""
       SpeechJson.writeOutcome(Outcome.Posted(Cleared.Named)).render() ==>
         """{"kind":"posted","named":true}"""
       SpeechJson.writeOutcome(Outcome.Posted(Cleared.Scored(judged))).render() ==>

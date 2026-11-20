@@ -153,7 +153,10 @@ final class SqlSpeechStore extends SpeechStore {
       Using.resource(
         conn.prepareStatement(
           """SELECT s.workflow, s.room, s.decided_at, s.outcome_kind, s.posted_seq, s.room_to,
-            |       h.within
+            |       h.within,
+            |       (SELECT e.payload ->> 'kind' FROM grit.entries e
+            |         WHERE e.conversation_id = s.conversation_id AND e.turn_seq = s.turn_seq
+            |         ORDER BY e.seq LIMIT 1) = 'occasion'
             |  FROM grit.speech s
             |  LEFT JOIN grit.heard h
             |    ON h.conversation_id = s.conversation_id AND h.turn_seq = s.turn_seq
@@ -183,7 +186,8 @@ final class SqlSpeechStore extends SpeechStore {
               rs.getObject(3, classOf[OffsetDateTime]).toInstant,
               stage,
               venue,
-              Option(rs.getString(7))
+              Option(rs.getString(7)),
+              rs.getBoolean(8)
             ))
           }
           rows.result()
@@ -216,8 +220,27 @@ final class SqlSpeechStore extends SpeechStore {
   }
 
   def decided(heard: Heard, decision: Decision, at: Instant)(using
-      tx: Tx^
-  ): Either[StoreError, Boolean] = {
+      Tx^
+  ): Either[StoreError, Boolean] =
+    kept(heard.turn, heard.room, decision, at, Some(heard.cues))
+
+  def occasioned(turn: TurnRef, room: Place, decision: Decision, at: Instant)(using
+      Tx^
+  ): Either[StoreError, Boolean] = decision match {
+    case Decision.Answering(_, _) => Left(StoreError.Invalid("an occasion is never answered"))
+    case Decision.Drafting(_, _) | Decision.Held(_) => kept(turn, room, decision, at, None)
+  }
+
+  /** `decision` on `turn` in `room`, made `at`, kept with `cues` (`None` for an occasion's,
+    * which no triage read); `false` when one is kept for `turn` already.
+    */
+  private def kept(
+      turn: TurnRef,
+      room: Place,
+      decision: Decision,
+      at: Instant,
+      cues: Option[Cues]
+  )(using tx: Tx^): Either[StoreError, Boolean] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
     attempt {
       Using.resource(
@@ -228,10 +251,10 @@ final class SqlSpeechStore extends SpeechStore {
             |ON CONFLICT (workflow) DO NOTHING""".stripMargin
         )
       ) { ps =>
-        ps.setString(1, WorkflowId.value(heard.turn.workflowId))
-        ps.setString(2, ConversationId.value(heard.turn.conversationId))
-        ps.setLong(3, TurnSeq.value(heard.turn.turnSeq))
-        ps.setString(4, heard.room.written)
+        ps.setString(1, WorkflowId.value(turn.workflowId))
+        ps.setString(2, ConversationId.value(turn.conversationId))
+        ps.setLong(3, TurnSeq.value(turn.turnSeq))
+        ps.setString(4, room.written)
         ps.setObject(5, at.atOffset(ZoneOffset.UTC))
         decision match {
           case Decision.Drafting(_, _) =>
@@ -247,7 +270,10 @@ final class SqlSpeechStore extends SpeechStore {
             ps.setString(7, SpeechJson.writeSilence(why).render())
             ps.setBoolean(8, false)
         }
-        ps.setString(9, CuesJson.write(heard.cues).render())
+        cues match {
+          case Some(c) => ps.setString(9, CuesJson.write(c).render())
+          case None => ps.setNull(9, java.sql.Types.VARCHAR)
+        }
         decision match {
           case Decision.Drafting(_, Venue.Room(to)) => ps.setString(10, to)
           case Decision.Drafting(_, Venue.Thread) | Decision.Answering(_, _) | Decision.Held(_) =>

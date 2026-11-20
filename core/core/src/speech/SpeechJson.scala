@@ -1,5 +1,7 @@
 package grit.core.speech
 
+import java.time.Instant
+
 import scala.concurrent.duration.*
 
 import grit.core.id.{EntryId, TurnRef, WorkflowId}
@@ -72,6 +74,8 @@ object SpeechJson {
     case Silence.Spoken(by) => kind("spoken", "by" -> ujson.Str(EntryId.value(by)))
     case Silence.Unanswered(previous) =>
       kind("unanswered", "previous" -> ujson.Str(WorkflowId.value(previous.workflowId)))
+    case Silence.Lapsed(until) => kind("lapsed", "until" -> ujson.Str(until.toString))
+    case Silence.Occasions(n) => kind("occasions", "n" -> ujson.Num(n))
     case Silence.Thread(n) => kind("thread", "n" -> ujson.Num(n))
     case Silence.Room(n) => kind("room", "n" -> ujson.Num(n))
     case Silence.Deployment(n) => kind("deployment", "n" -> ujson.Num(n))
@@ -129,6 +133,13 @@ object SpeechJson {
         case "spoken" => str(o, "by").map(b => Silence.Spoken(EntryId(b)))
         case "continued" => str(o, "by").map(b => Silence.Continued(EntryId(b)))
         case "unanswered" => turn(o, "previous").map(Silence.Unanswered(_))
+        case "lapsed" =>
+          str(o, "until")
+            .flatMap(u =>
+              scala.util.Try(Instant.parse(u)).toOption.toRight(s"lapsed: no instant $u")
+            )
+            .map(Silence.Lapsed(_))
+        case "occasions" => int(o, "n").map(Silence.Occasions(_))
         case "thread" => int(o, "n").map(Silence.Thread(_))
         case "room" => int(o, "n").map(Silence.Room(_))
         case "deployment" => int(o, "n").map(Silence.Deployment(_))
