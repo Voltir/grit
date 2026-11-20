@@ -13,7 +13,7 @@ import grit.core.id.{
   TurnSeq
 }
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.occasion.{Occasion, OccasionKey, TestOccasions}
+import grit.core.occasion.{OccasionKey, TestOccasions}
 import grit.core.period.{Change, Cited, CloseReason, Closing, Flows, Section, TestClosings}
 import grit.core.place.Place
 import grit.core.store.{Entry, EntrySearch, OpenPeriod, Origin, Payload, Tx}

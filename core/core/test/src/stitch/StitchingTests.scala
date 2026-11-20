@@ -14,7 +14,7 @@ import grit.core.id.{
 }
 import grit.core.identity.Account
 import grit.core.message.Message
-import grit.core.occasion.{Occasion, OccasionKey, TestOccasions}
+import grit.core.occasion.{OccasionKey, TestOccasions}
 import grit.core.period.{CloseReason, Probability, TestClosings}
 import grit.core.place.Directory
 import grit.core.store.{Conversation, Entry, EntrySearch, Origin, Payload, Speakers}

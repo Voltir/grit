@@ -1,7 +1,7 @@
 package grit.lifecycle.transcript
 
 import grit.core.id.{DocumentVersionId, EntryId, ToolCallId}
-import grit.core.occasion.{Occasion, OccasionKey, TestOccasions}
+import grit.core.occasion.{OccasionKey, TestOccasions}
 import grit.core.period.{Cited, Ground}
 import grit.core.persona.Persona
 import grit.core.store.{Entry, Payload, Speakers}
