@@ -470,7 +470,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
                       (said, keeper, at) => PersonScan.told(d.key, facts.version, said, keeper, at)
                     ) match {
                       case Left(e) => unwritten(e)
-                      case Right(_) => g
+                      case Right(_) => g.copy(people = g.people + 1)
                     }
                   case Right(_) => g
                 }

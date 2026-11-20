@@ -2406,6 +2406,14 @@ object TopicDreamTests extends TestSuite {
       (kept, runs.personal(Dana)) ==> (true, None)
     }
 
+    test("a run's reply counts the person cards it wrote") {
+      val w = new StrandWorld
+      talk(w, 5)
+      val runs = new Runs(w)
+      runs.run() ==> "topics: 5 written (5 opened), 0 withdrawn, 0 unchanged, 0 set aside, " +
+        "0 left for the next run; 1 person card"
+    }
+
     test("people 0 writes no card and asks nothing of one") {
       val w = new StrandWorld
       talk(w, 5)

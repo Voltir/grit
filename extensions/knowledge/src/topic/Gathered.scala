@@ -12,7 +12,7 @@ import grit.knowledge.ref.TopicKey
   * how many of those left were strands that would have opened a topic past the run's opens (`budget`);
   * how many refs it `skipped` (too long to keep, their links still in the
   * text); the folds its merge sorts made (`folded`), and those they would make, not made
-  * (`proposed`); what it did not
+  * (`proposed`); how many people's cards it kept with a paragraph asked (`people`); what it did not
   * write, each named, and why; and why it stopped, if it did. [[line]] is its reply.
   */
 final case class Gathered(
@@ -29,7 +29,8 @@ final case class Gathered(
     unwritten: Vector[(String, String)],
     stopped: Option[String],
     proposed: Vector[Gathered.Fold],
-    folded: Vector[Gathered.Fold]
+    folded: Vector[Gathered.Fold],
+    people: Int = 0
 ) extends caps.Pure {
 
   /** `topics: {written} written ({opened} opened), {withdrawn} withdrawn, {unchanged}
@@ -39,7 +40,7 @@ final case class Gathered(
     * opens a run makes), then, when some were, `; {n} refs too long to keep`, then, when some
     * were, `; folded {from} into {into} ({p})` for each folded, separated by `, `, then, when
     * some were, `; would fold {from} into {into} ({p})` for each proposed, alike, `p` to two
-    * decimals, then `; not written: {name} ({why})` for at most [[NotWritten.Shown]] of
+    * decimals, then, when some were, `; {people} person cards` (`1 person card`), then `; not written: {name} ({why})` for at most [[NotWritten.Shown]] of
     * them, separated by `, `, and `and {n} more` for the rest; then, when it stopped, `;
     * stopped: {why}`.
     */
@@ -60,7 +61,10 @@ final case class Gathered(
           s"$said ${TopicKey.value(f.from)} into ${TopicKey.value(f.into)} (${f"${f.p}%.2f"})"
         ).mkString("; ", ", ", "")
     // Draft wording, for Nick: `folded` for the folds made, `would fold` for those proposed.
-    counts + doubted + refs + folds("folded", folded) + folds("would fold", proposed) +
+    // Draft wording, for Nick (grit/568): the cards a run wrote.
+    val cards =
+      if (people == 0) "" else if (people == 1) "; 1 person card" else s"; $people person cards"
+    counts + doubted + refs + folds("folded", folded) + folds("would fold", proposed) + cards +
       NotWritten.tail(unwritten) + NotWritten.stopped(stopped)
   }
 }
