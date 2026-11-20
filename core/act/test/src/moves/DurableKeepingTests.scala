@@ -263,6 +263,39 @@ object DurableKeepingTests extends TestSuite {
       ) ==> (Vector("keep:doc", "occasion:o"), "Started", Right("Started"), 1, true, true)
     }
 
+    test(
+      "an occasion whose entry was written before its first step was recorded gets that turn back"
+    ) {
+      val (inbox, documents) = (MovesContract.heard(InMemoryInbox.fresh()), new InMemoryDocuments)
+      val first = occasions(inbox, documents)
+      val made = first.keeping(MovesContract.OneOccasion)(occasion)
+      val turns = inbox.started
+      val entries = inbox.entries.everything.size
+      // The run cut short inside its first step: its entry written, the step not recorded.
+      inbox.speech.occasions = Vector.empty
+      inbox.started = Vector.empty
+      val history = first.durable.history(Turn.workflowId).take(1)
+      val again = occasions(inbox, documents)
+      val resumed = new InMemoryDurable().replay(Turn.workflowId, history) { _ =>
+        Flows
+          .run(
+            MovesWorld.keeps(again.acting, MovesContract.OneOccasion, again.keeper)(occasion),
+            again.kept(new Answering(MovesContract.Answer)),
+            ()
+          )
+          .merge
+          .said
+      }
+      (
+        history.map(_.name),
+        made.said,
+        resumed,
+        turns.size,
+        inbox.started == turns,
+        inbox.entries.everything.size == entries
+      ) ==> (Vector("keep:doc"), "Started", Right("Started"), 1, true, true)
+    }
+
     test("an occasion starts its turn once across a replay, which reads its start back") {
       val (inbox, documents) = (MovesContract.heard(InMemoryInbox.fresh()), new InMemoryDocuments)
       val first = occasions(inbox, documents)

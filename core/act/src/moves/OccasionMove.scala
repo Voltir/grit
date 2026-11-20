@@ -192,7 +192,7 @@ private[moves] object OccasionMove {
   )
 
   /** `{"ended":occasioned}` or `{"recorded":turn,"to":address}`. */
-  private given recorded: Journaled[Either[Occasioned, (TurnRef, String)]] = Journaled.json(
+  private[moves] given recorded: Journaled[Either[Occasioned, (TurnRef, String)]] = Journaled.json(
     {
       case Left(ended) => ujson.Obj("ended" -> ujson.read(occasioned.encode(ended)))
       case Right((t, to)) => ujson.Obj("recorded" -> id(t), "to" -> to)
@@ -208,7 +208,7 @@ private[moves] object OccasionMove {
   )
 
   /** `{"ended":occasioned}` or `{"drafting":true}`. */
-  private given decision: Journaled[Either[Occasioned, Unit]] = Journaled.json(
+  private[moves] given decision: Journaled[Either[Occasioned, Unit]] = Journaled.json(
     {
       case Left(ended) => ujson.Obj("ended" -> ujson.read(occasioned.encode(ended)))
       case Right(()) => ujson.Obj("drafting" -> true)
