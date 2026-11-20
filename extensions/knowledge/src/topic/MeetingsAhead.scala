@@ -3,7 +3,7 @@ package grit.knowledge.topic
 import java.time.{Instant, LocalDate, LocalTime, ZoneId}
 
 import grit.core.act.{Keeping, MoveError, MoveLimits, MoveName, Occasioned}
-import grit.core.document.{DocText, Document}
+import grit.core.document.Document
 import grit.core.durable.Journaled
 import grit.core.flow.Trusted
 import grit.core.id.{DocumentVersionId, JobName, ShortHash}
