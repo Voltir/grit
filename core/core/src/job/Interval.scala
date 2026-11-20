@@ -12,8 +12,6 @@ object Interval {
 
   val HalfHour: Interval = FiniteDuration(30, scala.concurrent.duration.MINUTES)
 
-  val Hour: Interval = FiniteDuration(1, scala.concurrent.duration.HOURS)
-
   private val Minute = FiniteDuration(1, scala.concurrent.duration.MINUTES)
 
   def value(i: Interval): FiniteDuration = i

@@ -1,117 +1,21 @@
 package grit.knowledge.topic
 
-import java.time.format.DateTimeFormatter
-import java.time.{Instant, LocalDate, ZoneId}
+import java.time.{Instant, LocalDate}
 
-import scala.concurrent.duration.*
-
-import grit.core.act.{Dreaming, MoveError, MoveLimits, MoveName, Occasioned, Sorting}
+import grit.core.act.Sorting
 import grit.core.classify.{Criterion, Decision}
-import grit.core.document.DocumentShelf
 import grit.core.durable.Journaled
-import grit.core.flow.Trusted
-import grit.core.id.{DocumentVersionId, JobName, ShortHash}
-import grit.core.job.{DreamingJob, JobRun}
+import grit.core.id.{DocumentVersionId, ShortHash}
 import grit.core.occasion.{Occasion, OccasionBrief, OccasionKey}
 import grit.core.place.Place
-import grit.core.speech.SpeechJson
-import grit.core.stitch.{Strand, StrandShelf}
-import grit.core.store.{StoreError, Tx}
-import grit.knowledge.card.CardMoves
 import grit.knowledge.ref.TopicKey
-import grit.std.collect.Collect
 import grit.std.either.Proven
 
-final case class AheadParams(rooms: Vector[Place]) extends caps.Pure
-
-/** The job `meetings-ahead`: a run names an occasion for each planned meeting about to start
-  * that talk left unsettled, the soonest in each of its rooms. A meeting arranged today is not
-  * seen until the nightly topics run writes it.
-  */
-final class MeetingsAhead(zone: ZoneId, bound: Int) extends DreamingJob[AheadParams] {
-
-  val name: JobName = MeetingsAhead.Name
-
-  val version: Int = 1
-
-  def write(params: AheadParams): ujson.Value =
-    ujson.Obj("rooms" -> ujson.Arr.from(params.rooms.map(r => ujson.Str(r.written))))
-
-  def read(params: ujson.Value): Either[String, AheadParams] =
-    params.objOpt
-      .flatMap(_.get("rooms"))
-      .flatMap(_.arrOpt)
-      .toRight(s"a meetings-ahead run's parameters name its rooms: ${params.render().take(100)}")
-      .flatMap(rooms =>
-        rooms.toVector.foldLeft[Either[String, Vector[Place]]](Right(Vector.empty))((acc, r) =>
-          acc.flatMap(done =>
-            r.strOpt
-              .toRight(s"a room is a place: ${r.render().take(100)}")
-              .flatMap(Place.read)
-              .map(done :+ _)
-          )
-        )
-      )
-      .map(AheadParams(_))
-
-  override val limits: MoveLimits =
-    Proven.right(MoveLimits.of(0, 0, MeetingsAhead.Asks, MeetingsAhead.Asks))
-
-  def run(run: Trusted[JobRun[AheadParams]], moves: Dreaming^): String =
-    if (run.extract.params.rooms.isEmpty) MeetingsAhead.Roomless
-    else
-      moves.scan(MeetingsAhead.Scan, run.tainted.map(_.params))((p, keeper, strands, _, at) =>
-        MeetingsAhead.scanned(p.rooms, keeper, strands, bound, zone, at)
-      ) match {
-        case Left(e) => s"Meetings ahead: its meetings were not read: ${MoveError.said(e)}"
-        case Right(found) =>
-          val asked = found.asking.zipWithIndex.map((due, i) =>
-            moves.sort(
-              CardMoves.numbered("sort", i),
-              Dreaming.Item.Document(due.version),
-              Sorting.Among(Vector.empty, Vector.empty, 0),
-              run.tainted.map(_ => MeetingsAhead.Unsettled)
-            ) match {
-              case Left(e) => MeetingsAhead.Sorted.Refused(MoveError.said(e))
-              case Right(None) => MeetingsAhead.Sorted.Unasked
-              case Right(Some(sorted)) =>
-                val reply = sorted.asked.reply
-                if (
-                  Trusted
-                    .asIs(reply)
-                    .extract
-                    .probability(MeetingsAhead.Judged.Unsettled) < MeetingsAhead.YesAt
-                )
-                  MeetingsAhead.Sorted.Settled
-                else
-                  MeetingsAhead.Sorted.Named(
-                    MoveName
-                      .of(s"occasion-$i")
-                      .left
-                      .map(MoveError.Store(_))
-                      .flatMap(n => moves.occasion(n, reply.map(_ => MeetingsAhead.occasion(due))))
-                  )
-            }
-          )
-          MeetingsAhead.reply(found, zone, asked)
-      }
-}
-
 object MeetingsAhead {
-
-  val Name: JobName = JobName.literal("meetings-ahead")
-
-  val Lead: FiniteDuration = 3.hours
-
-  val Covered: FiniteDuration = 3.hours
-
-  val Since: FiniteDuration = 24.hours
 
   val Asks: Int = 3
 
   val YesAt: Double = 0.5
-
-  private val Scan: MoveName = MoveName.literal("meetings")
 
   enum Judged extends caps.Pure {
     case Unsettled, Settled
@@ -162,117 +66,17 @@ object MeetingsAhead {
   final case class Due(version: DocumentVersionId, room: Place, start: Instant, key: OccasionKey)
       extends caps.Pure
 
-  /** A scan's meetings to sort, and how many of those within [[Lead]] each check passed over. */
+  /** A scan's meetings to sort, and how many due each check passed over. */
   final case class Found(
       at: Instant,
       asking: Vector[Due],
       within: Int,
       fewer: Int,
-      covered: Int,
       left: Int
   ) extends caps.Pure
 
-  enum Sorted {
-    case Refused(why: String)
-    case Unasked
-    case Settled
-    case Named(occasioned: Either[MoveError, Occasioned])
-  }
-
-  private[topic] def scanned(
-      rooms: Vector[Place],
-      keeper: DocumentShelf,
-      strands: StrandShelf,
-      bound: Int,
-      zone: ZoneId,
-      at: Instant
-  )(using Tx^): Either[StoreError, Found] =
-    keeper.newest(bound).flatMap { documents =>
-      val until = at.plusNanos(Lead.toNanos)
-      val within = documents.flatMap(d =>
-        for {
-          key <- TopicKey.read(d.key)
-          topic <- Topic.read(key, d.data).toOption
-          meeting <- topic.kind match {
-            case Topic.Kind.Meeting(m) => Some(m)
-            case Topic.Kind.Subject => None
-          }
-          room <- topic.passages.reverse.view.flatMap(roomOf).headOption
-          if rooms.contains(room)
-          when <- meeting.when
-          time <- when.start
-          start = when.day.atTime(time).atZone(zone).toInstant
-          if start.isAfter(at) && !start.isAfter(until)
-        } yield (Due(d.version, room, start, MeetingsAhead.key(key, when.day)), meeting, topic)
-      )
-      val named = within.filter(_._2.who.size >= 2)
-      if (named.isEmpty) Right(Found(at, Vector.empty, within.size, within.size, 0, 0))
-      else
-        strands.units(at.minusNanos(Since.toNanos), at, Strand.Cut.Default).map { spoken =>
-          val recent = at.minusNanos(Covered.toNanos)
-          val open = named.filterNot { (_, _, topic) =>
-            val written = topic.passages.flatMap(_.from.tags.flatMap(_.strand)).toSet
-            val ids = written.map(_._1)
-            spoken.exists(s =>
-              ids.contains(s.id) && (s.touched.isAfter(recent) || !written
-                .contains((s.id, s.digest)))
-            )
-          }
-          val soonest = open.map(_._1).sortBy(_.start).distinctBy(_.room)
-          val asking = soonest.take(Asks)
-          Found(
-            at,
-            asking,
-            within.size,
-            within.size - named.size,
-            named.size - open.size,
-            open.size - asking.size
-          )
-        }
-    }
-
   private[topic] def occasion(due: Due): Occasion =
     Occasion(due.room, due.key, Brief, due.version, due.start)
-
-  private def roomOf(passage: Passage): Option[Place] =
-    passage.from.tags.reverse.collectFirst { case Lineage.Tag.Strand(_, room, _, _) => room }
-
-  private val Clock = DateTimeFormatter.ofPattern("HH:mm")
-
-  val Roomless: String = "Meetings ahead: no room to raise occasions in."
-
-  def reply(found: Found, zone: ZoneId, sorted: Vector[Sorted]): String = {
-    def counted(whys: Vector[String]): String =
-      Collect.counted(whys).map((w, n) => s"$n $w").mkString(", ")
-    val occasioned = sorted.collect { case Sorted.Named(o) => o }
-    val held = occasioned.collect {
-      case Right(Occasioned.Held(_, why)) => SpeechJson.silenceName(why)
-      case Right(Occasioned.Mislabelled(_)) => "mislabelled"
-      case Right(Occasioned.Unread(_)) => "unread"
-    }
-    val failed = sorted.collect {
-      case Sorted.Refused(why) => why
-      case Sorted.Unasked => "unsorted"
-      case Sorted.Named(Left(e)) => MoveError.said(e)
-      case Sorted.Named(Right(Occasioned.Unstarted(_, _))) => "unstarted"
-    }
-    val started = occasioned.count {
-      case Right(Occasioned.Started(_)) => true
-      case _ => false
-    }
-    val already = occasioned.count {
-      case Right(Occasioned.Already) => true
-      case _ => false
-    }
-    val settled = sorted.count(_ == Sorted.Settled)
-    val time = Clock.format(found.at.atZone(zone))
-    val heldPart = if (held.isEmpty) "0 held" else s"${held.size} held (${counted(held)})"
-    val failedPart = if (failed.isEmpty) "" else s", ${failed.size} failed (${counted(failed)})"
-    s"Meetings ahead at $time: ${found.within} in its rooms starting within ${Lead.toHours} " +
-      s"hours, ${found.fewer} naming fewer than two people, ${found.covered} talked of in the " +
-      s"last ${Covered.toHours} hours, ${found.left} left for a later run; $settled judged " +
-      s"settled, $started started, $heldPart, $already already noted$failedPart."
-  }
 
   given Journaled[Found] = Journaled.json(
     f =>
@@ -290,7 +94,6 @@ object MeetingsAhead {
         ),
         "within" -> f.within,
         "fewer" -> f.fewer,
-        "covered" -> f.covered,
         "left" -> f.left
       ),
     v =>
@@ -301,7 +104,7 @@ object MeetingsAhead {
         asking <- all.toVector.foldLeft[Either[String, Vector[Due]]](Right(Vector.empty))(
           (acc, e) => acc.flatMap(done => dueOf(e).map(done :+ _))
         )
-        counts <- Vector("within", "fewer", "covered", "left")
+        counts <- Vector("within", "fewer", "left")
           .foldLeft[Either[String, Vector[Int]]](Right(Vector.empty))((acc, k) =>
             acc.flatMap(done =>
               o.get(k)
@@ -312,9 +115,8 @@ object MeetingsAhead {
             )
           )
         found <- counts match {
-          case Vector(within, fewer, covered, left) =>
-            Right(Found(at, asking, within, fewer, covered, left))
-          case _ => Left("meetings: expected four counts")
+          case Vector(within, fewer, left) => Right(Found(at, asking, within, fewer, left))
+          case _ => Left("meetings: expected three counts")
         }
       } yield found
   )
