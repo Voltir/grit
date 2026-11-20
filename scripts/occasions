@@ -10,8 +10,8 @@
 #   scripts/occasions grit_example 14
 #
 # An occasion held before its entry was recorded (off, no address, a quiet room, below
-# outside, lapsed) keeps no speech row: its run's reply counts it (meetings-ahead), as it counts
-# the meetings its checks passed over.
+# outside, lapsed) keeps no speech row: the topics run's reply counts it (meetings ahead), as it
+# counts the meetings its checks passed over.
 set -euo pipefail
 
 usage() { sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//' >&2; exit 2; }
