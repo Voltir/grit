@@ -5,7 +5,7 @@ import java.time.{Instant, LocalDate, ZoneOffset}
 import scala.concurrent.duration.*
 
 import grit.core.act.ScriptedMoves.Replied
-import grit.core.act.{Dreaming, MoveError, ScriptedDreaming}
+import grit.core.act.{Dreaming, MoveError, ScriptedDreaming, ScriptedKeeping}
 import grit.core.classify.{Answer as Judged, Question, Request}
 import grit.core.document.{
   DocLabel,
@@ -22,8 +22,8 @@ import grit.core.document.{
 }
 import grit.core.files.InMemoryPieces
 import grit.core.flow.TestTainted
-import grit.core.id.{ConversationId, CorpusName, DocKey, DocumentVersionId, PluginName}
-import grit.core.job.JobRun
+import grit.core.id.{ConversationId, CorpusName, DocKey, DocumentVersionId, PluginName, ScheduleId}
+import grit.core.job.{Grace, InMemorySchedules, JobRun, Schedule, SlotRule}
 import grit.core.message.Message
 import grit.core.need.{Exported, Needs, PluginDocs, PluginReads}
 import grit.core.place.Place
@@ -112,6 +112,13 @@ object TopicDreamTests extends TestSuite {
 
     def asked: Vector[Ask] = heard.asked
 
+    /** The schedules its runs book. */
+    private val schedules = new InMemorySchedules()
+
+    /** The schedule its runs' booking `name` wrote, if any. */
+    def booked(name: String): Option[Schedule] =
+      ok(schedules.read(ScheduleId.booked(ScriptedKeeping.Turn, name))(using TestTx.fake))
+
     /** One run for `day`, made `now`, of `perRun`, by a job writing at most `most`, kept at
       * `floor`; its sorts judged by `sort`, its write asks answered by `write`; its rooms
       * labelled as `rooms` records them; its asks reading no document `unread` holds to; sorting
@@ -171,7 +178,8 @@ object TopicDreamTests extends TestSuite {
         integrity = believed,
         rooms = rooms,
         judgments = judged,
-        visibility = visibility
+        visibility = visibility,
+        booked = schedules
       )
       dream.run(
         TestTainted.trusted(
@@ -2182,28 +2190,49 @@ object TopicDreamTests extends TestSuite {
     }
 
     test(
-      "a run given rooms sorts a planned meeting of two due in its strands' room, and names an occasion when judged unsettled"
+      "a run given rooms sorts a planned meeting of two due in its strands' room, and books meeting-ahead Lead before its start when judged unsettled"
     ) {
       val runs = new Runs(new StrandWorld)
       runs.topic(name = "m", from = Vector("s1"), kind = Ahead)
       val reply = runs.run(sort = judging("unsettled"), aheadIn = Vector(AheadRoom))
-      (reply, runs.asked.map(_.kind)) ==> (
+      val start = Day.atTime(15, 0).toInstant(ZoneOffset.UTC)
+      (
+        reply,
+        runs.asked.map(_.kind),
+        runs.booked("later-0").map(s => (s.job, s.rule)),
+        runs
+          .booked("later-0")
+          .map(s => new MeetingAhead(ZoneOffset.UTC).read(s.params).map(d => (d.room, d.until)))
+      ) ==> (
         "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the " +
           "next run; meetings ahead: 1 in its rooms within 24 hours, 0 naming fewer than two " +
-          "people, 0 past the 3 a run asks about; 0 judged settled, 0 started, 1 held (1 off), " +
-          "0 already noted",
-        Vector("sort")
+          "people, 0 past the 3 a run asks about; 0 judged settled, 1 booked",
+        Vector("sort"),
+        Some(
+          (
+            MeetingAhead.Name,
+            SlotRule.Once(
+              start.minusSeconds(600),
+              Grace.of(MeetingsAhead.Lead).getOrElse(Grace.Zero)
+            )
+          )
+        ),
+        Some(Right((AheadRoom, start)))
       )
     }
 
-    test("a meeting judged settled names no occasion") {
+    test("a meeting judged settled books no run") {
       val runs = new Runs(new StrandWorld)
       runs.topic(name = "m", from = Vector("s1"), kind = Ahead)
-      runs.run(sort = judging("settled"), aheadIn = Vector(AheadRoom)) ==>
+      (
+        runs.run(sort = judging("settled"), aheadIn = Vector(AheadRoom)),
+        runs.booked("later-0")
+      ) ==> (
         "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the " +
-        "next run; meetings ahead: 1 in its rooms within 24 hours, 0 naming fewer than two " +
-        "people, 0 past the 3 a run asks about; 1 judged settled, 0 started, 0 held, 0 " +
-        "already noted"
+          "next run; meetings ahead: 1 in its rooms within 24 hours, 0 naming fewer than two " +
+          "people, 0 past the 3 a run asks about; 1 judged settled, 0 booked",
+        None
+      )
     }
 
     test(

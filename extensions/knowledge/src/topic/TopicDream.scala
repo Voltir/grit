@@ -34,16 +34,19 @@ import grit.std.either.Proven
   * withdraws, what each ask is shown, how a reply is read and what a topic's version refers to:
   * the module's README, "A topics run". Replies [[Gathered.line]], which holds no
   * cost: its asks' cost is read from the spend ledger ([[grit.core.store.UsageLedger]]), each
-  * recorded under its run's workflow. Given rooms ([[TopicParams.aheadIn]]), it ends by naming
-  * occasions ahead of meetings ([[MeetingsAhead.named]]), its reply's line followed by that
-  * phase's. Its `limits`: asks `perRunMost`, judgments [[TopicParams.Sorts]] +
-  * [[TopicScan.Cards]] + [[TopicParams.Merges]] + [[MeetingsAhead.Asks]], occasions
-  * [[MeetingsAhead.Asks]]; no calls.
+  * recorded under its run's workflow. Given rooms ([[TopicParams.aheadIn]]), it ends by booking
+  * runs of [[ahead]] for meetings coming up ([[MeetingsAhead.named]]), its reply's line followed
+  * by that phase's. Its `limits`: asks `perRunMost`, judgments [[TopicParams.Sorts]] +
+  * [[TopicScan.Cards]] + [[TopicParams.Merges]] + [[MeetingsAhead.Asks]], bookings
+  * [[MeetingsAhead.Asks]]; no calls or occasions.
   */
 final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[CardShelf]])
     extends DreamingJob[TopicParams] {
 
   val name: JobName = TopicDream.Name
+
+  /** The job its runs book for the meetings coming up, its plugin's too. */
+  val ahead: MeetingAhead = new MeetingAhead(zone)
 
   // 4: its asks are shown discussions and documents fenced, and told so (their digests moved).
   // 5: strands and cards are placed by sorts, a judgment each, not by one attach ask.
@@ -67,8 +70,8 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
   // its scan's meetings hold their start),
   // and none a meeting written that night; a fold at its params' foldAt or more is made
   // (`fold-{i}`).
-  // 14: a nightly run given rooms ends by naming an occasion for each meeting due in one
-  // (`ahead`, `ahead-sort-{i}`, `occasion-{i}`; MeetingsAhead).
+  // 14: a nightly run given rooms ends by booking a run of `meeting-ahead` for each meeting due
+  // in one (`ahead`, `ahead-sort-{i}`, `later-{i}`; MeetingsAhead).
   val version: Int = 14
 
   def write(params: TopicParams): ujson.Value = TopicParams.write(params)
@@ -81,6 +84,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
         perRunMost.max(0),
         0,
         TopicParams.Sorts + TopicScan.Cards + TopicParams.Merges + MeetingsAhead.Asks,
+        0,
         MeetingsAhead.Asks
       )
       .getOrElse(MoveLimits.Zero)
@@ -177,7 +181,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
           }
         val line = merged(run, moves, scan, versions, meetings, wrote).line
         if (params.aheadIn.isEmpty) line
-        else line + MeetingsAhead.named(run.tainted.map(_.params.aheadIn), zone, end, moves)
+        else line + MeetingsAhead.named(run.tainted.map(_.params.aheadIn), zone, end, ahead, moves)
     }
   }
 

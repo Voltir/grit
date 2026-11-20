@@ -27,7 +27,7 @@ import grit.core.tool.{
 }
 import grit.core.visibility.{Label, Visibility}
 import grit.knowledge.card.CardShelf
-import grit.knowledge.topic.{MeetingAhead, MeetingLookup, Passage, TopicDream, TopicParams}
+import grit.knowledge.topic.{MeetingLookup, Passage, TopicDream, TopicParams}
 
 /** The topics plugin: one topic per subject its runs find, by its job [[TopicDream]], daily at
   * `at` in `zone`, on a schedule per label in `labels`, keyed `topics-dream-{label}` with the
@@ -64,11 +64,9 @@ final class TopicDocuments private (
 
   private val dream = new TopicDream(TopicDocuments.PerRun, zone, cards)
 
-  private val ahead = new MeetingAhead(zone)
-
   override val documents: Option[Documents] = Some(DreamSchedules.documents(terms, labels))
 
-  override val jobs: Vector[Job[?]] = Vector(dream, ahead)
+  override val jobs: Vector[Job[?]] = Vector(dream, dream.ahead)
 
   override val tools: Vector[PluginTool[?]] =
     Vector(TopicDocuments.meetings(TopicDocuments.Bound * labels.size, zone))
