@@ -39,8 +39,7 @@ enum Speaking {
   * spend under `spend`. A draft: its weakest judged score ([[Judged.score]]) at or above
   * `postAt`, and nobody having spoken since its root. Where it goes: its message's thread, or
   * its room's top level when `toRoom` places it there ([[Venue]]); `None` is always the thread.
-  * Whether grit also posts on an occasion a job names ([[Speech.occasion]]): `occasions`, never
-  * when `None`.
+  * An occasion a job names is spoken on within `occasions` ([[Speech.decide]]).
   */
 final case class Limits(
     drafts: Gate,
@@ -81,16 +80,11 @@ object Limits {
   )
 }
 
-/** How grit speaks on an occasion a job names ([[grit.core.act.Keeping.occasion]]), beside its
-  * replies to heard messages: shadowed (drafted and judged, never posted) or live, at most
-  * `room.count` occasions decided to be drafted in one room within `room.per`, shadowed or not.
+/** That grit speaks on an occasion a job names ([[grit.core.act.Keeping.occasion]]), under the
+  * deployment's speaking: at most `room.count` occasions decided to be drafted in one room
+  * within `room.per`, at any stage.
   */
-enum Occasions {
-  case Shadow(room: Rate)
-  case Live(room: Rate)
-
-  def room: Rate
-}
+final case class Occasions(room: Rate) extends caps.Pure
 
 object Occasions {
 

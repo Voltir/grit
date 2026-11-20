@@ -2478,7 +2478,7 @@ object MovesContract {
         DailyCap.of("1").getOrElse(throw new java.lang.AssertionError("cap")),
         Tags.V1.gate
       )
-      .copy(occasions = Some(Occasions.Live(Occasions.Suggested)))
+      .copy(occasions = Some(Occasions(Occasions.Suggested)))
   )
 
   /** No asks or calls, and `n` occasions. */

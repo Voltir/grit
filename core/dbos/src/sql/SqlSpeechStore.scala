@@ -187,7 +187,7 @@ final class SqlSpeechStore extends SpeechStore {
               stage,
               venue,
               Option(rs.getString(7)),
-              rs.getBoolean(8)
+              if (rs.getBoolean(8)) Spoken.Root.Occasion else Spoken.Root.Heard
             ))
           }
           rows.result()

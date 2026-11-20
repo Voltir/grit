@@ -41,10 +41,10 @@ final class InMemorySpeechStore(
   @caps.unsafe.untrackedCaptures
   var occasions = Vector.empty[(TurnRef, Place, Decision, Instant)]
 
-  /** Every decision kept, a heard message's or an occasion's, and whether it is an occasion's. */
-  private def kept: Vector[(TurnRef, Place, Decision, Instant, Boolean)] =
-    decisions.map((h, d, at) => (h.turn, h.room, d, at, false)) ++
-      occasions.map((t, room, d, at) => (t, room, d, at, true))
+  /** Every decision kept, a heard message's or an occasion's, and what its turn began with. */
+  private def kept: Vector[(TurnRef, Place, Decision, Instant, Spoken.Root)] =
+    decisions.map((h, d, at) => (h.turn, h.room, d, at, Spoken.Root.Heard)) ++
+      occasions.map((t, room, d, at) => (t, room, d, at, Spoken.Root.Occasion))
 
   /** Each settled turn's outcome, its draft's excerpt and its reply's position. */
   // As `reaches`: replaced whole by the store's own methods, on the test's one thread.

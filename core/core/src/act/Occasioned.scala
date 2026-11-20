@@ -9,6 +9,7 @@ import grit.core.place.Place
 import grit.core.speech.{
   Decision,
   Ledger,
+  OccasionRoot,
   Occasions,
   Outcome,
   Silence,
@@ -86,7 +87,7 @@ private[grit] object Occasioned {
       }
 
   /** `occasion`, whose entry began `turn` in a conversation with reply address `to`, believed
-    * at `believed`, decided at `now` as [[Speech.occasion]] decides under `speaking` and
+    * at `believed`, decided at `now` as [[Speech.decide]] decides under `speaking` and
     * `budget` over the ledger `speech` and `spending` give, and kept on `turn` in its room: what
     * the move ends as (`Left`: `Already` when a decision was kept for `turn` before, `Held` with
     * `turn` when it is held), or `Right` when its turn is to start.
@@ -110,12 +111,9 @@ private[grit] object Occasioned {
         budget,
         now
       )
-      decision = Speech.occasion(
+      decision = Speech.decide(
         speaking,
-        turn,
-        occasion,
-        Some(to),
-        believed,
+        OccasionRoot(turn, occasion, to, believed),
         ledger,
         budget,
         now

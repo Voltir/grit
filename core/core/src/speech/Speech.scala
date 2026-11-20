@@ -70,6 +70,12 @@ object Heard {
     Heard(turn, entry.seq, origin.room, entry.createdAt, reach, tags, entry.integrity, cues)
 }
 
+/** The occasion that is `turn`'s first entry, as [[Speech.decide]] weighs it: at `to`, its
+  * room's top-level reply address, believed at `believed`.
+  */
+final case class OccasionRoot(turn: TurnRef, occasion: Occasion, to: String, believed: Integrity)
+    extends caps.Pure
+
 /** Where an unprompted turn has got to. */
 enum Stage {
 
@@ -85,7 +91,7 @@ enum Stage {
 
 /** An unprompted turn decided on: its `turn`, `room`, when it was decided (`at`), its stage,
   * where its reply goes (`venue`), the thread its heard message was in ([[ReplyTo.within]]),
-  * and whether it began on an occasion ([[Speech.occasion]]) rather than a heard message.
+  * and what it began with.
   */
 final case class Spoken(
     turn: TurnRef,
@@ -94,8 +100,18 @@ final case class Spoken(
     stage: Stage,
     venue: Venue = Venue.Thread,
     thread: Option[String] = None,
-    occasion: Boolean = false
+    root: Spoken.Root = Spoken.Root.Heard
 )
+
+object Spoken {
+
+  /** What an unprompted turn began with: a heard message ([[Heard]]) or an occasion a job named
+    * ([[OccasionRoot]]).
+    */
+  enum Root extends caps.Pure {
+    case Heard, Occasion
+  }
+}
 
 /** The speech ledger as a decision needs it: the unprompted turns decided within the longest
   * of the limits' windows, and what was spent today on speech (`speech`) and in all (`all`).
@@ -315,15 +331,21 @@ object Speech {
       case _ => Venue.Thread
     }
 
+  /** How many of `spoken`'s turns decided within `rate.per` before `at` are `which`. */
+  private def within(spoken: Vector[Spoken], rate: Rate, at: Instant)(
+      which: Spoken => Boolean
+  ): Int =
+    spoken.count(t => which(t) && t.at.isAfter(at.minus(JDuration.ofNanos(rate.per.toNanos))))
+
   /** How many of `spoken`'s posted turns decided within `rate.per` before `at` are `which`. */
   private def posted(spoken: Vector[Spoken], rate: Rate, at: Instant)(
       which: Spoken => Boolean
   ): Int =
-    spoken.count(t =>
+    within(spoken, rate, at)(t =>
       (t.stage match {
         case Stage.Posted(_) => true
         case Stage.Drafting | Stage.Settled => false
-      }) && which(t) && t.at.isAfter(at.minus(JDuration.ofNanos(rate.per.toNanos)))
+      }) && which(t)
     )
 
   private def atTop(t: Spoken): Boolean = t.venue match {
@@ -331,22 +353,55 @@ object Speech {
     case Venue.Thread => false
   }
 
-  /** Whether grit drafts after `heard` at `now`, under `speaking`, given `ledger` and the
-    * deployment's `budget`: the first failing check in [[Silence]]'s order, or `Drafting`,
-    * at its room's top level when [[Limits.toRoom]] places it there ([[ToRoom]]), else in its
-    * thread. Fails closed: an untagged message is `Unweighed`, and one whose answers the gate
-    * cannot read is `Unasked`. A message triage read as put to grit ([[Tags.directed]]) is
-    * `Answering` at its thread's reply address, held only as an addressed one could be: with
-    * no address, by the gate (none under [[Speaking.Off]]), or over the budget.
+  /** Whether grit drafts on `root` at `now` under `speaking`, given `ledger` and the deployment's
+    * `budget`: the first failing check in [[Silence]]'s order, or a decision to speak.
+    *
+    * A heard message is `Drafting`, at its room's top level when [[Limits.toRoom]] places it
+    * there ([[ToRoom]]), else in its thread. Fails closed: an untagged message is `Unweighed`,
+    * and one whose answers the gate cannot read is `Unasked`. A message triage read as put to
+    * grit ([[Tags.directed]]) is `Answering` at its thread's reply address, held only as an
+    * addressed one could be: with no address, by the gate (none under [[Speaking.Off]]), or
+    * over the budget.
+    *
+    * An occasion is held [[Silence.Off]] without [[Limits.occasions]]; below
+    * [[Integrity.Outside]] and lapsed, as [[unrecorded]] holds it; by another unprompted turn
+    * drafting in its conversation ([[Silence.Unanswered]]); at the occasion rate
+    * ([[Silence.Occasions]]); then by the room and deployment rates, the speech cap and the
+    * budget, as a heard message is; else it is `Drafting(turn, Venue.Room(to))`.
     */
   def decide(
+      speaking: Speaking,
+      root: Heard | OccasionRoot,
+      ledger: Ledger,
+      budget: Budget,
+      now: Instant
+  ): Decision = root match {
+    case heard: Heard => decideHeard(speaking, heard, ledger, budget, now)
+    case o: OccasionRoot =>
+      occasioning(speaking) match {
+        case None => Decision.Held(Silence.Off)
+        case Some((limits, rate)) =>
+          first(
+            beforeRecorded(o.occasion, Some(o.to), o.believed, now) ++ Vector(
+              () => unanswered(ledger, o.turn, None),
+              () => {
+                val n = within(ledger.turns, rate, now)(t =>
+                  t.root == Spoken.Root.Occasion && t.room == o.occasion.room
+                )
+                Option.when(n >= rate.count)(Silence.Occasions(n))
+              }
+            ) ++ spent(limits, o.occasion.room, ledger, budget, now)
+          ).fold(Decision.Drafting(o.turn, Venue.Room(o.to)))(Decision.Held(_))
+      }
+  }
+
+  private def decideHeard(
       speaking: Speaking,
       heard: Heard,
       ledger: Ledger,
       budget: Budget,
       now: Instant
   ): Decision = {
-    def within(rate: Rate, spoken: Spoken => Boolean): Int = posted(ledger.turns, rate, now)(spoken)
     def here(t: Spoken): Boolean = t.turn.conversationId == heard.turn.conversationId
     // The thread rate counts the heard message's thread wherever its posts were recorded: a
     // channel's top level is one conversation of many threads (ADR 0060). Without a thread on
@@ -361,7 +416,8 @@ object Speech {
       (limits.toRoom, heard.reach.replyTo.flatMap(_.room), heard.tags) match {
         case (Some(r), Some(to), Tags.Weighed(answers, _, _))
             if r.gate.check(answers, heard.cues) == Gate.Checked.Passes &&
-              within(r.rate, t => atTop(t) && t.room == heard.room) < r.rate.count =>
+              posted(ledger.turns, r.rate, now)(t => atTop(t) && t.room == heard.room) <
+              r.rate.count =>
           Venue.Room(to)
         case _ => Venue.Thread
       }
@@ -379,20 +435,9 @@ object Speech {
         () => heard.cues.continued.map(Silence.Continued(_)),
         () => gated(limits, heard),
         () => heard.cues.spoken.map(Silence.Spoken(_)),
-        // Per conversation, not per thread: grit drafting, or having posted since, anywhere in
-        // the conversation answers the message as far as grit can tell.
-        () =>
-          ledger.turns
-            .find(t =>
-              here(t) && (t.stage match {
-                case Stage.Drafting => true
-                case Stage.Posted(seq) => seq > heard.seq
-                case Stage.Settled => false
-              })
-            )
-            .map(t => Silence.Unanswered(t.turn)),
+        () => unanswered(ledger, heard.turn, Some(heard.seq)),
         () => {
-          val n = within(limits.thread, inThread)
+          val n = posted(ledger.turns, limits.thread, now)(inThread)
           Option.when(n >= limits.thread.count)(Silence.Thread(n))
         }
       ) ++ spent(limits, heard.room, ledger, budget, now)
@@ -413,6 +458,21 @@ object Speech {
         }
     }
   }
+
+  /** The first unprompted turn in `turn`'s conversation drafting, or posted after `after`, as
+    * [[Silence.Unanswered]]. Per conversation, not per thread: grit drafting, or having posted
+    * since, anywhere in the conversation answers a message as far as grit can tell.
+    */
+  private def unanswered(ledger: Ledger, turn: TurnRef, after: Option[EntrySeq]): Option[Silence] =
+    ledger.turns
+      .find(t =>
+        t.turn.conversationId == turn.conversationId && (t.stage match {
+          case Stage.Drafting => true
+          case Stage.Posted(seq) => after.exists(seq > _)
+          case Stage.Settled => false
+        })
+      )
+      .map(t => Silence.Unanswered(t.turn))
 
   /** Why `heard`'s tags and cues fail `limits`' gate: untagged, failing a bound, or unread;
     * `None` when they pass.
@@ -462,79 +522,29 @@ object Speech {
       to: Option[String],
       believed: Integrity,
       now: Instant
-  ): Option[Silence] = ready(speaking, occasion, to, believed, now).left.toOption
+  ): Option[Silence] =
+    occasioning(speaking).fold(Some(Silence.Off))(_ =>
+      first(beforeRecorded(occasion, to, believed, now))
+    )
 
-  /** [[unrecorded]]'s checks passed: the limits, the occasion rate and the address they leave. */
-  private def ready(
-      speaking: Speaking,
+  /** [[unrecorded]]'s checks after [[Silence.Off]], in its order. */
+  private def beforeRecorded(
       occasion: Occasion,
       to: Option[String],
       believed: Integrity,
       now: Instant
-  ): Either[Silence, (Limits, Rate, String)] =
-    for {
-      limits <- limitsOf(speaking).toRight(Silence.Off)
-      rate <- limits.occasions.map(_.room).toRight(Silence.Off)
-      address <- to.toRight(Silence.NoAddress)
-      _ <- Either.cond(!believed.belowOutside, (), Silence.Below(believed))
-      _ <- Either.cond(!now.isAfter(occasion.until), (), Silence.Lapsed(occasion.until))
-    } yield (limits, rate, address)
+  ): Vector[() -> Option[Silence]] =
+    Vector(
+      () => Option.when(to.isEmpty)(Silence.NoAddress),
+      () => Option.when(believed.belowOutside)(Silence.Below(believed)),
+      () => Option.when(now.isAfter(occasion.until))(Silence.Lapsed(occasion.until))
+    )
 
-  /** Whether grit drafts on `occasion` at `now` as `turn`, the turn its entry began, in a
-    * conversation at its room's top level with reply address `to`: held on the first of
-    * [[unrecorded]]'s checks, then another unprompted turn drafting in that conversation
-    * ([[Silence.Unanswered]]), the occasion rate ([[Silence.Occasions]]), the room's and the
-    * deployment's post rates, the speech cap and the budget, as [[decide]] checks them; else
-    * `Drafting(turn, Venue.Room(to))`.
+  /** The limits `speaking` drafts occasions under, and their occasion rate; `None` without
+    * [[Limits.occasions]].
     */
-  def occasion(
-      speaking: Speaking,
-      turn: TurnRef,
-      occasion: Occasion,
-      to: Option[String],
-      believed: Integrity,
-      ledger: Ledger,
-      budget: Budget,
-      now: Instant
-  ): Decision =
-    ready(speaking, occasion, to, believed, now)
-      .flatMap { (limits, rate, address) =>
-        first(
-          Vector(
-            () =>
-              ledger.turns
-                .find(t =>
-                  t.turn != turn && t.turn.conversationId == turn.conversationId &&
-                    t.stage == Stage.Drafting
-                )
-                .map(t => Silence.Unanswered(t.turn)),
-            () => {
-              val n = ledger.turns.count(t =>
-                t.occasion && t.turn != turn && t.room == occasion.room &&
-                  t.at.isAfter(now.minus(JDuration.ofNanos(rate.per.toNanos)))
-              )
-              Option.when(n >= rate.count)(Silence.Occasions(n))
-            }
-          ) ++ spent(limits, occasion.room, ledger, budget, now)
-        ).toLeft(address)
-      }
-      .fold(Decision.Held(_), address => Decision.Drafting(turn, Venue.Room(address)))
-
-  /** The speaking an occasion's draft is posted under ([[post]]): [[Speaking.Off]] without
-    * [[Limits.occasions]], [[Speaking.Shadow]] under either [[Speaking.Shadow]] or
-    * [[Occasions.Shadow]], else [[Speaking.Within]].
-    */
-  def forOccasion(speaking: Speaking): Speaking = speaking match {
-    case Speaking.Off => Speaking.Off
-    case Speaking.Shadow(limits) =>
-      if (limits.occasions.isEmpty) Speaking.Off else Speaking.Shadow(limits)
-    case Speaking.Within(limits) =>
-      limits.occasions match {
-        case None => Speaking.Off
-        case Some(Occasions.Shadow(_)) => Speaking.Shadow(limits)
-        case Some(Occasions.Live(_)) => Speaking.Within(limits)
-      }
-  }
+  private def occasioning(speaking: Speaking): Option[(Limits, Rate)] =
+    limitsOf(speaking).flatMap(l => l.occasions.map(o => (l, o.room)))
 
   /** The limits `speaking` drafts under; `None` under [[Speaking.Off]]. */
   private[grit] def limitsOf(speaking: Speaking): Option[Limits] = speaking match {
@@ -574,18 +584,27 @@ object Speech {
   private def first(checks: Vector[() -> Option[Silence]]): Option[Silence] =
     checks.iterator.map(_()).collectFirst { case Some(s) => s }
 
-  /** What becomes of an unprompted draft `judged`, its turn believed at `believed`, under
-    * `speaking`: `Posted` (or `Shadowed` under [[Speaking.Shadow]]) when its score is at or
-    * above `postAt`, unless `believed` is below [[Integrity.Outside]], when it is `Untrusted`;
-    * `Below` when its score is under `postAt`; `Unjudged`, with why, when it was not judged;
-    * `Withdrawn` under [[Speaking.Off]].
+  /** What becomes of an unprompted draft `judged`, its turn begun on `root` and believed at
+    * `believed`, under `speaking`: `Posted` (or `Shadowed` under [[Speaking.Shadow]]) when its
+    * score is at or above `postAt`, unless `believed` is below [[Integrity.Outside]], when it is
+    * `Untrusted`; `Below` when its score is under `postAt`; `Unjudged`, with why, when it was not
+    * judged; `Withdrawn` under [[Speaking.Off]], and an occasion's without [[Limits.occasions]].
     */
-  def post(speaking: Speaking, judged: Either[String, Judged], believed: Integrity): Outcome = {
+  def post(
+      speaking: Speaking,
+      root: Spoken.Root,
+      judged: Either[String, Judged],
+      believed: Integrity
+  ): Outcome = {
     def cleared(limits: Limits, j: Judged, as: Cleared => Outcome): Outcome =
       if (!(j.score >= limits.postAt)) Outcome.Below(j, limits.postAt)
       else if (believed.belowOutside) Outcome.Untrusted(j, believed)
       else as(Cleared.Scored(j))
-    (speaking, judged) match {
+    val under = root match {
+      case Spoken.Root.Heard => speaking
+      case Spoken.Root.Occasion => occasioning(speaking).fold(Speaking.Off)(_ => speaking)
+    }
+    (under, judged) match {
       case (Speaking.Off, _) => Outcome.Withdrawn
       case (_, Left(why)) => Outcome.Unjudged(why)
       case (Speaking.Shadow(limits), Right(j)) => cleared(limits, j, Outcome.Shadowed(_))

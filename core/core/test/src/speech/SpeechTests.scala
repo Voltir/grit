@@ -103,7 +103,7 @@ object SpeechTests extends TestSuite {
   private def held(why: Silence) = Decision.Held(why)
 
   // An occasion at the room's top level, its turn in that conversation, lapsing in an hour, and
-  // limits that draft on occasions live.
+  // limits that draft on occasions.
   private val topTurn = TurnRef(ConversationId("top"), TurnSeq(9))
   private val ahead = Occasion(
     room,
@@ -113,16 +113,15 @@ object SpeechTests extends TestSuite {
     now.plusSeconds(3600)
   )
   private val occasions =
-    Speaking.Within(limits.copy(occasions = Some(Occasions.Live(Occasions.Suggested))))
+    Speaking.Within(limits.copy(occasions = Some(Occasions(Occasions.Suggested))))
   private def occasioned(
       s: Speaking = occasions,
       l: Ledger = empty,
-      to: Option[String] = Some("C//"),
       believed: Integrity = Integrity.Member,
       b: Budget = budget,
       at: Instant = now
   ) =
-    Speech.occasion(s, topTurn, ahead, to, believed, l, b, at)
+    Speech.decide(s, OccasionRoot(topTurn, ahead, "C//", believed), l, b, at)
 
   /** A decision on an occasion of `conversation`, at `stage`, decided `at`, in `in`. */
   private def occasionAt(conversation: String, at: Instant, stage: Stage, in: Place = room) =
@@ -132,7 +131,7 @@ object SpeechTests extends TestSuite {
       at,
       stage,
       Venue.Room("C//"),
-      occasion = true
+      root = Spoken.Root.Occasion
     )
 
   private val half = p(0.5)
@@ -351,37 +350,48 @@ object SpeechTests extends TestSuite {
     test("what becomes of a draft") {
       test("at or above postAt, within: posted") {
         assert(
-          Speech.post(within, Right(scored(0.5, 0.8)), Integrity.Member) ==
+          Speech.post(within, Spoken.Root.Heard, Right(scored(0.5, 0.8)), Integrity.Member) ==
             Outcome.Posted(Cleared.Scored(scored(0.5, 0.8)))
         )
       }
       test("at or above postAt, shadow: shadowed") {
         assert(
-          Speech.post(Speaking.Shadow(limits), Right(judged), Integrity.Member) ==
+          Speech.post(
+            Speaking.Shadow(limits),
+            Spoken.Root.Heard,
+            Right(judged),
+            Integrity.Member
+          ) ==
             Outcome.Shadowed(Cleared.Scored(judged))
         )
       }
       test("under postAt: below, within or shadow") {
         val weak = scored(0.6, 0.49)
         Vector(within, Speaking.Shadow(limits))
-          .map(Speech.post(_, Right(weak), Integrity.Member)) ==>
+          .map(Speech.post(_, Spoken.Root.Heard, Right(weak), Integrity.Member)) ==>
           Vector(Outcome.Below(weak, p(0.5)), Outcome.Below(weak, p(0.5)))
       }
       test("at or above postAt, believed below outside: untrusted, within or shadow") {
         val below = Integrity.Untrusted
-        Vector(within, Speaking.Shadow(limits)).map(Speech.post(_, Right(judged), below)) ==>
+        Vector(within, Speaking.Shadow(limits))
+          .map(Speech.post(_, Spoken.Root.Heard, Right(judged), below)) ==>
           Vector(Outcome.Untrusted(judged, below), Outcome.Untrusted(judged, below))
         // Outside is the least a heard message may be believed at to be drafted after.
-        Speech.post(within, Right(judged), Integrity.Outside) ==>
+        Speech.post(within, Spoken.Root.Heard, Right(judged), Integrity.Outside) ==>
           Outcome.Posted(Cleared.Scored(judged))
         val weak = scored(0.6, 0.49)
-        Speech.post(within, Right(weak), below) ==> Outcome.Below(weak, p(0.5))
+        Speech.post(within, Spoken.Root.Heard, Right(weak), below) ==> Outcome.Below(weak, p(0.5))
       }
       test("not judged: unjudged, with why") {
-        assert(Speech.post(within, Left("down"), Integrity.Member) == Outcome.Unjudged("down"))
+        assert(
+          Speech.post(within, Spoken.Root.Heard, Left("down"), Integrity.Member) == Outcome
+            .Unjudged("down")
+        )
       }
       test("speaking switched off since: withdrawn, judged or not") {
-        Vector(Right(judged), Left("down")).map(Speech.post(Speaking.Off, _, Integrity.Member)) ==>
+        Vector(Right(judged), Left("down")).map(
+          Speech.post(Speaking.Off, Spoken.Root.Heard, _, Integrity.Member)
+        ) ==>
           Vector(Outcome.Withdrawn, Outcome.Withdrawn)
       }
     }
@@ -572,13 +582,13 @@ object SpeechTests extends TestSuite {
       ) ==> (held(Silence.Unanswered(drafting)), Decision.Drafting(topTurn, Venue.Room("C//")))
     }
 
-    test("an occasion is held at the occasion rate, counting shadowed decisions") {
-      val shadowed = occasionAt("earlier", now.minusSeconds(60 * 60), Stage.Settled)
+    test("an occasion is held at the occasion rate, counting decisions at any stage") {
+      val settled = occasionAt("earlier", now.minusSeconds(60 * 60), Stage.Settled)
       val old = occasionAt("older", now.minusSeconds(25 * 60 * 60), Stage.Settled)
       val other = occasionAt("there", now.minusSeconds(60), Stage.Settled, otherRoom)
       val heardHere = Spoken(TurnRef(ConversationId("t"), TurnSeq(1)), room, now, Stage.Settled)
       (
-        occasioned(l = empty.copy(turns = Vector(shadowed))),
+        occasioned(l = empty.copy(turns = Vector(settled))),
         occasioned(l = empty.copy(turns = Vector(old, other, heardHere)))
       ) ==> (held(Silence.Occasions(1)), Decision.Drafting(topTurn, Venue.Room("C//")))
     }
@@ -607,13 +617,13 @@ object SpeechTests extends TestSuite {
         Ledger(Vector.empty, Spend.Zero, all)
       )
       (
-        occasioned(l = ledgers(0), to = None, believed = Integrity.Untrusted, b = capped),
+        Speech.unrecorded(occasions, ahead, None, Integrity.Untrusted, now),
         occasioned(l = ledgers(0), believed = Integrity.Untrusted, b = capped),
         occasioned(l = ledgers(0), b = capped, at = ahead.until.plusSeconds(1)),
         ledgers.map(l => occasioned(l = l, b = capped)),
         occasioned(l = ledgers(5))
       ) ==> (
-        held(Silence.NoAddress),
+        Some(Silence.NoAddress),
         held(Silence.Below(Integrity.Untrusted)),
         held(Silence.Lapsed(ahead.until)),
         Vector(
@@ -634,24 +644,15 @@ object SpeechTests extends TestSuite {
     }
 
     test(
-      "forOccasion is Shadow under Speaking.Shadow with Occasions.Live, and the lesser mode always"
+      "an occasion's draft is posted as a heard one is under the deployment's speaking, and withdrawn without occasions"
     ) {
-      val live = limits.copy(occasions = Some(Occasions.Live(Occasions.Suggested)))
-      val shadow = limits.copy(occasions = Some(Occasions.Shadow(Occasions.Suggested)))
-      Vector(
-        Speech.forOccasion(Speaking.Shadow(live)),
-        Speech.forOccasion(Speaking.Within(live)),
-        Speech.forOccasion(Speaking.Within(shadow)),
-        Speech.forOccasion(Speaking.Shadow(shadow)),
-        Speech.forOccasion(Speaking.Within(limits)),
-        Speech.forOccasion(Speaking.Off)
-      ) ==> Vector(
-        Speaking.Shadow(live),
-        Speaking.Within(live),
-        Speaking.Shadow(shadow),
-        Speaking.Shadow(shadow),
-        Speaking.Off,
-        Speaking.Off
+      val live = limits.copy(occasions = Some(Occasions(Occasions.Suggested)))
+      Vector(Speaking.Within(live), Speaking.Shadow(live), Speaking.Within(limits), Speaking.Off)
+        .map(Speech.post(_, Spoken.Root.Occasion, Right(judged), Integrity.Member)) ==> Vector(
+        Outcome.Posted(Cleared.Scored(judged)),
+        Outcome.Shadowed(Cleared.Scored(judged)),
+        Outcome.Withdrawn,
+        Outcome.Withdrawn
       )
     }
 

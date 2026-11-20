@@ -14,7 +14,7 @@ import grit.core.model.{Grade, ModelRef, Pinned, StrictSchemas, TurnProfile, Tur
 import grit.core.provider.ModelRequest
 import grit.core.route.{Routed, Routing, Uncleared}
 import grit.core.session.{Event, Session}
-import grit.core.speech.{Outcome, ReplyTo, Speaking, Speech, SpeechStore, Venue}
+import grit.core.speech.{Outcome, ReplyTo, Speaking, Speech, SpeechStore, Spoken, Venue}
 import grit.core.stitch.{Along, Strand}
 import grit.core.store.{Entry, EntryStore, ModelProfileStore, Payload, StoreError, Tx, UsageLedger}
 import grit.core.tool.ToolName
@@ -1065,9 +1065,9 @@ private[turn] object TurnSteps {
           case Settling.Judged(TurnJudge.Judgement.Passed) => Outcome.Passed
           case Settling.Judged(TurnJudge.Judgement.NothingRecalled) => Outcome.NothingRecalled
           case Settling.Judged(TurnJudge.Judgement.Unjudged(why)) =>
-            Speech.post(speaking, Left(why), level)
+            Speech.post(speaking, Spoken.Root.Heard, Left(why), level)
           case Settling.Judged(TurnJudge.Judgement.Scored(j, _)) =>
-            Speech.post(speaking, Right(j), level)
+            Speech.post(speaking, Spoken.Root.Heard, Right(j), level)
           case Settling.Named =>
             TurnJudge.said(draft).fold(Outcome.Passed)(_ => Speech.postNamed(speaking))
         })

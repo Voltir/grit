@@ -493,7 +493,9 @@ abstract class SpeechContract extends TestSuite {
       ) ==> (
         Right(true),
         Right(false),
-        Vector(Spoken(turn, room, At, Stage.Drafting, Venue.Room("C//"), None, occasion = true)),
+        Vector(
+          Spoken(turn, room, At, Stage.Drafting, Venue.Room("C//"), None, Spoken.Root.Occasion)
+        ),
         Right(Venue.Room("C//"))
       )
       transaction(speech.forget(c, turn.turnSeq, turn.turnSeq)) ==> Right(())
@@ -514,8 +516,8 @@ abstract class SpeechContract extends TestSuite {
         speech.drafted(shadowed, Outcome.Shadowed(Cleared.Scored(judged)), Some("hi"), At)
       ) ==>
         Right(true)
-      mine(c, At).map(s => (s.turn, s.stage, s.occasion)) ==> Vector(
-        (shadowed, Stage.Settled, true)
+      mine(c, At).map(s => (s.turn, s.stage, s.root)) ==> Vector(
+        (shadowed, Stage.Settled, Spoken.Root.Occasion)
       )
     }
 

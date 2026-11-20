@@ -57,7 +57,7 @@ trait SpeechStore {
     */
   def answering(turn: TurnRef)(using Tx^): Either[StoreError, Boolean]
 
-  /** Keeps `decision` on `turn`, an occasion's, in `room`, made `at` ([[Speech.occasion]]);
+  /** Keeps `decision` on `turn`, an occasion's, in `room`, made `at` ([[Speech.decide]]);
     * `false`, writing nothing, when one is kept for it already. A drafting one is spoken at its
     * venue, as an occasion's ([[Spoken.occasion]]); `Invalid` for [[Decision.Answering]], which
     * no occasion is.
