@@ -581,6 +581,14 @@ object SpeechTests extends TestSuite {
         occasioned(l = empty.copy(turns = Vector(elsewhere, postedHere)))
       ) ==> (held(Silence.Unanswered(drafting)), Decision.Drafting(topTurn, Venue.Room("C//")))
     }
+    test("a root decided again over a ledger holding its own decision answers as the first time") {
+      val ownHeard = Spoken(turn, room, now, Stage.Drafting)
+      val ownOccasion = occasionAt("top", now, Stage.Drafting).copy(turn = topTurn)
+      (
+        decide(l = empty.copy(turns = Vector(ownHeard))),
+        occasioned(l = empty.copy(turns = Vector(ownOccasion)))
+      ) ==> (Decision.Drafting(turn, Venue.Thread), Decision.Drafting(topTurn, Venue.Room("C//")))
+    }
 
     test(
       "an occasion is held at the occasion rate, Suggested's one in 12 hours, counting decisions at any stage"

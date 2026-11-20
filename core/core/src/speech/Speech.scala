@@ -366,8 +366,32 @@ object Speech {
     * An occasion is held as [[unrecorded]] holds it, then by another unprompted turn drafting in
     * its conversation, the occasion rate, and the heard message's checks from the room rate on;
     * else it is `Drafting(turn, Venue.Room(to))`.
+    *
+    * `ledger`'s own row for `root`'s turn, kept by an earlier decision on it, is not counted:
+    * deciding again answers as the first decision did.
     */
   def decide(
+      speaking: Speaking,
+      root: Heard | OccasionRoot,
+      ledger: Ledger,
+      budget: Budget,
+      now: Instant
+  ): Decision = {
+    val own = root match {
+      case h: Heard => h.turn
+      case o: OccasionRoot => o.turn
+    }
+    deciding(
+      speaking,
+      root,
+      ledger.copy(turns = ledger.turns.filterNot(_.turn == own)),
+      budget,
+      now
+    )
+  }
+
+  /** As [[decide]] decides, over `ledger` without `root`'s own turn. */
+  private def deciding(
       speaking: Speaking,
       root: Heard | OccasionRoot,
       ledger: Ledger,

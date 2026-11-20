@@ -503,6 +503,23 @@ object TriageTests extends TestSuite {
       history.map(_.name) ==>
         Vector("stitched", "ask:triage", "ask:triage:record", "record", "consider", "start")
     }
+    test(
+      "a consider retried after its decision was kept answers that decision, and starts its turn"
+    ) {
+      val w = new World
+      val t = w.hear("what did we decide about the refi page?", "Ana", 0)
+      val durable = new InMemoryDurable
+      val first = durable.run(t.workflowId)(w.body(asking, 1, within))
+      val turn = TurnRef(c, t.turn)
+      // The step committed its transaction and was not recorded: DBOS runs it again.
+      val recorded = durable.history(t.workflowId).takeWhile(_.name != "consider")
+      new InMemoryDurable().replay(t.workflowId, recorded)(w.body(asking, 1, within)) ==>
+        Right(first)
+      (w.started, w.speech.decisions.map(_._2)) ==> (
+        Vector(turn, turn),
+        Vector(Decision.Drafting(turn, Venue.Thread))
+      )
+    }
 
     test(
       "a drafting turn whose start fails is kept failed, and holds no later message in its thread"
