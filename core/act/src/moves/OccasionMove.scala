@@ -34,8 +34,11 @@ private[moves] object OccasionMove {
       keeper: DocumentKeeper
   ) extends Act.Acted
 
-  /** `move`'s occasion, recorded as the first entry of `turn`, its room's reply address `to`. */
-  final case class Recorded(move: Move, turn: TurnRef, to: String) extends Act.Move {
+  /** `move`'s occasion, recorded as the first entry of `turn`, believed at `believed`, its room's
+    * reply address `to`.
+    */
+  final case class Recorded(move: Move, turn: TurnRef, to: String, believed: Integrity)
+      extends Act.Move {
     def name: MoveName = move.name
   }
 
@@ -49,8 +52,11 @@ private[moves] object OccasionMove {
   /** Read at the run's floor ([[Occasioned.found]]), then recorded through the inbox, dated by
     * the step's clock: the turn its entry began and its reply address, or what it ended as.
     */
-  private val found: Step[KeepingEnv, Move, Either[String, Either[Occasioned, (TurnRef, String)]]] =
-    Step[KeepingEnv, Move, Either[String, Either[Occasioned, (TurnRef, String)]]](Found)(env =>
+  private val found
+      : Step[KeepingEnv, Move, Either[String, Either[Occasioned, (TurnRef, String, Integrity)]]] =
+    Step[KeepingEnv, Move, Either[String, Either[Occasioned, (TurnRef, String, Integrity)]]](
+      Found
+    )(env =>
       m => {
         val (subject, at) = (m.acting.subject, env.moves.clock.now())
         val o = env.occasions
@@ -62,12 +68,12 @@ private[moves] object OccasionMove {
           .map(_.described)
           .flatMap {
             case Left(ended) => Right(Left(ended))
-            case Right((origin, to)) =>
+            case Right((origin, to, believed)) =>
               o.inbox
-                .occasion(origin, m.plugin, m.occasion, at, m.integrity)
+                .occasion(origin, m.plugin, m.occasion, at, believed)
                 .left
                 .map(_.toString)
-                .map(turn => Right((turn, to)))
+                .map(turn => Right((turn, to, believed)))
           }
       }
     )(using MovesJournal.kept(using recorded))
@@ -86,7 +92,7 @@ private[moves] object OccasionMove {
             r.move.occasion,
             r.turn,
             r.to,
-            r.move.integrity,
+            r.believed,
             env.occasions.unprompted.speaking,
             env.occasions.unprompted.budget,
             env.occasions.speech,
@@ -125,7 +131,7 @@ private[moves] object OccasionMove {
         o match {
           case Left(why) => Left(Left(why))
           case Right(Left(ended)) => Left(Right(ended))
-          case Right(Right((turn, to))) => Right(Recorded(m, turn, to))
+          case Right(Right((turn, to, believed))) => Right(Recorded(m, turn, to, believed))
         }
       )
       .andThen(
@@ -191,21 +197,34 @@ private[moves] object OccasionMove {
       }
   )
 
-  /** `{"ended":occasioned}` or `{"recorded":turn,"to":address}`. */
-  private[moves] given recorded: Journaled[Either[Occasioned, (TurnRef, String)]] = Journaled.json(
-    {
-      case Left(ended) => ujson.Obj("ended" -> ujson.read(occasioned.encode(ended)))
-      case Right((t, to)) => ujson.Obj("recorded" -> id(t), "to" -> to)
-    },
-    v =>
-      v.objOpt.toRight("occasion: expected an object").flatMap { o =>
-        (o.get("ended"), o.get("recorded").flatMap(_.strOpt), o.get("to").flatMap(_.strOpt)) match {
-          case (Some(ended), _, _) => occasioned.decode(ended.render()).map(Left(_))
-          case (_, Some(t), Some(to)) => turn(t).map(r => Right((r, to)))
-          case _ => Left("occasion: expected ended, or recorded and to")
+  /** `{"ended":occasioned}` or `{"recorded":turn,"to":address,"believed":integrity}`, the
+    * integrity as [[Integrity.written]] writes it.
+    */
+  private[moves] given recorded: Journaled[Either[Occasioned, (TurnRef, String, Integrity)]] =
+    Journaled.json(
+      {
+        case Left(ended) => ujson.Obj("ended" -> ujson.read(occasioned.encode(ended)))
+        case Right((t, to, believed)) =>
+          ujson.Obj("recorded" -> id(t), "to" -> to, "believed" -> Integrity.written(believed))
+      },
+      v =>
+        v.objOpt.toRight("occasion: expected an object").flatMap { o =>
+          (
+            o.get("ended"),
+            o.get("recorded").flatMap(_.strOpt),
+            o.get("to").flatMap(_.strOpt),
+            o.get("believed").flatMap(_.strOpt)
+          ) match {
+            case (Some(ended), _, _, _) => occasioned.decode(ended.render()).map(Left(_))
+            case (_, Some(t), Some(to), Some(b)) =>
+              for {
+                r <- turn(t)
+                believed <- Integrity.read(b)
+              } yield Right((r, to, believed))
+            case _ => Left("occasion: expected ended, or recorded, to and believed")
+          }
         }
-      }
-  )
+    )
 
   /** `{"ended":occasioned}` or `{"drafting":true}`. */
   private[moves] given decision: Journaled[Either[Occasioned, Unit]] = Journaled.json(

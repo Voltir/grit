@@ -245,9 +245,9 @@ trait Keeping extends Moves {
     */
   def piece(name: MoveName, from: Tainted[Piecing]): Either[MoveError, Pieced]
 
-  /** What came of `from`, the acting plugin's occasion, believed at no more than `from` is: read
-    * at the run's floor as the acting's subject, then recorded as the first entry of a turn of
-    * its own at its room's top level ([[grit.core.inbox.OccasionInbox.occasion]]), decided as
+  /** What came of `from`, the acting plugin's occasion, believed at no more than `from` is nor
+    * than its document is: read at the run's floor as the acting's subject, then recorded as the
+    * first entry of a turn of its own at its room's top level ([[grit.core.inbox.OccasionInbox.occasion]]), decided as
     * [[grit.core.speech.Speech.occasion]] decides under the deployment's speaking, and its turn
     * started when it drafts; each phase recorded once, so a rerun records, decides and starts
     * nothing twice. [[Occasioned.Mislabelled]], [[Occasioned.Unread]] and an
