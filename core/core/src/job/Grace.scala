@@ -12,7 +12,7 @@ object Grace {
 
   val Zero: Grace = FiniteDuration(0, scala.concurrent.duration.SECONDS)
 
-  /** From `from` to `until`; [[Zero]] when `until` is not after `from`. */
+  /** [[Zero]] when `until` is not after `from`. */
   def between(from: java.time.Instant, until: java.time.Instant): Grace =
     of(
       FiniteDuration(

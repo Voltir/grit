@@ -12,12 +12,9 @@ import grit.core.speech.SpeechJson
 import grit.core.store.{StoreError, Tx}
 import grit.knowledge.ref.TopicKey
 
-/** The job `meeting-ahead`, its days reckoned in `zone`: a run a topics run booked for one
-  * meeting ([[MeetingsAhead.Due]], its params) names its occasion ([[MeetingsAhead.occasion]],
-  * `occasion`). It first reads the meeting's topic again (`ahead`) and names none when the
-  * meeting is no longer [[MeetingsAhead.qualifying]] in its room, names fewer than two people,
-  * or starts at another time; and, when the topic was written since its booking, sorts it
-  * again (`ahead-sort`), naming none when judged settled.
+/** A run a topics run booked for one meeting names its occasion ([[MeetingsAhead.occasion]]);
+  * none when the meeting has moved, is no longer [[MeetingsAhead.qualifying]] in its room or
+  * names fewer than two people, or, its topic written since the booking, is judged settled.
   */
 final class MeetingAhead(zone: ZoneId) extends DreamingJob[MeetingsAhead.Due] {
 
@@ -92,13 +89,11 @@ object MeetingAhead {
           .getOrElse(Again.Gone)
       )
 
-  /** What a run found of its meeting: `Still` due, or `Gone`. */
   private enum Again extends caps.Pure {
     case Still(due: MeetingsAhead.Due)
     case Gone
   }
 
-  /** `Still` as its meeting, `Gone` as `null`. */
   private given Journaled[Again] = Journaled.json(
     {
       case Again.Still(d) => MeetingsAhead.writeDue(d)

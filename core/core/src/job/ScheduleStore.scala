@@ -61,11 +61,9 @@ trait ScheduleStore {
     */
   def replied(slot: Slot, version: Int, at: Instant)(using Tx^): Either[StoreError, Unit]
 
-  /** `id`, a once schedule of `job` at `at`, as late as `grace` after it, with `params` as its
-    * job writes them, run for grit
-    * and reported in its runs' own conversations ([[Report.Kept]]), kept at the transaction's
-    * floor ([[Tx.floor]]) and believed at `integrity`; none written when `id` has a row already.
-    * No desk lists or cancels it.
+  /** A once schedule run for grit, reported in its runs' own conversations ([[Report.Kept]]),
+    * kept at the transaction's floor ([[Tx.floor]]); nothing written when `id` has a row
+    * already. No desk lists or cancels it.
     */
   def book(
       id: ScheduleId,

@@ -77,10 +77,7 @@ object DurableMoves {
     Mint.trusted(run, acting.integrity)
 
   /** As [[plain]], `plugin`'s, its moves also keeping `keeper`'s documents and `pieces`' pieces
-    * of files, each piece move recorded as `piece:{name}`, naming its occasions, each recorded
-    * as `occasion:{name}`, then `occasion:{name}:decide` and `occasion:{name}:start`, and
-    * booking the runs of the jobs `owns` holds to be `plugin`'s, each recorded as
-    * `later:{name}`.
+    * of files, naming its occasions, and booking runs of the jobs `owns` holds to be `plugin`'s.
     */
   def keeping[A <: caps.Pure](
       acting: Acting,

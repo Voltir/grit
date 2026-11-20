@@ -261,12 +261,11 @@ trait Keeping extends Moves {
 
   /** `from`'s run booked: a once schedule of its job, kept at the run's floor
     * ([[grit.core.store.Tx.floor]]), run for grit, its runs believed at `from`'s integrity and
-    * reported in their own conversations alone; recorded once, so a rerun books it once and gets
-    * the same id. An `at` already past is booked all the same, and missed past `until`. Refused
-    * before any step, in this order: [[MoveError.Diverged]], [[MoveError.Repeated]],
-    * [[MoveError.NotOwn]] (a job not the acting plugin's), [[MoveError.OverLimit]]; then, the
-    * move counted as made, [[MoveError.Below]] when `from` is believed below
-    * [[grit.core.visibility.Integrity.Outside]], booking nothing, or [[MoveError.Store]].
+    * reported in their own conversations alone; a rerun books it once and gets the same id. An
+    * `at` already past is booked all the same, and missed past `until`. Refused before any step,
+    * in this order: [[MoveError.Diverged]], [[MoveError.Repeated]], [[MoveError.NotOwn]],
+    * [[MoveError.OverLimit]]; then, the move counted as made, [[MoveError.Below]] or
+    * [[MoveError.Store]].
     */
   def later[P <: caps.Pure](name: MoveName, from: Tainted[Booked[P]]): Either[MoveError, ScheduleId]
 }

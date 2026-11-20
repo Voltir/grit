@@ -93,7 +93,6 @@ object Occasions {
     */
   val Heard: FiniteDuration = 7.days
 
-  /** 1 occasion a room in 12 hours. */
   val Suggested: Rate = Rate(1, 12.hours)
 }
 

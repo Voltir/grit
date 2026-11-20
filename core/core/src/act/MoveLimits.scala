@@ -41,7 +41,6 @@ object MoveLimits {
       )
     else Right(new MoveLimits(asks, calls, judgments, occasions, laters))
 
-  /** No moves of any limited kind. */
   val Zero: MoveLimits = new MoveLimits(0, 0, 0, 0, 0)
 }
 

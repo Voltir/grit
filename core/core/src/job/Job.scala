@@ -91,7 +91,6 @@ final class Jobs private (byName: Map[JobName, Owned]) {
   /** The job named `name`, and whose it is; `None` when the deployment has none. */
   def named(name: JobName): Option[Owned] = byName.get(name)
 
-  /** Whether the job named `name` is `plugin`'s. */
   def ownedBy(plugin: PluginName)(name: JobName): Boolean = byName.get(name).exists {
     case Owned.Plugins(p, _) => p == plugin
     case Owned.Keeps(p, _, _) => p == plugin

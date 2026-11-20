@@ -140,7 +140,6 @@ private[moves] object Act {
   /** A piece move's `piece:{name}`. */
   val Piecings: ActName[Move] = ActName.keyed[Move]("piece")(m => MoveName.value(m.name))
 
-  /** A booking's `later:{name}`. */
   val Laters: ActName[Move] = ActName.keyed[Move]("later")(m => MoveName.value(m.name))
 
   /** The text ask `name` of `request`, under `digest`. */
@@ -778,9 +777,7 @@ private[moves] object Act {
     )
   }
 
-  /** A booking's step: what [[grit.core.act.Keeping.later]] says it does, in a transaction
-    * opened for the acting's subject; the schedule's id, or why the store failed.
-    */
+  /** [[grit.core.act.Keeping.later]]'s step. */
   val later: Flow[MovesEnv, Later, Nothing, Either[String, ScheduleId]] = {
     given Journaled[Either[String, ScheduleId]] =
       MovesJournal.kept[ScheduleId](using MovesJournal.booked)

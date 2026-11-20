@@ -1019,7 +1019,6 @@ object MovesJournal {
       }
   )
 
-  /** A booked schedule's id, as its text. */
   given booked: Journaled[ScheduleId] = Journaled.json(
     id => ujson.Str(ScheduleId.value(id)),
     v => v.strOpt.toRight("later: expected a schedule's id").flatMap(ScheduleId.of)
