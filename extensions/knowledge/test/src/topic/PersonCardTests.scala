@@ -156,7 +156,12 @@ object PersonCardTests extends TestSuite {
       PersonCard.read(c.key, c.write) ==> Right(c)
     }
 
-    test("a card's text is its name's line, its paragraph, then its facts' lines") {
+    test("a paragraph's runs of whitespace are one space, so it holds no blank line") {
+      card().told(Some("Runs the releases.\n\n  Owns the  deploy\ttrain. ")).paragraph ==>
+        Some("Runs the releases. Owns the deploy train.")
+    }
+
+    test("a card's text is its name's line, its paragraph, a blank line, then its facts' lines") {
       val c = PersonCard
         .written(
           None,
@@ -173,11 +178,12 @@ object PersonCardTests extends TestSuite {
         )
         .told(Some("Appears to run the releases."))
       c.text.map(DocText.value) ==> Right(
-        """Dana Ito, as grit sees them from the team's talk
+        """Dana Ito: a profile inferred from their messages in the team's channels
           |Appears to run the releases.
+          |
           |Talks about: The release train. (meetings: The pricing review. on 2026-11-10)
           |Works most with: Bo, Cy
-          |Active in 2 rooms on 3 days lately; last spoke 2026-11-10. Time zone: Europe/London.""".stripMargin
+          |Active in 2 rooms on 3 days in the last 30 days; last spoke 2026-11-10. Time zone: Europe/London.""".stripMargin
       )
     }
 

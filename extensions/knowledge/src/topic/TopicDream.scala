@@ -886,11 +886,11 @@ object TopicDream {
     // a run throws here if not.
     Typed(Proven.right(JsonSchema.read(schema).left.map(_.toString)), c => read(c.json))
 
-  // Draft wording, for Nick (grit/568): the paragraph ask's system text and its reply's
-  // description. Neither names anyone: a person's name reaches the model only in the card shown.
+  // The paragraph ask's system text and its reply's description name no one: a person's name
+  // reaches the model only in the card shown.
   private[topic] val PersonSystem: String =
     "You keep grit's short note on one colleague, inferred from how they take part in the " +
-      "team's talk. You are shown their current note, the topics they spoke in and some " +
+      "team's talk. You are shown their current paragraph, when they have one, and some " +
       "discussions they took part in. Write one short paragraph, at most " +
       s"${PersonCards.ParagraphChars} characters, on what their role and expertise appear to be " +
       "and what they mostly work on, as shown by what they talk about. Say \"appears\" where " +
@@ -918,14 +918,14 @@ object TopicDream {
       }
   )
 
-  /** A card's paragraph ask: [[PersonSystem]], each strand within [[PersonCards.AskChars]], the
-    * card whole (within [[PersonCards.TextChars]]).
+  /** A card's paragraph ask: [[PersonSystem]], each strand within [[PersonCards.AskChars]], and
+    * the card's lead alone: its name's line and its paragraph, none of its facts.
     */
   private val personSummary: Dreaming.Summary[Option[String]] =
     Dreaming.Summary(
       PersonSystem,
       PersonCards.AskChars,
-      Dreaming.Showing.Head(PersonCards.TextChars),
+      Dreaming.Showing.Lead(PersonCards.TextChars),
       PersonReply
     )
 

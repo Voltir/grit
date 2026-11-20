@@ -203,7 +203,7 @@ object MeetingLookupTests extends TestSuite {
         )(using TestTx.fake(Clearance.of(Label.Public)))
         .fold(e => sys.error(e.toString), _ => ())
       val answer = lookup(about = Some("release")).answer(kept.read()).text
-      (answer.contains("The release review."), answer.contains("as grit sees them")) ==> (
+      (answer.contains("The release review."), answer.contains("a profile inferred")) ==> (
         true,
         false
       )

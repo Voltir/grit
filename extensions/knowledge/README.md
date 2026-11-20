@@ -211,8 +211,10 @@ in the step's record: the floor's topics written from a strand they spoke in (ne
 most 8), whom they share most strands with (at most 5), how many rooms and days they spoke in
 (a lower bound, by the last message they said in each strand) and the day they last spoke. Its
 keep (`keep-facts-{i}`) reads each topic at that version and quotes its lead's first sentence,
-believed at no more than every topic quoted; the ask (`person-{i}`) is shown that card, so their
-name reaches the model only inside its fenced message, and their newest
+believed at no more than every topic quoted; the ask (`person-{i}`) is shown only that card's
+lead, its name's line then its paragraph when it has one, which a blank line parts from its
+facts (`Dreaming.Showing.Lead`), so their name reaches the model only inside its fenced
+message, and their newest
 `PersonCards.Asked` strands, and replies one paragraph on their work or none, cut at
 `PersonCards.ParagraphChars`; the card is kept with it (`keep-person-{i}`), believed at no more
 than the card shown; a reply of none keeps the paragraph it had. A card goes once its person last

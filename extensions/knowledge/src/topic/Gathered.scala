@@ -61,7 +61,6 @@ final case class Gathered(
           s"$said ${TopicKey.value(f.from)} into ${TopicKey.value(f.into)} (${f"${f.p}%.2f"})"
         ).mkString("; ", ", ", "")
     // Draft wording, for Nick: `folded` for the folds made, `would fold` for those proposed.
-    // Draft wording, for Nick (grit/568): the cards a run wrote.
     val cards =
       if (people == 0) "" else if (people == 1) "; 1 person card" else s"; $people person cards"
     counts + doubted + refs + folds("folded", folded) + folds("would fold", proposed) + cards +

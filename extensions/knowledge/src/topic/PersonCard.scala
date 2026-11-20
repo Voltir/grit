@@ -37,17 +37,18 @@ final case class PersonCard private (
     written: LocalDate
 ) extends caps.Pure {
 
-  /** Its text, as a window shows it: its name's line, its paragraph, then the facts' lines, each
-    * left out when it has nothing to say, within [[PersonCards.TextChars]].
+  /** Its text, as a window shows it: its name's line, its paragraph, a blank line, then the
+    * facts' lines, each left out when it has nothing to say, within [[PersonCards.TextChars]].
     */
   def text: Either[String, DocText] =
     DocText.of(Cut.head(PersonCard.render(this), PersonCards.TextChars))
 
-  /** It with `said` as its paragraph, cut at a word within [[PersonCards.ParagraphChars]]; `None`
-    * (the model saw nothing of their work) keeps the paragraph it had.
+  /** It with `said` as its paragraph, each run of whitespace one space, cut at a word within
+    * [[PersonCards.ParagraphChars]]; `None` (the model saw nothing of their work) keeps the
+    * paragraph it had.
     */
   def told(said: Option[String]): PersonCard =
-    said.map(_.trim).filter(_.nonEmpty) match {
+    said.map(_.trim.replaceAll("\\s+", " ")).filter(_.nonEmpty) match {
       case None => this
       case Some(p) => copy(paragraph = Some(Cut.head(p, PersonCards.ParagraphChars)))
     }
@@ -318,7 +319,6 @@ object PersonCard {
     case _ => false
   }
 
-  // Draft wording, for Nick (grit/568): every line of a card's text.
   private def render(c: PersonCard): String = {
     val name = Strand.Name.value(c.name)
     val (meetings, subjects) = c.quotes.partition(_.day.nonEmpty)
@@ -336,12 +336,13 @@ object PersonCard {
       c.peers.map(Strand.Name.value).mkString("Works most with: ", ", ", "")
     )
     val active =
-      s"Active in ${counted(c.rooms, "room")} on ${counted(c.days, "day")} lately; last spoke ${c.lastSaid}." +
+      s"Active in ${counted(c.rooms, "room")} on ${counted(c.days, "day")} in the last 30 days; last spoke ${c.lastSaid}." +
         c.zone.fold("")(z => s" Time zone: ${z.getId}.")
-    (Vector(
-      s"$name, as grit sees them from the team's talk"
-    ) ++ c.paragraph ++ talks ++ works :+ active)
-      .mkString("\n")
+    // The lead, then a blank line, then the facts: a summary shown its lead
+    // (Dreaming.Showing.Lead) sees none of them.
+    val lead = s"$name: a profile inferred from their messages in the team's channels" +:
+      c.paragraph.toVector
+    Vector(lead, talks.toVector ++ works :+ active).map(_.mkString("\n")).mkString("\n\n")
   }
 }
 

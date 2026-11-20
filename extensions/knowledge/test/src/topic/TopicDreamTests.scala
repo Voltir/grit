@@ -510,6 +510,12 @@ object TopicDreamTests extends TestSuite {
 
   private val Paragraph = "Appears to run the releases."
 
+  private val PersonLine = "Dana Ito: a profile inferred from their messages in the team's channels"
+
+  /** The card a person's ask was shown: the text inside its one `<document>` fence. */
+  private def cardShown(a: Ask): Option[String] =
+    "(?s)<document[^>]*>\n(.*?)\n</document>".r.findFirstMatchIn(a.shown).map(_.group(1))
+
   private val Dana: Account = TestAccounts.account("slack:T/U-dana")
   private val Bo: Account = TestAccounts.account("slack:T/U-bo")
 
@@ -2315,32 +2321,40 @@ object TopicDreamTests extends TestSuite {
       (
         runs.personal(Dana).map(d => DocText.value(d.text).linesIterator.toVector.headOption),
         none.personal(Dana)
-      ) ==> (Some(Some("Dana Ito, as grit sees them from the team's talk")), None)
+      ) ==> (Some(Some(PersonLine)), None)
     }
 
-    test(
-      "a first card's ask is shown its facts-only version, which names the person; the card keeps the paragraph"
-    ) {
+    test("a first card's ask is shown its name's line alone; the card keeps the paragraph") {
       val w = new StrandWorld
       talk(w, 5)
       val runs = new Runs(w)
       runs.run(people = 1)
-      val asked = runs.asked.filter(_.kind == "person")
       (
-        asked.map(a =>
-          (a.shown.contains("Dana Ito, as grit sees them"), a.shown.contains(Paragraph))
-        ),
+        runs.asked.filter(_.kind == "person").map(cardShown),
         runs.personal(Dana).map(d => DocText.value(d.text))
       ) ==> (
-        Vector((true, false)),
+        Vector(Some(PersonLine)),
         Some(
-          (Vector("Dana Ito, as grit sees them from the team's talk", Paragraph) ++
+          (Vector(PersonLine, Paragraph, "") ++
             Vector(Vector.fill(5)(Lead).mkString("Talks about: ", "; ", "")) ++
             Vector(
               "Works most with: Bo Lund",
-              "Active in 5 rooms on 1 day lately; last spoke 2026-10-12."
+              "Active in 5 rooms on 1 day in the last 30 days; last spoke 2026-10-12."
             )).mkString("\n")
         )
+      )
+    }
+
+    test("a card's next ask is shown its name's line and its paragraph, none of its facts") {
+      val w = new StrandWorld
+      talk(w, 5)
+      val runs = new Runs(w)
+      runs.run(people = 1)
+      talk(w, 5, from = 6, at = 6 * 86400)
+      runs.run(day = Some(Day.plusDays(7)), now = Now.plusSeconds(7 * 86400), people = 1)
+      runs.asked.filter(_.kind == "person").map(cardShown) ==> Vector(
+        Some(PersonLine),
+        Some(PersonLine + "\n" + Paragraph)
       )
     }
 
@@ -2380,7 +2394,7 @@ object TopicDreamTests extends TestSuite {
       (
         runs.personal(Dana).nonEmpty,
         sorts.nonEmpty,
-        sorts.exists(a => (a.system + a.shown).contains("as grit sees them"))
+        sorts.exists(a => (a.system + a.shown).contains("a profile inferred"))
       ) ==> (true, true, false)
     }
 
