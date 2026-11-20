@@ -357,7 +357,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
       Int.MaxValue,
       TopicDream.WriteReply,
       // Each message's day is shown, so a relative day can be reckoned from it.
-      days = Some(zone)
+      datedIn = Some(zone)
     )
     moves.summarise(
       CardMoves.numbered(names._1, i),

@@ -328,10 +328,10 @@ object MovesJournal {
       chars: Int,
       documentChars: Int,
       schema: JsonSchema,
-      days: Option[ZoneId] = None
-  ): String = (seen, shown, days) match {
+      datedIn: Option[ZoneId]
+  ): String = (seen, shown, datedIn) match {
     case (Vector(one), Vector(), None) => strand(one, system, chars, schema)
-    case _ => v2(strandsForm(seen, shown, system, chars, documentChars, schema, days))
+    case _ => v2(strandsForm(seen, shown, system, chars, documentChars, schema, datedIn))
   }
 
   /** As [[sameAsk]], for a summary ([[strands]]). */
@@ -343,10 +343,10 @@ object MovesJournal {
       chars: Int,
       documentChars: Int,
       schema: JsonSchema,
-      days: Option[ZoneId] = None
+      datedIn: Option[ZoneId]
   ): Boolean = recorded match {
     case s"v1:$_" | s"v2:$_" =>
-      recorded == strands(seen, shown, system, chars, documentChars, schema, days)
+      recorded == strands(seen, shown, system, chars, documentChars, schema, datedIn)
     case _ => false
   }
 
@@ -655,10 +655,10 @@ object MovesJournal {
       chars: Int,
       documentChars: Int,
       schema: JsonSchema,
-      days: Option[ZoneId] = None
+      datedIn: Option[ZoneId]
   ): String =
     // A dated summary names its zone; an undated one's form is as it was.
-    days.fold("")(z => "days" + text(z.getId)) +
+    datedIn.fold("")(z => "days" + text(z.getId)) +
       "strands" + count(seen.size) + seen.map { s =>
         text(ConversationId.value(s.root)) + text(StrandDigest.value(s.digest)) +
           text(s.asOf.toString) + span(s)

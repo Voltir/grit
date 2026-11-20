@@ -410,7 +410,7 @@ object MovesJournalTests extends TestSuite {
     // Each vector is the SHA-256 of the canonical form spelled out beside it, computed outside
     // grit (`printf '%s' '<form>' | sha256sum`).
     test(
-      "a summary of one strand alone is digested v1, of its root, strand digest, asOf, chars, system text and schema; of more, v2, its documents' budget included; and a changed strand is refused so"
+      "a summary of one strand alone is digested v1, of its root, strand digest, asOf, chars, system text and schema; of more, or dated, v2, its documents' budget and its zone included; and a changed strand is refused so"
     ) {
       val schema = JsonSchema
         .read(
@@ -449,7 +449,8 @@ object MovesJournalTests extends TestSuite {
           "Summarise.",
           1000,
           0,
-          schema
+          schema,
+          None
         ),
         !MovesJournal.sameStrands(
           MovesJournal.strand(seen, "Summarise.", 999, schema),
@@ -458,16 +459,17 @@ object MovesJournalTests extends TestSuite {
           "Summarise.",
           1000,
           0,
-          schema
+          schema,
+          None
         )
       )
       // One strand and no documents is digested as v1 was, whatever the documents' budget.
-      MovesJournal.strands(Vector(seen), Vector.empty, "Summarise.", 1000, 500, schema) ==>
+      MovesJournal.strands(Vector(seen), Vector.empty, "Summarise.", 1000, 500, schema, None) ==>
         MovesJournal.strand(seen, "Summarise.", 1000, schema)
       val version =
         DocumentVersionId.of(7).getOrElse(throw new java.lang.AssertionError("version"))
       val many =
-        MovesJournal.strands(Vector(seen), Vector(version), "Summarise.", 1000, 500, schema)
+        MovesJournal.strands(Vector(seen), Vector(version), "Summarise.", 1000, 500, schema, None)
       (
         many,
         MovesJournal.sameStrands(
@@ -477,7 +479,8 @@ object MovesJournalTests extends TestSuite {
           "Summarise.",
           1000,
           500,
-          schema
+          schema,
+          None
         ),
         MovesJournal.sameStrands(
           many,
@@ -486,7 +489,8 @@ object MovesJournalTests extends TestSuite {
           "Summarise.",
           1000,
           400,
-          schema
+          schema,
+          None
         ),
         MovesJournal.sameStrands(
           many,
@@ -495,7 +499,8 @@ object MovesJournalTests extends TestSuite {
           "Summarise.",
           1000,
           500,
-          schema
+          schema,
+          None
         )
       ) ==> (
         "v2:d45de61289993f40fdb6057d4b43904f8b6d38fde33b5f81b8a4ad0eccb5a879",
@@ -503,6 +508,25 @@ object MovesJournalTests extends TestSuite {
         false,
         false
       )
+      // A dated summary is digested apart from an undated one, and by its zone.
+      val dated = (zone: String) =>
+        MovesJournal.strands(
+          Vector(seen),
+          Vector.empty,
+          "Summarise.",
+          1000,
+          500,
+          schema,
+          Some(java.time.ZoneId.of(zone))
+        )
+      (
+        Set(
+          MovesJournal.strand(seen, "Summarise.", 1000, schema),
+          dated("UTC"),
+          dated("Pacific/Auckland")
+        ).size,
+        dated("UTC").startsWith("v2:")
+      ) ==> (3, true)
       pinned[AskMade](
         AskMade.Refused(AskMade.Kind.StrandChanged, "moved", "v1:ab"),
         """{"refused":"changed","why":"moved","digest":"v1:ab"}"""
@@ -541,7 +565,7 @@ object MovesJournalTests extends TestSuite {
         grit.core.act.Sorting.Among[MovesContract.Pick](Vector.empty, Vector.empty, 0)
       def forms(s: Strand.Digested): (String, String, String) = (
         MovesJournal.strand(s, "Summarise.", 1000, schema),
-        MovesJournal.strands(Vector(s, s), Vector.empty, "Summarise.", 1000, 0, schema),
+        MovesJournal.strands(Vector(s, s), Vector.empty, "Summarise.", 1000, 0, schema, None),
         MovesJournal.sortingForm(
           grit.core.act.Dreaming.Item.Discussion(s),
           among,

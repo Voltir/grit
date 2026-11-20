@@ -695,6 +695,17 @@ abstract class MovesContract extends TestSuite {
       )
     }
 
+    test("a dated summary shows each strand's messages under the day they were said, in its zone") {
+      val (w, root) = strand()
+      val seen = StrandWorld.right(w.shelf.of(Vector(root), StrandWorld.at(600))(using TestTx.fake))
+      val (_, asked) = dreaming(limits(1, 0), w)(m =>
+        Seen(Vector(summarised(m, "s", seen, datedIn = Some(java.time.ZoneOffset.UTC))))
+      )
+      asked.flatMap(_._2) ==> Vector(
+        "<discussion>\n2026-10-12:\nSomeone: the deploy is stuck\nSomeone: still stuck?\n</discussion>"
+      )
+    }
+
     test(
       "a summary's reply is believed at the meet of its messages and the documents it showed: a document believed less caps it"
     ) {
@@ -1745,14 +1756,15 @@ object MovesContract {
       n: String,
       seen: Vector[Strand.Digested],
       believed: Integrity = Believed,
-      shown: Vector[DocumentVersionId] = Vector.empty
+      shown: Vector[DocumentVersionId] = Vector.empty,
+      datedIn: Option[java.time.ZoneId] = None
   ): Either[MoveError, String] =
     m.summarise(
       name(n),
       seen,
       shown,
       TestTainted.at(
-        Dreaming.Summary(SummarySystem, 1000, DocumentChars, Typed.json(AnswerSchema)),
+        Dreaming.Summary(SummarySystem, 1000, DocumentChars, Typed.json(AnswerSchema), datedIn),
         believed
       )
     ).map(

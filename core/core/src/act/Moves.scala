@@ -532,21 +532,23 @@ object Dreaming {
   final case class Sorted[R](asked: Asked[R], among: Vector[DocumentVersionId])
 
   /** A summary's ask: `system`; the most characters of each strand shown (`chars`) and of each
-    * document (`documentChars`); the reply it reads as; and, when `days` names a zone, each
-    * strand shown with the day of its messages in it ([[grit.core.stitch.Stitching.Excerpt.dated]]).
+    * document (`documentChars`); the reply it reads as; and, when `datedIn` names a zone, each
+    * strand shown with the day of its messages in it ([[grit.core.stitch.Stitching.Excerpt.dated]]),
+    * those day lines not counted in `chars`.
     */
   final case class Summary[T](
       system: String,
       chars: Int,
       documentChars: Int,
       reply: Typed[T],
-      days: Option[ZoneId] = None
+      datedIn: Option[ZoneId] = None
   )
 
   /** `e` as a summary shows a strand: [[grit.core.stitch.Stitching.Excerpt.text]], dated in
-    * `days` when it names a zone ([[Summary.days]]).
+    * `datedIn` when it names a zone ([[Summary.datedIn]]).
     */
-  def excerpted(e: Stitching.Excerpt, days: Option[ZoneId]): String = days.fold(e.text)(e.dated)
+  def excerpted(e: Stitching.Excerpt, datedIn: Option[ZoneId]): String =
+    datedIn.fold(e.text)(e.dated)
 
   /** The user message a summary is asked in: each of `excerpts` fenced in `<discussion>`, then
     * each of `documents` in `<document label="{label}">`, its text's head within
