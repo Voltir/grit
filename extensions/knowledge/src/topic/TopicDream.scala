@@ -6,7 +6,7 @@ import grit.core.act.{Dreaming, MoveError, MoveLimits, MoveName, Sorting}
 import grit.core.classify.{Criterion, Decision}
 import grit.core.document.DocumentKeeper
 import grit.core.flow.{Tainted, Trusted}
-import grit.core.id.{DocumentVersionId, JobName}
+import grit.core.id.{DocKey, DocumentVersionId, JobName}
 import grit.core.job.{DreamingJob, JobRun}
 import grit.core.model.CallMarkup
 import grit.core.need.Exported
@@ -29,16 +29,19 @@ import grit.std.either.Proven
   * each topic touched, at most `perRun` and at most `perRunMost`, new topics first, asks once
   * (`write-{i}`) for its new lead and the day's passage and keeps it (`keep-{i}`); then sorts at
   * most `merges` topics of one discussion against the floor's others (`merge-{i}`), folding
-  * those at `foldAt` or more (`fold-{i}`) and replying the rest it would fold. It puts up at
+  * those at `foldAt` or more (`fold-{i}`) and replying the rest it would fold; then reads who
+  * at its floor is due a card (`people`, [[PersonCard.due]]) and, for at most `people` of them,
+  * keeps their card's facts (`keep-facts-{i}`), asks once (`person-{i}`) what the discussions
+  * they took part in show of their work, and keeps the card with it (`keep-person-{i}`). It puts up at
   * most [[TopicDream.Reviewed]] of the topics it writes for review, new first. What it scans and
   * withdraws, what each ask is shown, how a reply is read and what a topic's version refers to:
   * the module's README, "A topics run". Replies [[Gathered.line]], which holds no
   * cost: its asks' cost is read from the spend ledger ([[grit.core.store.UsageLedger]]), each
   * recorded under its run's workflow. Given rooms ([[TopicParams.aheadIn]]), it ends by booking
   * runs of [[ahead]] for meetings coming up ([[MeetingsAhead.named]]), its reply's line followed
-  * by that phase's. Its `limits`: asks `perRunMost`, judgments [[TopicParams.Sorts]] +
-  * [[TopicScan.Cards]] + [[TopicParams.Merges]] + [[MeetingsAhead.Asks]], bookings
-  * [[MeetingsAhead.Asks]]; no calls or occasions.
+  * by that phase's. Its `limits`: asks `perRunMost` + [[PersonCards.PerRun]], judgments
+  * [[TopicParams.Sorts]] + [[TopicScan.Cards]] + [[TopicParams.Merges]] + [[MeetingsAhead.Asks]],
+  * bookings [[MeetingsAhead.Asks]]; no calls or occasions.
   */
 final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[CardShelf]])
     extends DreamingJob[TopicParams] {
@@ -72,7 +75,9 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
   // (`fold-{i}`).
   // 14: a nightly run given rooms ends by booking a run of `meeting-ahead` for each meeting due
   // in one (`ahead`, `ahead-sort-{i}`, `later-{i}`; MeetingsAhead).
-  val version: Int = 14
+  // 15: after its merges, it writes the cards of the people due, at most its params' `people`
+  // (`people`, `keep-facts-{i}`, `person-{i}`, `keep-person-{i}`; PersonScan).
+  val version: Int = 15
 
   def write(params: TopicParams): ujson.Value = TopicParams.write(params)
 
@@ -81,7 +86,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
   override val limits: MoveLimits =
     MoveLimits
       .of(
-        perRunMost.max(0),
+        perRunMost.max(0) + PersonCards.PerRun,
         0,
         TopicParams.Sorts + TopicScan.Cards + TopicParams.Merges + MeetingsAhead.Asks,
         0,
@@ -179,7 +184,8 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
               case (next, None) => (next, reviewed, versions)
             }
           }
-        val line = merged(run, moves, scan, versions, meetings, wrote).line
+        val line =
+          people(run, moves, day, end, merged(run, moves, scan, versions, meetings, wrote)).line
         if (params.aheadIn.isEmpty) line
         else line + MeetingsAhead.named(run.tainted.map(_.params.aheadIn), zone, end, ahead, moves)
     }
@@ -413,6 +419,65 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
     }
   }
 
+  /** The people step ([[PersonScan.people]], reading strands as they stood at `end` or now if
+    * sooner), then each person due, the `i`th from 0: their card's facts kept
+    * (`keep-facts-{i}`), the paragraph asked of that version and their newest strands
+    * (`person-{i}`), and the card kept with it (`keep-person-{i}`). A step refused is named in
+    * `g` as not written; an ask that reads nothing, or is not shown the card, leaves the card's
+    * facts as kept.
+    */
+  private def people(
+      run: Trusted[JobRun[TopicParams]],
+      moves: Dreaming^,
+      day: LocalDate,
+      end: Instant,
+      g: Gathered
+  ): Gathered =
+    if (run.extract.params.people == 0) g
+    else
+      moves.scan(TopicDream.People, run.tainted.map(_.params))((p, keeper, strands, _, at) =>
+        PersonScan.people(
+          p.people,
+          if (end.isBefore(at)) end else at,
+          day,
+          zone,
+          p.cut,
+          keeper,
+          strands
+        )
+      ) match {
+        case Left(e) =>
+          g.copy(unwritten = g.unwritten :+ (MoveName.value(TopicDream.People), MoveError.said(e)))
+        case Right(found) =>
+          found.due.zipWithIndex.foldLeft(g) { case (g, (d, i)) =>
+            val name = DocKey.value(PersonKey.doc(d.key))
+            def unwritten(e: MoveError) =
+              g.copy(unwritten = g.unwritten :+ (name, MoveError.said(e)))
+            moves.keep(CardMoves.numbered("keep-facts", i), run.tainted.map(_ => d))(
+              (d, keeper, at) => PersonScan.facts(d, day, keeper, at)
+            ) match {
+              case Left(e) => unwritten(e)
+              case Right(facts) =>
+                moves.summarise(
+                  CardMoves.numbered("person", i),
+                  d.asked,
+                  Vector(facts.version),
+                  run.tainted.map(_ => TopicDream.personSummary)
+                ) match {
+                  case Left(e) => unwritten(e)
+                  case Right(Some(s)) if s.shown.contains(facts.version) =>
+                    moves.keep(CardMoves.numbered("keep-person", i), s.asked.reply)(
+                      (said, keeper, at) => PersonScan.told(d.key, facts.version, said, keeper, at)
+                    ) match {
+                      case Left(e) => unwritten(e)
+                      case Right(_) => g
+                    }
+                  case Right(_) => g
+                }
+            }
+          }
+      }
+
   /** Each of `scan`'s topics of one discussion ([[Scanned.single]]) not written this run (not
     * among `wrote`), oldest first, sorted (`merge-{i}`, numbered from 0 in that order) as a
     * document against the floor's other topics at their versions now (`wrote`'s for those
@@ -564,6 +629,8 @@ object TopicDream {
   private val MergeAside: MoveName = MoveName.literal("merge-aside")
 
   private val Holds: MoveName = MoveName.literal("holds")
+
+  private val People: MoveName = MoveName.literal("people")
 
   /** Where a sort may put a strand or a card: into a topic shown, by key and version; a topic
     * of its own, a subject (`Opened`) or a meeting (`Meets`); or set `Aside`.
@@ -819,6 +886,44 @@ object TopicDream {
     // A literal in JsonSchema's subset but for the descriptions, which are text: every test of
     // a run throws here if not.
     Typed(Proven.right(JsonSchema.read(schema).left.map(_.toString)), c => read(c.json))
+
+  // Draft wording, for Nick (grit/568): the paragraph ask's system text and its reply's
+  // description. Neither names anyone: a person's name reaches the model only in the card shown.
+  private[topic] val PersonSystem: String =
+    "You keep grit's short note on one colleague, inferred from how they take part in the " +
+      "team's talk. You are shown their current note, the topics they spoke in and some " +
+      "discussions they took part in. Write one short paragraph, at most " +
+      s"${PersonCards.ParagraphChars} characters, on what their role and expertise appear to be " +
+      "and what they mostly work on, as shown by what they talk about. Say \"appears\" where " +
+      "you infer. Never note health, family, private life, beliefs, pay, or how well they work. " +
+      "If the discussions show nothing about their work, set paragraph to null."
+
+  private val PersonReply: Typed[Option[String]] = typed(
+    ujson.Obj(
+      "type" -> "object",
+      "properties" -> ujson.Obj(
+        "paragraph" -> ujson.Obj(
+          "type" -> ujson.Arr("string", "null"),
+          "description" -> ("Their role, expertise and work, in at most " +
+            s"${PersonCards.ParagraphChars} characters; null when the discussions show nothing of it.")
+        )
+      ),
+      "required" -> ujson.Arr("paragraph"),
+      "additionalProperties" -> false
+    ),
+    v =>
+      v.objOpt.flatMap(_.get("paragraph")) match {
+        case Some(ujson.Null) => Right(None)
+        case Some(ujson.Str(p)) => Right(Some(p))
+        case _ => Left(s"a card's reply holds no paragraph: ${ujson.write(v).take(100)}")
+      }
+  )
+
+  /** A card's paragraph ask: [[PersonSystem]], each strand within [[PersonCards.AskChars]], the
+    * card whole (within [[PersonCards.TextChars]]).
+    */
+  private val personSummary: Dreaming.Summary[Option[String]] =
+    Dreaming.Summary(PersonSystem, PersonCards.AskChars, PersonCards.TextChars, PersonReply)
 
   /** The topic of `f.from`, current at `was`, folded into that of `f.into`, current at `keeps`
     * ([[Topic.folded]]): the keeper kept under its key, believed at no more than the topic folded

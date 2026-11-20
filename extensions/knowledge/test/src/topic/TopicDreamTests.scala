@@ -23,12 +23,13 @@ import grit.core.document.{
 import grit.core.files.InMemoryPieces
 import grit.core.flow.TestTainted
 import grit.core.id.{ConversationId, CorpusName, DocKey, DocumentVersionId, PluginName, ScheduleId}
+import grit.core.identity.{Account, TestAccounts}
 import grit.core.job.{Grace, InMemorySchedules, JobRun, Schedule, SlotRule}
 import grit.core.message.Message
 import grit.core.need.{Exported, Needs, PluginDocs, PluginReads}
 import grit.core.place.Place
 import grit.core.stitch.{StrandDigest, StrandWorld}
-import grit.core.store.{Conversation, StoreError, Tx}
+import grit.core.store.{Conversation, InMemoryPrincipals, StoreError, Tx}
 import grit.core.tool.ToolName
 import grit.core.visibility.{Clearance, Integrity, Label, Level, Recorded, TestLabels, Visibility}
 import grit.dbos.sql.TestTx
@@ -142,7 +143,9 @@ object TopicDreamTests extends TestSuite {
         sorts: Int = TopicParams.Sorts,
         foldAt: Option[Double] = None,
         meanwhile: Option[(String, String)] = None,
-        aheadIn: Vector[Place] = Vector.empty
+        aheadIn: Vector[Place] = Vector.empty,
+        people: Int = PersonCards.PerRun,
+        person: String -> ujson.Value = _ => ujson.Obj("paragraph" -> Paragraph)
     ): String = {
       val dream = new TopicDream(most, ZoneOffset.UTC, Some(Cards))
       heard.run()
@@ -153,8 +156,13 @@ object TopicDreamTests extends TestSuite {
       val answer: (String, Vector[Message]) -> Either[MoveError, Replied[ujson.Value]] =
         (system, messages) => {
           val shown = messages.collect { case Message.User(t) => t }.mkString
-          heard.ask(Ask("write", system, shown))
-          Right(Replied(write(shown), Label.Public))
+          if (system.contains(TopicDream.PersonSystem)) {
+            heard.ask(Ask("person", system, shown))
+            Right(Replied(person(shown), Label.Public))
+          } else {
+            heard.ask(Ask("write", system, shown))
+            Right(Replied(write(shown), Label.Public))
+          }
         }
       val judged: Request -> Either[MoveError, Replied[Vector[Judged]]] = r => {
         val ask = sorted(r.state, r.questions)
@@ -195,7 +203,8 @@ object TopicDreamTests extends TestSuite {
               merges,
               sorts = sorts,
               foldAt = foldAt,
-              aheadIn = aheadIn
+              aheadIn = aheadIn,
+              people = people
             ),
             now,
             now
@@ -235,6 +244,14 @@ object TopicDreamTests extends TestSuite {
     /** The current topics: each key and text, by key. */
     def kept: Vector[(String, String)] =
       topics.map(d => (DocKey.value(d.key), DocText.value(d.text))).sortBy(_._1)
+
+    /** The card of `who` current at the public label, when there is one. */
+    def personal(who: Account): Option[Document] =
+      ok(
+        documents
+          .keeper(Plugin, Terms)
+          .current(PersonKey.doc(right(PersonKey.of(InMemoryPrincipals.person(who)))), Label.Public)
+      )
 
     def topics: Vector[Document] =
       ok(documents.shelf(Plugin).newest(Int.MaxValue)).filter(d => TopicKey.read(d.key).nonEmpty)
@@ -490,6 +507,33 @@ object TopicDreamTests extends TestSuite {
   )
 
   private val Internal: Label = Label.at(Level.Internal)
+
+  private val Paragraph = "Appears to run the releases."
+
+  private val Dana: Account = TestAccounts.account("slack:T/U-dana")
+  private val Bo: Account = TestAccounts.account("slack:T/U-bo")
+
+  /** `n` threads, one a channel from `C{from}`, each with a message `by` said `at` seconds after
+    * the world's start, the first with one by [[Bo]] after it; `by` named `name` first.
+    */
+  private def talk(
+      w: StrandWorld,
+      n: Int,
+      by: Account = Dana,
+      name: String = "Dana Ito",
+      from: Int = 1,
+      at: Long = 0,
+      integrity: Integrity = Integrity.Member
+  ): Vector[Conversation] = {
+    ok(w.principals.name(by, name)(using TestTx.fake))
+    ok(w.principals.name(Bo, "Bo Lund")(using TestTx.fake))
+    (from until from + n).toVector.map { i =>
+      val c = w.thread(s"C$i", "1.0")
+      w.say(c, s"the release train, part $i", at, integrity, by = Some(by))
+      if (i == from) w.say(c, s"noted, part $i", at + 10, integrity, by = Some(Bo))
+      c
+    }
+  }
 
   val tests = Tests {
     test("a chosen topic is joined at any probability") {
@@ -2257,6 +2301,132 @@ object TopicDreamTests extends TestSuite {
           Vector(AheadRoom)
         )
       ) ==> ((None, 0), (Some("0 in its rooms"), 0))
+    }
+
+    test("a person who spoke in five strands within 30 days has a card opened; four open none") {
+      val five = new StrandWorld
+      talk(five, 5)
+      val runs = new Runs(five)
+      runs.run()
+      val four = new StrandWorld
+      talk(four, 4)
+      val none = new Runs(four)
+      none.run()
+      (
+        runs.personal(Dana).map(d => DocText.value(d.text).linesIterator.toVector.headOption),
+        none.personal(Dana)
+      ) ==> (Some(Some("Dana Ito, as grit sees them from the team's talk")), None)
+    }
+
+    test(
+      "a first card's ask is shown its facts-only version, which names the person; the card keeps the paragraph"
+    ) {
+      val w = new StrandWorld
+      talk(w, 5)
+      val runs = new Runs(w)
+      runs.run(people = 1)
+      val asked = runs.asked.filter(_.kind == "person")
+      (
+        asked.map(a =>
+          (a.shown.contains("Dana Ito, as grit sees them"), a.shown.contains(Paragraph))
+        ),
+        runs.personal(Dana).map(d => DocText.value(d.text))
+      ) ==> (
+        Vector((true, false)),
+        Some(
+          (Vector("Dana Ito, as grit sees them from the team's talk", Paragraph) ++
+            Vector(Vector.fill(5)(Lead).mkString("Talks about: ", "; ", "")) ++
+            Vector(
+              "Works most with: Bo Lund",
+              "Active in 5 rooms on 1 day lately; last spoke 2026-10-12."
+            )).mkString("\n")
+        )
+      )
+    }
+
+    test("the paragraph ask's system text holds no speaker's name") {
+      val w = new StrandWorld
+      talk(w, 5)
+      val runs = new Runs(w)
+      runs.run()
+      val systems = runs.asked.filter(_.kind == "person").map(_.system)
+      (systems.size, systems.exists(t => t.contains("Dana") || t.contains("Bo"))) ==> (1, false)
+    }
+
+    test(
+      "a card written six days ago is not written again; at seven, with five fresh strands, it is"
+    ) {
+      val w = new StrandWorld
+      talk(w, 5)
+      val runs = new Runs(w)
+      runs.run(people = 1)
+      val first = runs.personal(Dana).map(_.version)
+      talk(w, 5, from = 6, at = 6 * 86400)
+      runs.run(day = Some(Day.plusDays(6)), now = Now.plusSeconds(6 * 86400), people = 1)
+      val sixth = runs.personal(Dana).map(_.version)
+      runs.run(day = Some(Day.plusDays(7)), now = Now.plusSeconds(7 * 86400), people = 1)
+      val seventh = runs.personal(Dana).map(_.version)
+      (first.nonEmpty, sixth == first, seventh != first) ==> (true, true, true)
+    }
+
+    test("a card is still current after the next run, and no sort or merge is shown it") {
+      val w = new StrandWorld
+      talk(w, 5)
+      val runs = new Runs(w)
+      runs.run()
+      talk(w, 1, by = Bo, name = "Bo Lund", from = 9, at = 600)
+      runs.run(now = Now.plusSeconds(1200), merges = TopicParams.Merges)
+      val sorts = runs.asked.filter(_.kind == "sort")
+      (
+        runs.personal(Dana).nonEmpty,
+        sorts.nonEmpty,
+        sorts.exists(a => (a.system + a.shown).contains("as grit sees them"))
+      ) ==> (true, true, false)
+    }
+
+    test("a card whose person last spoke more than 90 days before the run's day is withdrawn") {
+      val w = new StrandWorld
+      talk(w, 5)
+      val runs = new Runs(w)
+      runs.run()
+      val kept = runs.personal(Dana).nonEmpty
+      runs.run(day = Some(Day.plusDays(90)), now = Now.plusSeconds(90 * 86400))
+      val ninety = runs.personal(Dana).nonEmpty
+      runs.run(day = Some(Day.plusDays(91)), now = Now.plusSeconds(91 * 86400))
+      (kept, ninety, runs.personal(Dana)) ==> (true, true, None)
+    }
+
+    test("a card written from a room now at another label is withdrawn") {
+      val w = new StrandWorld
+      talk(w, 5)
+      val runs = new Runs(w)
+      runs.run()
+      val kept = runs.personal(Dana).nonEmpty
+      runs.run(now = Now.plusSeconds(600), rooms = labelled(Internal, "C1"))
+      (kept, runs.personal(Dana)) ==> (true, None)
+    }
+
+    test("people 0 writes no card and asks nothing of one") {
+      val w = new StrandWorld
+      talk(w, 5)
+      val runs = new Runs(w)
+      runs.run(people = 0)
+      (runs.personal(Dana), runs.asked.count(_.kind == "person")) ==> (None, 0)
+    }
+
+    test("a card's facts quoting a topic believed at Outside are believed at no more than that") {
+      val w = new StrandWorld
+      val threads = talk(w, 5)
+      val runs = new Runs(w)
+      runs.topic(
+        name = "outside",
+        lead = "The vendor's pricing.",
+        from = threads.map(c => ConversationId.value(c.id)),
+        believed = Integrity.Outside
+      )
+      // A reply that does not read keeps the facts' version alone.
+      runs.run(people = 1, person = _ => ujson.Obj())
+      runs.personal(Dana).map(_.integrity) ==> Some(Integrity.Outside)
     }
   }
 }

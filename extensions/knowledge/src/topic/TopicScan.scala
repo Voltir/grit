@@ -344,7 +344,7 @@ private[topic] object TopicScan {
   )
 
   /** The floor's topics, one whose data this reader refuses withdrawn, one of a later version
-    * left as it is; its [[Aside]] is none. Also how many were withdrawn, and the keys left.
+    * left as it is; its [[Aside]] and its people's cards ([[PersonKey]]) are none. Also how many were withdrawn, and the keys left.
     */
   private def held(keeper: DocumentKeeper, floor: Label, at: Instant)(using
       Tx^
@@ -352,7 +352,7 @@ private[topic] object TopicScan {
     keeper.newest(Int.MaxValue).flatMap { (documents: Vector[Document]) =>
       val read: Vector[(Document, Either[Topic.Unread, (TopicKey, TopicWrite.Held)])] =
         documents
-          .filter(d => d.label == floor && d.key != Aside.key)
+          .filter(d => d.label == floor && d.key != Aside.key && PersonKey.read(d.key).isEmpty)
           .map(d =>
             d -> TopicKey
               .read(d.key)
@@ -568,7 +568,7 @@ private[topic] object TopicScan {
           .map(_.iterator.flatMap(d => TopicKey.read(d.key)).find(held.contains))
     }
 
-  private def each[A, B](
+  private[topic] def each[A, B](
       as: Vector[A]
   )(f: A => Either[StoreError, B]): Either[StoreError, Vector[B]] =
     as.foldLeft[Either[StoreError, Vector[B]]](Right(Vector.empty))((acc, a) =>

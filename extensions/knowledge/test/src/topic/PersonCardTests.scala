@@ -51,6 +51,9 @@ object PersonCardTests extends TestSuite {
     )
   }
 
+  private def tag(s: Strand.Digested): Lineage.Tag.Strand =
+    Lineage.Tag.Strand(s.root, s.room, s.digest, s.id.first)
+
   private def spoke(p: grit.core.id.PrincipalId, n: Option[String], at: LocalDate = Day) =
     Strand.Spoke(
       p,
@@ -89,7 +92,7 @@ object PersonCardTests extends TestSuite {
       Some(ZoneId.of("Europe/London")),
       Facts0,
       Vector.empty,
-      seen,
+      seen.map(tag),
       written
     )
 
@@ -125,7 +128,7 @@ object PersonCardTests extends TestSuite {
         first.zone,
         Facts0,
         Vector.empty,
-        Vector(late, strand("r1", room = "C1")),
+        Vector(tag(late), tag(strand("r1", room = "C1"))),
         Day
       )
       (
@@ -146,7 +149,7 @@ object PersonCardTests extends TestSuite {
           Some(ZoneId.of("Europe/London")),
           PersonCard.Facts(Vector(key("a") -> version(3)), Vector(name("Bo")), 2, 3, Day),
           Vector(PersonCard.Quote(key("a"), version(3), "The release train.", Some(Day))),
-          Vector(strand("r1")),
+          Vector(tag(strand("r1"))),
           Day
         )
         .told(Some("Appears to run the releases."))
@@ -165,7 +168,7 @@ object PersonCardTests extends TestSuite {
             PersonCard.Quote(key("a"), version(3), "The release train.", None),
             PersonCard.Quote(key("b"), version(4), "The pricing review.", Some(Day))
           ),
-          Vector(strand("r1")),
+          Vector(tag(strand("r1"))),
           Day
         )
         .told(Some("Appears to run the releases."))
@@ -189,7 +192,7 @@ object PersonCardTests extends TestSuite {
           PersonCard.Quote(key("a"), version(3), "The release train.", None),
           PersonCard.Quote(key("b"), version(4), "The pricing review.", None)
         ),
-        Vector(strand("r1")),
+        Vector(tag(strand("r1"))),
         Day
       )
       val left = c.without(Set(version(3)))
@@ -235,13 +238,16 @@ object PersonCardTests extends TestSuite {
         Some(PersonCard.Facts(Vector.empty, Vector(name("Cy"), name("Bo")), 2, 2, Day.minusDays(1)))
     }
 
-    test("a card's key is person: then its id; a topic's key is no card's") {
+    test(
+      "a card's key is person: then its id; a topic's key is no card's, and a card's no topic's"
+    ) {
       val k = right(PersonKey.of(dana))
       (
         grit.core.id.DocKey.value(PersonKey.doc(k)),
         PersonKey.read(PersonKey.doc(k)),
-        PersonKey.read(TopicKey.doc(key("a")))
-      ) ==> ("person:slack:T/U-dana", Some(k), None)
+        PersonKey.read(TopicKey.doc(key("a"))),
+        TopicKey.read(PersonKey.doc(k))
+      ) ==> ("person:slack:T/U-dana", Some(k), None, None)
     }
   }
 }

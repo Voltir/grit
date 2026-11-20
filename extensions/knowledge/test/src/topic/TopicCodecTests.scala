@@ -589,6 +589,65 @@ object TopicCodecTests extends TestSuite {
         (Left(true), 32)
     }
 
+    test(
+      "a topics run's people reads back as written, PerRun, 4, when absent; over PerRun is refused, naming people"
+    ) {
+      import scala.concurrent.duration.*
+      val p = TopicParams(3, 2.days, 4.days, None, None, people = 0)
+      val stored = ujson.Obj("perRun" -> 3, "recent" -> "PT48H", "cardRecent" -> "PT96H")
+      (
+        TopicParams.read(TopicParams.write(p)),
+        TopicParams.read(stored).map(_.people),
+        TopicParams
+          .read(stored.obj.clone().addOne("people" -> ujson.Num(5)))
+          .left
+          .map(_.contains("hold people")),
+        PersonCards.PerRun
+      ) ==> (Right(p), Right(4), Left(true), 4)
+    }
+
+    test("a people step's record reads back as written") {
+      val at = java.time.Instant.parse("2026-11-10T09:00:00Z")
+      val tag: Lineage.Tag.Strand = Lineage.Tag.Strand(
+        ConversationId("c-1"),
+        right(Place.read("slack:acme/#docs")),
+        right(StrandDigest.read("0123456789abcdef"))
+      )
+      val seen = grit.core.stitch.Strand.Digested(
+        tag.room,
+        grit.core.visibility.Label.Public,
+        tag.root,
+        Vector(tag.root),
+        2,
+        40,
+        at,
+        at,
+        tag.digest,
+        at
+      )
+      val name = grit.core.stitch.Strand.Name.of("Dana Ito").toRight("no name")
+      val people = PersonScan.People(
+        Vector(
+          PersonScan.Due(
+            right(PersonKey.read(grit.core.id.DocKey.literal("person:p-1")).toRight("no key")),
+            right(name),
+            Some(java.time.ZoneId.of("Europe/London")),
+            PersonCard.Facts(
+              Vector(key -> version(3)),
+              Vector(right(name)),
+              2,
+              3,
+              LocalDate.parse("2026-11-10")
+            ),
+            Vector(seen),
+            Vector(tag)
+          )
+        )
+      )
+      val codec = summon[Journaled[PersonScan.People]]
+      codec.decode(codec.encode(people)) ==> Right(people)
+    }
+
     test("a topics run's parameters with merges over Merges, 8, are refused, naming merges") {
       val stored =
         ujson.Obj("perRun" -> 3, "recent" -> "PT48H", "cardRecent" -> "PT96H", "merges" -> 9)

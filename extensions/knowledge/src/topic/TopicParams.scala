@@ -18,7 +18,8 @@ import grit.core.stitch.Strand
   * its slot in its job's zone when none: a backfill names a past day, and its strands are read
   * as they stood at that day's end; and the last day it seeds on (`seedUntil`): a run for that
   * day or one before reads the cards written within [[TopicParams.SeedReach]] instead of
-  * `cardRecent`, so each night offers the next batch of the cards no run has placed; and the
+  * `cardRecent`, so each night offers the next batch of the cards no run has placed; at most
+  * how many people's cards it writes (`people`, from 0 to [[PersonCards.PerRun]]); and the
   * rooms in which it may speak ahead of a meeting (`aheadIn`, by [[MeetingsAhead.due]]), none
   * when empty.
   */
@@ -34,7 +35,8 @@ final case class TopicParams(
     cut: Strand.Cut = Strand.Cut.Default,
     sorts: Int = TopicParams.Sorts,
     foldAt: Option[Double] = None,
-    aheadIn: Vector[Place] = Vector.empty
+    aheadIn: Vector[Place] = Vector.empty,
+    people: Int = PersonCards.PerRun
 ) extends caps.Pure
 
 object TopicParams {
@@ -63,8 +65,8 @@ object TopicParams {
   val Sorts: Int = 32
 
   /** Its record: `{"perRun", "recent", "cardRecent", "asideFor", "keepFor", "merges", "cut",
-    * "sorts", "day"?, "seedUntil"?, "foldAt"?, "aheadIn"?}`, `aheadIn` only when not empty, the
-    * cut as [[Strand.Cut.write]] writes it, durations
+    * "sorts", "people", "day"?, "seedUntil"?, "foldAt"?, "aheadIn"?}`, `aheadIn` only when not
+    * empty, the cut as [[Strand.Cut.write]] writes it, durations
     * ISO-8601, the days `yyyy-mm-dd`.
     */
   def write(p: TopicParams): ujson.Value = {
@@ -77,7 +79,8 @@ object TopicParams {
       "keepFor" -> iso(p.keepFor),
       "merges" -> p.merges,
       "cut" -> Strand.Cut.write(p.cut),
-      "sorts" -> p.sorts
+      "sorts" -> p.sorts,
+      "people" -> p.people
     )
     p.day.foreach(d => o("day") = d.toString)
     p.seedUntil.foreach(d => o("seedUntil") = d.toString)
@@ -87,9 +90,10 @@ object TopicParams {
   }
 
   /** The parameters [[write]] wrote, `asideFor` [[AsideFor]], `keepFor` [[KeepFor]],
-    * `merges` [[Merges]], `cut` [[Strand.Cut.Default]] and `sorts` [[Sorts]] when absent (kept
-    * before they were), or why `v` holds none: `perRun` not a whole number at least 1, `merges`
-    * not one from 0 to [[Merges]], `sorts` not one from 1 to [[Sorts]], `foldAt` (none when
+    * `merges` [[Merges]], `cut` [[Strand.Cut.Default]], `sorts` [[Sorts]] and `people`
+    * [[PersonCards.PerRun]] when absent (kept before they were), or why `v` holds none: `perRun`
+    * not a whole number at least 1, `merges` not one from 0 to [[Merges]], `sorts` not one from
+    * 1 to [[Sorts]], `people` not one from 0 to [[PersonCards.PerRun]], `foldAt` (none when
     * absent) not a number from [[TopicDream.FoldAt]] to 1, `aheadIn` (empty when absent) not an
     * array of places, no cut, `recent` under a
     * day and the cut's settle, a duration not positive ISO-8601, or a day not `yyyy-mm-dd`.
@@ -141,6 +145,16 @@ object TopicParams {
               s"a topics run's parameters hold sorts, a whole number from 1 to $Sorts: $shown"
             )
       }
+      people <- o.get("people") match {
+        case None => Right(PersonCards.PerRun)
+        case Some(n) =>
+          n.numOpt
+            .filter(n => n.isWhole && n >= 0 && n <= PersonCards.PerRun)
+            .map(_.toInt)
+            .toRight(
+              s"a topics run's parameters hold people, a whole number from 0 to ${PersonCards.PerRun}: $shown"
+            )
+      }
       foldAt <- o.get("foldAt") match {
         case None => Right(None)
         case Some(n) =>
@@ -179,7 +193,8 @@ object TopicParams {
       cut,
       sorts,
       foldAt,
-      aheadIn
+      aheadIn,
+      people
     )
   }
 

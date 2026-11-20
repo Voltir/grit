@@ -157,10 +157,10 @@ object PersonCard {
   }
 
   /** `person`'s card as written on `day` over `before` (none for a first), named `name` and
-    * placed in `zone`, from `facts` and the `quotes` of their topics, its lineage `seen`'s
-    * strands, newest first, at most [[PersonCards.Lineages]], and its rooms those it had and
-    * `seen`'s, but a strand of a room past [[PersonCards.Rooms]], which is left out of both;
-    * its paragraph `before`'s.
+    * placed in `zone`, from `facts` and the `quotes` of their topics, its lineage the strands
+    * `seen` (theirs in the window, newest first), at most [[PersonCards.Lineages]], and its
+    * rooms those it had and `seen`'s, but a strand of a room past [[PersonCards.Rooms]], which
+    * is left out of both; its paragraph `before`'s.
     */
   def written(
       before: Option[PersonCard],
@@ -169,7 +169,7 @@ object PersonCard {
       zone: Option[ZoneId],
       facts: Facts,
       quotes: Vector[Quote],
-      seen: Vector[Strand.Digested],
+      seen: Vector[Lineage.Tag.Strand],
       day: LocalDate
   ): PersonCard = {
     val rooms = (before.fold(Vector.empty[Place])(_.from) ++ seen.map(_.room)).distinct
@@ -185,7 +185,7 @@ object PersonCard {
       facts.days,
       facts.lastSaid,
       before.flatMap(_.paragraph),
-      Lineage.of(strands.map(s => Lineage.Tag.Strand(s.root, s.room, s.digest, s.id.first))),
+      Lineage.of(strands),
       rooms.take(PersonCards.Rooms),
       day
     )
@@ -311,6 +311,8 @@ object PersonCard {
     o
   }
 
+  private def counted(n: Int, what: String): String = if (n == 1) s"1 $what" else s"$n ${what}s"
+
   private def holds(lineage: Lineage, id: Strand.Id): Boolean = lineage.tags.exists {
     case Lineage.Tag.Strand(root, _, _, first) => Strand.Id(root, first) == id
     case _ => false
@@ -334,7 +336,7 @@ object PersonCard {
       c.peers.map(Strand.Name.value).mkString("Works most with: ", ", ", "")
     )
     val active =
-      s"Active in ${c.rooms} rooms on ${c.days} days lately; last spoke ${c.lastSaid}." +
+      s"Active in ${counted(c.rooms, "room")} on ${counted(c.days, "day")} lately; last spoke ${c.lastSaid}." +
         c.zone.fold("")(z => s" Time zone: ${z.getId}.")
     (Vector(
       s"$name, as grit sees them from the team's talk"
