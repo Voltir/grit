@@ -60,5 +60,13 @@ object CardSummaryTests extends TestSuite {
       assert(read.map(_.summary) == Right("A file."))
       assert(read.map(_.terms) == Right(Vector.empty))
     }
+
+    test("a summary holding call markup is refused, never kept as prose") {
+      // A provider's call left unread: `terms` given inside `summary`, after its close.
+      val leaked = "An order form.</summary>\n<parameter name=\"terms\">[\"revenue share\"]"
+      reply(ujson.Obj("summary" -> leaked, "terms" -> ujson.Null)).left.map(
+        _.contains("call markup")
+      ) ==> Left(true)
+    }
   }
 }

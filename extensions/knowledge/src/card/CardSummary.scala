@@ -3,6 +3,7 @@ package grit.knowledge.card
 import scala.annotation.publicInBinary
 import scala.quoted.{Expr, Quotes}
 
+import grit.core.model.CallMarkup
 import grit.core.schema.{JsonSchema, Typed}
 import grit.std.literal.Literal
 
@@ -21,15 +22,20 @@ object CardSummary {
   /** 8: the most search terms a summary holds. */
   val Terms: Int = 8
 
-  /** These, trimmed, or why not: `summary` blank, or more than [[Terms]] terms that are not
-    * blank. A summary over [[Words]] words is cut after its 60th; a term over three words, to
+  /** These, trimmed, or why not: `summary` blank or holding call markup
+    * ([[grit.core.model.CallMarkup]]), or more than [[Terms]] terms that are not blank. A summary over [[Words]] words is cut after its 60th; a term over three words, to
     * its first three; a blank term is left out.
     */
   def of(summary: String, terms: Vector[String]): Either[String, CardSummary] = {
     val kept = terms.map(_.trim.split("\\s+").take(3).mkString(" ")).filter(_.nonEmpty)
     if (summary.isBlank) Left("a summary is not blank")
     else if (kept.size > Terms) Left(s"a summary has at most $Terms terms, not ${kept.size}")
-    else Right(new CardSummary(cut(summary.trim), kept))
+    else
+      CallMarkup
+        .refused(summary)
+        .left
+        .map(why => s"a summary: $why")
+        .map(_ => new CardSummary(cut(summary.trim), kept))
   }
 
   /** [[of]]'s value for the constant `summary` and no terms. A summary [[of]] refuses does not
