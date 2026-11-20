@@ -1,6 +1,6 @@
 package grit.knowledge.topic
 
-import java.time.{Instant, LocalDate}
+import java.time.Instant
 
 import scala.util.Try
 
