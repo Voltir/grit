@@ -184,6 +184,16 @@ aside at its version (`merge-aside`), so it is sorted again only once it is writ
 `asideFor` has passed. A topic of two discussions or more is never sorted to merge, though it
 is shown to one that is.
 
+## A turn's read of meetings
+
+The topics plugin offers every turn one tool, `meetings` (`TopicDocuments.meetings`): the
+meetings the turn reads, from a day to a day in the plugin's zone, the dated soonest or latest
+first, then those proposed with no day or a day passed that were talked of lately, each its
+document's text cut to a bound, kept only when each word asked starts a word of that text
+(`MeetingLookup`). It reads the plugin's newest documents through the turn's own reads, so it
+lists only what the turn's transaction clears, as a window's documents are; it asks no model and
+writes nothing. What was said since the last run is not in it.
+
 ## A declassify run
 
 In its scan `CardDeclassify` withdraws every one of its plugin's own documents but its
