@@ -60,7 +60,9 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
   // its day.
   // 12: a meeting's write gives its day only as written, else `said` and `as`, which code
   // reckons (Meeting.reckon).
-  val version: Int = 12
+  // 13: a merge sort sorts and shows only the topics its item may fold with (Topic.Foldable),
+  // and none a meeting written that night.
+  val version: Int = 13
 
   def write(params: TopicParams): ujson.Value = TopicParams.write(params)
 
@@ -160,7 +162,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
               case (next, None) => (next, reviewed, versions)
             }
           }
-        merged(run, moves, scan, versions, wrote).line
+        merged(run, moves, scan, versions, meetings, wrote).line
     }
   }
 
@@ -395,9 +397,10 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
   /** Each of `scan`'s topics of one discussion ([[Scanned.single]]) not written this run (not
     * among `wrote`), oldest first, sorted (`merge-{i}`, numbered from 0 in that order) as a
     * document against the floor's other topics at their versions now (`wrote`'s for those
-    * written this run), the [[TopicDream.sortTopic]] most its text matches best, but those an
-    * earlier sort of the run proposed to fold away; a topic proposed as another's keeper, or
-    * with no other topic to be shown, is not sorted. A yes at [[TopicDream.FoldAt]] or more
+    * written this run), the [[TopicDream.sortTopic]] most its text matches best of those it may
+    * fold with ([[Topic.Foldable]]), but those an earlier sort of the run proposed to fold away
+    * and the `meetings` written this run; a topic proposed as another's keeper, with no other
+    * topic to be shown, or a meeting when a meeting was written this run, is not sorted. A yes at [[TopicDream.FoldAt]] or more
     * for the likeliest proposes folding the topic into it, held in `g`'s `proposed`; nothing is
     * withdrawn. Each topic sorted, and each proposed as a keeper, is set aside at its version
     * (`merge-aside`), so no run sorts it again within `asideFor` unless it is written; a sort or
@@ -408,10 +411,13 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
       moves: Dreaming^,
       scan: Scanned,
       wrote: Vector[(TopicKey, DocumentVersionId)],
+      meetings: Set[TopicKey],
       g: Gathered
   ): Gathered = {
-    val now = scan.topics.map((k, v) => wrote.find(_._1 == k).getOrElse((k, v))) ++
-      wrote.filterNot((k, _) => scan.topics.exists(_._1 == k))
+    // A meeting written tonight may have moved to another day, so none is shown tonight.
+    val moved = wrote.map(_._1).filter(meetings.contains).toSet
+    val now = (scan.topics.map((k, v) => wrote.find(_._1 == k).getOrElse((k, v))) ++
+      wrote.filterNot((k, _) => scan.topics.exists(_._1 == k))).filterNot((k, _) => moved(k))
     val sorting = run.tainted.map(_ => TopicDream.sortTopic)
     type Merging = (Vector[Gathered.Fold], Tainted[Vector[Lineage.Tag]], Vector[(String, String)])
     val (proposed, aside, refused) = scan.single
@@ -419,11 +425,15 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
       .zipWithIndex
       .foldLeft[Merging]((Vector.empty, run.tainted.map(_ => Vector.empty), Vector.empty)) {
         case (m @ (folds, aside, refused), ((k, v), i)) =>
+          val kind = scan.foldable(k)
           val pool = now.collect {
-            case (c, cv) if c != k && !folds.exists(_.from == c) =>
+            case (c, cv)
+                if c != k && !folds.exists(_.from == c) && kind.foldsWith(scan.foldable(c)) =>
               (new TopicDream.Placed.Into(c, cv), cv)
           }
-          if (pool.isEmpty || folds.exists(_.into == k)) m
+          // A meeting waits for those written tonight, its likeliest twin among them, say.
+          val waits = kind != Topic.Foldable.Subject && moved.nonEmpty
+          if (pool.isEmpty || waits || folds.exists(_.into == k)) m
           else {
             val name = CardMoves.numbered("merge", i)
             val among = Sorting.Among(Vector.empty, pool, TopicDream.sortTopic.most)

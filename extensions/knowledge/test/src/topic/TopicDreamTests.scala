@@ -13,6 +13,7 @@ import grit.core.document.{
   DocText,
   DocWeight,
   Document,
+  DocumentKeeper,
   DocumentSearch,
   DocumentTerms,
   InMemoryDocuments,
@@ -237,14 +238,17 @@ object TopicDreamTests extends TestSuite {
 
     /** A topic of `lead` keyed by the strand `name`, not opened by any strand here, kept at
       * `floor` with `passages`, or when none, one passage of [[Day]] written from strands of the
-      * roots `from` (none by default), so a run at `floor` sorts among it.
+      * roots `from` (none by default), so a run at `floor` sorts among it; of `kind`, believed
+      * at no more than `believed`.
       */
     def topic(
         floor: Label = Label.Public,
         name: String = "held",
         lead: String = Lead,
         from: Vector[String] = Vector.empty,
-        passages: Vector[grit.knowledge.topic.Passage] = Vector.empty
+        passages: Vector[grit.knowledge.topic.Passage] = Vector.empty,
+        kind: Topic.Kind = Topic.Kind.Subject,
+        believed: Integrity = Integrity.Authority
     ): Unit = {
       val tags = from.map(r =>
         Lineage.Tag.Strand(
@@ -258,14 +262,15 @@ object TopicDreamTests extends TestSuite {
           TopicWrite.prose(lead),
           if (passages.nonEmpty) passages
           else
-            Vector(grit.knowledge.topic.Passage(Day, Lineage.of(tags), TopicWrite.prose(Passage)))
+            Vector(grit.knowledge.topic.Passage(Day, Lineage.of(tags), TopicWrite.prose(Passage))),
+          kind
         ),
         Vector.empty,
         None
       )
       val _ = ok(
         TopicWrite.kept(
-          documents.keeper(Plugin, Terms),
+          DocumentKeeper.believedAtMost(documents.keeper(Plugin, Terms), believed),
           right(TopicKey.strand(ConversationId(name))),
           floor,
           held,
@@ -1903,6 +1908,44 @@ object TopicDreamTests extends TestSuite {
         "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
         Vector()
       )
+    }
+
+    /** A meeting planned for `day`, no one named. */
+    def planned(day: LocalDate): Topic.Kind =
+      Topic.Kind.Meeting(Meeting.of(Meeting.State.Planned(Meeting.When(day, None)), Vector.empty))
+
+    test(
+      "a subject's merge sort is shown no meeting, and a meeting's only the meetings of its day"
+    ) {
+      val w = new StrandWorld
+      val runs = new Runs(w)
+      runs.topic(name = "one", lead = "The deploy pipeline, once.", from = Vector("s-1"))
+      runs.topic(name = "two", lead = "The deploy pipeline, again.", from = Vector("s-2"))
+      runs.topic(name = "tue", lead = "The review, Tuesday.", kind = planned(Day))
+      runs.topic(name = "tue2", lead = "The review again, Tuesday.", kind = planned(Day))
+      runs.topic(name = "wed", lead = "The review, Wednesday.", kind = planned(Day.plusDays(1)))
+      val _ = runs.run(sort = judging("new_topic"), merges = TopicParams.Merges)
+      runs.asked.map(_.shown.linesIterator.filter(_.startsWith("The ")).toVector) ==> Vector(
+        Vector("The deploy pipeline, once.", "The deploy pipeline, again."),
+        Vector("The deploy pipeline, again.", "The deploy pipeline, once."),
+        Vector("The review, Tuesday.", "The review again, Tuesday."),
+        Vector("The review again, Tuesday.", "The review, Tuesday.")
+      )
+    }
+
+    test(
+      "a meeting is not sorted to merge the night a meeting is written, and is sorted the next"
+    ) {
+      val w = new StrandWorld
+      val runs = new Runs(w)
+      runs.topic(name = "tue", lead = "The review, Tuesday.", kind = planned(Day))
+      runs.topic(name = "tue2", lead = "The review again, Tuesday.", kind = planned(Day))
+      val _ = strand(w, "C1", "the review moved")
+      val merges = TopicParams.Merges
+      val _ = runs.run(sort = judging("new_meeting"), merges = merges)
+      val first = runs.asked.count(_.system.startsWith("document"))
+      val _ = runs.run(now = Now.plusSeconds(600), sort = judging("new_meeting"), merges = merges)
+      (first, runs.asked.count(_.system.startsWith("document"))) ==> (0, 2)
     }
   }
 }

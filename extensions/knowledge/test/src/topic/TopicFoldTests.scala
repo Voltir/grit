@@ -197,5 +197,28 @@ object TopicFoldTests extends TestSuite {
       )
       TopicScan.single(topics, aside, 8) ==> Vector(keyed(2) -> version(31))
     }
+
+    test(
+      "a scan offers to merge no meeting without another of its day, and no undated one, so the subjects past them are offered"
+    ) {
+      def on(d: Int) =
+        TestMeetings.meeting(Meeting.State.Planned(Meeting.When(day(d), None)), Vector.empty, "m")
+      val undated = TestMeetings.meeting(Meeting.State.Proposed(None), Vector.empty, "m")
+      val topics = Vector(
+        (keyed(1), version(1), on(1)),
+        (keyed(2), version(2), on(2)),
+        (keyed(3), version(3), undated),
+        (keyed(4), version(4), undated),
+        (keyed(5), version(5), on(1)),
+        (keyed(6), version(6), written("s-1")),
+        (keyed(7), version(7), written("s-2"))
+      )
+      TopicScan.single(topics, Vector.empty, 4) ==> Vector(
+        keyed(1) -> version(1),
+        keyed(5) -> version(5),
+        keyed(6) -> version(6),
+        keyed(7) -> version(7)
+      )
+    }
   }
 }

@@ -35,6 +35,35 @@ object Topic {
     case Meeting(head: grit.knowledge.topic.Meeting)
   }
 
+  /** What a topic may be folded with, by its kind: a `Subject` with any subject, a meeting
+    * `On` its day with a meeting of that same day, and a meeting with no day yet (`Undated`)
+    * with none.
+    */
+  enum Foldable extends caps.Pure {
+    case Subject
+    case On(day: LocalDate)
+    case Undated
+
+    /** Whether a topic of this and one of `other` may be folded, one into the other. */
+    def foldsWith(other: Foldable): Boolean = (this, other) match {
+      case (Subject, Subject) => true
+      case (On(a), On(b)) => a == b
+      case _ => false
+    }
+  }
+
+  object Foldable {
+
+    /** A topic of `kind`'s: a meeting's by its day ([[grit.knowledge.topic.Meeting.when]]). */
+    def of(kind: Kind): Foldable = kind match {
+      case Kind.Subject => Subject
+      case Kind.Meeting(m) => meeting(m.when.map(_.day))
+    }
+
+    /** A meeting's, of `day` when it has one. */
+    def meeting(day: Option[LocalDate]): Foldable = day.fold(Undated)(On(_))
+  }
+
   /** Its data, `{"v":3, "kind", "lead", "passages"}`, its kind `"subject"` or `{"meeting": …}`,
     * each doc as [[grit.prose.json.ProseJson]] stores it.
     */

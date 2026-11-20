@@ -87,6 +87,12 @@ private[topic] object TopicScan {
       */
     def passedBy(day: LocalDate): Set[TopicKey] =
       meetings.filter(_.day.exists(_.isBefore(day.minusDays(Meeting.Grace)))).map(_.key).toSet
+
+    /** What the topic `key` may be folded with, as the scan read it: a subject when it is none
+      * of the floor's `meetings` (one opened since the scan among them).
+      */
+    def foldable(key: TopicKey): Topic.Foldable =
+      meetings.find(_.key == key).fold(Topic.Foldable.Subject)(m => Topic.Foldable.meeting(m.day))
   }
 
   /** Of each topic of `topics`, the current versions of at most [[Holds]] of the cards of the
@@ -492,8 +498,8 @@ private[topic] object TopicScan {
   }
 
   /** Of `topics`, by key and version, those written from fewer than two discussions (strands,
-    * by root) that `aside` does not hold at their version, oldest written first, at most
-    * `merges`.
+    * by root) that `aside` does not hold at their version and another of `topics` may fold with
+    * ([[Topic.Foldable]]), oldest written first, at most `merges`.
     */
   def single(
       topics: Vector[(TopicKey, DocumentVersionId, Topic)],
@@ -501,9 +507,12 @@ private[topic] object TopicScan {
       merges: Int
   ): Vector[(TopicKey, DocumentVersionId)] = {
     val set = aside.collect { case Aside.Item(Lineage.Tag.Topic(v), _) => v }.toSet
+    val kinds = topics.map((_, _, t) => Topic.Foldable.of(t.kind))
     topics
       .filter((_, v, t) =>
         !set.contains(v) &&
+          // Itself among them, so another when two or more.
+          kinds.count(Topic.Foldable.of(t.kind).foldsWith) >= 2 &&
           t.passages
             .flatMap(_.from.tags)
             .collect { case Lineage.Tag.Strand(root, _, _, first) => (root, first) }
