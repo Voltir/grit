@@ -9,7 +9,7 @@ import grit.core.files.InMemoryPieces
 import grit.core.flow.TestTainted
 import grit.core.job.JobRun
 import grit.core.need.Needs
-import grit.core.occasion.{Occasion, OccasionKey}
+import grit.core.occasion.OccasionKey
 import grit.core.place.Place
 import grit.core.stitch.{Strand, StrandWorld}
 import grit.core.store.Conversation
