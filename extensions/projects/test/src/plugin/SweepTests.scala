@@ -318,7 +318,7 @@ object SweepTests extends TestSuite {
       (
         refusedArgs(projects, "project_sweep", (args :+ ("show" -> ujson.Str("kept")))*),
         refusedArgs(projects, "project_sweep", (args :+ ("skip" -> ujson.Num(-1)))*),
-        ProjectCommands.Sweeping
+        ProjectArgs.Sweeping
           .of(
             right(ProjectKey.of("p")),
             Set(kind("note")),
@@ -327,7 +327,7 @@ object SweepTests extends TestSuite {
             None,
             -1
           ),
-        ProjectCommands.Sweeping
+        ProjectArgs.Sweeping
           .of(right(ProjectKey.of("p")), Set(), LocalDate.parse("2026-10-28"), true, None, 0)
       ) ==> (
         (

@@ -24,7 +24,8 @@ import grit.projects.method.{
 }
 import grit.projects.name.{CheckName, MethodName, StateName}
 
-import ProjectCommands.{PersonOnlyBy, moverOf, parsed, refusal, written}
+import ProjectArgs.parsed
+import ProjectCommands.{PersonOnlyBy, moverOf, refusal, written}
 import Stop.{answered, refuse, stored}
 import MethodCommands.{Asking, Declaring}
 
