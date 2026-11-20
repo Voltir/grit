@@ -1292,6 +1292,21 @@ private[plugin] final class ProjectCommands(
 
   /** `project_claim`. */
   object ProjectClaim extends KeepingCommand[Claiming] {
+
+    /** The refusal of a claim given both `key` and `oldest`, or neither, as `said`. */
+    private def bothOrNeither(said: String): String =
+      s"$said: give one; `key` claims that artifact, `oldest` (`project`, `kind`, `state`) the " +
+        "unclaimed one of that kind in that state that entered it first"
+
+    /** `oldest`'s fields. */
+    private val oldestArgs = Args.of(
+      (
+        project = Field.text("The project's key."),
+        kind = Field.text("A kind its project's method declares."),
+        state = Field.text("A state of that kind.")
+      )
+    )
+
     val spec: ToolSpec[Claiming] = ToolSpec(
       ToolName("project_claim"),
       "Claims an artifact for a session or agent to work in a role, until project_release " +
@@ -1311,7 +1326,14 @@ private[plugin] final class ProjectCommands(
       Args
         .of(
           (
-            key = Field.text("The artifact's key, `<project>/<artifact>`."),
+            key = Field.text("The artifact's key, `<project>/<artifact>`.").optional,
+            oldest = Field
+              .one(
+                "In place of `key`: of the artifacts of `kind` in `state` that no one holds, " +
+                  "the one that entered it first.",
+                oldestArgs
+              )
+              .optional,
             role = Field.text("The role working on it, one its project's method declares."),
             holder = Field.text(
               "Who works it: the session, or the agent type in it, whose brief is written, " +
@@ -1321,10 +1343,25 @@ private[plugin] final class ProjectCommands(
         )
         .refine(a =>
           for {
-            key <- parsed("key", a.key, ArtifactRef.read)
+            target <- (a.key, a.oldest) match {
+              case (Some(key), None) =>
+                parsed("key", key, ArtifactRef.read).map(Claiming.Target.Key(_))
+              case (None, Some(o)) =>
+                for {
+                  project <- parsed("oldest.project", o.project, ProjectKey.of)
+                  kind <- parsed("oldest.kind", o.kind, KindName.of)
+                  state <- parsed("oldest.state", o.state, StateName.of)
+                } yield Claiming.Target.Oldest(project, kind, state)
+              case (Some(_), Some(_)) =>
+                Left(ArgsError.Refused("key", bothOrNeither("`key` and `oldest` are both given")))
+              case (None, None) =>
+                Left(
+                  ArgsError.Refused("key", bothOrNeither("neither `key` nor `oldest` is given"))
+                )
+            }
             role <- parsed("role", a.role, RoleName.of)
             holder <- parsed("holder", a.holder, ClaimHolder.of)
-          } yield Claiming(key, role, holder)
+          } yield Claiming(target, role, holder)
         )
     )
     def run(
@@ -1335,17 +1372,20 @@ private[plugin] final class ProjectCommands(
         at: Instant
     )(using Tx^): Either[StoreError, CommandOutcome] = answered {
       val holder = ClaimHolder.value(args.holder)
-      locked(claims, args.key.project).flatMap { lock =>
+      locked(claims, args.target.project).flatMap { lock =>
         given Locked = lock
         for {
-          project <- loaded(own, args.key.project)
+          project <- loaded(own, args.target.project)
           method <- declared(own, project.pin)
           _ <- viewOf(method, args.role)
-          key <- resolved(project, args.key)
+          whole <- refuse(Project.of(args.target.project, project.pin, project.artifacts))
+          live <- stored(claims.live(at))
+          key <- args.target match {
+            case Claiming.Target.Key(ref) => resolved(project, ref)
+            case Claiming.Target.Oldest(_, _, _) => Left(Stop.Refused("`oldest` is not served"))
+          }
           found <- artifact(project, key)
           (document, a) = found
-          whole <- refuse(Project.of(args.key.project, project.pin, project.artifacts))
-          live <- stored(claims.live(at))
           _ <- uncovered(method, whole, ids(project), live, key, args.role, args.holder)
           claimed <- claimedFor(claims, document, args, by.person, at)
           made <- claimed match {

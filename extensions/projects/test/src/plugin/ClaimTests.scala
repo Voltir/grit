@@ -45,6 +45,11 @@ object ClaimTests extends TestSuite {
   private def claimedKept(said: String): CommandOutcome =
     CommandOutcome.Done(ujson.write(ujson.Obj("claimed" -> said, "brief" -> "kept")))
 
+  /** What `project_claim` refuses when given both `key` and `oldest`, or neither, as `said`. */
+  private def bothOrNeither(said: String): String =
+    s"$said: give one; `key` claims that artifact, `oldest` (`project`, `kind`, `state`) the " +
+      "unclaimed one of that kind in that state that entered it first"
+
   /** A project `p` holding two notes, `p/a` and `p/b`. */
   private def holding(projects: Projects, store: Store): Unit = {
     started(projects, store)
@@ -362,7 +367,7 @@ object ClaimTests extends TestSuite {
         .map(_.parameters("properties").obj.keySet.toSet)
       assert(
         schemas.size == 3,
-        claimed == Some(Set("key", "role", "holder")),
+        claimed == Some(Set("key", "oldest", "role", "holder")),
         schemas.forall(s => !s.description.contains("slot") && !s.description.contains("`for`"))
       )
     }
@@ -389,6 +394,18 @@ object ClaimTests extends TestSuite {
       assert(before.isDefined, after == before)
     }
 
+    test("a claim given both key and oldest, or neither, is refused naming the two") {
+      val oldest = "oldest" -> ujson.Obj("project" -> "p", "kind" -> "note", "state" -> "open")
+      val rest = Vector[(String, ujson.Value)]("role" -> "builder", "holder" -> holder)
+      assert(
+        refusedArgs(plugin(), "project_claim", (rest :+ ("key" -> ujson.Str("p/a")) :+ oldest)*) ==
+          Some(bothOrNeither("`key` and `oldest` are both given")),
+        refusedArgs(plugin(), "project_claim", rest*) ==
+          Some(bothOrNeither("neither `key` nor `oldest` is given")),
+        refusedArgs(plugin(), "project_claim", (rest :+ oldest)*) == None,
+        refusedArgs(plugin(), "project_claim", (rest :+ ("key" -> ujson.Str("p/a")))*) == None
+      )
+    }
     test("a claim no one works lapses, and another holder takes it") {
       val projects = plugin()
       val store = Store()

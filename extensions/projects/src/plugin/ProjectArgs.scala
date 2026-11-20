@@ -435,7 +435,29 @@ private[plugin] object ProjectArgs {
   }
 
   /** `project_claim`'s arguments. */
-  final case class Claiming(key: ArtifactRef, role: RoleName, holder: ClaimHolder) extends caps.Pure
+  final case class Claiming(target: Claiming.Target, role: RoleName, holder: ClaimHolder)
+      extends caps.Pure
+
+  object Claiming {
+
+    /** Which artifact a claim is of. */
+    enum Target extends caps.Pure {
+
+      /** The artifact `key` names. */
+      case Key(key: ArtifactRef)
+
+      /** Of `project`'s artifacts of `kind` in `state` that no live claim holds or covers, the
+        * one that entered `state` first, ties by number.
+        */
+      case Oldest(override val project: ProjectKey, kind: KindName, state: StateName)
+
+      /** The project the claim is made in. */
+      def project: ProjectKey = this match {
+        case Key(key) => key.project
+        case Oldest(project, _, _) => project
+      }
+    }
+  }
 
   /** `project_release`'s arguments. */
   final case class Releasing(key: ArtifactRef) extends caps.Pure
