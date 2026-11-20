@@ -320,6 +320,26 @@ object ArgsTests extends TestSuite {
         Left(ArgsError.Invalid("options[1]", "text", "1"))
       assert(admits(options.schema(strict = false), ujson.Obj("options" -> ujson.Arr("a"))))
     }
+    test("one object: its schema, and a failure inside it at its path") {
+      val which = Args.of((kind = Field.text("K."), state = Field.text("S.")))
+      val args = Args.of((oldest = Field.one("Which.", which).optional))
+      args.schema(strict = false)("properties")("oldest") ==>
+        ujson.Obj.from(which.schema(strict = false).value.toSeq :+ ("description" -> "Which."))
+      args
+        .read(ujson.Obj("oldest" -> ujson.Obj("kind" -> "k", "state" -> "s")))
+        .map(_.oldest.map(o => (o.kind, o.state))) ==> Right(Some(("k", "s")))
+      args.read(ujson.Obj()).map(_.oldest.map(_.kind)) ==> Right(None)
+      args.read(ujson.Obj("oldest" -> ujson.Obj("kind" -> "k"))) ==>
+        Left(ArgsError.Missing("oldest.state", "text"))
+      args.read(ujson.Obj("oldest" -> "x")) ==>
+        Left(ArgsError.Invalid("oldest", "an object", "\"x\""))
+      assert(
+        admits(
+          args.schema(strict = false),
+          ujson.Obj("oldest" -> ujson.Obj("kind" -> "k", "state" -> "s"))
+        )
+      )
+    }
     test("every field kind's strict schema reads as the schema a typed reply is sent") {
       val every = Args.of(
         (
@@ -338,7 +358,9 @@ object ArgsTests extends TestSuite {
           maybeEdits =
             Field.each("More edits.", Args.of((at = Field.count("At.", 0, 9))), 0).optional,
           names = Field.texts("Names.", 1, 4),
-          maybeNames = Field.texts("Names, if any.", 0, 4).optional
+          maybeNames = Field.texts("Names, if any.", 0, 4).optional,
+          which = Field.one("Which.", Args.of((kind = Field.text("K.")))),
+          maybeWhich = Field.one("Which, if any.", Args.of((kind = Field.text("K.")))).optional
         )
       )
       every.typed.map(_.schema.json) ==> Right(every.schema(strict = true))

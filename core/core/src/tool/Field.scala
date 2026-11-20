@@ -169,6 +169,17 @@ object Field {
     )
   }
 
+  /** One object, read by `item`: `Field.one("Which.", Args.of((kind = Field.text(…), …)))`. A
+    * failure inside it is refused at its path: `oldest.kind`.
+    */
+  def one[T](meaning: String, item: Args[T]): Field[T] =
+    new Field(
+      strict => ujson.Obj.from(item.schema(strict).value.toSeq :+ ("description" -> meaning)),
+      "an object",
+      (path, v, repairs) => item.read(v, repairs).left.map(_.within(path)),
+      None
+    )
+
   /** A list of `min` to `max` strings, in order. A string holding a JSON list reads as that
     * list under [[ArgRepair.QuotedList]] ([[Repair.quotedList]]). An item that is not a string
     * is refused at its path, counting from 0: `options[2]`.
