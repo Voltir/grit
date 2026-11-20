@@ -19,7 +19,7 @@ import grit.core.id.{FileHandle, PluginName}
 import grit.core.inbox.InMemoryInbox
 import grit.core.message.Message
 import grit.core.occasion.Occasion
-import grit.core.place.Service
+import grit.core.place.{Place, Service}
 import grit.core.provider.ModelRequest
 import grit.core.speech.Speaking
 import grit.core.spend.Budget
@@ -121,61 +121,70 @@ class ScriptedKeeping(
       }
     }
 
-  def occasion(name: MoveName, from: Tainted[Occasion]): Either[MoveError, Occasioned] =
-    making(name, MoveKind.Occasion, limits.occasions) {
-      {
-        val o = occasions
-        given Tx = opened
-        val (occasion, believed) = (Trusted.asIs(from).extract, from.integrity)
-        val speaking = o.speaking
-        val speech = o.inbox.speech
-        val made: Either[String, Occasioned] = for {
-          found <- Occasioned
-            .found(occasion, keeper, speech, speaking, believed, at)
-            .left
-            .map(_.described)
-          ended <- found match {
-            case Left(ended) => Right(ended)
-            case Right((origin, to)) =>
-              for {
-                turn <- o.inbox
-                  .occasion(origin, plugin, occasion, at, believed)
-                  .left
-                  .map(_.toString)
-                decided <- Occasioned
-                  .decided(
-                    occasion,
-                    turn,
-                    to,
-                    believed,
-                    speaking,
-                    o.budget,
-                    speech,
-                    o.inbox.ledger,
-                    at
-                  )
-                  .left
-                  .map(_.described)
-                ended <- decided match {
-                  case Left(ended) => Right(ended)
-                  case Right(()) =>
-                    o.refusing match {
-                      case None =>
-                        o.inbox
-                          .startTurn(turn)
-                          .left
-                          .map(_.toString)
-                          .map(_ => Occasioned.Started(turn))
-                      case Some(why) =>
-                        Occasioned.unstarted(turn, why, speech, at).left.map(_.described)
-                    }
-                }
-              } yield ended
-          }
-        } yield ended
-        made.left.map(MoveError.Store(_))
+  // The rooms this run named occasions in: immutable values, read on the test's one thread.
+  @caps.unsafe.untrackedCaptures
+  private var named: Set[Place] = Set.empty
+
+  def occasion(name: MoveName, from: Tainted[Occasion]): Either[MoveError, Occasioned] = {
+    val room = Trusted.asIs(from).extract.room
+    if (!made.contains(name) && named.contains(room)) Left(MoveError.RoomTaken(room))
+    else
+      making(name, MoveKind.Occasion, limits.occasions) {
+        named = named + room
+        {
+          val o = occasions
+          given Tx = opened
+          val (occasion, believed) = (Trusted.asIs(from).extract, from.integrity)
+          val speaking = o.speaking
+          val speech = o.inbox.speech
+          val made: Either[String, Occasioned] = for {
+            found <- Occasioned
+              .found(occasion, keeper, speech, speaking, believed, at)
+              .left
+              .map(_.described)
+            ended <- found match {
+              case Left(ended) => Right(ended)
+              case Right((origin, to)) =>
+                for {
+                  turn <- o.inbox
+                    .occasion(origin, plugin, occasion, at, believed)
+                    .left
+                    .map(_.toString)
+                  decided <- Occasioned
+                    .decided(
+                      occasion,
+                      turn,
+                      to,
+                      believed,
+                      speaking,
+                      o.budget,
+                      speech,
+                      o.inbox.ledger,
+                      at
+                    )
+                    .left
+                    .map(_.described)
+                  ended <- decided match {
+                    case Left(ended) => Right(ended)
+                    case Right(()) =>
+                      o.refusing match {
+                        case None =>
+                          o.inbox
+                            .startTurn(turn)
+                            .left
+                            .map(_.toString)
+                            .map(_ => Occasioned.Started(turn))
+                        case Some(why) =>
+                          Occasioned.unstarted(turn, why, speech, at).left.map(_.described)
+                      }
+                  }
+                } yield ended
+            }
+          } yield ended
+          made.left.map(MoveError.Store(_))
+        }
       }
-    }
+  }
 
   /** `plugin`'s current pieces of files, as a run at `floor` reads them. */
   def pieced: Vector[KeptPiece] = pieces.current(plugin)(using opened)

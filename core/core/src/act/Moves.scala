@@ -248,13 +248,15 @@ trait Keeping extends Moves {
   /** What came of `from`, the acting plugin's occasion, believed at no more than `from` is: read
     * at the run's floor as the acting's subject, then recorded as the first entry of a turn of
     * its own at its room's top level ([[grit.core.inbox.OccasionInbox.occasion]]), decided as
-    * [[grit.core.speech.Speech.decide]] decides an occasion under the deployment's speaking, and its turn
-    * started when it drafts; each phase recorded once, so a rerun records, decides and starts
-    * nothing twice. [[Occasioned.Mislabelled]], [[Occasioned.Unread]] and an
-    * [[Occasioned.Held]] with no turn record nothing. [[MoveError.OverLimit]] past
-    * `limits.occasions`, counted as the move begins, so each of those counts as made;
-    * [[MoveError.Store]] when the store fails, or the inbox, or a failed start's outcome could
-    * not be kept.
+    * [[grit.core.speech.Speech.decide]] decides an occasion under the deployment's speaking, and
+    * its turn started when it drafts; each phase recorded once, so a rerun records, decides and
+    * starts nothing twice. [[Occasioned.Mislabelled]], [[Occasioned.Unread]] and an
+    * [[Occasioned.Held]] with no turn record nothing. Refused before any step, after
+    * [[MoveError.Diverged]] and [[MoveError.Repeated]]: [[MoveError.RoomTaken]] when the run
+    * named an occasion in its room already, whatever that one came to, and
+    * [[MoveError.OverLimit]] when it named occasions in `limits.occasions` rooms; neither spends
+    * the name. [[MoveError.Store]] when the store fails, or the inbox, or a failed start's
+    * outcome could not be kept.
     */
   def occasion(name: MoveName, from: Tainted[Occasion]): Either[MoveError, Occasioned]
 }

@@ -1705,19 +1705,48 @@ abstract class MovesContract extends TestSuite {
       )
     }
 
-    test("an occasion lapsed is Held with no turn, and its key stays free for one not lapsed") {
+    test("an occasion lapsed is Held with no turn, and its key stays free for a later run's") {
       val inbox = heard(InMemoryInbox.fresh())
+      val documents = new InMemoryDocuments
       val lapsed = OccasionAt.minusSeconds(1)
-      val got = occasioning(occasions(2), inbox, new InMemoryDocuments) { m =>
+      val got = Vector(lapsed, OccasionAt.plusSeconds(60)).map(until =>
+        occasioning(OneOccasion, inbox, documents)(m =>
+          Said(
+            occasioned(
+              m.occasion(name("o"), TestTainted.at(occasion(about(m), "k", until), Believed))
+            )
+          )
+        )
+      )
+      (got, inbox.started.size) ==> (
+        Vector(Said(s"Held(None,Lapsed($lapsed))"), Said("Started")),
+        1
+      )
+    }
+
+    test(
+      "a second occasion in a room the run named already is RoomTaken, whatever the first came to, and spends no name"
+    ) {
+      val inbox = heard(InMemoryInbox.fresh())
+      val rooms = Recorded(
+        Vector(Channel.room, Elsewhere.room)
+          .map(_ -> Recorded.Kept(None, Some(Label.Public), quiet = false, None))
+          .toMap,
+        Map.empty
+      )
+      val got = occasioning(occasions(2), inbox, new InMemoryDocuments, rooms = rooms)(m => {
         val about = MovesContract.about(m)
         Said(
           Vector(
-            m.occasion(name("a"), TestTainted.at(occasion(about, "k", lapsed), Believed)),
-            m.occasion(name("b"), TestTainted.at(occasion(about, "k"), Believed))
+            m.occasion(name("a"), TestTainted.at(occasion(about, "a"), Believed)),
+            m.occasion(name("b"), TestTainted.at(occasion(about, "b"), Believed)),
+            m.occasion(name("b"), TestTainted.at(occasion(about, "b", room = Elsewhere), Believed))
           ).map(occasioned).mkString(", ")
         )
-      }
-      (got, inbox.started.size) ==> (Said(s"Held(None,Lapsed($lapsed)), Started"), 1)
+      })
+      got ==> Said(
+        s"Mislabelled(${Channel.room}), RoomTaken(${Channel.room}), Mislabelled(${Elsewhere.room})"
+      )
     }
 
     test(
@@ -1815,7 +1844,10 @@ abstract class MovesContract extends TestSuite {
           Said(
             Vector(
               m.occasion(name("a"), TestTainted.at(occasion(about, "a"), Believed)),
-              m.occasion(name("b"), TestTainted.at(occasion(about, "b"), Believed))
+              m.occasion(
+                name("b"),
+                TestTainted.at(occasion(about, "b", room = Elsewhere), Believed)
+              )
             ).map(occasioned).mkString(", ")
           )
         })
@@ -2458,6 +2490,9 @@ object MovesContract {
   /** The channel an occasion is named in: its top level, reached at [[ChannelAt]]. */
   val Channel: Origin.Room = Origin.Room("T1", "C1")
 
+  /** Another channel, where no one was heard. */
+  val Elsewhere: Origin.Room = Origin.Room("T1", "C2")
+
   /** [[Channel]]'s room address. */
   val ChannelAt: String = "C1"
 
@@ -2481,9 +2516,9 @@ object MovesContract {
       .copy(occasions = Some(Occasions(Occasions.Suggested)))
   )
 
-  /** No asks or calls, and `n` occasions. */
+  /** No asks or calls, and occasions in `n` rooms. */
   def occasions(n: Int): MoveLimits =
-    MoveLimits.Zero.withOccasions(n).fold(e => throw new java.lang.AssertionError(e), identity)
+    MoveLimits.of(0, 0, 0, n).fold(e => throw new java.lang.AssertionError(e), identity)
 
   /** No asks or calls, and one occasion. */
   val OneOccasion: MoveLimits = occasions(1)
@@ -2538,14 +2573,15 @@ object MovesContract {
         }
     ).fold(e => throw new java.lang.AssertionError(s"$e"), _.id)
 
-  /** An occasion in [[Channel]]'s room, ahead, about `about`, under `key`, until `until`. */
+  /** An occasion in `room`'s room, about `about`, under `key`, until `until`. */
   def occasion(
       about: DocumentVersionId,
       key: String,
-      until: Instant = OccasionAt.plusSeconds(86400)
+      until: Instant = OccasionAt.plusSeconds(86400),
+      room: Origin.Room = Channel
   ): Occasion =
     Occasion(
-      Channel.room,
+      room.room,
       OccasionKey.of(key).getOrElse(throw new java.lang.AssertionError(key)),
       TestOccasions.Brief,
       about,

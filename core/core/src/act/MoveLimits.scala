@@ -3,16 +3,10 @@ package grit.core.act
 /** How many moves of each limited kind one run may make; a move past its kind's count is
   * refused ([[MoveError.OverLimit]]) and not made. `asks` counts asks a model answers (a JSON
   * ask's repairs within it); `judgments`, judgments ([[Posed.Judgment]]); `calls`, calls;
-  * `occasions`, occasions ([[Keeping.occasion]]), none unless [[withOccasions]] allows them.
-  * Keeps are not limited: they spend nothing.
+  * `occasions`, the rooms a run may name occasions in, one each ([[Keeping.occasion]]). Keeps
+  * are not limited: they spend nothing.
   */
-final case class MoveLimits private (asks: Int, calls: Int, judgments: Int, occasions: Int) {
-
-  /** These limits, allowing `n` occasions, or why not: `n` negative. */
-  def withOccasions(n: Int): Either[String, MoveLimits] =
-    if (n < 0) Left(s"a run's limits are each at least zero: occasions $n")
-    else Right(copy(occasions = n))
-}
+final case class MoveLimits private (asks: Int, calls: Int, judgments: Int, occasions: Int)
 
 object MoveLimits {
 
@@ -28,12 +22,12 @@ object MoveLimits {
     of(asks, calls, (asks.max(0).toLong * JudgmentsPerAsk).min(Int.MaxValue.toLong).toInt)
 
   /** These limits, or why not: any negative. */
-  def of(asks: Int, calls: Int, judgments: Int): Either[String, MoveLimits] =
-    if (asks < 0 || calls < 0 || judgments < 0)
+  def of(asks: Int, calls: Int, judgments: Int, occasions: Int = 0): Either[String, MoveLimits] =
+    if (asks < 0 || calls < 0 || judgments < 0 || occasions < 0)
       Left(
-        s"a run's limits are each at least zero: asks $asks, calls $calls, judgments $judgments"
+        s"a run's limits are each at least zero: asks $asks, calls $calls, judgments $judgments, occasions $occasions"
       )
-    else Right(new MoveLimits(asks, calls, judgments, 0))
+    else Right(new MoveLimits(asks, calls, judgments, occasions))
 
   /** No moves of any limited kind: zero asks, calls, judgments and occasions. */
   val Zero: MoveLimits = new MoveLimits(0, 0, 0, 0)

@@ -1,5 +1,6 @@
 package grit.core.act
 
+import grit.core.place.Place
 import grit.core.visibility.{Integrity, Label}
 
 /** Why a move was not made. */
@@ -7,6 +8,9 @@ enum MoveError {
 
   /** The run made a move of this name already. */
   case Repeated(name: MoveName)
+
+  /** The run named an occasion in `room` already: one occasion a room a run. */
+  case RoomTaken(room: Place)
 
   /** The run reached its limit of `limit` moves of `kind`. */
   case OverLimit(kind: MoveKind, limit: Int)
@@ -54,6 +58,7 @@ object MoveError {
   def said(error: MoveError): String = error match {
     case Below(_) => "it came from somewhere not trusted enough to keep"
     case Repeated(name) => s"the move ${MoveName.value(name)} was made already"
+    case RoomTaken(room) => s"the run named an occasion in ${room.written} already"
     case OverLimit(kind, limit) => s"the run reached its limit of $limit ${plural(kind)}"
     case Capped => "the day's recorded spend reached its cap"
     case Model(why) => why

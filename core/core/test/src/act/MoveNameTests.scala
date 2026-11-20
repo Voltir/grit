@@ -28,11 +28,13 @@ object MoveNameTests extends TestSuite {
       MoveLimits.of(0, 0) ==> Right(MoveLimits.Zero)
       MoveLimits.of(1, 0, 3).map(l => (l.asks, l.calls, l.judgments)) ==> Right((1, 0, 3))
       MoveLimits.of(-1, 0) ==>
-        Left("a run's limits are each at least zero: asks -1, calls 0, judgments 0")
+        Left("a run's limits are each at least zero: asks -1, calls 0, judgments 0, occasions 0")
       MoveLimits.of(0, -1) ==>
-        Left("a run's limits are each at least zero: asks 0, calls -1, judgments 0")
+        Left("a run's limits are each at least zero: asks 0, calls -1, judgments 0, occasions 0")
       MoveLimits.of(0, 0, -1) ==>
-        Left("a run's limits are each at least zero: asks 0, calls 0, judgments -1")
+        Left("a run's limits are each at least zero: asks 0, calls 0, judgments -1, occasions 0")
+      MoveLimits.of(0, 0, 0, -1) ==>
+        Left("a run's limits are each at least zero: asks 0, calls 0, judgments 0, occasions -1")
     }
 
     test("a run whose job states only asks and calls may make ten judgments per ask") {

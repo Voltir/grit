@@ -31,7 +31,7 @@ import grit.core.job.JobRun
 import grit.core.message.Message
 import grit.core.need.Needs
 import grit.core.occasion.Occasion
-import grit.core.place.Service
+import grit.core.place.{Place, Service}
 import grit.core.provider.ModelRequest
 import grit.core.sanitise.IntegrityTree
 import grit.core.schema.Typed
@@ -451,9 +451,9 @@ object DurableMoves {
         }
       }
 
-    def occasion(name: MoveName, from: Tainted[Occasion]): Either[MoveError, Occasioned] =
-      refused(name, MoveKind.Occasion).toLeft(()).flatMap { _ =>
-        val occasion = Trusted.asIs(from).extract
+    def occasion(name: MoveName, from: Tainted[Occasion]): Either[MoveError, Occasioned] = {
+      val occasion = Trusted.asIs(from).extract
+      refused(name, MoveKind.Occasion, Some(occasion.room)).toLeft(()).flatMap { _ =>
         steps
           .run(
             OccasionMove.flow,
@@ -463,6 +463,7 @@ object DurableMoves {
           .left
           .map(MoveError.Store(_))
       }
+    }
   }
 
   /** One run's moves. The run state below is read and written only by this object's own
@@ -486,7 +487,7 @@ object DurableMoves {
     @caps.unsafe.untrackedCaptures
     private var calls: Int = 0
     @caps.unsafe.untrackedCaptures
-    private var occasions: Int = 0
+    private var rooms: Set[Place] = Set.empty
     @caps.unsafe.untrackedCaptures
     private var diverged: Option[MoveName] = None
 
@@ -498,20 +499,25 @@ object DurableMoves {
     protected def made[I, O](flow: Flow[MovesEnv, I, Nothing, O], in: I): O =
       steps.run(flow.over[R](moves), in).merge
 
-    /** Why a move `name` of `kind` may not be made now; when it may, its name is spent and its
-      * kind counted.
+    /** Why a move `name` of `kind`, an occasion's in `room`, may not be made now; when it may,
+      * its name is spent and its kind counted, an occasion by its room.
       */
-    protected def refused(name: MoveName, kind: MoveKind): Option[MoveError] =
+    protected def refused(
+        name: MoveName,
+        kind: MoveKind,
+        room: Option[Place] = None
+    ): Option[MoveError] =
       diverged
         .map(MoveError.Diverged(_))
         .orElse(Option.when(used.contains(name))(MoveError.Repeated(name)))
+        .orElse(room.filter(rooms.contains).map(MoveError.RoomTaken(_)))
         .orElse(kind match {
           case MoveKind.Ask if asks >= limits.asks => Some(MoveError.OverLimit(kind, limits.asks))
           case MoveKind.Judge if judgments >= limits.judgments =>
             Some(MoveError.OverLimit(kind, limits.judgments))
           case MoveKind.Call if calls >= limits.calls =>
             Some(MoveError.OverLimit(kind, limits.calls))
-          case MoveKind.Occasion if occasions >= limits.occasions =>
+          case MoveKind.Occasion if rooms.size >= limits.occasions =>
             Some(MoveError.OverLimit(kind, limits.occasions))
           case _ => None
         })
@@ -521,7 +527,7 @@ object DurableMoves {
             case MoveKind.Ask => asks += 1
             case MoveKind.Judge => judgments += 1
             case MoveKind.Call => calls += 1
-            case MoveKind.Occasion => occasions += 1
+            case MoveKind.Occasion => rooms = rooms ++ room
             case MoveKind.Keep => ()
           }
           None
