@@ -3,6 +3,7 @@ package grit.turn
 import grit.core.context.SectionTag
 import grit.core.host.RedactionMark
 import grit.core.id.EdgeName
+import grit.core.occasion.OccasionBrief
 import grit.core.persona.Persona
 import grit.core.place.{Directory, Place, Service}
 import grit.core.prompt.{Fenced, Fragment, Layer, Tag}
@@ -285,6 +286,31 @@ object TurnPrompt {
         "and do not introduce yourself or say that you were not asked. If you have nothing to " +
         s"add that the channel does not already say, reply with exactly: $Pass"
     )
+
+  /** What a turn rooted on an occasion worded `brief` is told, an edge-layer fragment of its
+    * own: nobody asked it; it writes one short post for its channel's top level; `brief`; from
+    * the document it is shown alone; without introducing itself; or exactly [[Pass]] when the
+    * channel's recent talk already says it.
+    */
+  // Draft wording, for Nick (T1).
+  def occasion(brief: OccasionBrief): Fragment =
+    Fragment(
+      Layer.Edge,
+      Fragment.Grit,
+      "Nobody asked you anything. You are writing one short post for this channel's top " +
+        s"level, on an occasion one of your jobs found: ${OccasionBrief.value(brief)} Write it " +
+        "from the document shown alone, leaving out what it does not say. Do not introduce " +
+        "yourself or say that nobody asked. If the channel's recent talk already says it, " +
+        s"reply with exactly: $Pass"
+    )
+
+  /** The message a turn rooted on an occasion is shown as its own: grit's note, then `text`,
+    * its document's head, fenced as a document.
+    */
+  // Draft wording, for Nick (T3).
+  def occasionShown(text: String): String =
+    Fenced.noted(Vector("The document this post is about.")) + "\n\n" +
+      Fenced.in(Tag.Document, text).rendered
 
   /** What a turn rooted on a heard message whose draft goes in its thread is told: nobody
     * asked it; add what the thread lacks from what it knows (a record, another conversation),

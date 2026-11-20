@@ -461,7 +461,7 @@ object TurnJudgeTests extends TestSuite {
       TurnJudge.judge(
         judge,
         grit.assembly.estimate.CharEstimate,
-        TurnJudge.State("m", "t", "d", "r", atTop = true)
+        TurnJudge.State("m", "t", "d", "r", TurnJudge.At.Top)
       )
       judge.asked.lastOption ==> Some(
         "Read message, thread, draft and posted. Does draft answer what message, or the thread " +
@@ -486,9 +486,12 @@ object TurnJudgeTests extends TestSuite {
     test(
       "a draft posted at its room's top level is judged knowing it, one in its thread as before"
     ) {
-      def json(atTop: Boolean) =
-        StateJson[TurnJudge.State].json(TurnJudge.State("m", "t", "d", "r", atTop)).obj
-      (json(true).get("posted").map(_.str), json(false).keys.toVector) ==> (
+      def json(at: TurnJudge.At) =
+        StateJson[TurnJudge.State].json(TurnJudge.State("m", "t", "d", "r", at)).obj
+      (
+        json(TurnJudge.At.Top).get("posted").map(_.str),
+        json(TurnJudge.At.Thread).keys.toVector
+      ) ==> (
         Some("at the channel's top level, read by people who did not see message"),
         Vector("message", "thread", "draft", "recalled")
       )

@@ -66,7 +66,7 @@ object TurnRecord {
   }
 
   /** What the `judge` step recorded of the draft of a turn whose root is `root`; `None`
-    * unless `root` is [[TurnOffer.Root.Heard]] and the step recorded a judgement. `Left`
+    * unless `root` is [[TurnOffer.Root.Heard]] or [[TurnOffer.Root.Occasion]] and the step recorded a judgement. `Left`
     * naming the step when its output does not read.
     */
   def judged(
@@ -74,7 +74,8 @@ object TurnRecord {
       root: TurnOffer.Root
   ): Either[String, Option[TurnJudge.Judgement]] = {
     root match {
-      case TurnOffer.Root.Heard => read[TurnJudge.Judgement](steps, Turn.Step.Judge)
+      case TurnOffer.Root.Heard | TurnOffer.Root.Occasion =>
+        read[TurnJudge.Judgement](steps, Turn.Step.Judge)
       case TurnOffer.Root.Addressed | TurnOffer.Root.Named | TurnOffer.Root.ByName => Right(None)
     }
   }

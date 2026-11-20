@@ -16,3 +16,11 @@ final case class Occasion(
     about: DocumentVersionId,
     until: Instant
 ) extends caps.Pure
+
+object Occasion {
+
+  /** 1,200: the most characters of its document, its head, that an occasion's turn is shown
+    * and its judge recalls; what a plugin judging whether to name one reads of it.
+    */
+  val DocumentChars: Int = 1_200
+}

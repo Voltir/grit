@@ -56,7 +56,8 @@ Its prompt, in order: the base (`TurnPrompt.TaskBase` when briefed for one task)
 `TurnPrompt.Briefed` when it is briefed, its edge's fragment, what its edge says its reply shows
 (`renders`, `TurnPrompt.rendered`), where its reply goes (`TurnPrompt.destination`), what it is
 called (`persona`, `TurnPrompt.called`), `TurnPrompt.unprompted` when its root is heard
-(`TurnPrompt.unpromptedAtTop` when its venue is its room's top level), how its persona sounds
+(`TurnPrompt.unpromptedAtTop` when its venue is its room's top level), `TurnPrompt.occasion` when
+it is rooted on a job's occasion, how its persona sounds
 (`TurnPrompt.voiced`), its own room's label (the transaction's floor, `TurnPrompt.room`), what it
 may reach there, what it reaches besides (`TurnPrompt.reached`, for each reached service offering
 tools), the voice set with `/set voice` at a terminal alone (`Audience.Operator`; none for plain),

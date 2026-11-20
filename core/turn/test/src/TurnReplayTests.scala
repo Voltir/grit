@@ -145,7 +145,9 @@ object TurnReplayTests extends TestSuite {
         searched ++ Vector("ask:relevance-0", "ask:relevance-0:record") ++
         unjudged.drop(1) :+ "assemble"),
       "room-thread-asked.json" -> reasoned,
-      "room-carried-appended.json" -> reasoned
+      "room-carried-appended.json" -> reasoned,
+      // A job's occasion at a room's top level: its needs gate unasked and drawn with no query.
+      "occasion.json" -> reasoned
     )
   }
 
@@ -337,7 +339,8 @@ object TurnReplayTests extends TestSuite {
         "heard-reached-read.json",
         "room-closing-found.json",
         "room-thread-asked.json",
-        "room-carried-appended.json"
+        "room-carried-appended.json",
+        "occasion.json"
       )
       val failures = outputs.collect {
         case (file, InMemoryDurable.Outcome.Output(text))

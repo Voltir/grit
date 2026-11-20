@@ -920,6 +920,31 @@ object RecordTurnHistories {
       "crashed-before-summary-append" -> crashedBeforeSummaryAppend,
       "heard-posted" -> heard(grit.core.speech.Speaking.Within(speechLimits)),
       "heard-shadowed" -> heard(grit.core.speech.Speaking.Shadow(speechLimits)),
+      // A job's occasion, live: drafted from its document unsearched, judged, posted at its room.
+      "occasion" -> {
+        val w = occasionWorld()
+        val durable = new InMemoryDurable
+        durable.run(w.turn.workflowId)(
+          turnBodyWith(
+            w.speech.entries,
+            new RecordingProvider,
+            new Before(w.speech.entries),
+            w.speech.ledger,
+            new Judge(Some((0.9, 0.9))),
+            TurnSpeech(
+              grit.core.speech.Speaking.Within(
+                speechLimits.copy(occasions =
+                  Some(grit.core.speech.Occasions(grit.core.speech.Occasions.Suggested))
+                )
+              ),
+              w.speech.store,
+              w.speech.deliveries
+            ),
+            documents = w.documents
+          )
+        )
+        recorded(durable, w.turn)
+      },
       // A heard turn offered a reached service's read tool, calling it, its draft held as
       // believed below outside.
       "heard-reached-read" -> heardReaching,

@@ -242,10 +242,15 @@ private[turn] object TurnFlow {
         Unsettled(e, Undrafted(e.turn, Outcome.NothingRecalled), "unneeded")
       case (Result.Failed(failure), TurnOffer.Root.Addressed) =>
         Stopped(s"failed: ${written(failure)}${e.notes}")
-      case (draft: Result.Kept, TurnOffer.Root.Heard | TurnOffer.Root.Named) => Drafted(e, draft)
+      case (
+            draft: Result.Kept,
+            TurnOffer.Root.Heard | TurnOffer.Root.Named | TurnOffer.Root.Occasion
+          ) =>
+        Drafted(e, draft)
       case (
             Result.Failed(failure),
-            TurnOffer.Root.Heard | TurnOffer.Root.Named | TurnOffer.Root.ByName
+            TurnOffer.Root.Heard | TurnOffer.Root.Named | TurnOffer.Root.ByName |
+            TurnOffer.Root.Occasion
           ) =>
         Unsettled(
           e,

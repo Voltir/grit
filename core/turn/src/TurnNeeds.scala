@@ -55,6 +55,11 @@ object TurnNeeds {
   /** Why the gate asked nothing of a turn whose window could find nothing by searching. */
   val NothingToSearch: String = "nothing to search"
 
+  /** Why the gate asked nothing of a turn rooted on an occasion, and its window drew with no
+    * search: its window's note, after "no query: ".
+    */
+  val OnOccasion: String = "an occasion's turn draws on its document alone"
+
   /** The roots of a turn that ends when the gate rejects its message: a heard message grit
     * drafts a reply to, unasked. A turn said to grit (`Addressed`, `ByName`) always replies.
     */
@@ -66,7 +71,9 @@ object TurnNeeds {
     /** It searches, as it would with no gate: the gate passed its message, or did not judge it. */
     case Searches
 
-    /** Said to grit and rejected: its window is drawn with no search, noted [[Unneeded]]. */
+    /** Said to grit and rejected, noted [[Unneeded]], or rooted on an occasion, noted
+      * [[OnOccasion]]: its window is drawn with no search.
+      */
     case Unsearched
 
     /** Heard and rejected: it ends before its draft, nothing recalled. */
@@ -75,15 +82,20 @@ object TurnNeeds {
 
   /** What a turn whose root is `root` does after the gate's `verdict`. */
   def after(verdict: TurnRelevance.Verdict, root: TurnOffer.Root): After =
-    verdict match {
-      case TurnRelevance.Verdict.Passed(_) | TurnRelevance.Verdict.Unjudged(_) => After.Searches
-      case TurnRelevance.Verdict.Rejected(_) => unasked(root).fold(After.Unsearched)(After.Ends(_))
+    (verdict, root) match {
+      case (_, TurnOffer.Root.Occasion) => After.Unsearched
+      case (TurnRelevance.Verdict.Passed(_) | TurnRelevance.Verdict.Unjudged(_), _) =>
+        After.Searches
+      case (TurnRelevance.Verdict.Rejected(_), _) =>
+        unasked(root).fold(After.Unsearched)(After.Ends(_))
     }
 
-  /** `root` as an [[Unasked]] one, a turn that ends unasked; `None` when said to grit. */
+  /** `root` as an [[Unasked]] one, a turn that ends unasked; `None` when said to grit or
+    * rooted on an occasion.
+    */
   def unasked(root: TurnOffer.Root): Option[Unasked] = root match {
     case TurnOffer.Root.Heard => Some(TurnOffer.Root.Heard)
     case TurnOffer.Root.Named => Some(TurnOffer.Root.Named)
-    case TurnOffer.Root.Addressed | TurnOffer.Root.ByName => None
+    case TurnOffer.Root.Addressed | TurnOffer.Root.ByName | TurnOffer.Root.Occasion => None
   }
 }

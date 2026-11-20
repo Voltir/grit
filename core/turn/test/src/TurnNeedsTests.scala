@@ -62,6 +62,16 @@ object TurnNeedsTests extends TestSuite {
     }
 
     test(
+      "an occasion's turn goes unsearched whatever the gate's verdict: its document is its ground"
+    ) {
+      Vector(
+        Verdict.Rejected(Probability.clamped(0.1)),
+        Verdict.Unjudged(TurnNeeds.OnOccasion),
+        Verdict.Passed(Probability.clamped(0.9))
+      ).map(TurnNeeds.after(_, Root.Occasion)) ==> Vector.fill(3)(TurnNeeds.After.Unsearched)
+    }
+
+    test(
       "the gate is shown the judge's message and thread: the strand's excerpt, then the thread"
     ) {
       val heard = entry(2, Payload.Heard("is it still on?"))

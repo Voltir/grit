@@ -5,6 +5,7 @@ import grit.core.context.Shown
 import grit.core.document.{DocLabel, Document}
 import grit.core.id.{EntryId, EntrySeq, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
+import grit.core.occasion.OccasionBrief
 import grit.core.period.Probability
 import grit.core.provider.TokenEstimator
 import grit.core.speech.Judged
@@ -31,15 +32,24 @@ object TurnJudge {
     * the heard message's first [[ThreadChars]] (the thread leaves it out), the thread's last
     * [[ThreadChars]] (what came before the heard message, and every reply after it), the draft,
     * and what the turn recalled its first [[RecalledChars]]; and, for a draft posted at its
-    * room's top level (`atTop`, [[grit.core.speech.Venue.Room]]), `"posted"` saying so.
+    * room's top level (`posted` not [[At.Thread]]), `"posted"` saying so. An occasion's draft's
+    * message is its brief, and its recalled begins with its document's head.
     */
   final case class State(
       message: String,
       thread: String,
       draft: String,
       recalled: String,
-      atTop: Boolean = false
+      posted: At = At.Thread
   )
+
+  /** Where a judged draft goes, which picks what its worth is asked as: in its thread; at its
+    * room's top level ([[grit.core.speech.Venue.Room]]), which must say what it answers; or at a
+    * channel's top level on an occasion, worth the whole channel's reading now.
+    */
+  enum At {
+    case Thread, Top, Occasion
+  }
 
   given StateJson[State] = StateJson.instance { s =>
     val o = ujson.Obj(
@@ -49,7 +59,11 @@ object TurnJudge {
       "recalled" -> s.recalled.take(RecalledChars)
     )
     // Written only at the top level, so a draft in its thread is judged as before.
-    if (s.atTop) o("posted") = "at the channel's top level, read by people who did not see message"
+    s.posted match {
+      case At.Thread => ()
+      case At.Top | At.Occasion =>
+        o("posted") = "at the channel's top level, read by people who did not see message"
+    }
     o
   }
 
@@ -100,6 +114,13 @@ object TurnJudge {
       "answers: it is posted where its readers did not see message."
   )
 
+  // Draft wording, for Nick (T2, after the lead every worth question has).
+  private val worthOnOccasion = yesNo(
+    "Read message, thread, draft and posted. Is this post worth putting in front of the whole " +
+      "channel now: does it tell or ask the team something useful that the channel's recent " +
+      "talk has not already settled?"
+  )
+
   /** A draft's text: `None` when it passes, its whole text, trimmed and lower-cased,
     * [[TurnPrompt.Pass]] or nothing.
     */
@@ -115,7 +136,14 @@ object TurnJudge {
   def judge(classifier: Classifier^, estimator: TokenEstimator, state: State): Judgement =
     if (state.recalled.trim.isEmpty) Judgement.NothingRecalled
     else
-      classifier.ask(state, grounded.zip(if (state.atTop) worthAtTop else worth)) match {
+      classifier.ask(
+        state,
+        grounded.zip(state.posted match {
+          case At.Thread => worth
+          case At.Top => worthAtTop
+          case At.Occasion => worthOnOccasion
+        })
+      ) match {
         case Right(answered) =>
           val (g, w) = answered.value
           Judgement.Scored(
@@ -141,7 +169,9 @@ object TurnJudge {
     * record among the window's entries whose earlier messages the thread does
     * not show whole (some cut whole or cut inside, or none in it), then each of the turn's own
     * tool results but a failed one, under its call as a person is shown it: a strand is context,
-    * not recall. `atTop` when the draft goes at its room's top level.
+    * not recall. `atTop` when the draft goes at its room's top level. For a turn rooted on an
+    * occasion (`showing.occasion`), the message is its brief and recalled begins with its
+    * document's text, judged [[At.Occasion]].
     */
   private[turn] def state(
       all: Vector[Entry],
@@ -186,9 +216,27 @@ object TurnJudge {
         s"$call:\n${Shown.result(r).content}"
     }
     val recalled =
-      (sections ++ documents ++ pieces ++ records).collect { case Message.User(text) => text } ++
+      showing.occasion.map(_._2).toVector ++
+        (sections ++ documents ++ pieces ++ records).collect { case Message.User(text) => text } ++
         read
-    State(message, thread.text, draft, recalled.mkString("\n\n"), atTop)
+    showing.occasion match {
+      case Some((brief, _)) =>
+        State(
+          OccasionBrief.value(brief),
+          thread.text,
+          draft,
+          recalled.mkString("\n\n"),
+          At.Occasion
+        )
+      case None =>
+        State(
+          message,
+          thread.text,
+          draft,
+          recalled.mkString("\n\n"),
+          if (atTop) At.Top else At.Thread
+        )
+    }
   }
 
   /** The heard message and the thread around it, as the judge and the needs gate

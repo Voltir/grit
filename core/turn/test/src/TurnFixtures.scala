@@ -2037,6 +2037,98 @@ object TurnFixtures {
     SpeechWorld(entries, ledger, store, new InMemoryDeliveries, turn)
   }
 
+  /** A [[SpeechWorld]] for an occasion's turn, with the documents it reads. */
+  final case class OccasionWorld(speech: SpeechWorld, documents: InMemoryDocuments) {
+    def turn: TurnRef = speech.turn
+  }
+
+  /** The text of the document an [[occasionWorld]]'s occasion is about. */
+  val OccasionText: String = "Planning call, Thursday 10:00, Ana and Ben: the Q3 roadmap."
+
+  /** A room's top-level conversation in which someone said "the freeze moved to Thursday"
+    * (turn 0), then a job's occasion (the turn), worded `TestOccasions.Brief`, keyed `ahead:planning`, about a
+    * topic document holding [[OccasionText]] (none, the occasion naming a version never
+    * written, unless `document`), believed at Member, decided drafting at `Venue.Room("C//1")`.
+    */
+  def occasionWorld(document: Boolean = true): OccasionWorld = {
+    given grit.core.store.Tx = TestTx.fake
+    val entries = new InMemoryEntryStore
+    val ledger = new InMemoryUsageLedger
+    val documents = new InMemoryDocuments
+    val first = entries.lockNext(conversation).getOrElse(sys.error("store"))
+    entries.insert(
+      Entry(
+        EntryId("heard:freeze"),
+        conversation,
+        first.turnSeq,
+        None,
+        first.seq,
+        Payload.Heard("the freeze moved to Thursday"),
+        Instant.EPOCH,
+        Integrity.Member
+      )
+    )
+    val topics = grit.core.id.PluginName.of("topics").getOrElse(sys.error("a name"))
+    val about =
+      if (!document) grit.core.id.DocumentVersionId.of(99).getOrElse(sys.error("a version"))
+      else
+        (for {
+          label <- grit.core.document.DocLabel.of("topic")
+          terms <- grit.core.document.DocumentTerms
+            .of(label, grit.core.document.DocWeight.Unscaled, FiniteDuration(30, "days"), 10)
+          key <- grit.core.id.DocKey.of("planning")
+          text <- grit.core.document.DocText.of(OccasionText)
+          written <- documents
+            .keeper(topics, terms)
+            .write(
+              key,
+              grit.core.visibility.Label.Public,
+              Integrity.Member,
+              Place.Everywhere,
+              text,
+              ujson.Obj(),
+              None,
+              Instant.EPOCH
+            )
+            .left
+            .map(_.toString)
+          v <- written match {
+            case grit.core.document.Written.Versioned(v, _, _) => Right(v)
+            case other => Left(s"not written: $other")
+          }
+        } yield v).fold(sys.error, identity)
+    val key = grit.core.occasion.OccasionKey.of("ahead:planning").getOrElse(sys.error("a key"))
+    val next = entries.lockNext(conversation).getOrElse(sys.error("store"))
+    entries.insert(
+      Entry(
+        EntryId("occasion:topics:ahead:planning"),
+        conversation,
+        next.turnSeq,
+        None,
+        next.seq,
+        Payload.Occasion(grit.core.occasion.TestOccasions.Brief, about, key),
+        Instant.EPOCH,
+        Integrity.Member
+      )
+    )
+    val turn = TurnRef(conversation, next.turnSeq)
+    val store = new InMemorySpeechStore(entries, ledger)
+    // Decided as the turn under test tells the time (NoWait), within any rate's window.
+    val occasion = grit.core.occasion.Occasion(
+      Place.Everywhere,
+      key,
+      grit.core.occasion.TestOccasions.Brief,
+      about,
+      Instant.MAX
+    )
+    store.decided(
+      grit.core.speech.OccasionRoot(turn, occasion, "C//1", Integrity.Member),
+      Decision.Drafting(turn, Venue.Room("C//1")),
+      Instant.now()
+    )
+    OccasionWorld(SpeechWorld(entries, ledger, store, new InMemoryDeliveries, turn), documents)
+  }
+
   /** The service a heard turn reaches in [[heardReachingBody]]. */
   val lookingUp: grit.core.place.Service =
     grit.core.place.Service
