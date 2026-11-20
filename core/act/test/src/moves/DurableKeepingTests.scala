@@ -45,6 +45,7 @@ object DurableKeepingTests extends TestSuite {
       current,
       declassifying,
       forReview,
+      holds,
       keepBenched,
       keepDeclassified,
       labels,

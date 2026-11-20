@@ -336,6 +336,14 @@ private[sql] object SqlDocuments {
     ps.setString(from + 2, ref.ref)
   }
 
+  /** That the row aliased `d` is a version, the first parameter after [[SqlClearance.With]]'s, of
+    * the plugin, the second, current, not a withdrawal and read at the transaction's clearance:
+    * what [[DocumentKeeper.holds]] and [[DocumentKeeper.forReview]] both check.
+    */
+  private val Held: String =
+    s"d.version = ? AND d.plugin = ? AND d.superseded_at IS NULL AND d.body IS NOT NULL " +
+      s"AND ${SqlClearance.kept("d")}"
+
   /** The version `rs` holds ([[Columns]]), a withdrawal included, or why it does not read. */
   def historied(rs: ResultSet): Either[String, DocumentVersion] =
     if (Option(rs.getString("body")).isEmpty)
@@ -813,6 +821,17 @@ private[sql] object SqlDocuments {
         ps.setInt(6, row.policy.version)
       }.flatMap(n => Either.cond(n > 0, (), StoreError.Invalid("no such policy version is kept")))
 
+    def holds(version: DocumentVersionId)(using Tx^): Either[StoreError, Boolean] =
+      SqlStatements
+        .cleared(
+          s"""WITH ${SqlClearance.With}
+             |SELECT 1 FROM grit.documents d WHERE $Held""".stripMargin
+        ) { ps =>
+          ps.setLong(SqlClearance.Params + 1, DocumentVersionId.value(version))
+          ps.setString(SqlClearance.Params + 2, PluginName.value(plugin))
+        }(_ => ())
+        .map(_.nonEmpty)
+
     def forReview(version: DocumentVersionId, day: LocalDate, at: Instant)(using
         tx: Tx^
     ): Either[StoreError, Boolean] = {
@@ -822,8 +841,7 @@ private[sql] object SqlDocuments {
            |INSERT INTO grit.document_reviews (plugin, key, classification_id, day, version, queued_at)
            |SELECT d.plugin, d.key, d.classification_id, ?, d.version, ?
            |  FROM grit.documents d
-           | WHERE d.version = ? AND d.plugin = ? AND d.superseded_at IS NULL
-           |   AND d.body IS NOT NULL AND ${SqlClearance.kept("d")}
+           | WHERE $Held
            |ON CONFLICT DO NOTHING""".stripMargin
       ) { ps =>
         SqlClearance.bind(ps, 1, clearance)

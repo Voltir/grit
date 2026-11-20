@@ -1710,6 +1710,20 @@ abstract class DocumentContract extends TestSuite {
     }
 
     test(
+      "holds is true of one of the plugin's current documents, and of no version superseded, withdrawn or another plugin's"
+    ) {
+      val (p, q) = (name("doc-holds"), name("doc-holds-q"))
+      val k = keeper(p, terms())
+      val first = put(k, "k", "first", 1)
+      val second = put(k, "k", "second", 2)
+      val theirs = put(keeper(q, terms()), "k", "theirs", 2)
+      val gone = put(k, "gone", "gone", 2)
+      transaction(ok(k.withdraw(key("gone"), Label.Public, at(3))))
+      transaction(Vector(first, second, theirs, gone).map(v => ok(k.holds(v)))) ==>
+        Vector(false, true, false, false)
+    }
+
+    test(
       "a version is put up once a day, only while it is one of the plugin's current documents"
     ) {
       val (p, q) = (name("doc-review-once"), name("doc-review-once-q"))

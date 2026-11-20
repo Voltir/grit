@@ -136,12 +136,17 @@ trait DocumentKeeper extends DocumentShelf {
 
   /** Puts `version`, one of its own current documents, up for review on `day`, at `at`, for an
     * edge to post ([[grit.core.review.DocumentReviews]]); `false`, writing nothing, when its key
-    * at its label is up for `day` already, or `version` is not one of its current documents.
+    * at its label is up for `day` already, or `version` is not one it [[holds]].
     * The label it is given outlives the version.
     */
   def forReview(version: DocumentVersionId, day: LocalDate, at: Instant)(using
       Tx^
   ): Either[StoreError, Boolean]
+
+  /** Whether `version` is one of its current documents that this transaction reads; `false`
+    * for one superseded, withdrawn, another plugin's, or kept above what it reads.
+    */
+  def holds(version: DocumentVersionId)(using Tx^): Either[StoreError, Boolean]
 
   /** The application in force for the document `pointer` reads, kept at `label`: its current
     * application, when `label` holds its compartment and that compartment has a policy version
@@ -285,6 +290,9 @@ object DocumentKeeper {
     def forReview(version: DocumentVersionId, day: LocalDate, at: Instant)(using
         Tx^
     ): Either[StoreError, Boolean] = keeper.forReview(version, day, at)
+
+    def holds(version: DocumentVersionId)(using Tx^): Either[StoreError, Boolean] =
+      keeper.holds(version)
 
     def declassifying(label: Label, pointer: Pointer)(using
         Tx^
