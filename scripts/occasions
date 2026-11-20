@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Each occasion decided in a local database within the last `days` (7 when not given), oldest
+# first, read by shape through scripts/sql (read-only): the day it was decided, the room, its
+# reason (ahead or open), what became of it (a silence's kind when held after its entry was
+# recorded; else drafting, or its outcome: shadowed, posted, below, passed, failed, ...), the
+# judge's grounded and worth scores, and the first 500 characters of its draft. One row per
+# line, columns split by `|`.
+#
+#   scripts/occasions grit_agent
+#   scripts/occasions grit_example 14
+#
+# An occasion held before its entry was recorded (off, no address, a quiet room, below
+# outside, lapsed) keeps no speech row: its run's reply counts it (meetings-ahead).
+set -euo pipefail
+
+usage() { sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//' >&2; exit 2; }
+
+[ $# -ge 1 ] && [ $# -le 2 ] || usage
+db=$1 days=${2:-7}
+[[ $days =~ ^[1-9][0-9]{0,3}$ ]] || { echo "occasions: days is a whole number from 1, not '$days'" >&2; exit 2; }
+
+exec "$(dirname "${BASH_SOURCE[0]}")/sql" "$db" "
+SELECT to_char(s.decided_at AT TIME ZONE 'UTC', 'YYYY-MM-DD'),
+       s.room,
+       e.payload->>'reason',
+       CASE WHEN NOT s.drafting THEN s.silence->>'kind' ELSE coalesce(s.outcome_kind, 'drafting') END,
+       coalesce(round(s.grounded::numeric, 2)::text, ''),
+       coalesce(round(s.worth::numeric, 2)::text, ''),
+       replace(left(coalesce(s.excerpt, ''), 500), E'\n', ' ')
+  FROM grit.speech s
+  JOIN LATERAL (
+    SELECT f.payload FROM grit.entries f
+     WHERE f.conversation_id = s.conversation_id AND f.turn_seq = s.turn_seq
+     ORDER BY f.seq LIMIT 1
+  ) e ON true
+ WHERE e.payload->>'kind' = 'occasion'
+   AND s.decided_at > now() - interval '$days days'
+ ORDER BY s.decided_at"

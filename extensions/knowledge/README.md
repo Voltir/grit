@@ -206,7 +206,9 @@ is posted, if at all, at the top level of the room its topic was last written fr
 where that room's label is the run's: the speech limits decide whether it drafts, and the turn's
 judge whether its draft is posted or, under `Occasions.Shadow`, shadowed. Its key spends it once:
 an `Ahead` occasion for its day, an `Open` one for good. The run asks no model and writes no
-document; its reply counts what each occasion came to.
+document; its reply counts what each occasion came to. `scripts/occasions <db> [days]` prints each one decided, by
+shape, with its outcome, scores and its draft's start: how shadow is read before occasions go
+live.
 
 ## A turn's read of meetings
 
