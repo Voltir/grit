@@ -222,7 +222,7 @@ object PersonCard {
       n <- str(o, "name").flatMap(name)
       zone <- o.get("zone") match {
         case None => Right(None)
-        case z =>
+        case Some(_) =>
           str(o, "zone").flatMap(t =>
             Try(ZoneId.of(t)).toOption.map(Some(_)).toRight(s"no zone: $t")
           )

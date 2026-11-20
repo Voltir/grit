@@ -200,7 +200,8 @@ object PluginChoiceTests extends TestSuite {
                 "merges" -> 8,
                 "cut" -> ujson
                   .Obj("gap" -> 300, "most" -> 16, "settle" -> 1800),
-                "sorts" -> 32
+                "sorts" -> 32,
+                "people" -> 4
               ),
               Label.Public
             )
@@ -230,6 +231,7 @@ object PluginChoiceTests extends TestSuite {
               "cut" -> ujson
                 .Obj("gap" -> 300, "most" -> 16, "settle" -> 1800),
               "sorts" -> 32,
+              "people" -> 4,
               "seedUntil" -> "2026-10-30"
             )
           )
