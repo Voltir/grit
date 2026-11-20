@@ -1,6 +1,6 @@
 package grit.knowledge.topic
 
-import java.time.{Instant, LocalDate, ZoneId}
+import java.time.{Instant, LocalDate, LocalTime, ZoneId}
 
 import scala.concurrent.duration.*
 
@@ -9,7 +9,7 @@ import grit.core.classify.{Criterion, Decision}
 import grit.core.document.Document
 import grit.core.durable.Journaled
 import grit.core.flow.{Tainted, Trusted}
-import grit.core.id.{DocumentVersionId, ShortHash}
+import grit.core.id.{DocKey, DocumentVersionId, ShortHash}
 import grit.core.occasion.{Occasion, OccasionBrief, OccasionKey}
 import grit.core.place.Place
 import grit.core.speech.SpeechJson
@@ -25,6 +25,14 @@ object MeetingsAhead {
   val Window: FiniteDuration = 24.hours
 
   val YesAt: Double = 0.5
+
+  /** 10 minutes: how long before its start an occasion is named for a meeting, and how late its
+    * booked run may start.
+    */
+  val Lead: FiniteDuration = 10.minutes
+
+  /** 08:45: when, on its day, an occasion is named for a meeting with no start. */
+  val Undated: LocalTime = LocalTime.of(8, 45)
 
   enum Judged extends caps.Pure {
     case Unsettled, Settled
@@ -72,8 +80,19 @@ object MeetingsAhead {
         .toRight(s"no occasion key for ${TopicKey.value(topic)} on $day")
     )
 
-  final case class Due(version: DocumentVersionId, room: Place, start: Instant, key: OccasionKey)
-      extends caps.Pure
+  /** The meeting of `topic`'s document at `version` on `day`, due in `room` at `slot`, its
+    * occasion lapsing at `until`.
+    */
+  final case class Due(
+      topic: TopicKey,
+      day: LocalDate,
+      version: DocumentVersionId,
+      room: Place,
+      slot: Instant,
+      until: Instant
+  ) extends caps.Pure {
+    def key: OccasionKey = MeetingsAhead.key(topic, day)
+  }
 
   /** A scan's meetings to sort, and how many due each check passed over. */
   final case class Found(
@@ -84,36 +103,54 @@ object MeetingsAhead {
       left: Int
   ) extends caps.Pure
 
-  /** Of `documents`, each meeting planned to start within [[Window]] after `at` (one with a day
-    * and no start: on `at`'s day in `zone`, until that day's end), in the one of `rooms` its
-    * topic's strands were most written from, the latest on a tie, and naming two people or
+  /** Of `documents`, each meeting [[qualifying]] in `rooms` at `at` and naming two people or
     * more; the soonest of each room, at most [[Asks]].
     */
   def due(documents: Vector[Document], rooms: Vector[Place], zone: ZoneId, at: Instant): Found = {
-    val until = at.plusNanos(Window.toNanos)
-    val today = at.atZone(zone).toLocalDate
-    val within = documents.flatMap(d =>
-      for {
-        topicKey <- TopicKey.read(d.key)
-        topic <- Topic.read(topicKey, d.data).toOption
-        meeting <- topic.kind match {
-          case Topic.Kind.Meeting(m @ Meeting(Meeting.State.Planned(_), _)) => Some(m)
-          case Topic.Kind.Meeting(_) | Topic.Kind.Subject => None
-        }
-        when <- meeting.when
-        ends <- when.start match {
-          case Some(t) =>
-            Some(when.day.atTime(t).atZone(zone).toInstant)
-              .filter(s => s.isAfter(at) && !s.isAfter(until))
-          case None =>
-            Option.when(when.day == today)(when.day.plusDays(1).atStartOfDay(zone).toInstant)
-        }
-        room <- roomOf(topic, rooms)
-      } yield (Due(d.version, room, ends, key(topicKey, when.day)), meeting.who.size >= 2)
-    )
+    val within = documents.flatMap(qualifying(_, rooms, zone, at))
     val named = within.collect { case (d, true) => d }
-    val asking = named.sortBy(_.start).distinctBy(_.room).take(Asks)
+    val asking = named.sortBy(_.until).distinctBy(_.room).take(Asks)
     Found(at, asking, within.size, within.size - named.size, named.size - asking.size)
+  }
+
+  /** `d`'s meeting, when planned to start within [[Window]] after `at`, in the one of `rooms` its
+    * topic's strands were most written from, the latest on a tie; and whether it names two
+    * people or more. Due [[Lead]] before its start, or with a day and no start, when that day is
+    * `at`'s in `zone`, at [[Undated]] until the day's end; at `at` when that is past.
+    */
+  def qualifying(
+      d: Document,
+      rooms: Vector[Place],
+      zone: ZoneId,
+      at: Instant
+  ): Option[(Due, Boolean)] = {
+    val window = at.plusNanos(Window.toNanos)
+    for {
+      topicKey <- TopicKey.read(d.key)
+      topic <- Topic.read(topicKey, d.data).toOption
+      meeting <- topic.kind match {
+        case Topic.Kind.Meeting(m @ Meeting(Meeting.State.Planned(_), _)) => Some(m)
+        case Topic.Kind.Meeting(_) | Topic.Kind.Subject => None
+      }
+      when <- meeting.when
+      (slot, until) <- when.start match {
+        case Some(t) =>
+          Some(when.day.atTime(t).atZone(zone).toInstant)
+            .filter(s => s.isAfter(at) && !s.isAfter(window))
+            .map(s => (s.minusNanos(Lead.toNanos), s))
+        case None =>
+          Option.when(when.day == at.atZone(zone).toLocalDate)(
+            (
+              when.day.atTime(Undated).atZone(zone).toInstant,
+              when.day.plusDays(1).atStartOfDay(zone).toInstant
+            )
+          )
+      }
+      room <- roomOf(topic, rooms)
+    } yield (
+      Due(topicKey, when.day, d.version, room, if (slot.isBefore(at)) at else slot, until),
+      meeting.who.size >= 2
+    )
   }
 
   /** The one of `rooms` the most of `topic`'s strands, each once, were written from; the latest
@@ -138,7 +175,7 @@ object MeetingsAhead {
       .map(_._1)
 
   private[topic] def occasion(due: Due): Occasion =
-    Occasion(due.room, due.key, Brief, due.version, due.start)
+    Occasion(due.room, due.key, Brief, due.version, due.until)
 
   private val Scan: MoveName = MoveName.literal("ahead")
 
@@ -227,16 +264,7 @@ object MeetingsAhead {
     f =>
       ujson.Obj(
         "at" -> f.at.toString,
-        "asking" -> ujson.Arr.from(
-          f.asking.map(d =>
-            ujson.Obj(
-              "version" -> ujson.Num(DocumentVersionId.value(d.version).toDouble),
-              "room" -> d.room.written,
-              "start" -> d.start.toString,
-              "key" -> OccasionKey.value(d.key)
-            )
-          )
-        ),
+        "asking" -> ujson.Arr.from(f.asking.map(writeDue)),
         "within" -> f.within,
         "fewer" -> f.fewer,
         "left" -> f.left
@@ -271,16 +299,39 @@ object MeetingsAhead {
       .flatMap(t => scala.util.Try(Instant.parse(t)).toOption)
       .toRight("meetings: expected an instant")
 
-  private def dueOf(v: ujson.Value): Either[String, Due] =
+  /** `{"topic", "day", "version", "room", "slot", "until"}`. */
+  private[topic] def writeDue(d: Due): ujson.Value =
+    ujson.Obj(
+      "topic" -> TopicKey.value(d.topic),
+      "day" -> d.day.toString,
+      "version" -> ujson.Num(DocumentVersionId.value(d.version).toDouble),
+      "room" -> d.room.written,
+      "slot" -> d.slot.toString,
+      "until" -> d.until.toString
+    )
+
+  /** The meeting [[writeDue]] wrote, or why `v` holds none. */
+  private[topic] def dueOf(v: ujson.Value): Either[String, Due] =
     for {
       o <- v.objOpt.toRight("meetings: a meeting is an object")
+      topic <- o
+        .get("topic")
+        .flatMap(_.strOpt)
+        .flatMap(t => DocKey.of(t).toOption)
+        .flatMap(TopicKey.read)
+        .toRight("meetings: no topic")
+      day <- o
+        .get("day")
+        .flatMap(_.strOpt)
+        .flatMap(t => scala.util.Try(LocalDate.parse(t)).toOption)
+        .toRight("meetings: no day")
       version <- o
         .get("version")
         .flatMap(_.numOpt)
         .flatMap(n => DocumentVersionId.of(n.toLong))
         .toRight("meetings: no version")
       room <- o.get("room").flatMap(_.strOpt).toRight("meetings: no room").flatMap(Place.read)
-      start <- instant(o.get("start"))
-      key <- o.get("key").flatMap(_.strOpt).flatMap(OccasionKey.of).toRight("meetings: no key")
-    } yield Due(version, room, start, key)
+      slot <- instant(o.get("slot"))
+      until <- instant(o.get("until"))
+    } yield Due(topic, day, version, room, slot, until)
 }

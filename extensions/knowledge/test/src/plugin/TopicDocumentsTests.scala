@@ -19,7 +19,7 @@ import grit.core.visibility.{Clearance, Integrity, Label, Level, Subject, TestLa
 import grit.dbos.sql.TestTx
 import grit.knowledge.card.CardShelf
 import grit.knowledge.topic.TestMeetings.{Kept, meeting, text}
-import grit.knowledge.topic.{Meeting, MeetingLookup, TopicParams}
+import grit.knowledge.topic.{Meeting, MeetingAhead, MeetingLookup, TopicDream, TopicParams}
 
 import utest.*
 
@@ -155,6 +155,12 @@ object TopicDocumentsTests extends TestSuite {
             )
           )
       ) ==> Right((Vector.fill(2)(rooms), Vector.fill(2)(Vector.empty)))
+    }
+
+    test("its jobs are the topics run and meeting-ahead, which no schedule declares") {
+      of(Vector(Label.Public)).map(p =>
+        (p.jobs.map(_.name), p.schedules.map(_.job.name).distinct)
+      ) ==> Right((Vector(TopicDream.Name, MeetingAhead.Name), Vector(TopicDream.Name)))
     }
 
     test("a seed day reaches every label's schedule as its runs' seedUntil") {

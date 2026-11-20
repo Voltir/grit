@@ -46,9 +46,9 @@ object MeetingsAheadTests extends TestSuite {
     )
 
   /** What is due at [[At]] over `topics` kept by name, raising in `rooms`: each due's topic
-    * name, room and until, and the counts.
+    * name and the due, and the counts.
     */
-  private def due(rooms: Vector[Place], topics: (String, Topic)*) = {
+  private def found(rooms: Vector[Place], topics: (String, Topic)*) = {
     val kept = Kept(topics.map((n, t) => (n, t, Label.Public, Integrity.Member))*)
     val docs = kept.read()
     val f = MeetingsAhead.due(docs, rooms, ZoneOffset.UTC, At)
@@ -60,9 +60,15 @@ object MeetingsAheadTests extends TestSuite {
       )
       .toMap
     (
-      f.asking.map(d => (names.get(d.version).flatten.getOrElse("?"), d.room, d.start)),
+      f.asking.map(d => (names.get(d.version).flatten.getOrElse("?"), d)),
       (f.within, f.fewer, f.left)
     )
+  }
+
+  /** As [[found]]: each due's topic name, room and until, and the counts. */
+  private def due(rooms: Vector[Place], topics: (String, Topic)*) = {
+    val (asking, counts) = found(rooms, topics*)
+    (asking.map((n, d) => (n, d.room, d.until)), counts)
   }
 
   private def at(h: Int, m: Int = 0, day: LocalDate = Day): Instant =
@@ -87,6 +93,21 @@ object MeetingsAheadTests extends TestSuite {
           ("tomorrow", B, at(7, 30, Day.plusDays(1)))
         ),
         (3, 0, 0)
+      )
+    }
+
+    test(
+      "a meeting is due Lead before its start, or at the scan when that is past; one with no start, at Undated on its day"
+    ) {
+      found(
+        Vector(A, B, C),
+        "soon" -> planned(Day, Some(LocalTime.of(9, 0))),
+        "close" -> planned(Day, Some(LocalTime.of(8, 5)), Vector("c" -> B)),
+        "allday" -> planned(Day, None, Vector("d" -> C))
+      )._1.map((n, d) => (n, d.slot)) ==> Vector(
+        ("close", At),
+        ("soon", at(8, 50)),
+        ("allday", at(8, 45))
       )
     }
 
