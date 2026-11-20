@@ -46,6 +46,8 @@ final class InMemorySpeechStore(
     decisions.map((h, d, at) => (h.turn, h.room, d, at, false)) ++
       occasions.map((t, room, d, at) => (t, room, d, at, true))
 
+  /** Each settled turn's outcome, its draft's excerpt and its reply's position. */
+  // As `reaches`: replaced whole by the store's own methods, on the test's one thread.
   @caps.unsafe.untrackedCaptures
   var outcomes = Map.empty[TurnRef, (Outcome, Option[String], Option[EntrySeq])]
 
