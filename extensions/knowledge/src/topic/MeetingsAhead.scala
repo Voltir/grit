@@ -1,19 +1,25 @@
 package grit.knowledge.topic
 
-import java.time.{Instant, LocalDate}
+import java.time.{Instant, LocalDate, ZoneId}
+
+import scala.concurrent.duration.*
 
 import grit.core.act.Sorting
 import grit.core.classify.{Criterion, Decision}
+import grit.core.document.Document
 import grit.core.durable.Journaled
 import grit.core.id.{DocumentVersionId, ShortHash}
 import grit.core.occasion.{Occasion, OccasionBrief, OccasionKey}
 import grit.core.place.Place
 import grit.knowledge.ref.TopicKey
+import grit.std.collect.Collect
 import grit.std.either.Proven
 
 object MeetingsAhead {
 
   val Asks: Int = 3
+
+  val Window: FiniteDuration = 24.hours
 
   val YesAt: Double = 0.5
 
@@ -74,6 +80,59 @@ object MeetingsAhead {
       fewer: Int,
       left: Int
   ) extends caps.Pure
+
+  /** Of `documents`, each meeting planned to start within [[Window]] after `at` (one with a day
+    * and no start: on `at`'s day in `zone`, until that day's end), in the one of `rooms` its
+    * topic's strands were most written from, the latest on a tie, and naming two people or
+    * more; the soonest of each room, at most [[Asks]].
+    */
+  def due(documents: Vector[Document], rooms: Vector[Place], zone: ZoneId, at: Instant): Found = {
+    val until = at.plusNanos(Window.toNanos)
+    val today = at.atZone(zone).toLocalDate
+    val within = documents.flatMap(d =>
+      for {
+        topicKey <- TopicKey.read(d.key)
+        topic <- Topic.read(topicKey, d.data).toOption
+        meeting <- topic.kind match {
+          case Topic.Kind.Meeting(m @ Meeting(Meeting.State.Planned(_), _)) => Some(m)
+          case Topic.Kind.Meeting(_) | Topic.Kind.Subject => None
+        }
+        when <- meeting.when
+        ends <- when.start match {
+          case Some(t) =>
+            Some(when.day.atTime(t).atZone(zone).toInstant)
+              .filter(s => s.isAfter(at) && !s.isAfter(until))
+          case None =>
+            Option.when(when.day == today)(when.day.plusDays(1).atStartOfDay(zone).toInstant)
+        }
+        room <- roomOf(topic, rooms)
+      } yield (Due(d.version, room, ends, key(topicKey, when.day)), meeting.who.size >= 2)
+    )
+    val named = within.collect { case (d, true) => d }
+    val asking = named.sortBy(_.start).distinctBy(_.room).take(Asks)
+    Found(at, asking, within.size, within.size - named.size, named.size - asking.size)
+  }
+
+  /** The one of `rooms` the most of `topic`'s strands, each once, were written from; the latest
+    * written on a tie.
+    */
+  private def roomOf(topic: Topic, rooms: Vector[Place]): Option[Place] =
+    Collect
+      .counted(
+        topic.passages.reverse
+          .flatMap(
+            _.from.tags.reverse
+              .collect { case t @ Lineage.Tag.Strand(_, room, _, _) =>
+                t.strand.map((id, _) => (id, room))
+              }
+              .flatten
+          )
+          .distinctBy(_._1)
+          .map(_._2)
+          .filter(rooms.contains)
+      )
+      .maxByOption(_._2)
+      .map(_._1)
 
   private[topic] def occasion(due: Due): Occasion =
     Occasion(due.room, due.key, Brief, due.version, due.start)
