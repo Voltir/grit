@@ -62,13 +62,13 @@ object MeetingsAhead {
   )
 
   val Brief: OccasionBrief = OccasionBrief.literal(
-    "A meeting the team planned is coming up today or tomorrow: the one in the document below. " +
-      "Talk since it was arranged left something unsettled for it, or a detail missing. Say in " +
-      "two or three lines what is still open or missing (a question nobody answered, a choice " +
-      "not yet made, a document someone said they would share, where it is or how to join), " +
-      "naming the meeting and its day and time as the document does, so the team can settle " +
-      "it before it starts. Do not repeat what is already settled, and do not answer the open " +
-      "points yourself."
+    "A meeting the team planned starts in about ten minutes (or is today, when it has no time " +
+      "set): the one in the document below. Talk since it was arranged left something " +
+      "unsettled for it, or a detail missing. Say in two or three lines what is still open or " +
+      "missing (a question nobody answered, a choice not yet made, a document someone said " +
+      "they would share, where it is or how to join), naming the meeting and its time as the " +
+      "document does, so it can be settled as it starts. Do not repeat what is already " +
+      "settled, and do not answer the open points yourself."
   )
 
   /** `ahead:{the topic key's ShortHash}:{day}`: 33 characters, so always a key. */
