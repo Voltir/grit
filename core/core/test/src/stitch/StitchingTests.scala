@@ -428,9 +428,9 @@ object StitchingTests extends TestSuite {
         cut.dated(java.time.ZoneOffset.UTC),
         cut.dated(java.time.ZoneId.of("Pacific/Auckland")).linesIterator.toVector.head
       ) ==> (
-        "2026-09-28:\nAna: can we meet Monday?\nAna: yes, at nine\n" +
-          "2026-09-30:\nAna: moved to Tuesday\nAna: fine",
-        "2026-09-29:"
+        "Monday 2026-09-28:\nAna: can we meet Monday?\nAna: yes, at nine\n" +
+          "Wednesday 2026-09-30:\nAna: moved to Tuesday\nAna: fine",
+        "Tuesday 2026-09-29:"
       )
     }
 

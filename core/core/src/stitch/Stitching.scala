@@ -1,6 +1,8 @@
 package grit.core.stitch
 
+import java.time.format.TextStyle
 import java.time.{Duration as JDuration, Instant, ZoneId}
+import java.util.Locale
 
 import scala.concurrent.duration.FiniteDuration
 
@@ -292,7 +294,7 @@ object Stitching {
         .mkString("\n")
 
     /** [[text]] with a line naming the day, in `zone`, before the first message it shows of each
-      * day (`yyyy-mm-dd:`); the `…` line is of no day. Those lines are not counted in what
+      * day, its weekday then its date (`Monday 2026-10-12:`); the `…` line is of no day. Those lines are not counted in what
       * [[within]] fits.
       */
     def dated(zone: ZoneId): String = {
@@ -302,8 +304,9 @@ object Stitching {
         .foldLeft((Vector.empty[String], Option.empty[java.time.LocalDate])) {
           case ((out, last), Some(l)) =>
             val day = l.at.atZone(zone).toLocalDate
-            // Draft wording, for Nick: the day line.
-            val named = if (last.contains(day)) out else out :+ s"$day:"
+            // Draft wording, for Nick: the day line, in a meeting head's form.
+            val weekday = day.getDayOfWeek.getDisplayName(TextStyle.FULL, Locale.ENGLISH)
+            val named = if (last.contains(day)) out else out :+ s"$weekday $day:"
             (named :+ l.shown, Some(day))
           case ((out, last), None) => (out :+ "…", last)
         }

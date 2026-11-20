@@ -702,7 +702,7 @@ abstract class MovesContract extends TestSuite {
         Seen(Vector(summarised(m, "s", seen, datedIn = Some(java.time.ZoneOffset.UTC))))
       )
       asked.flatMap(_._2) ==> Vector(
-        "<discussion>\n2026-10-12:\nSomeone: the deploy is stuck\nSomeone: still stuck?\n</discussion>"
+        "<discussion>\nMonday 2026-10-12:\nSomeone: the deploy is stuck\nSomeone: still stuck?\n</discussion>"
       )
     }
 

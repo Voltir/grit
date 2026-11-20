@@ -716,8 +716,10 @@ object TopicDreamTests extends TestSuite {
       val _ = runs.run(day = Some(Day.plusDays(1)), now = StrandWorld.at(86_400 + 3600))
       runs.asked
         .filter(_.kind == "write")
-        .map(_.shown.linesIterator.filter(_.matches("\\d{4}-\\d\\d-\\d\\d:")).toVector) ==>
-        Vector(Vector("2026-10-12:", "2026-10-13:"))
+        .map(
+          _.shown.linesIterator.filter(_.matches("[A-Z][a-z]+day \\d{4}-\\d\\d-\\d\\d:")).toVector
+        ) ==>
+        Vector(Vector("Monday 2026-10-12:", "Tuesday 2026-10-13:"))
     }
 
     test("a topic's write ask is shown every card it holds, not only those attached that day") {
