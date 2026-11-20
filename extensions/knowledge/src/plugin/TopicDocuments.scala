@@ -26,7 +26,14 @@ import grit.core.tool.{
 }
 import grit.core.visibility.{Label, Visibility}
 import grit.knowledge.card.CardShelf
-import grit.knowledge.topic.{MeetingLookup, Passage, TopicDream, TopicParams}
+import grit.knowledge.topic.{
+  AheadParams,
+  MeetingLookup,
+  MeetingsAhead,
+  Passage,
+  TopicDream,
+  TopicParams
+}
 
 /** The topics plugin: one topic per subject its runs find, by its job [[TopicDream]], daily at
   * `at` in `zone`, on a schedule per label in `labels`, keyed `topics-dream-{label}` with the
@@ -36,7 +43,9 @@ import grit.knowledge.topic.{MeetingLookup, Passage, TopicDream, TopicParams}
   * cards otherwise. Its documents: label "topic", weight 1, kept 30 days after a version stops
   * being current, bounded at [[TopicDocuments.Bound]] times its labels; at each start, a
   * document at a label not among them is withdrawn ([[Documents.sweep]]); it posts nothing. Its
-  * tool `meetings` lists its meetings a turn reads ([[TopicDocuments.meetings]]).
+  * tool `meetings` lists its meetings a turn reads ([[TopicDocuments.meetings]]). Declared with
+  * a time ahead ([[TopicDocuments.of]]), its job [[MeetingsAhead]] also names its meetings'
+  * occasions each weekday, at each label.
   */
 final class TopicDocuments private (
     val name: PluginName,
@@ -46,7 +55,9 @@ final class TopicDocuments private (
     terms: DocumentTerms,
     cards: Option[Exports[CardShelf]],
     seedUntil: Option[LocalDate],
-    foldAt: Option[Double]
+    foldAt: Option[Double],
+    ahead: Vector[(ScheduleKey, Label)],
+    aheadRule: Option[SlotRule]
 ) extends Plugin {
 
   private val labels: Vector[Label] = keyed.map(_._2)
@@ -64,7 +75,9 @@ final class TopicDocuments private (
 
   override val documents: Option[Documents] = Some(DreamSchedules.documents(terms, labels))
 
-  override val jobs: Vector[Job[?]] = Vector(dream)
+  private val meetingsAhead = new MeetingsAhead(zone, TopicDocuments.Bound * labels.size)
+
+  override val jobs: Vector[Job[?]] = Vector(dream) ++ aheadRule.map(_ => meetingsAhead)
 
   override val tools: Vector[PluginTool[?]] =
     Vector(TopicDocuments.meetings(TopicDocuments.Bound * labels.size, zone))
@@ -85,6 +98,8 @@ final class TopicDocuments private (
         ),
         l
       )
+    ) ++ aheadRule.toVector.flatMap(r =>
+      ahead.map((key, l) => Declared(key, meetingsAhead, r, AheadParams(), l))
     )
 
   /** The runs that backfill `days`, in the order given, at each of its labels in turn: each a
@@ -277,7 +292,10 @@ object TopicDocuments {
     * ([[TopicParams.foldAt]]; none folded when `None`), under the deployment's `visibility`; or
     * why not: no label, one given twice, one holding a compartment `visibility` does not
     * declare, one whose written form makes no schedule key, or `foldAt` not from
-    * [[grit.knowledge.topic.TopicDream.FoldAt]] to 1 ([[TopicParams.folding]]).
+    * [[grit.knowledge.topic.TopicDream.FoldAt]] to 1 ([[TopicParams.folding]]). With `ahead`,
+    * each label also gets a schedule of [[MeetingsAhead]], keyed `meetings-ahead-{label}` (the
+    * label written as its nightly schedule's key writes it), on weekdays at `ahead` in `zone`,
+    * declared at that label; without, the plugin has no such job.
     */
   def of(
       name: PluginName,
@@ -287,10 +305,12 @@ object TopicDocuments {
       visibility: Visibility,
       cards: Option[Exports[CardShelf]],
       seedUntil: Option[LocalDate],
-      foldAt: Option[Double]
+      foldAt: Option[Double],
+      ahead: Option[LocalTime] = None
   ): Either[String, TopicDocuments] =
     for {
       keyed <- DreamSchedules.keyed("topics", Nightly, labels, visibility)
+      aheadKeyed <- DreamSchedules.keyed("topics", "meetings-ahead", labels, visibility)
       terms <- DocLabel
         .of("topic")
         .flatMap(DocumentTerms.of(_, DocWeight.Unscaled, 30.days, Bound * labels.size))
@@ -303,6 +323,8 @@ object TopicDocuments {
       terms,
       cards,
       seedUntil,
-      fold
+      fold,
+      aheadKeyed,
+      ahead.map(SlotRule.Weekdays(_, zone))
     )
 }

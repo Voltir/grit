@@ -41,6 +41,26 @@ object TestMeetings {
       Topic.Kind.Meeting(Meeting.of(state, who))
     )
 
+  /** `t` with each of its passages written from a strand of `room`. */
+  def talkedIn(t: Topic, room: Place): Topic =
+    Topic.of(
+      t.lead,
+      t.passages.map(p =>
+        p.copy(from =
+          Lineage.of(
+            Vector(
+              Lineage.Tag.Strand(
+                ConversationId(s"strand-${p.day}"),
+                room,
+                grit.core.stitch.StrandDigest.of(Vector.empty)
+              )
+            )
+          )
+        )
+      ),
+      t.kind
+    )
+
   /** A subject led by `lead`, with a passage on `talked`. */
   def subject(lead: String, talked: LocalDate): Topic =
     Topic.of(doc(lead), Vector(Passage(talked, Lineage.of(Vector.empty), doc("Said."))))

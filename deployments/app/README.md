@@ -56,7 +56,9 @@ In dependency order:
     dreamed daily at 05:00 at each label `GRIT_TOPIC_LABELS` lists, reading the knowledge
     plugin's cards when `knowledge` is listed before it, each night through the day
     `GRIT_TOPICS_SEED_UNTIL` names offering the next batch of every card no run has placed,
-    and offering every turn the tool `meetings`; `PluginChoices.topics`; `standing`, the person- and tool-established Standing lines of each close, but
+    and offering every turn the tool `meetings`, with no `meetings-ahead` schedule, since this
+    deployment sets no `Limits.occasions` and so never posts on an occasion;
+    `PluginChoices.topics`; `standing`, the person- and tool-established Standing lines of each close, but
     a reminder tool's, kept as one document); then the chat TUI, or with arguments each answered
     as a message.
 

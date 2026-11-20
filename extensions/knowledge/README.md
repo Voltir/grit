@@ -56,7 +56,8 @@ Packages, in one-way order (each names only those before it):
   per label), and once per topic touched for its new lead and the day's passage, and keeps it
   with refs to what it was written from and links; and a topic's review as an edge posts it
   (`TopicPrompt`: its lead, whether the day opened it, that day's strands by root and its
-  cards' titles) with the four verdicts a rater gives it (`TopicVerdict`). Its code never
+  cards' titles) with the four verdicts a rater gives it (`TopicVerdict`); and `MeetingsAhead`,
+  the keeping job `meetings-ahead`, which names its meetings' occasions. Its code never
   holds a message's or a card's text. Imports `ref`, `card` and `grit.prose`; never `sync` or a
   source.
 - **`declassify`**: `CardDeclassify`, the dreaming job `cards-declassify`, which reads the
@@ -193,6 +194,19 @@ proposed keeper is not sorted. Each sorted but not refused, and each keeper, is 
 version (`merge-aside`), so it is sorted again only once it is written or `asideFor` has passed.
 A topic of two discussions or more is never sorted to merge, though it is shown to one that is.
 At most `merges` are sorted, so at most that many folded; a fold asks no model.
+
+## A meetings-ahead run
+
+A deployment that gives `TopicDocuments.of` a time `ahead` gets, at each of its labels, a weekday
+schedule of `MeetingsAhead` at that time in the plugin's zone. A run reads the plugin's current
+topics at its label in one keep (`meetings`) and names, as occasions grit may post on
+(`Keeping.occasion`, ADR 0067), each meeting planned for its day (`Ahead`) and each proposed with no
+day that was talked of in the week before it (`Open`), at most three, the planned ones first. Each
+is posted, if at all, at the top level of the room its topic was last written from, and only
+where that room's label is the run's: the speech limits decide whether it drafts, and the turn's
+judge whether its draft is posted or, under `Occasions.Shadow`, shadowed. Its key spends it once:
+an `Ahead` occasion for its day, an `Open` one for good. The run asks no model and writes no
+document; its reply counts what each occasion came to.
 
 ## A turn's read of meetings
 

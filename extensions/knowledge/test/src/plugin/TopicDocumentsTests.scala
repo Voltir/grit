@@ -7,7 +7,7 @@ import scala.util.chaining.*
 import grit.core.clock.SetClock
 import grit.core.document.DocLabel
 import grit.core.flow.TestTainted
-import grit.core.id.{PluginName, ScheduleKey, TestCallSlots, ToolCallId}
+import grit.core.id.{JobName, PluginName, ScheduleKey, TestCallSlots, ToolCallId}
 import grit.core.job.{Grace, InMemorySchedules, OwnJobs, ScheduleDesk, SlotRule}
 import grit.core.message.AssistantBlock
 import grit.core.need.{Needs, PluginReads}
@@ -18,7 +18,7 @@ import grit.core.visibility.{Clearance, Integrity, Label, Level, Subject, TestLa
 import grit.dbos.sql.TestTx
 import grit.knowledge.card.CardShelf
 import grit.knowledge.topic.TestMeetings.{Kept, meeting, text}
-import grit.knowledge.topic.{Meeting, MeetingLookup, TopicParams}
+import grit.knowledge.topic.{AheadParams, Meeting, MeetingLookup, MeetingsAhead, TopicParams}
 
 import utest.*
 
@@ -129,6 +129,52 @@ object TopicDocumentsTests extends TestSuite {
           ),
           Some(("topic", 2 * TopicDocuments.Bound))
         )
+      )
+    }
+
+    test(
+      "with a time ahead, each label also has a weekday schedule of meetings-ahead at that time, declared at it; without, the plugin has no such job"
+    ) {
+      val internal = Label.at(Level.Internal)
+      val zone = ZoneId.of("Pacific/Auckland")
+      def ahead(at: Option[LocalTime]) =
+        TopicDocuments
+          .of(
+            Name,
+            Vector(Label.Public, internal),
+            At,
+            zone,
+            Visibility.Shipped,
+            None,
+            None,
+            None,
+            at
+          )
+          .map(p =>
+            (
+              p.schedules
+                .filter(_.job.name == MeetingsAhead.Name)
+                .map(d => (ScheduleKey.value(d.key), d.rule, Label.written(d.clearance), d.params)),
+              p.jobs.map(j => JobName.value(j.name))
+            )
+          )
+      val morning = LocalTime.of(8, 30)
+      (ahead(Some(morning)), ahead(None)) ==> (
+        Right(
+          (
+            Vector(
+              ("meetings-ahead-public", SlotRule.Weekdays(morning, zone), "public", AheadParams()),
+              (
+                "meetings-ahead-internal",
+                SlotRule.Weekdays(morning, zone),
+                "internal",
+                AheadParams()
+              )
+            ),
+            Vector("topics-dream", "meetings-ahead")
+          )
+        ),
+        Right((Vector.empty, Vector("topics-dream")))
       )
     }
 

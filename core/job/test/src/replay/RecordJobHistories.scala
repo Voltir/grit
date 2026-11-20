@@ -41,7 +41,8 @@ object RecordJobHistories {
         crashModel: Boolean = false,
         shapes: Vector[ujson.Value] = Vector(),
         judged: Vector[Vector[Double]] = Vector(),
-        declassing: Boolean = false
+        declassing: Boolean = false,
+        occasions: Boolean = false
     )(run: (World, InMemoryDurable) => WorkflowId): (String, History) = {
       val w = new World(
         cap,
@@ -50,7 +51,8 @@ object RecordJobHistories {
         crashModel = crashModel,
         shapes = shapes,
         judged = screened(judged*),
-        declassing = declassing
+        declassing = declassing,
+        occasions = occasions
       )
       val id = run(w, w.durable)
       name -> History("run", id, Turn.Epoch, "recorded", w.durable.history(id))
@@ -160,6 +162,13 @@ object RecordJobHistories {
       record("run-kept", floor = Label.at(Level.Internal)) { (w, d) =>
         val turn = w.started(w.declared("tally", 2))
         d.run(turn.workflowId)(Run.body(w.env(), keepingJobs(new Noting(1))))
+        turn.workflowId
+      },
+      // An occasion named, decided drafting and its turn started.
+      record("run-occasioned", occasions = true) { (w, d) =>
+        w.heardInRoom()
+        val turn = w.started(w.declared("announce", 1))
+        d.run(turn.workflowId)(Run.body(w.env(), keepingJobs(new Announcing(1))))
         turn.workflowId
       },
       record("run-dreamed") { (w, d) =>
