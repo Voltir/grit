@@ -561,6 +561,25 @@ object TopicCodecTests extends TestSuite {
         (Left(true), 8)
     }
 
+    test(
+      "a topics run's foldAt reads back as written, none when absent; one under FoldAt, 0.90, or over 1 is refused, naming foldAt"
+    ) {
+      import scala.concurrent.duration.*
+      val p = TopicParams(3, 2.days, 4.days, None, None, foldAt = Some(0.95))
+      def at(n: Double) = TopicParams.read(
+        ujson.Obj("perRun" -> 3, "recent" -> "PT48H", "cardRecent" -> "PT96H", "foldAt" -> n)
+      )
+      val stored = ujson.Obj("perRun" -> 3, "recent" -> "PT48H", "cardRecent" -> "PT96H")
+      (
+        TopicParams.read(TopicParams.write(p)),
+        TopicParams.read(stored).map(_.foldAt),
+        at(0.89).left.map(_.contains("hold foldAt")),
+        at(1.01).left.map(_.contains("hold foldAt")),
+        at(1.0).map(_.foldAt),
+        TopicDream.FoldAt
+      ) ==> (Right(p), Right(None), Left(true), Left(true), Right(Some(1.0)), 0.90)
+    }
+
     test("a write reply holding call markup is refused, never kept as prose") {
       // The shape a provider left unread (the schema's CarriedParameter repairs it before
       // the reply is read), and stray markup no repair reads.

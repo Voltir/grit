@@ -28,8 +28,8 @@ import grit.std.either.Proven
   * aside (`aside`) for at most `asideFor` those it puts in none; then, for
   * each topic touched, at most `perRun` and at most `perRunMost`, new topics first, asks once
   * (`write-{i}`) for its new lead and the day's passage and keeps it (`keep-{i}`); then sorts at
-  * most `merges` topics of one discussion against the floor's others (`merge-{i}`), replying
-  * the folds it would make and making none. It puts up at
+  * most `merges` topics of one discussion against the floor's others (`merge-{i}`), folding
+  * those at `foldAt` or more (`fold-{i}`) and replying the rest it would fold. It puts up at
   * most [[TopicDream.Reviewed]] of the topics it writes for review, new first. What it scans and
   * withdraws, what each ask is shown, how a reply is read and what a topic's version refers to:
   * the module's README, "A topics run". Replies [[Gathered.line]], which holds no
@@ -61,7 +61,8 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
   // 12: a meeting's write gives its day only as written, else `said` and `as`, which code
   // reckons (Meeting.reckon).
   // 13: a merge sort sorts and shows only the topics its item may fold with (Topic.Foldable),
-  // and none a meeting written that night.
+  // and none a meeting written that night; a fold at its params' foldAt or more is made
+  // (`fold-{i}`).
   val version: Int = 13
 
   def write(params: TopicParams): ujson.Value = TopicParams.write(params)
@@ -109,6 +110,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
           0,
           Vector.empty,
           None,
+          Vector.empty,
           Vector.empty
         )
         // Opens take at most half the run's writes, at least one of any; joins take the rest.
@@ -397,14 +399,17 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
   /** Each of `scan`'s topics of one discussion ([[Scanned.single]]) not written this run (not
     * among `wrote`), oldest first, sorted (`merge-{i}`, numbered from 0 in that order) as a
     * document against the floor's other topics at their versions now (`wrote`'s for those
-    * written this run), the [[TopicDream.sortTopic]] most its text matches best of those it may
-    * fold with ([[Topic.Foldable]]), but those an earlier sort of the run proposed to fold away
-    * and the `meetings` written this run; a topic proposed as another's keeper, with no other
-    * topic to be shown, or a meeting when a meeting was written this run, is not sorted. A yes at [[TopicDream.FoldAt]] or more
-    * for the likeliest proposes folding the topic into it, held in `g`'s `proposed`; nothing is
-    * withdrawn. Each topic sorted, and each proposed as a keeper, is set aside at its version
-    * (`merge-aside`), so no run sorts it again within `asideFor` unless it is written; a sort or
-    * that keep refused is named in `g` as not written.
+    * written this run, a keeper's since its fold), the [[TopicDream.sortTopic]] most its text
+    * matches best of those it may fold with ([[Topic.Foldable]]), but those an earlier sort of
+    * the run folded or proposed to fold away and the `meetings` written this run; a topic
+    * proposed as another's keeper, with no other topic to be shown, or a meeting when a meeting
+    * was written this run, is not sorted. A yes at [[TopicDream.FoldAt]] or more for the
+    * likeliest proposes folding the topic into it, held in `g`'s `proposed`; at the params'
+    * `foldAt` or more, it is folded (`fold-{i}`, [[TopicDream.fold]]) and held in `g`'s
+    * `folded`, or, that keep refused, proposed and named in `g` as not written. Each topic
+    * sorted but not folded or refused, each proposed as a keeper, and each keeper at its version
+    * folded into, is set aside at that version (`merge-aside`), so no run sorts it again within
+    * `asideFor` unless it is written; a sort or that keep refused is named in `g` as not written.
     */
   private def merged(
       run: Trusted[JobRun[TopicParams]],
@@ -414,59 +419,108 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
       meetings: Set[TopicKey],
       g: Gathered
   ): Gathered = {
+    val foldAt = run.extract.params.foldAt
     // A meeting written tonight may have moved to another day, so none is shown tonight.
     val moved = wrote.map(_._1).filter(meetings.contains).toSet
-    val now = (scan.topics.map((k, v) => wrote.find(_._1 == k).getOrElse((k, v))) ++
+    val begun = (scan.topics.map((k, v) => wrote.find(_._1 == k).getOrElse((k, v))) ++
       wrote.filterNot((k, _) => scan.topics.exists(_._1 == k))).filterNot((k, _) => moved(k))
     val sorting = run.tainted.map(_ => TopicDream.sortTopic)
-    type Merging = (Vector[Gathered.Fold], Tainted[Vector[Lineage.Tag]], Vector[(String, String)])
-    val (proposed, aside, refused) = scan.single
+    final case class Merging(
+        proposed: Vector[Gathered.Fold],
+        folded: Vector[Gathered.Fold],
+        now: Vector[(TopicKey, DocumentVersionId)],
+        aside: Tainted[Vector[Lineage.Tag]],
+        refused: Vector[(String, String)],
+        skipped: Int
+    ) {
+      def folds: Vector[Gathered.Fold] = proposed ++ folded
+    }
+    val merging = scan.single
       .filterNot((k, _) => wrote.exists(_._1 == k))
       .zipWithIndex
-      .foldLeft[Merging]((Vector.empty, run.tainted.map(_ => Vector.empty), Vector.empty)) {
-        case (m @ (folds, aside, refused), ((k, v), i)) =>
-          val kind = scan.foldable(k)
-          val pool = now.collect {
-            case (c, cv)
-                if c != k && !folds.exists(_.from == c) && kind.foldsWith(scan.foldable(c)) =>
-              (new TopicDream.Placed.Into(c, cv), cv)
-          }
-          // A meeting waits for those written tonight, its likeliest twin among them, say.
-          val waits = kind != Topic.Foldable.Subject && moved.nonEmpty
-          if (pool.isEmpty || waits || folds.exists(_.into == k)) m
-          else {
-            val name = CardMoves.numbered("merge", i)
-            val among = Sorting.Among(Vector.empty, pool, TopicDream.sortTopic.most)
-            moves.sort(name, Dreaming.Item.Document(v), among, sorting) match {
-              case Left(e) => (folds, aside, refused :+ (MoveName.value(name), MoveError.said(e)))
-              case Right(None) => m
-              case Right(Some(sorted)) =>
-                def set(tags: Lineage.Tag*) =
-                  aside.zip(sorted.asked.reply).map((a, _) => a ++ tags)
-                Trusted.asIs(sorted.asked.reply).extract.headOption match {
-                  case Some(Decision.Weight(TopicDream.Placed.Into(into, iv), p))
-                      if p >= TopicDream.FoldAt =>
+      .foldLeft(
+        Merging(
+          Vector.empty,
+          Vector.empty,
+          begun,
+          run.tainted.map(_ => Vector.empty),
+          Vector.empty,
+          0
+        )
+      ) { case (m, ((k, v), i)) =>
+        val kind = scan.foldable(k)
+        val pool = m.now.collect {
+          case (c, cv)
+              if c != k && !m.folds.exists(_.from == c) && kind.foldsWith(scan.foldable(c)) =>
+            (new TopicDream.Placed.Into(c, cv), cv)
+        }
+        // A meeting waits for those written tonight, its likeliest twin among them, say.
+        val waits = kind != Topic.Foldable.Subject && moved.nonEmpty
+        if (pool.isEmpty || waits || m.folds.exists(_.into == k)) m
+        else {
+          val name = CardMoves.numbered("merge", i)
+          val among = Sorting.Among(Vector.empty, pool, TopicDream.sortTopic.most)
+          moves.sort(name, Dreaming.Item.Document(v), among, sorting) match {
+            case Left(e) => m.copy(refused = m.refused :+ (MoveName.value(name), MoveError.said(e)))
+            case Right(None) => m
+            case Right(Some(sorted)) =>
+              def set(tags: Lineage.Tag*) =
+                m.aside.zip(sorted.asked.reply).map((p: (Vector[Lineage.Tag], Any)) => p._1 ++ tags)
+              Trusted.asIs(sorted.asked.reply).extract.headOption match {
+                case Some(Decision.Weight(TopicDream.Placed.Into(into, iv), p))
+                    if p >= TopicDream.FoldAt =>
+                  val fold = Gathered.Fold(k, into, p)
+                  if (!foldAt.exists(p >= _))
                     // Its keeper would hold two discussions once folded, so it is set aside too.
-                    (
-                      folds :+ Gathered.Fold(k, into, p),
-                      set(Lineage.Tag.Topic(v), Lineage.Tag.Topic(iv)),
-                      refused
+                    m.copy(
+                      proposed = m.proposed :+ fold,
+                      aside = set(Lineage.Tag.Topic(v), Lineage.Tag.Topic(iv))
                     )
-                  case _ => (folds, set(Lineage.Tag.Topic(v)), refused)
-                }
-            }
+                  else {
+                    val folding = CardMoves.numbered("fold", i)
+                    // Believed at no more than the sort that chose it.
+                    moves.keep(folding, sorted.asked.reply.map(_ => (fold, v, iv)))(
+                      (f, keeper, at) => TopicDream.fold(f._1, f._2, f._3, keeper, at)
+                    ) match {
+                      // Left to the next run's sort, as a strand changed since its scan is.
+                      case Left(e) =>
+                        m.copy(
+                          proposed = m.proposed :+ fold,
+                          refused = m.refused :+ (MoveName.value(folding), MoveError.said(e))
+                        )
+                      case Right(Kept(written, skipped)) =>
+                        val at = written.getOrElse(iv)
+                        m.copy(
+                          folded = m.folded :+ fold,
+                          now = m.now.collect {
+                            case (c, _) if c == into => (c, at)
+                            case (c, cv) if c != k => (c, cv)
+                          },
+                          aside = set(Lineage.Tag.Topic(at)),
+                          skipped = m.skipped + skipped
+                        )
+                    }
+                  }
+                case _ => m.copy(aside = set(Lineage.Tag.Topic(v)))
+              }
           }
+        }
       }
     val kept =
-      if (Trusted.asIs(aside).extract.isEmpty) Vector.empty
+      if (Trusted.asIs(merging.aside).extract.isEmpty) Vector.empty
       else
-        moves.keep(TopicDream.MergeAside, aside.map(_.distinct))((tags, keeper, at) =>
+        moves.keep(TopicDream.MergeAside, merging.aside.map(_.distinct))((tags, keeper, at) =>
           Aside.setAside(keeper, tags, at)
         ) match {
           case Left(e) => Vector((MoveName.value(TopicDream.MergeAside), MoveError.said(e)))
           case Right(_) => Vector.empty
         }
-    g.copy(proposed = proposed, unwritten = g.unwritten ++ refused ++ kept)
+    g.copy(
+      proposed = merging.proposed,
+      folded = merging.folded,
+      skipped = g.skipped + merging.skipped,
+      unwritten = g.unwritten ++ merging.refused ++ kept
+    )
   }
 }
 
@@ -748,6 +802,51 @@ object TopicDream {
     // A literal in JsonSchema's subset but for the descriptions, which are text: every test of
     // a run throws here if not.
     Typed(Proven.right(JsonSchema.read(schema).left.map(_.toString)), c => read(c.json))
+
+  /** The topic of `f.from`, current at `was`, folded into that of `f.into`, current at `keeps`
+    * ([[Topic.folded]]): the keeper kept under its key, believed at no more than the topic folded
+    * into it, holding both topics' units and the keeper's last day; then the other withdrawn.
+    * `Left`, nothing written, when either is not current at its version, or by their kinds they
+    * may not fold ([[Topic.Foldable]]).
+    */
+  private def fold(
+      f: Gathered.Fold,
+      was: DocumentVersionId,
+      keeps: DocumentVersionId,
+      keeper: DocumentKeeper,
+      at: Instant
+  )(using tx: Tx^): Either[StoreError, Kept] = {
+    val floor = Tx.floor(tx)
+    def current(k: TopicKey, v: DocumentVersionId) =
+      keeper.current(TopicKey.doc(k), floor).flatMap {
+        case Some(d) if d.version == v =>
+          TopicWrite.read(k, d.data).map((d.integrity, _)).left.map(u => StoreError.Invalid(u.why))
+        // Draft wording, for Nick.
+        case _ => Left(StoreError.Invalid("a topic was written since its merge sort"))
+      }
+    for {
+      from <- current(f.from, was)
+      into <- current(f.into, keeps)
+      _ <- Either.cond(
+        Topic.Foldable.of(from._2.topic.kind).foldsWith(Topic.Foldable.of(into._2.topic.kind)),
+        (),
+        // Draft wording, for Nick.
+        StoreError.Invalid("a subject and a meeting, or meetings of two days, never fold")
+      )
+      kept <- TopicWrite.kept(
+        DocumentKeeper.believedAtMost(keeper, from._1),
+        f.into,
+        floor,
+        Held(
+          Topic.folded(f.into, into._2.topic, f.from, from._2.topic, was),
+          (into._2.units ++ from._2.units).distinct,
+          into._2.today
+        ),
+        at
+      )
+      _ <- keeper.withdraw(TopicKey.doc(f.from), floor, at)
+    } yield kept
+  }
 
   /** `w` kept as `t`'s topic for `day`, referring besides to the `units` its strands link, put
     * up for review when `review` and written; a meeting's head refined by `w` ([[Meeting.refined]], days up to `ahead` after `day`), a subject's kind left as it opened.

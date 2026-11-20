@@ -10,7 +10,9 @@ import grit.core.stitch.Strand
   * strand's last message (`recent`) and a card's write (`cardRecent`) may be for it to be looked
   * at; how long one set aside stays aside before it is offered again (`asideFor`); how long a
   * passage is kept after its day (`keepFor`); at most how many topics of one discussion it
-  * sorts against the others to merge (`merges`); how it cuts a channel's top level into runs
+  * sorts against the others to merge (`merges`), so at most how many it folds; the least
+  * probability, from [[TopicDream.FoldAt]] (0.90) to 1, at which it folds one it proposes
+  * (`foldAt`), none folded but only proposed when there is none; how it cuts a channel's top level into runs
   * (`cut`); at most how many strands it sorts (`sorts`); the `day` it writes for, the day of
   * its slot in its job's zone when none: a backfill names a past day, and its strands are read
   * as they stood at that day's end; and the last day it seeds on (`seedUntil`): a run for that
@@ -27,7 +29,8 @@ final case class TopicParams(
     keepFor: FiniteDuration = TopicParams.KeepFor,
     merges: Int = TopicParams.Merges,
     cut: Strand.Cut = Strand.Cut.Default,
-    sorts: Int = TopicParams.Sorts
+    sorts: Int = TopicParams.Sorts,
+    foldAt: Option[Double] = None
 ) extends caps.Pure
 
 object TopicParams {
@@ -48,7 +51,7 @@ object TopicParams {
   val Sorts: Int = 32
 
   /** Its record: `{"perRun", "recent", "cardRecent", "asideFor", "keepFor", "merges", "cut",
-    * "sorts", "day"?, "seedUntil"?}`, the cut as [[Strand.Cut.write]] writes it, durations
+    * "sorts", "day"?, "seedUntil"?, "foldAt"?}`, the cut as [[Strand.Cut.write]] writes it, durations
     * ISO-8601, the days `yyyy-mm-dd`.
     */
   def write(p: TopicParams): ujson.Value = {
@@ -65,13 +68,15 @@ object TopicParams {
     )
     p.day.foreach(d => o("day") = d.toString)
     p.seedUntil.foreach(d => o("seedUntil") = d.toString)
+    p.foldAt.foreach(f => o("foldAt") = f)
     o
   }
 
   /** The parameters [[write]] wrote, `asideFor` [[AsideFor]], `keepFor` [[KeepFor]],
     * `merges` [[Merges]], `cut` [[Strand.Cut.Default]] and `sorts` [[Sorts]] when absent (kept
     * before they were), or why `v` holds none: `perRun` not a whole number at least 1, `merges`
-    * not one from 0 to [[Merges]], `sorts` not one from 1 to [[Sorts]], no cut, `recent` under a
+    * not one from 0 to [[Merges]], `sorts` not one from 1 to [[Sorts]], `foldAt` (none when
+    * absent) not a number from [[TopicDream.FoldAt]] to 1, no cut, `recent` under a
     * day and the cut's settle, a duration not positive ISO-8601, or a day not `yyyy-mm-dd`.
     */
   def read(v: ujson.Value): Either[String, TopicParams] = {
@@ -121,6 +126,17 @@ object TopicParams {
               s"a topics run's parameters hold sorts, a whole number from 1 to $Sorts: $shown"
             )
       }
+      foldAt <- o.get("foldAt") match {
+        case None => Right(None)
+        case Some(n) =>
+          n.numOpt
+            .filter(n => n >= TopicDream.FoldAt && n <= 1)
+            .map(Some(_))
+            .toRight(
+              // Draft wording, for Nick.
+              s"a topics run's parameters hold foldAt, a number from ${TopicDream.FoldAt} to 1: $shown"
+            )
+      }
       // A run settles after its window ends, so the next night's window must still reach it.
       _ <- Either.cond(
         recent >= 1.day + cut.settle.getSeconds.seconds,
@@ -137,7 +153,8 @@ object TopicParams {
       keepFor,
       merges,
       cut,
-      sorts
+      sorts,
+      foldAt
     )
   }
 

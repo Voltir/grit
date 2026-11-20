@@ -115,7 +115,8 @@ object TopicDreamTests extends TestSuite {
     /** One run for `day`, made `now`, of `perRun`, by a job writing at most `most`, kept at
       * `floor`; its sorts judged by `sort`, its write asks answered by `write`; its rooms
       * labelled as `rooms` records them; its asks reading no document `unread` holds to; sorting
-      * at most `merges` topics to merge, none unless a test of merges says: its reply.
+      * at most `merges` topics to merge, none unless a test of merges says, folding those at
+      * `foldAt` or more: its reply.
       */
     def run(
         perRun: Int = 64,
@@ -130,7 +131,8 @@ object TopicDreamTests extends TestSuite {
         floor: Label = Label.Public,
         asideFor: FiniteDuration = TopicParams.AsideFor,
         merges: Int = 0,
-        sorts: Int = TopicParams.Sorts
+        sorts: Int = TopicParams.Sorts,
+        foldAt: Option[Double] = None
     ): String = {
       val dream = new TopicDream(most, ZoneOffset.UTC, Some(Cards))
       heard.run()
@@ -175,7 +177,8 @@ object TopicDreamTests extends TestSuite {
               asideFor,
               TopicParams.KeepFor,
               merges,
-              sorts = sorts
+              sorts = sorts,
+              foldAt = foldAt
             ),
             now,
             now
@@ -1946,6 +1949,90 @@ object TopicDreamTests extends TestSuite {
       val first = runs.asked.count(_.system.startsWith("document"))
       val _ = runs.run(now = Now.plusSeconds(600), sort = judging("new_meeting"), merges = merges)
       (first, runs.asked.count(_.system.startsWith("document"))) ==> (0, 2)
+    }
+
+    /** The roots of the strands each current topic's passages were written from, by key. */
+    def roots(runs: Runs): Vector[(String, Vector[String])] = runs.topics
+      .map(d =>
+        (
+          DocKey.value(d.key),
+          TopicWrite
+            .read(right(TopicKey.read(d.key).toRight("no topic")), d.data)
+            .fold(u => sys.error(u.why), identity)
+            .topic
+            .passages
+            .flatMap(_.from.tags)
+            .collect { case Lineage.Tag.Strand(root, _, _, _) => ConversationId.value(root) }
+        )
+      )
+      .sortBy(_._1)
+
+    test(
+      "a proposal at foldAt or more is folded: its keeper holds both topics' passages, the other is withdrawn, and the reply names it"
+    ) {
+      val w = new StrandWorld
+      val runs = new Runs(w)
+      runs.topic(name = "one", lead = "The deploy pipeline, once.", from = Vector("s-1"))
+      runs.topic(name = "two", lead = "The deploy pipeline.", from = Vector("s-2"))
+      val reply = runs.run(
+        sort = judging("new_topic", yes = 0.95),
+        merges = TopicParams.Merges,
+        foldAt = Some(0.95)
+      )
+      (reply, roots(runs)) ==> (
+        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run" +
+          "; folded topic:strand-one into topic:strand-two (0.95)",
+        Vector("topic:strand-two" -> Vector("s-2", "s-1"))
+      )
+    }
+
+    test("a proposal below foldAt is not folded, only proposed") {
+      val w = new StrandWorld
+      val runs = new Runs(w)
+      runs.topic(name = "one", lead = "The deploy pipeline, once.", from = Vector("s-1"))
+      runs.topic(name = "two", lead = "The deploy pipeline.", from = Vector("s-2"))
+      val reply = runs.run(
+        sort = judging("new_topic", yes = 0.95),
+        merges = TopicParams.Merges,
+        foldAt = Some(0.96)
+      )
+      (reply, roots(runs).map(_._1)) ==> (
+        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run" +
+          "; would fold topic:strand-one into topic:strand-two (0.95)",
+        Vector("topic:strand-one", "topic:strand-two")
+      )
+    }
+
+    test("three topics of one subject fold into one keeper in one run") {
+      val w = new StrandWorld
+      val runs = new Runs(w)
+      runs.topic(name = "a", lead = "The deploy pipeline, first.", from = Vector("s-1"))
+      runs.topic(name = "b", lead = "The deploy pipeline, second.", from = Vector("s-2"))
+      runs.topic(name = "c", lead = "The deploy pipeline, third.", from = Vector("s-3"))
+      val reply = runs.run(
+        sort = judging("new_topic", yes = 0.95),
+        merges = TopicParams.Merges,
+        foldAt = Some(0.95)
+      )
+      (reply, roots(runs).map((k: String, rs: Vector[String]) => (k, rs.toSet))) ==> (
+        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run" +
+          "; folded topic:strand-a into topic:strand-c (0.95), folded topic:strand-b into topic:strand-c (0.95)",
+        Vector("topic:strand-c" -> Set("s-1", "s-2", "s-3"))
+      )
+    }
+
+    test("a fold's keeper is believed at no more than the topic folded into it") {
+      val w = new StrandWorld
+      val runs = new Runs(w)
+      runs.topic(name = "one", from = Vector("s-1"), believed = Integrity.Outside)
+      runs.topic(name = "two", from = Vector("s-2"))
+      val _ = runs.run(
+        sort = judging("new_topic", yes = 0.95),
+        merges = TopicParams.Merges,
+        foldAt = Some(0.95)
+      )
+      runs.topics.map(d => (DocKey.value(d.key), d.integrity)) ==>
+        Vector("topic:strand-two" -> Integrity.Outside)
     }
   }
 }

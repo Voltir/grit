@@ -11,7 +11,8 @@ import grit.knowledge.ref.TopicKey
   * many it `left` for the next run (past its most, changed since its scan, or a sort refused);
   * how many of those left were strands that would have opened a topic past the run's opens (`budget`);
   * how many refs it `skipped` (too long to keep, their links still in the
-  * text); the folds its merge sorts would make (`proposed`), none of them made; what it did not
+  * text); the folds its merge sorts made (`folded`), and those they would make, not made
+  * (`proposed`); what it did not
   * write, each named, and why; and why it stopped, if it did. [[line]] is its reply.
   */
 final case class Gathered(
@@ -27,7 +28,8 @@ final case class Gathered(
     skipped: Int,
     unwritten: Vector[(String, String)],
     stopped: Option[String],
-    proposed: Vector[Gathered.Fold]
+    proposed: Vector[Gathered.Fold],
+    folded: Vector[Gathered.Fold]
 ) extends caps.Pure {
 
   /** `topics: {written} written ({opened} opened), {withdrawn} withdrawn, {unchanged}
@@ -35,8 +37,9 @@ final case class Gathered(
     * {unreadable} unreadable withdrawn`, then, when some were, `, {later} of a later version
     * left`, then, when some were, `; {budget} new topics left for the next run` (those past the
     * opens a run makes), then, when some were, `; {n} refs too long to keep`, then, when some
-    * were, `; would fold {from} into {into} ({p})` for each proposed, separated by `, `, `p` to
-    * two decimals, then `; not written: {name} ({why})` for at most [[NotWritten.Shown]] of
+    * were, `; folded {from} into {into} ({p})` for each folded, separated by `, `, then, when
+    * some were, `; would fold {from} into {into} ({p})` for each proposed, alike, `p` to two
+    * decimals, then `; not written: {name} ({why})` for at most [[NotWritten.Shown]] of
     * them, separated by `, `, and `and {n} more` for the rest; then, when it stopped, `;
     * stopped: {why}`.
     */
@@ -50,27 +53,26 @@ final case class Gathered(
       if (skipped == 0) ""
       else if (skipped == 1) "; 1 ref too long to keep"
       else s"; $skipped refs too long to keep"
-    // Draft wording, for Nick: stage A of the merge proposes folds and makes none.
-    val folds =
-      if (proposed.isEmpty) ""
+    def folds(said: String, fs: Vector[Gathered.Fold]) =
+      if (fs.isEmpty) ""
       else
-        proposed
-          .map(f =>
-            s"would fold ${TopicKey.value(f.from)} into ${TopicKey.value(f.into)} (${f"${f.p}%.2f"})"
-          )
-          .mkString("; ", ", ", "")
-    counts + doubted + refs + folds + NotWritten.tail(unwritten) + NotWritten.stopped(stopped)
+        fs.map(f =>
+          s"$said ${TopicKey.value(f.from)} into ${TopicKey.value(f.into)} (${f"${f.p}%.2f"})"
+        ).mkString("; ", ", ", "")
+    // Draft wording, for Nick: `folded` for the folds made, `would fold` for those proposed.
+    counts + doubted + refs + folds("folded", folded) + folds("would fold", proposed) +
+      NotWritten.tail(unwritten) + NotWritten.stopped(stopped)
   }
 }
 
 object Gathered {
 
-  /** A fold a merge sort would make: the topic `from` into the topic `into`, the sort's
+  /** A fold a merge sort made or would make: the topic `from` into the topic `into`, the sort's
     * probability `p` that they are one subject.
     */
   final case class Fold(from: TopicKey, into: TopicKey, p: Double) extends caps.Pure
 
   /** A run that stopped before writing anything, and why. */
   private[topic] def stopped(why: String): Gathered =
-    Gathered(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, Vector.empty, Some(why), Vector.empty)
+    Gathered(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, Vector.empty, Some(why), Vector.empty, Vector.empty)
 }
