@@ -56,9 +56,10 @@ Packages, in one-way order (each names only those before it):
   per label), and once per topic touched for its new lead and the day's passage, and keeps it
   with refs to what it was written from and links; and a topic's review as an edge posts it
   (`TopicPrompt`: its lead, whether the day opened it, that day's strands by root and its
-  cards' titles) with the four verdicts a rater gives it (`TopicVerdict`); and `MeetingsAhead`,
-  the topics run's last phase, which books `MeetingAhead`, the job that names an occasion for
-  a meeting about to start. Its code never
+  cards' titles) with the four verdicts a rater gives it (`TopicVerdict`); a person's card at
+  the floor (`PersonCard`, `PersonScan`), kept by the same job; and `MeetingsAhead`, the topics
+  run's last phase, which books `MeetingAhead`, the job that names an occasion for a meeting
+  about to start. Its code never
   holds a message's or a card's text. Imports `ref`, `card` and `grit.prose`; never `sync` or a
   source.
 - **`declassify`**: `CardDeclassify`, the dreaming job `cards-declassify`, which reads the
@@ -195,6 +196,31 @@ proposed keeper is not sorted. Each sorted but not refused, and each keeper, is 
 version (`merge-aside`), so it is sorted again only once it is written or `asideFor` has passed.
 A topic of two discussions or more is never sorted to merge, though it is shown to one that is.
 At most `merges` are sorted, so at most that many folded; a fold asks no model.
+
+## A person's card
+
+After its merges, a run keeps a card for each person who speaks at its floor (`PersonCard`, a
+topics document keyed `person:{principal id}`, `PersonKey`), visible to whoever reads the floor,
+as a topic is. Its `people` step (`PersonScan.people`) reads the strands spoken in within
+`PersonCards.Window` (30 days, at most `PersonCards.Scanned`, newest first) and their speakers
+(`StrandShelf.speakers`); a person with a name is due once they spoke in `PersonCards.Strands`
+(5) strands their card does not hold and it was written `PersonCards.Every` (7 days) before
+(`PersonCard.due`), the most such strands first, at most `TopicParams.people` (4 unless its
+schedule says, 0 writing none) a run. What code finds of them (`PersonCard.Facts`) is ids alone
+in the step's record: the floor's topics written from a strand they spoke in (newest first, at
+most 8), whom they share most strands with (at most 5), how many rooms and days they spoke in
+(a lower bound, by the last message they said in each strand) and the day they last spoke. Its
+keep (`keep-facts-{i}`) reads each topic at that version and quotes its lead's first sentence,
+believed at no more than every topic quoted; the ask (`person-{i}`) is shown that card, so their
+name reaches the model only inside its fenced message, and their newest
+`PersonCards.Asked` strands, and replies one paragraph on their work or none, cut at
+`PersonCards.ParagraphChars`; the card is kept with it (`keep-person-{i}`), believed at no more
+than the card shown; a reply of none keeps the paragraph it had. A card goes once its person last
+spoke more than `PersonCards.KeepFor` (90 days) before the run's day, or a room it was written
+from is at another label now; one quoting a topic no longer current is written again without
+it, asking nothing. A card is no topic (`TopicKey.read` refuses its key), so no sort, merge or
+meeting lookup is shown it, and it counts against the plugin's bound with its topics: under
+`DocumentTerms.Full.Withdraw` the document placed least recently goes, card or topic alike.
 
 ## Meetings ahead
 
