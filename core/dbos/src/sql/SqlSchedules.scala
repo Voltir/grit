@@ -198,6 +198,27 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
       }
     )
 
+  def book(
+      id: ScheduleId,
+      job: JobName,
+      params: ujson.Value,
+      at: Instant,
+      grace: Grace,
+      integrity: Integrity,
+      now: Instant
+  )(using tx: Tx^): Either[StoreError, Unit] =
+    insert(
+      id,
+      job,
+      SlotRule.Once(at, grace),
+      params,
+      PrincipalId.Grit,
+      Report.Kept,
+      ScheduleId.value(id),
+      now,
+      integrity
+    )
+
   def read(id: ScheduleId)(using tx: Tx^): Either[StoreError, Option[Schedule]] =
     many(
       s"SELECT $Selected FROM $Labelled WHERE s.id = ?"
@@ -524,34 +545,62 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
       grace: Grace,
       now: Instant
   )(using tx: Tx^): Either[StoreError, Integrity] = {
-    // Kept at the asking turn's floor, its room's label, in its room: its parameters come from
-    // the room's content. The desk opens its transaction for that turn, so the label and the
-    // room are the transaction's, never ones a caller passes.
-    val label = Tx.floor(tx)
-    val room = Tx.clearance(tx).own.toVector.flatMap(_.room.segments).map(ujson.Str(_))
     // Its runs start believed as the asking turn is now (ADR 0036).
     new SqlEntryStore().believed(call.turn).flatMap { believed =>
-      update(
-        s"""INSERT INTO grit.schedules
-         |  (id, source, job, rule, params, principal, report, asked_in, created_at, next_at, classification_id,
-         |   room_id, integrity_id)
-         |VALUES (?, 'asked', ?, ?::jsonb, ?::jsonb, ?, ?::jsonb, ?, ?, ?, ${SqlLabels.Interned},
-         |        ${SqlDocuments.RoomId}, ${SqlIntegrity.Interned})""".stripMargin
-      ) { ps =>
-        ps.setString(1, ScheduleId.value(id))
-        ps.setString(2, JobName.value(job.name))
-        ps.setString(3, SlotRuleJson.write(SlotRule.Once(at, grace)).render())
-        ps.setString(4, job.write(params).render())
-        ps.setString(5, PrincipalId.value(by))
-        ps.setString(6, ReportJson.write(Report.Posted(to)).render())
-        ps.setString(7, call.key)
-        ps.setObject(8, utc(now))
-        ps.setObject(9, utc(at))
-        SqlLabels.bind(ps, 10, label)
-        ps.setString(12, ujson.Arr.from(room).render())
-        SqlIntegrity.bind(ps, 13, believed)
-      }.map(_ => believed)
+      insert(
+        id,
+        job.name,
+        SlotRule.Once(at, grace),
+        job.write(params),
+        by,
+        Report.Posted(to),
+        call.key,
+        now,
+        believed
+      ).map(_ => believed)
     }
+  }
+
+  /** `id`, an unreconciled once schedule (source `asked`) kept under `key`, written unless a row
+    * has `id`.
+    */
+  private def insert(
+      id: ScheduleId,
+      job: JobName,
+      rule: SlotRule.Once,
+      params: ujson.Value,
+      by: PrincipalId,
+      report: Report,
+      key: String,
+      now: Instant,
+      believed: Integrity
+  )(using tx: Tx^): Either[StoreError, Unit] = {
+    // Kept at the transaction's floor, in its room: its parameters come from what that
+    // transaction read. The desk and a booking run open theirs for their own turn, so the label
+    // and the room are the transaction's, never ones a caller passes.
+    val label = Tx.floor(tx)
+    val room = Tx.clearance(tx).own.toVector.flatMap(_.room.segments).map(ujson.Str(_))
+    update(
+      s"""INSERT INTO grit.schedules
+       |  (id, source, job, rule, params, principal, report, asked_in, created_at, next_at, classification_id,
+       |   room_id, integrity_id)
+       |VALUES (?, 'asked', ?, ?::jsonb, ?::jsonb, ?, ?::jsonb, ?, ?, ?, ${SqlLabels.Interned},
+       |        ${SqlDocuments.RoomId}, ${SqlIntegrity.Interned})
+       |ON CONFLICT (id) DO NOTHING""".stripMargin
+    ) { ps =>
+      ps.setString(1, ScheduleId.value(id))
+      ps.setString(2, JobName.value(job))
+      ps.setString(3, SlotRuleJson.write(rule).render())
+      ps.setString(4, params.render())
+      ps.setString(5, PrincipalId.value(by))
+      ps.setString(6, ReportJson.write(report).render())
+      ps.setString(7, key)
+      ps.setObject(8, utc(now))
+      ps.setObject(9, utc(rule.at))
+      SqlLabels.bind(ps, 10, label)
+      ps.setString(12, ujson.Arr.from(room).render())
+      SqlIntegrity.bind(ps, 13, believed)
+    }.map(_ => ())
   }
 
   /** `id` ended `how` at `at`, with no slot left, and marked for deletion. */

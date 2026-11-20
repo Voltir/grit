@@ -15,8 +15,9 @@ import grit.core.files.{
   Understood
 }
 import grit.core.flow.{Tainted, Trusted}
-import grit.core.id.{FileHandle, PluginName}
+import grit.core.id.{ConversationId, FileHandle, JobName, PluginName, ScheduleId, TurnRef, TurnSeq}
 import grit.core.inbox.InMemoryInbox
+import grit.core.job.{Grace, InMemorySchedules}
 import grit.core.message.Message
 import grit.core.occasion.Occasion
 import grit.core.place.{Place, Service}
@@ -67,7 +68,9 @@ class ScriptedKeeping(
     // The test's own in-memory inbox, which this run's occasions write and the test reads back on
     // its one thread once the run returns: nothing reaches it after the test.
     @caps.unsafe.untrackedCaptures
-    private val occasions: ScriptedKeeping.Occasions^ = ScriptedKeeping.Occasions.Unscripted
+    private val occasions: ScriptedKeeping.Occasions^ = ScriptedKeeping.Occasions.Unscripted,
+    val schedules: InMemorySchedules = new InMemorySchedules(),
+    owns: JobName -> Boolean = (_: JobName) => true
 ) extends ScriptedMoves(limits, asks, calls, jsons, judgments, integrity),
       Keeping {
 
@@ -186,6 +189,36 @@ class ScriptedKeeping(
       }
   }
 
+  def later[P <: caps.Pure](
+      name: MoveName,
+      from: Tainted[Booked[P]]
+  ): Either[MoveError, ScheduleId] = {
+    val booked = Trusted.asIs(from).extract
+    val job = booked.job.name
+    if (!made.contains(name) && !owns(job)) Left(MoveError.NotOwn(job))
+    else
+      making(name, MoveKind.Later, limits.laters) {
+        if (from.integrity.belowOutside) Left(MoveError.Below(from.integrity))
+        else {
+          given Tx = opened
+          val id = ScheduleId.booked(ScriptedKeeping.Turn, MoveName.value(name))
+          schedules
+            .book(
+              id,
+              job,
+              booked.job.write(booked.params),
+              booked.at,
+              Grace.between(booked.at, booked.until),
+              from.integrity,
+              at
+            )
+            .map(_ => id)
+            .left
+            .map(e => MoveError.Store(e.described))
+        }
+      }
+  }
+
   /** `plugin`'s current pieces of files, as a run at `floor` reads them. */
   def pieced: Vector[KeptPiece] = pieces.current(plugin)(using opened)
 
@@ -205,6 +238,9 @@ class ScriptedKeeping(
 }
 
 object ScriptedKeeping {
+
+  /** The turn a scripted run's bookings are keyed by. */
+  val Turn: TurnRef = TurnRef(ConversationId("scripted"), TurnSeq.First)
 
   /** What a scripted run's occasions are made with: `inbox`, which records each, keeps its
     * decision ([[InMemoryInbox.speech]]), reads the day's spend from its ledger and starts each

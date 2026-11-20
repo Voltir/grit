@@ -7,6 +7,7 @@ import scala.concurrent.duration.*
 import grit.core.act.ScriptedMoves.Replied
 import grit.core.act.{
   Asked,
+  Booked,
   Called,
   Keeping,
   MoveError,
@@ -45,7 +46,7 @@ import grit.core.files.{
   Unread
 }
 import grit.core.flow.{Extracted, Shape, Tainted, TestTainted, Trusted}
-import grit.core.id.{CorpusName, DocKey, FileHandle, PluginName, ScheduleKey}
+import grit.core.id.{CorpusName, DocKey, FileHandle, PluginName, ScheduleId, ScheduleKey}
 import grit.core.job.{JobRun, SlotRule}
 import grit.core.message.Message
 import grit.core.occasion.Occasion
@@ -638,6 +639,11 @@ object SyncTests extends TestSuite {
 
     def occasion(name: MoveName, from: Tainted[Occasion]): Either[MoveError, Occasioned] =
       inner.occasion(name, from)
+
+    def later[P <: caps.Pure](
+        name: MoveName,
+        from: Tainted[Booked[P]]
+    ): Either[MoveError, ScheduleId] = inner.later(name, from)
   }
 
   val tests = Tests {

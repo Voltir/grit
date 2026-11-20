@@ -93,8 +93,8 @@ object Occasions {
     */
   val Heard: FiniteDuration = 7.days
 
-  /** 1 occasion a room in 24 hours. */
-  val Suggested: Rate = Rate(1, 24.hours)
+  /** 1 occasion a room in 12 hours. */
+  val Suggested: Rate = Rate(1, 12.hours)
 }
 
 /** When an unprompted draft is posted at its room's top level instead of its message's thread

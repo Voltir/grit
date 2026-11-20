@@ -9,8 +9,9 @@ import grit.core.visibility.{Integrity, Label}
 /** A stored schedule: its job, its parameters as kept, whom it runs for, where it reports, its
   * rule, how it ended (`None` while pending), and its label: what its runs read beyond their
   * own conversations, and are kept at (ADR 0030): an asked one's, its asking turn's floor
-  * ([[ScheduleDesk.ask]]); a declared one's, its [[Declared.clearance]]. Its `integrity`, what
-  * its runs start believed at (ADR 0036): an asked one's, its asking turn's then; a declared
+  * ([[ScheduleDesk.ask]]); a booked one's, its booking run's ([[ScheduleStore.book]]); a declared
+  * one's, its [[Declared.clearance]]. Its `integrity`, what its runs start believed at (ADR
+  * 0036): an asked one's, its asking turn's then; a booked one's, what booked it; a declared
   * one's, grit's own ([[Integrity.top]]).
   */
 final case class Schedule(
@@ -37,8 +38,8 @@ trait ScheduleStore {
     * undeclared, or a once one ended any way and declared at another instant or as a recurrence
     * ([[SlotRule.rearms]]), is pending again with its first slot, as a new one is;
     * one ended any other way stays ended.
-    * Every pending declared one not among them is ended undeclared. An asked schedule is never
-    * touched.
+    * Every pending declared one not among them is ended undeclared. An asked or booked schedule
+    * is never touched.
     */
   def declare(declared: Vector[(Declarer, Declared[?])], now: Instant)(using
       Tx^
@@ -59,6 +60,22 @@ trait ScheduleStore {
     * another slot or another version (that run is superseded).
     */
   def replied(slot: Slot, version: Int, at: Instant)(using Tx^): Either[StoreError, Unit]
+
+  /** `id`, a once schedule of `job` at `at`, as late as `grace` after it, with `params` as its
+    * job writes them, run for grit
+    * and reported in its runs' own conversations ([[Report.Kept]]), kept at the transaction's
+    * floor ([[Tx.floor]]) and believed at `integrity`; none written when `id` has a row already.
+    * No desk lists or cancels it.
+    */
+  def book(
+      id: ScheduleId,
+      job: JobName,
+      params: ujson.Value,
+      at: Instant,
+      grace: Grace,
+      integrity: Integrity,
+      now: Instant
+  )(using Tx^): Either[StoreError, Unit]
 
   /** `id`, or `None` when it is gone. */
   def read(id: ScheduleId)(using Tx^): Either[StoreError, Option[Schedule]]

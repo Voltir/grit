@@ -9,7 +9,15 @@ import grit.core.document.{Declassified, DocText, Pointer, PolicyApplication}
 import grit.core.durable.Journaled
 import grit.core.edge.{OutcomeJson, RequestState}
 import grit.core.flow.{Mint, Trusted}
-import grit.core.id.{ConversationId, DocKey, DocumentVersionId, EntryId, PluginName, Sha256}
+import grit.core.id.{
+  ConversationId,
+  DocKey,
+  DocumentVersionId,
+  EntryId,
+  PluginName,
+  ScheduleId,
+  Sha256
+}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.place.{Place, Service}
 import grit.core.prompt.Fenced
@@ -1009,6 +1017,12 @@ object MovesJournal {
           case _ => Left("keep: expected kept or store")
         }
       }
+  )
+
+  /** A booked schedule's id, as its text. */
+  given booked: Journaled[ScheduleId] = Journaled.json(
+    id => ujson.Str(ScheduleId.value(id)),
+    v => v.strOpt.toRight("later: expected a schedule's id").flatMap(ScheduleId.of)
   )
 
   /** What a piece move came to: `{"kept":n,"cut":n}`, `{"unread":why}`, `{"withdrawn":n}`,

@@ -166,7 +166,7 @@ final class InMemorySchedules(
       rows = rows.updated(id, row)
     }
     rows.toVector
-      .collect { case (id, r) if r.asked.isEmpty && r.ended.isEmpty && !ids(id) => id }
+      .collect { case (id, r) if r.asked.isEmpty && !r.booked && r.ended.isEmpty && !ids(id) => id }
       .foldLeft[Either[StoreError, Unit]](Right(()))((acc, id) =>
         acc.flatMap(_ => end(id, Ending.Undeclared, now))
       )
@@ -203,6 +203,33 @@ final class InMemorySchedules(
         }
       case _ => Right(())
     }
+
+  def book(
+      id: ScheduleId,
+      job: JobName,
+      params: ujson.Value,
+      at: Instant,
+      grace: Grace,
+      integrity: Integrity,
+      now: Instant
+  )(using tx: Tx^): Either[StoreError, Unit] = {
+    if (!rows.contains(id))
+      rows = rows.updated(
+        id,
+        Row(
+          job,
+          params,
+          PrincipalId.Grit,
+          Report.Kept,
+          SlotRule.Once(at, grace),
+          Some(at),
+          Tx.floor(tx),
+          integrity,
+          booked = true
+        )
+      )
+    Right(())
+  }
 
   def read(id: ScheduleId)(using Tx^): Either[StoreError, Option[Schedule]] =
     Right(
@@ -337,7 +364,9 @@ final class InMemorySchedules(
 
 object InMemorySchedules {
 
-  /** One schedule's row: `asked`, the room it was asked in (the SQL row's `room_id`); `None` for one declared. */
+  /** One schedule's row: `asked`, the room it was asked in (the SQL row's `room_id`); `None` for
+    * one declared or `booked`.
+    */
   private final case class Row(
       job: JobName,
       params: ujson.Value,
@@ -350,6 +379,7 @@ object InMemorySchedules {
       started: Option[Instant] = None,
       running: Option[Int] = None,
       ended: Option[Ending] = None,
-      asked: Option[Place] = None
+      asked: Option[Place] = None,
+      booked: Boolean = false
   )
 }

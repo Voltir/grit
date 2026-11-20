@@ -17,17 +17,20 @@ import grit.core.act.{
 }
 import grit.core.classify.{Answer as Judged, ClassifierError, Question, Request}
 import grit.core.document.{Document, InMemoryDocuments}
-import grit.core.files.{FileError, Files, Formats, InMemoryPieces, KeptPiece}
+import grit.core.files.{FileError, Files, Formats, InMemoryPieces, KeptPiece, Understood}
 import grit.core.flow.TestTainted
-import grit.core.id.FileHandle
+import grit.core.id.{FileHandle, JobName, ScheduleId}
 import grit.core.inbox.InMemoryInbox
+import grit.core.job.{InMemorySchedules, Schedule}
 import grit.core.message.{AssistantBlock, Message, StopReason, Usage}
+import grit.core.place.Service
 import grit.core.provider.ModelRequest
 import grit.core.speech.Speaking
 import grit.core.spend.Budget
 import grit.core.stitch.StrandWorld
-import grit.core.tool.Outcome
-import grit.core.visibility.{Integrity, Recorded, Visibility}
+import grit.core.tool.{Outcome, ToolName}
+import grit.core.visibility.{Clearance, Integrity, Recorded, Visibility}
+import grit.dbos.sql.TestTx
 
 /** [[MovesContract]] against `ScriptedMoves` and its keeping `ScriptedKeeping`, scripted with
   * the contract's world.
@@ -47,6 +50,51 @@ object ScriptedMovesTests extends MovesContract {
     val moves =
       scripted(limits, broken = false, Vector(), Right(Judged.YesNo(Yes)), Integrity.Authority)
     (use(moves), moves.kept)
+  }
+
+  def booking(limits: MoveLimits, owns: JobName -> Boolean)(
+      use: Keeping^ -> Vector[Either[MoveError, ScheduleId]]
+  ): (Vector[Either[MoveError, ScheduleId]], Vector[Option[Schedule]]) = {
+    val schedules = new InMemorySchedules()
+    val asks: ModelRequest -> Either[MoveError, Replied[Message.Assistant]] =
+      _ => Left(MoveError.Model("no ask"))
+    val calls: (Service, ToolName, ujson.Obj) -> Either[MoveError, Called] =
+      (_, _, _) => Left(MoveError.Model("no call"))
+    val jsons: (String, Vector[Message]) -> Either[MoveError, Replied[ujson.Value]] =
+      (_, _) => Left(MoveError.Model("no JSON"))
+    val judgments: Request -> Either[MoveError, Replied[Vector[Judged]]] =
+      _ => Left(MoveError.Model("no judgment"))
+    val files: FileHandle -> Either[String, (String, Understood)] =
+      h => Left(FileError.Gone(h, Files.Expiry).message)
+    // Positional: a named argument would bind the defaults to untyped temporaries.
+    val moves = new ScriptedKeeping(
+      limits,
+      Floor,
+      MovesWorld.Notes,
+      MovesWorld.NotesTerms,
+      asks,
+      calls,
+      jsons,
+      judgments,
+      new InMemoryDocuments,
+      Instant.EPOCH,
+      Believed,
+      Recorded.Empty,
+      new InMemoryPieces,
+      files,
+      None,
+      Visibility.Shipped,
+      ScriptedKeeping.Occasions.Unscripted,
+      schedules,
+      owns
+    )
+    val got = use(moves)
+    val read = got.collect { case Right(id) =>
+      schedules
+        .read(id)(using TestTx.fake(Clearance.of(Floor)))
+        .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
+    }
+    (got, read)
   }
 
   def occasioning[A <: caps.Pure](

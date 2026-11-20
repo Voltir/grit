@@ -294,6 +294,22 @@ object ActCaptureTests extends TestSuite {
       |def child(turn: TurnRef): Acting = pure(Acting(turn, ActsFor.Asker, Allowance.Admitted, Gates.Asker(1.minute), Integrity.Authority))
       |""".stripMargin
 
+  /** A booking whose parameters hold a transaction. */
+  private val bookedHoldsTx =
+    """final class Held(val tx: Tx^)
+      |final class Holding(tx: Tx^) {
+      |  def booked(job: Bookable[Held]): Booked[Held] = Booked(job, Instant.EPOCH, Instant.EPOCH, Held(tx))
+      |}
+      |""".stripMargin
+
+  /** A booking of a job's pure parameters, made through its moves. */
+  private val booksCount =
+    """final class Books extends Tallied {
+      |  def run(run: Trusted[JobRun[Count]], moves: Keeping^): String =
+      |    moves.later(Names.of("later-0"), run.tainted.map(r => Booked(this, r.nominal, r.nominal, r.params))).fold(_.toString, _.toString)
+      |}
+      |""".stripMargin
+
   private lazy val compiled = Probes.batch(
     prelude,
     breaches.toList ++ List(
@@ -306,7 +322,9 @@ object ActCaptureTests extends TestSuite {
       dreams,
       readsJson,
       judges,
-      actingPure
+      actingPure,
+      bookedHoldsTx,
+      booksCount
     )
   )
 
@@ -417,6 +435,16 @@ object ActCaptureTests extends TestSuite {
       assert(
         errs.exists(e => e.startsWith("Found:    () ->") && e.endsWith("Required: scala.caps.Pure"))
       )
+    }
+
+    test("a booking whose parameters hold a transaction is rejected by Booked's bound") {
+      val errs = errors(bookedHoldsTx)
+      assert(errs.exists(_.contains("scala.caps.Pure")))
+    }
+
+    test("a keeping job booking a run of itself with its own parameters compiles") {
+      val errs = errors(booksCount)
+      assert(errs.isEmpty)
     }
 
     test("capture checking is what rejects each breach but the bounds") {

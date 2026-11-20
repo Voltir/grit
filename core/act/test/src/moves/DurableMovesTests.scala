@@ -12,7 +12,17 @@ import grit.core.act.MovesFixtures.{
   PerChar,
   Summary
 }
-import grit.core.act.{Acting, ActsFor, Allowance, Dreaming, Gates, Keeping, MoveLimits, Moves}
+import grit.core.act.{
+  Acting,
+  ActsFor,
+  Allowance,
+  Dreaming,
+  Gates,
+  Keeping,
+  MoveError,
+  MoveLimits,
+  Moves
+}
 import grit.core.classify.{Answer as Judged, Answers, Classifier, ClassifierError, Question}
 import grit.core.clock.SetClock
 import grit.core.document.{
@@ -51,10 +61,20 @@ import grit.core.files.{
   PutKey
 }
 import grit.core.host.TempBlobs
-import grit.core.id.{CallSlot, ConversationId, EdgeName, FileHandle, PluginName, TurnRef, TurnSeq}
+import grit.core.id.{
+  CallSlot,
+  ConversationId,
+  EdgeName,
+  FileHandle,
+  JobName,
+  PluginName,
+  ScheduleId,
+  TurnRef,
+  TurnSeq
+}
 import grit.core.identity.Principal
 import grit.core.inbox.InMemoryInbox
-import grit.core.job.InMemorySchedules
+import grit.core.job.{InMemorySchedules, Schedule}
 import grit.core.message.{Message, StopReason}
 import grit.core.need.Needs
 import grit.core.place.Place
@@ -114,6 +134,19 @@ object DurableMovesTests extends MovesContract {
       .newest(Int.MaxValue)(using TestTx.fake(Clearance.of(MovesContract.Floor)))
       .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
     (got, docs)
+  }
+
+  def booking(limits: MoveLimits, owns: JobName -> Boolean)(
+      use: Keeping^ -> Vector[Either[MoveError, ScheduleId]]
+  ): (Vector[Either[MoveError, ScheduleId]], Vector[Option[Schedule]]) = {
+    val w = new MovesWorld(broken = false, MovesContract.Floor)
+    val got = w.keeping(limits, owns = owns)(use)
+    val read = got.collect { case Right(id) =>
+      w.schedules
+        .read(id)(using TestTx.fake(Clearance.of(MovesContract.Floor)))
+        .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
+    }
+    (got, read)
   }
 
   def piecing[A <: caps.Pure](limits: MoveLimits, formats: Formats)(
@@ -330,6 +363,9 @@ final class MovesWorld(
 
   private val spending: Spending = if (broken) Unreadable else ledger
 
+  /** The schedules its moves book. */
+  val schedules: InMemorySchedules = new InMemorySchedules()
+
   def env(models: Models^, classifier: Classifier^ = new Judging()): MovesEnv^ =
     MovesEnv(
       MoveRecords(
@@ -338,7 +374,7 @@ final class MovesWorld(
         answering,
         answering,
         toolSets,
-        new InMemorySchedules(),
+        schedules,
         GritAsks,
         PerChar,
         documents.savepoints
@@ -409,13 +445,14 @@ final class MovesWorld(
   def keeping[A <: caps.Pure](
       limits: MoveLimits,
       keeper: DocumentKeeper = keeper,
-      files: Files^ = MovesWorld.Fileless
+      files: Files^ = MovesWorld.Fileless,
+      owns: JobName -> Boolean = (_: JobName) => true
   )(
       use: Keeping^ -> A
   ): A = {
     val models = new Answering(Answer)
     val keeps =
-      MovesWorld.keeps(acting, limits, keeper, pieces.keeper(Notes, PieceKeeper.Bound))(use)
+      MovesWorld.keeps(acting, limits, keeper, pieces.keeper(Notes, PieceKeeper.Bound), owns)(use)
     var out: Option[A] = None
     durable.run(Turn.workflowId) { _ =>
       out = Some(Flows.run(keeps, kept(models, files), ()).merge)
@@ -496,6 +533,7 @@ object MovesWorld {
           Notes,
           keeper,
           new InMemoryPieces().keeper(Notes, PieceKeeper.Bound),
+          (_: JobName) => true,
           Dreaming.Reads(world.shelf, _ => needs, world.excerpts, documents, pieces)
         )(use)(using steps)
     )
@@ -520,12 +558,13 @@ object MovesWorld {
       acting: Acting,
       limits: MoveLimits,
       keeper: DocumentKeeper,
-      pieces: PieceKeeper = new InMemoryPieces().keeper(Notes, PieceKeeper.Bound)
+      pieces: PieceKeeper = new InMemoryPieces().keeper(Notes, PieceKeeper.Bound),
+      owns: JobName -> Boolean = (_: JobName) => true
   )(
       use: Keeping^ -> A
   ): Flow[KeepingEnv, Unit, Nothing, A] =
     Flow.program[KeepingEnv, Unit, A]("moves", DurableMoves.Within)(steps =>
-      _ => DurableMoves.keeping(acting, limits, Notes, keeper, pieces)(use)(using steps)
+      _ => DurableMoves.keeping(acting, limits, Notes, keeper, pieces, owns)(use)(using steps)
     )
 
   val Start: Instant = Instant.parse("2026-10-08T12:00:00Z")

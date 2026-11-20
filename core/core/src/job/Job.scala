@@ -2,7 +2,7 @@ package grit.core.job
 
 import java.time.Instant
 
-import grit.core.act.{Dreaming, Keeping, MoveLimits, Moves}
+import grit.core.act.{Bookable, Dreaming, Keeping, MoveLimits, Moves}
 import grit.core.document.DocumentTerms
 import grit.core.flow.Trusted
 import grit.core.id.{JobName, PluginName}
@@ -11,7 +11,7 @@ import grit.core.id.{JobName, PluginName}
   * slot's own conversation at `task:{name}`, closed like any other. A plugin contributes it, or
   * a deployment declares it. A [[PlainJob]], a [[KeepingJob]] or a [[DreamingJob]].
   */
-sealed trait Job[P <: caps.Pure] extends caps.Pure {
+sealed trait Job[P <: caps.Pure] extends Bookable[P] {
   def name: JobName
 
   /** The code its runs are made by. A run started at another version and not yet replied is
@@ -90,6 +90,14 @@ final class Jobs private (byName: Map[JobName, Owned]) {
 
   /** The job named `name`, and whose it is; `None` when the deployment has none. */
   def named(name: JobName): Option[Owned] = byName.get(name)
+
+  /** Whether the job named `name` is `plugin`'s. */
+  def ownedBy(plugin: PluginName)(name: JobName): Boolean = byName.get(name).exists {
+    case Owned.Plugins(p, _) => p == plugin
+    case Owned.Keeps(p, _, _) => p == plugin
+    case Owned.Dreams(p, _, _) => p == plugin
+    case Owned.Deployments(_) => false
+  }
 }
 
 object Jobs {

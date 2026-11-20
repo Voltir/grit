@@ -23,7 +23,9 @@ Decision:
 - **It is a move, `Keeping.occasion`: spawn's first form (ADR 0068).** It starts a turn in
   another conversation, charged to the speech accounts, at most once per key, recorded as
   `occasion:{name}` with its phases `:decide` and `:start`. It is no call (the engine is no
-  service place) and no keep body (no turn starts inside a transaction).
+  service place) and no keep body (no turn starts inside a transaction). A job that would
+  name one at a set time books a run of its own plugin's job for then (`Keeping.later`,
+  spawn's second form), and that run names it.
 - **Its entry is grit's own note, recorded by id** (`Payload.Occasion`: the brief, the
   document's version, the key). It says nothing, counts nothing spoken, is never searched, is
   no line of a period's transcript, opens no exchange, and is shown only to its own turn: a

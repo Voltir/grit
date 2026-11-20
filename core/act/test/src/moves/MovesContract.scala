@@ -2,9 +2,13 @@ package grit.act.moves
 
 import java.time.Instant
 
+import scala.concurrent.duration.*
+
 import grit.core.act.MovesFixtures.{replied, shown}
 import grit.core.act.{
   Asked,
+  Bookable,
+  Booked,
   Called,
   Declassifying,
   Dreaming,
@@ -67,9 +71,19 @@ import grit.core.files.{
   Unread
 }
 import grit.core.flow.{Shape, Tainted, TestTainted}
-import grit.core.id.{DocKey, DocumentVersionId, FileHandle, PluginName, SourceId}
+import grit.core.id.{
+  DocKey,
+  DocumentVersionId,
+  FileHandle,
+  JobName,
+  PluginName,
+  PrincipalId,
+  ScheduleId,
+  SourceId
+}
 import grit.core.identity.Account
 import grit.core.inbox.InMemoryInbox
+import grit.core.job.{Grace, Report, Schedule, SlotRule}
 import grit.core.message.{AssistantBlock, Message, StopReason}
 import grit.core.need.{Needs, PluginReads}
 import grit.core.occasion.{Occasion, OccasionKey, TestOccasions}
@@ -213,7 +227,70 @@ abstract class MovesContract extends TestSuite {
       refusing: Option[String] = None
   )(use: Keeping^ -> A): A
 
+  /** What `use` returns, given moves as [[keeping]]'s within `limits`, booking the runs of the
+    * jobs `owns` holds the plugin's; and the schedule each `Right` id it returned names
+    * afterwards, in order, as its store reads it.
+    */
+  def booking(limits: MoveLimits, owns: JobName -> Boolean)(
+      use: Keeping^ -> Vector[Either[MoveError, ScheduleId]]
+  ): (Vector[Either[MoveError, ScheduleId]], Vector[Option[Schedule]])
+
   val tests = Tests {
+    test(
+      "a later books its job's run at the floor, for grit, reported in its own runs alone, believed as what it books from, missed past its until"
+    ) {
+      val (got, booked) = booking(Laters(1), _ == Ping.name) { m =>
+        Vector(
+          m.later(name("a"), TestTainted.at(Booked(Ping, BookAt, BookUntil, Pings(3)), Believed))
+        )
+      }
+      (got.map(_.isRight), booked) ==> (
+        Vector(true),
+        Vector(
+          Some(
+            Schedule(
+              Ping.name,
+              ujson.Num(3),
+              PrincipalId.Grit,
+              Report.Kept,
+              SlotRule.Once(BookAt, Grace.of(10.minutes).getOrElse(Grace.Zero)),
+              None,
+              Floor,
+              Believed
+            )
+          )
+        )
+      )
+    }
+
+    test(
+      "a later of a job not the plugin's is NotOwn, and past its limit OverLimit, neither booking nor counting; from below Outside it is Below, books nothing, and its name is spent; an until before its at gives no grace"
+    ) {
+      val (got, booked) = booking(Laters(2), _ == Ping.name) { m =>
+        val ping = TestTainted.at(Booked(Ping, BookAt, BookAt.minusSeconds(60), Pings(1)), Believed)
+        Vector(
+          m.later(name("a"), TestTainted.at(Booked(Pong, BookAt, BookUntil, Pings(1)), Believed)),
+          m.later(
+            name("b"),
+            TestTainted.at(Booked(Ping, BookAt, BookUntil, Pings(1)), Integrity.Untrusted)
+          ),
+          m.later(name("b"), ping),
+          m.later(name("c"), ping),
+          m.later(name("d"), ping)
+        )
+      }
+      (got.map(_.left.toOption), booked.map(_.map(_.rule))) ==> (
+        Vector(
+          Some(MoveError.NotOwn(Pong.name)),
+          Some(MoveError.Below(Integrity.Untrusted)),
+          Some(MoveError.Repeated(name("b"))),
+          None,
+          Some(MoveError.OverLimit(MoveKind.Later, 2))
+        ),
+        Vector(Some(SlotRule.Once(BookAt, Grace.Zero)))
+      )
+    }
+
     test(
       "a piece move keeps the pieces of the file its handle names at the floor, believed as what it pieces from, under the name its sender gave"
     ) {
@@ -2522,6 +2599,25 @@ object MovesContract {
 
   def name(n: String): MoveName =
     MoveName.of(n).fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** A job a test books, its parameters a number. */
+  final class Pinging(text: String) extends Bookable[Pings] {
+    val name: JobName = JobName.of(text).fold(e => throw new java.lang.AssertionError(e), identity)
+    def write(params: Pings): ujson.Value = ujson.Num(params.n)
+  }
+
+  final case class Pings(n: Int) extends caps.Pure
+
+  /** The plugin's job, and another's. */
+  val Ping: Pinging = new Pinging("ping")
+  val Pong: Pinging = new Pinging("pong")
+
+  val BookAt: Instant = Instant.parse("2026-10-09T08:50:00Z")
+  val BookUntil: Instant = Instant.parse("2026-10-09T09:00:00Z")
+
+  /** No limit but `laters` bookings. */
+  def Laters(n: Int): MoveLimits =
+    MoveLimits.of(0, 0, 0, 0, n).fold(e => throw new java.lang.AssertionError(e), identity)
 
   def limits(asks: Int, calls: Int): MoveLimits =
     MoveLimits.of(asks, calls).fold(e => throw new java.lang.AssertionError(e), identity)

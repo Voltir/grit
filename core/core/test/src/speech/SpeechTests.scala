@@ -582,9 +582,11 @@ object SpeechTests extends TestSuite {
       ) ==> (held(Silence.Unanswered(drafting)), Decision.Drafting(topTurn, Venue.Room("C//")))
     }
 
-    test("an occasion is held at the occasion rate, counting decisions at any stage") {
-      val settled = occasionAt("earlier", now.minusSeconds(60 * 60), Stage.Settled)
-      val old = occasionAt("older", now.minusSeconds(25 * 60 * 60), Stage.Settled)
+    test(
+      "an occasion is held at the occasion rate, Suggested's one in 12 hours, counting decisions at any stage"
+    ) {
+      val settled = occasionAt("earlier", now.minusSeconds(11 * 60 * 60), Stage.Settled)
+      val old = occasionAt("older", now.minusSeconds(13 * 60 * 60), Stage.Settled)
       val other = occasionAt("there", now.minusSeconds(60), Stage.Settled, otherRoom)
       val heardHere = Spoken(TurnRef(ConversationId("t"), TurnSeq(1)), room, now, Stage.Settled)
       (

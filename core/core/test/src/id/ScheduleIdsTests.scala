@@ -40,6 +40,15 @@ object ScheduleIdsTests extends TestSuite {
       ScheduleId.value(ScheduleId.asked(slot(2))) ==> "asked:574ba3e77a498889"
     }
 
+    test("a booked schedule's id is its turn's workflow id and its move's name, hashed") {
+      val turn = TurnRef(ConversationId("c"), TurnSeq.First)
+      (
+        ScheduleId.booked(turn, "later-0") == ScheduleId.booked(turn, "later-0"),
+        ScheduleId.booked(turn, "later-0") == ScheduleId.booked(turn, "later-1"),
+        ScheduleId.value(ScheduleId.booked(turn, "later-0")).startsWith("booked:")
+      ) ==> (true, false, true)
+    }
+
     test("a declared schedule's id names its declarer and key") {
       ScheduleId.value(ScheduleId.declared(Declarer.Deployment, key("standup"))) ==>
         "declared:deployment:standup"
@@ -50,6 +59,7 @@ object ScheduleIdsTests extends TestSuite {
     test("every id an id is written as reads back to it") {
       val ids = Vector(
         ScheduleId.asked(slot(1)),
+        ScheduleId.booked(TurnRef(ConversationId("c"), TurnSeq.First), "later-0"),
         ScheduleId.declared(Declarer.Deployment, key("standup")),
         ScheduleId.declared(Declarer.Plugin(name("digest")), key("weekly"))
       )

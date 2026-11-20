@@ -5,6 +5,7 @@ import java.time.Instant
 import grit.core.act.{
   Acting,
   Asked,
+  Booked,
   Called,
   Declassifying,
   Dreaming,
@@ -26,8 +27,8 @@ import grit.core.document.{Declassified, DocText, DocumentKeeper, PolicyApplicat
 import grit.core.durable.{Flow, Journaled, Steps}
 import grit.core.files.PieceKeeper
 import grit.core.flow.{Extracted, Mint, Shape, Tainted, Trusted}
-import grit.core.id.{CallSlot, DocumentVersionId, PluginName}
-import grit.core.job.JobRun
+import grit.core.id.{CallSlot, DocumentVersionId, JobName, PluginName, ScheduleId}
+import grit.core.job.{Grace, JobRun}
 import grit.core.message.Message
 import grit.core.need.Needs
 import grit.core.occasion.Occasion
@@ -76,17 +77,20 @@ object DurableMoves {
     Mint.trusted(run, acting.integrity)
 
   /** As [[plain]], `plugin`'s, its moves also keeping `keeper`'s documents and `pieces`' pieces
-    * of files, each piece move recorded as `piece:{name}`, and naming its occasions, each
-    * recorded as `occasion:{name}`, then `occasion:{name}:decide` and `occasion:{name}:start`.
+    * of files, each piece move recorded as `piece:{name}`, naming its occasions, each recorded
+    * as `occasion:{name}`, then `occasion:{name}:decide` and `occasion:{name}:start`, and
+    * booking the runs of the jobs `owns` holds to be `plugin`'s, each recorded as
+    * `later:{name}`.
     */
   def keeping[A <: caps.Pure](
       acting: Acting,
       limits: MoveLimits,
       plugin: PluginName,
       keeper: DocumentKeeper,
-      pieces: PieceKeeper
+      pieces: PieceKeeper,
+      owns: JobName -> Boolean
   )(body: Keeping^ => A)(using steps: Steps[KeepingEnv]^): A =
-    body(new Kept(acting, limits, plugin, keeper, pieces))
+    body(new Kept(acting, limits, plugin, keeper, pieces, owns))
 
   /** As [[keeping]], `plugin`'s, its moves also reading `reads` ([[Dreaming]]), its scans
     * `plugin`'s needs; a summary reading the documents of `plugin` and its needs alone, in its
@@ -102,9 +106,10 @@ object DurableMoves {
       plugin: PluginName,
       keeper: DocumentKeeper,
       pieces: PieceKeeper,
+      owns: JobName -> Boolean,
       reads: Dreaming.Reads
   )(body: Dreaming^ => A)(using steps: Steps[KeepingEnv]^): A =
-    body(new Dreamt(acting, limits, plugin, keeper, pieces, reads))
+    body(new Dreamt(acting, limits, plugin, keeper, pieces, owns, reads))
 
   /** One run's moves, its keeps over `keeper`, the rest over `reads` as [[dreaming]] says. */
   private final class Dreamt(
@@ -113,9 +118,10 @@ object DurableMoves {
       plugin: PluginName,
       keeper: DocumentKeeper,
       pieces: PieceKeeper,
+      owns: JobName -> Boolean,
       reads: Dreaming.Reads
   )(using steps: Steps[KeepingEnv]^)
-      extends Kept(acting, limits, plugin, keeper, pieces),
+      extends Kept(acting, limits, plugin, keeper, pieces, owns),
         Dreaming {
 
     private val needs = reads.needs(plugin)
@@ -411,15 +417,16 @@ object DurableMoves {
     private def readable: Vector[PluginName] = plugin +: needs.plugins
   }
 
-  /** One run's moves, `plugin`'s, its keeps and occasions over `keeper` and its piece moves over
-    * `pieces`.
+  /** One run's moves, `plugin`'s, its keeps and occasions over `keeper`, its piece moves over
+    * `pieces`, and its bookings of the jobs `owns` holds.
     */
   private class Kept(
       acting: Acting,
       limits: MoveLimits,
       plugin: PluginName,
       keeper: DocumentKeeper,
-      pieces: PieceKeeper
+      pieces: PieceKeeper,
+      owns: JobName -> Boolean
   )(using
       steps: Steps[KeepingEnv]^
   ) extends Run[KeepingEnv](acting, limits, KeepingEnv.moves),
@@ -450,6 +457,33 @@ object DurableMoves {
             .map(MoveError.Store(_))
         }
       }
+
+    def later[P <: caps.Pure](
+        name: MoveName,
+        from: Tainted[Booked[P]]
+    ): Either[MoveError, ScheduleId] = {
+      val booked = Trusted.asIs(from).extract
+      val job = booked.job.name
+      refused(name, MoveKind.Later, foreign = Option.unless(owns(job))(job)).toLeft(()).flatMap {
+        _ =>
+          if (from.integrity.belowOutside) Left(MoveError.Below(from.integrity))
+          else {
+            made(
+              Act.later,
+              Act.Later(
+                name,
+                acting,
+                job,
+                booked.job.write(booked.params),
+                booked.at,
+                Grace.between(booked.at, booked.until),
+                from.integrity
+              )
+            ).left
+              .map(MoveError.Store(_))
+          }
+      }
+    }
 
     def occasion(name: MoveName, from: Tainted[Occasion]): Either[MoveError, Occasioned] = {
       val occasion = Trusted.asIs(from).extract
@@ -489,6 +523,8 @@ object DurableMoves {
     @caps.unsafe.untrackedCaptures
     private var rooms: Set[Place] = Set.empty
     @caps.unsafe.untrackedCaptures
+    private var laters: Int = 0
+    @caps.unsafe.untrackedCaptures
     private var diverged: Option[MoveName] = None
 
     private val turn = acting.turn
@@ -505,12 +541,14 @@ object DurableMoves {
     protected def refused(
         name: MoveName,
         kind: MoveKind,
-        room: Option[Place] = None
+        room: Option[Place] = None,
+        foreign: Option[JobName] = None
     ): Option[MoveError] =
       diverged
         .map(MoveError.Diverged(_))
         .orElse(Option.when(used.contains(name))(MoveError.Repeated(name)))
         .orElse(room.filter(rooms.contains).map(MoveError.RoomTaken(_)))
+        .orElse(foreign.map(MoveError.NotOwn(_)))
         .orElse(kind match {
           case MoveKind.Ask if asks >= limits.asks => Some(MoveError.OverLimit(kind, limits.asks))
           case MoveKind.Judge if judgments >= limits.judgments =>
@@ -519,6 +557,8 @@ object DurableMoves {
             Some(MoveError.OverLimit(kind, limits.calls))
           case MoveKind.Occasion if rooms.size >= limits.occasions =>
             Some(MoveError.OverLimit(kind, limits.occasions))
+          case MoveKind.Later if laters >= limits.laters =>
+            Some(MoveError.OverLimit(kind, limits.laters))
           case _ => None
         })
         .orElse {
@@ -528,6 +568,7 @@ object DurableMoves {
             case MoveKind.Judge => judgments += 1
             case MoveKind.Call => calls += 1
             case MoveKind.Occasion => rooms = rooms ++ room
+            case MoveKind.Later => laters += 1
             case MoveKind.Keep => ()
           }
           None

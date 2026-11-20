@@ -13,7 +13,8 @@ import grit.core.document.{
 }
 import grit.core.durable.Journaled
 import grit.core.flow.{Tainted, TestTainted, Trusted}
-import grit.core.id.{DocumentVersionId, PluginName}
+import grit.core.id.{DocumentVersionId, JobName, PluginName}
+import grit.core.job.InMemorySchedules
 import grit.core.message.Message
 import grit.core.need.Needs
 import grit.core.provider.ModelRequest
@@ -50,7 +51,9 @@ final class ScriptedDreaming(
       (_: ModelRequest) => Left(MoveError.Model("no text reply scripted")),
     judgments: Request -> Either[MoveError, ScriptedMoves.Replied[Vector[Answer]]] = (_: Request) =>
       Left(MoveError.Model("no judgment scripted")),
-    visibility: Visibility = Visibility.Shipped
+    visibility: Visibility = Visibility.Shipped,
+    booked: InMemorySchedules = new InMemorySchedules(),
+    owns: JobName -> Boolean = (_: JobName) => true
 ) extends ScriptedKeeping(
       limits,
       floor,
@@ -64,7 +67,9 @@ final class ScriptedDreaming(
       at = at,
       integrity = integrity,
       rooms = rooms,
-      visibility = visibility
+      visibility = visibility,
+      schedules = booked,
+      owns = owns
     ),
       Dreaming {
 

@@ -17,8 +17,10 @@ Decision:
   cleared pair or not made (ADR 0031), and recorded in the usage ledger at the estimate of the
   request sent. `call`: one hosted tool request (ADR 0017), checked as ADR 0031 says and gated
   as its actor's gates say. `keep`: one transaction over the acting plugin's own documents.
-  `spawn`: a turn started in another conversation; its one form is `Keeping.occasion`, an
-  unprompted turn at a room's top level, decided and charged as speech (ADR 0067). Everything
+  `spawn`: a turn started in another conversation, in one of two forms. `Keeping.occasion`
+  starts an unprompted turn at a room's top level, decided and charged as speech (ADR 0067).
+  `Keeping.later` books a once run of one of the acting plugin's own jobs: kept at the run's
+  floor, believed at no more than what booked it, and limited by the job's `laters`. Everything
   that acts on the world is a `call` of a hosted tool, those grit hosts itself included; no
   plugin is given `Durable`.
 - **An ask poses one of a closed set of shapes**, its reply typed by its shape: text; JSON the
@@ -41,7 +43,7 @@ Decision:
   durable steps in `grit.act`, which the turn, jobs and the lifecycle share. One step grammar
   (ADR 0038): a planner's moves are `ask:{name}`, `call:{name}` and `keep:{name}`, with
   `piece:{name}` a keep of a file's pieces (ADR 0046), `occasion:{name}` with its phases
-  `:decide` and `:start` a spawn, the turn's
+  `:decide` and `:start` a spawn, `later:{name}` the other, the turn's
   `ask:n` and `call:n:j`. The lifecycle's classifier calls and the close's summary call are
   moves (`Judging`), each charged to its turn under its own workflow.
 - **A planner makes its moves through `Moves`**: each named, at most once per run, within its

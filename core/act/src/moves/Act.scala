@@ -46,11 +46,14 @@ import grit.core.id.{
   DocumentVersionId,
   EntryId,
   FileHandle,
+  JobName,
   PluginName,
+  ScheduleId,
   ToolCallId,
   TurnRef,
   WorkflowId
 }
+import grit.core.job.Grace
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{Catalog, NameRepair, Pinned, Pins}
 import grit.core.place.Service
@@ -137,6 +140,9 @@ private[moves] object Act {
   /** A piece move's `piece:{name}`. */
   val Piecings: ActName[Move] = ActName.keyed[Move]("piece")(m => MoveName.value(m.name))
 
+  /** A booking's `later:{name}`. */
+  val Laters: ActName[Move] = ActName.keyed[Move]("later")(m => MoveName.value(m.name))
+
   /** The text ask `name` of `request`, under `digest`. */
   final case class Text(name: MoveName, acting: Acting, request: ModelRequest, digest: String)
       extends Acted
@@ -214,6 +220,19 @@ private[moves] object Act {
   /** The keep `name` of `value` into `keeper`'s documents. */
   final case class Keep[I](name: MoveName, acting: Acting, value: I, keeper: DocumentKeeper)
       extends Acted
+
+  /** The booking `name` of `job`'s run at `at`, as late as `grace` after it, with `params` as
+    * `job` writes them, believed at `integrity`.
+    */
+  final case class Later(
+      name: MoveName,
+      acting: Acting,
+      job: JobName,
+      params: ujson.Value,
+      at: Instant,
+      grace: Grace,
+      integrity: Integrity
+  ) extends Acted
 
   /** The piece move `name` of `piecing` into `keeper`'s pieces, believed at `integrity`. */
   final case class Piece(
@@ -755,6 +774,27 @@ private[moves] object Act {
             .left
             .map(_.described)
         }
+      )
+    )
+  }
+
+  /** A booking's step: what [[grit.core.act.Keeping.later]] says it does, in a transaction
+    * opened for the acting's subject; the schedule's id, or why the store failed.
+    */
+  val later: Flow[MovesEnv, Later, Nothing, Either[String, ScheduleId]] = {
+    given Journaled[Either[String, ScheduleId]] =
+      MovesJournal.kept[ScheduleId](using MovesJournal.booked)
+    Flow.step(
+      Step.transact[MovesEnv, Later, Either[String, ScheduleId]](Laters.move, _.acting.subject)(
+        env =>
+          l => {
+            val id = ScheduleId.booked(l.acting.turn, MoveName.value(l.name))
+            env.records.schedules
+              .book(id, l.job, l.params, l.at, l.grace, l.integrity, env.clock.now())
+              .map(_ => id)
+              .left
+              .map(_.described)
+          }
       )
     )
   }

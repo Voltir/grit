@@ -138,6 +138,43 @@ abstract class ScheduleContract extends TestSuite {
     }
 
     test(
+      "a booked schedule is kept for grit at the transaction's floor, reported in its own runs, believed as booked and due at its slot; booked again it is unchanged, and no declaration or desk touches it"
+    ) {
+      val u = fresh()
+      val booked = ScheduleId.booked(u.turn("booking"), "later-0")
+      val slot = at("2026-10-08T09:00:00Z")
+      u.book(booked, standup.name, standup.write(Count(1)), slot, hour, Integrity.Member, "10:00")
+      u.book(booked, standup.name, standup.write(Count(2)), slot, hour, Integrity.Member, "10:30")
+      u.declare(Vector(declared("a", daily(9))), "11:00")
+      val remind = u.desk(got(PluginName.of("remind")), Vector(standup.name))
+      val turn = u.turn("asker")
+      u.asking(turn, TestAccounts.account("test:ann"), Some("C1/1.0"))
+      val call = TestCallSlots.at(turn)
+      (
+        u.read(booked),
+        u.due("2026-10-08T09:00:00Z"),
+        remind.pending(call, booking(standup)).map(_.schedules.map(_.id)),
+        remind.cancel(call, booking(standup), booked)
+      ) ==> (
+        Some(
+          Schedule(
+            standup.name,
+            standup.write(Count(1)),
+            PrincipalId.Grit,
+            Report.Kept,
+            SlotRule.Once(slot, hour),
+            None,
+            u.floor,
+            Integrity.Member
+          )
+        ),
+        Vector(booked, id("a")),
+        Right(Vector.empty),
+        Left(DeskRefusal.NotFound(booked))
+      )
+    }
+
+    test(
       "a revived recurrence's next slot is its first after the revival, not one it passed while undeclared"
     ) {
       val u = fresh()
@@ -294,6 +331,21 @@ object ScheduleContract {
       ok(transaction(store.declare(declared, at(now))))
 
     final def read(id: ScheduleId): Option[Schedule] = ok(transaction(store.read(id)))
+
+    final def book(
+        id: ScheduleId,
+        job: JobName,
+        params: ujson.Value,
+        at: Instant,
+        grace: Grace,
+        integrity: Integrity,
+        now: String
+    ): Unit = ok(
+      transaction(store.book(id, job, params, at, grace, integrity, ScheduleContract.at(now)))
+    )
+
+    /** The least label a transaction [[transaction]] opens writes at. */
+    final def floor: Label = transaction((tx: Tx^) ?=> Tx.floor(tx))
 
     final def due(now: String, n: Int = 100): Vector[ScheduleId] =
       ok(transaction(store.due(at(now), n))).map(_._1)

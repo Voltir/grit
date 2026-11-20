@@ -14,7 +14,7 @@ import grit.core.document.{
 import grit.core.durable.Journaled
 import grit.core.files.PieceSearch
 import grit.core.flow.{Extracted, Shape, Tainted, Trusted}
-import grit.core.id.{DocumentVersionId, PluginName}
+import grit.core.id.{DocumentVersionId, PluginName, ScheduleId}
 import grit.core.message.{Cut, Message}
 import grit.core.need.Needs
 import grit.core.occasion.Occasion
@@ -258,6 +258,17 @@ trait Keeping extends Moves {
     * name.
     */
   def occasion(name: MoveName, from: Tainted[Occasion]): Either[MoveError, Occasioned]
+
+  /** `from`'s run booked: a once schedule of its job, kept at the run's floor
+    * ([[grit.core.store.Tx.floor]]), run for grit, its runs believed at `from`'s integrity and
+    * reported in their own conversations alone; recorded once, so a rerun books it once and gets
+    * the same id. An `at` already past is booked all the same, and missed past `until`. Refused
+    * before any step, in this order: [[MoveError.Diverged]], [[MoveError.Repeated]],
+    * [[MoveError.NotOwn]] (a job not the acting plugin's), [[MoveError.OverLimit]]; then, the
+    * move counted as made, [[MoveError.Below]] when `from` is believed below
+    * [[grit.core.visibility.Integrity.Outside]], booking nothing, or [[MoveError.Store]].
+    */
+  def later[P <: caps.Pure](name: MoveName, from: Tainted[Booked[P]]): Either[MoveError, ScheduleId]
 }
 
 /** [[Keeping]], the strands of the rooms its run reads, by ids and counts, and its plugin's

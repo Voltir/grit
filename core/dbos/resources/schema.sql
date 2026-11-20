@@ -1365,8 +1365,9 @@ CREATE TABLE IF NOT EXISTS grit.document_terms (
 -- A job's schedule (grit.core.job, ADR 0029): its job by name, its slot rule (SlotRuleJson), its
 -- parameters as its job wrote them, the principal it runs for, and where its runs report besides
 -- their own conversations (ReportJson). `source` 'declared' (a deployment's or a plugin's, its id
--- `declared:…`, reconciled at every start) or 'asked' (written by a plugin's tool from the call
--- `asked_in`, a CallSlot.key; never reconciled). `next_at` is its next slot's nominal instant,
+-- `declared:…`, reconciled at every start) or 'asked' (never reconciled: written by a plugin's
+-- tool from the call `asked_in`, a CallSlot.key, or booked by a job's run, `asked_in` its id
+-- `booked:…`). `next_at` is its next slot's nominal instant,
 -- NULL when it has none left; `started_at` the nominal instant of the newest slot started, and
 -- `running` the job version that slot's run was started at, NULL once it replied. `ended` says how
 -- it ended (Ending), with `ended_at`; an ended schedule has no slot left. `classification_id` is what its

@@ -120,12 +120,12 @@ object Run {
       case None => Right(Replying(turn, read, Planned.Jobless))
       case Some(owned) if owned.job.version != read.version =>
         Right(Replying(turn, read, Planned.Superseded(owned.job.version)))
-      case Some(owned) => Left(Planning(owned, read, acting))
+      case Some(owned) => Left(Planning(owned, read, acting, jobs))
     }
   }
 
-  /** The job `owned` to run for the slot `read`, its moves made under `acting`. */
-  private final case class Planning(owned: Owned, read: SlotRead.Read, acting: Acting)
+  /** The job `owned` to run for the slot `read`, its moves made under `acting`, among `jobs`. */
+  private final case class Planning(owned: Owned, read: SlotRead.Read, acting: Acting, jobs: Jobs)
 
   /** The `reply` step's input: the run `read` of `turn`, and what it replies. */
   private final case class Replying(turn: TurnRef, read: SlotRead.Read, planned: Planned)
@@ -141,13 +141,26 @@ object Run {
         case Owned.Deployments(job) => plain(job, p.read, p.acting)(using steps)
         case Owned.Plugins(_, job) => plain(job, p.read, p.acting)(using steps)
         case Owned.Keeps(plugin, terms, job) =>
-          keeping(job, p.read, p.acting, plugin, keepers(plugin, terms), pieces(plugin))(using
-            steps
-          )
+          keeping(
+            job,
+            p.read,
+            p.acting,
+            plugin,
+            keepers(plugin, terms),
+            pieces(plugin),
+            p.jobs.ownedBy(plugin)
+          )(using steps)
         case Owned.Dreams(plugin, terms, job) =>
-          dreaming(job, p.read, p.acting, plugin, keepers(plugin, terms), pieces(plugin), reads)(
-            using steps
-          )
+          dreaming(
+            job,
+            p.read,
+            p.acting,
+            plugin,
+            keepers(plugin, terms),
+            pieces(plugin),
+            p.jobs.ownedBy(plugin),
+            reads
+          )(using steps)
       }
     }
 
@@ -273,11 +286,14 @@ object Run {
       acting: Acting,
       plugin: PluginName,
       keeper: DocumentKeeper,
-      pieces: PieceKeeper
+      pieces: PieceKeeper,
+      owns: JobName -> Boolean
   )(using steps: Steps[KeepingEnv]^): String =
     said(job, read, acting)(run =>
       DurableMoves
-        .keeping(acting, job.limits, plugin, keeper, pieces)(moves => Said(job.run(run, moves)))
+        .keeping(acting, job.limits, plugin, keeper, pieces, owns)(moves =>
+          Said(job.run(run, moves))
+        )
         .text
     )
 
@@ -289,11 +305,12 @@ object Run {
       plugin: PluginName,
       keeper: DocumentKeeper,
       pieces: PieceKeeper,
+      owns: JobName -> Boolean,
       reads: Dreaming.Reads
   )(using steps: Steps[KeepingEnv]^): String =
     said(job, read, acting)(run =>
       DurableMoves
-        .dreaming(acting, job.limits, plugin, keeper, pieces, reads)(moves =>
+        .dreaming(acting, job.limits, plugin, keeper, pieces, owns, reads)(moves =>
           Said(job.run(run, moves))
         )
         .text

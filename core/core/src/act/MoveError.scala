@@ -1,5 +1,6 @@
 package grit.core.act
 
+import grit.core.id.JobName
 import grit.core.place.Place
 import grit.core.visibility.{Integrity, Label}
 
@@ -11,6 +12,9 @@ enum MoveError {
 
   /** The run named an occasion in `room` already: one occasion a room a run. */
   case RoomTaken(room: Place)
+
+  /** `job` is not one of the acting plugin's own jobs: nothing was booked. */
+  case NotOwn(job: JobName)
 
   /** The run reached its limit of `limit` moves of `kind`. */
   case OverLimit(kind: MoveKind, limit: Int)
@@ -66,6 +70,7 @@ object MoveError {
     case Store(why) => why
     case Diverged(name) => s"the run's moves differ from its record at ${MoveName.value(name)}"
     case Undeclared(node) => s"the job's code does not allow the $node it used"
+    case NotOwn(job) => s"${JobName.value(job)} is not this plugin's job"
   }
 
   private def plural(kind: MoveKind): String = kind match {
@@ -74,5 +79,6 @@ object MoveError {
     case MoveKind.Call => "calls"
     case MoveKind.Keep => "keeps"
     case MoveKind.Occasion => "occasions"
+    case MoveKind.Later => "later bookings"
   }
 }
