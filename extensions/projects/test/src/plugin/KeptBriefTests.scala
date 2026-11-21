@@ -2,7 +2,7 @@ package grit.projects.plugin
 
 import java.time.Instant
 
-import grit.core.claim.{Claim, ClaimRole, Claimed, Claims}
+import grit.core.claim.{Claim, ClaimRole, Claimed, Claims, Moved}
 import grit.core.document.{DocRef, DocText, Document, DocumentKeeper}
 import grit.core.id.{ClaimHolder, DocKey, SessionId}
 import grit.core.identity.Principal
@@ -98,6 +98,14 @@ object KeptBriefTests extends TestSuite {
         store.claims.claim(subject, holder, role, session, by, label, at)
       def release(subject: DocKey, label: Label)(using Tx^): Either[StoreError, Option[Claim]] =
         store.claims.release(subject, label)
+      def moved(
+          claim: Claim,
+          holder: ClaimHolder,
+          session: SessionId,
+          role: ClaimRole,
+          at: Instant
+      )(using Tx^): Either[StoreError, Moved] =
+        store.claims.moved(claim, holder, session, role, at)
       def live(at: Instant)(using Tx^): Either[StoreError, Vector[Claim]] = Right(read)
       def held(claim: Claim)(using Tx^): Either[StoreError, Option[Claim]] =
         store.claims.held(claim)
@@ -502,6 +510,14 @@ object KeptBriefTests extends TestSuite {
           store.claims.claim(subject, holder, role, session, by, label, at)
         def release(subject: DocKey, label: Label)(using Tx^): Either[StoreError, Option[Claim]] =
           store.claims.release(subject, label)
+        def moved(
+            claim: Claim,
+            holder: ClaimHolder,
+            session: SessionId,
+            role: ClaimRole,
+            at: Instant
+        )(using Tx^): Either[StoreError, Moved] =
+          store.claims.moved(claim, holder, session, role, at)
         def live(at: Instant)(using Tx^): Either[StoreError, Vector[Claim]] = store.claims.live(at)
         def held(claim: Claim)(using Tx^): Either[StoreError, Option[Claim]] =
           store.claims.held(claim)

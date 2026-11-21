@@ -60,6 +60,24 @@ enum Claimed {
   case Elsewhere(session: SessionId, holder: ClaimHolder)
 }
 
+/** What [[Claims.moved]] came to. */
+enum Moved {
+
+  /** Moved, and now live. */
+  case Made(claim: Claim)
+
+  /** Refused, moving nothing: the label holds a claim by the holder moved to on another subject
+    * already; it, when this transaction reads it.
+    */
+  case Holding(other: Option[Claim])
+
+  /** Refused, moving nothing: the session moved to works as `holder`, another. */
+  case Elsewhere(session: SessionId, holder: ClaimHolder)
+
+  /** Moving nothing: the claim is gone. */
+  case Gone
+}
+
 /** One plugin's claims, as its transaction reads them: at each label, one live claim per subject
   * and one per holder. A claim's lease is its session's: that session's last event keeps it from
   * lapsing, and while it has none, any session working as its holder does ([[Claim.lapses]]). A
@@ -95,6 +113,17 @@ trait Claims extends caps.Pure {
     * reads it: it, or `None` when there is none it reads.
     */
   def release(subject: DocKey, label: Label)(using Tx^): Either[StoreError, Option[Claim]]
+
+  /** `claim`, as [[live]] answered it, moved to `holder`'s session `session` as `role`, made anew
+    * at `at`, keeping `by` and its label: [[Moved.Made]] with it moved. [[Moved.Holding]] when
+    * `holder` has another live claim at that label, [[Moved.Elsewhere]] when this transaction
+    * reads `session` working as another holder, each moving nothing; [[Moved.Gone]] when it is
+    * gone, as [[held]] finds it. A claim of `holder`'s lapsed at `at` is deleted first. Who may
+    * move it is the caller's rule.
+    */
+  def moved(claim: Claim, holder: ClaimHolder, session: SessionId, role: ClaimRole, at: Instant)(
+      using Tx^
+  ): Either[StoreError, Moved]
 
   /** This plugin's claims at every label this transaction reads that have not lapsed at `at`,
     * by subject, then by when they were made. A session this transaction does not read keeps no

@@ -342,6 +342,63 @@ abstract class ClaimsContract extends TestSuite {
       )
     }
 
+    test(
+      "a claim moved goes to the new holder's session as its role, made anew, and frees the old holder"
+    ) {
+      val c = claims(plugin("claims-moved"))
+      val reviewer = ok(ClaimRole.of("reviewer"))
+      claim(c, "p/a", "move-1", working = Some(session("move-a")))
+      val first = made("p/a", "move-1", working = Some(session("move-a")))
+      val moved =
+        opened(Low)(ok(c.moved(first, holder("move-2"), session("move-b"), reviewer, hour)))
+      val now = made("p/a", "move-2", when = hour, working = Some(session("move-b")))
+        .copy(role = reviewer)
+      assert(
+        moved == Moved.Made(now),
+        live(c, hour) == Vector(now),
+        claim(c, "p/b", "move-1", when = hour) == Claimed.Made(made("p/b", "move-1", when = hour))
+      )
+    }
+
+    test("a move to a holder working another subject is Holding, moving nothing") {
+      val c = claims(plugin("claims-move-holding"))
+      claim(c, "p/a", "mh-1")
+      claim(c, "p/b", "mh-2")
+      val moved = opened(Low)(
+        ok(c.moved(made("p/a", "mh-1"), holder("mh-2"), session("mh-b"), builder, at))
+      )
+      assert(
+        moved == Moved.Holding(Some(made("p/b", "mh-2"))),
+        live(c, at) == Vector(made("p/a", "mh-1"), made("p/b", "mh-2"))
+      )
+    }
+
+    test("a move of a claim released since is Gone") {
+      val c = claims(plugin("claims-move-gone"))
+      claim(c, "p/a", "mg-1")
+      release(c, "p/a")
+      val moved = opened(Low)(
+        ok(c.moved(made("p/a", "mg-1"), holder("mg-2"), session("mg-b"), builder, at))
+      )
+      assert(moved == Moved.Gone, live(c, at) == Vector.empty)
+    }
+
+    test("a move to a session working as another holder is Elsewhere, moving nothing") {
+      val c = claims(
+        plugin("claims-move-elsewhere"),
+        Map.empty,
+        Map(session("me-b") -> (holder("me-3"), at))
+      )
+      claim(c, "p/a", "me-1")
+      val moved = opened(Low)(
+        ok(c.moved(made("p/a", "me-1"), holder("me-2"), session("me-b"), builder, at))
+      )
+      assert(
+        moved == Moved.Elsewhere(session("me-b"), holder("me-3")),
+        live(c, at) == Vector(made("p/a", "me-1"))
+      )
+    }
+
     test("a session working as another holder is answered Elsewhere, claiming nothing") {
       val c = claims(
         plugin("claims-elsewhere"),

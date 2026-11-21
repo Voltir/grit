@@ -3,7 +3,7 @@ package grit.dbos.sql
 import java.sql.ResultSet
 import java.time.Instant
 
-import grit.core.claim.{Claim, ClaimRole, Claimed, Claims}
+import grit.core.claim.{Claim, ClaimRole, Claimed, Claims, Moved}
 import grit.core.id.{ClaimHolder, DocKey, Harness, PluginName, SessionId}
 import grit.core.identity.Principal
 import grit.core.session.Session
@@ -206,6 +206,70 @@ private[dbos] final class SqlClaims(plugin: PluginName) extends Claims {
       }(claimOf)
       .flatMap(SqlStatements.valid)
       .map(_.headOption)
+
+  def moved(claim: Claim, holder: ClaimHolder, session: SessionId, role: ClaimRole, at: Instant)(
+      using Tx^
+  ): Either[StoreError, Moved] =
+    SqlClaims.elsewhere(Some(session), holder).flatMap {
+      case Some((s, away)) => Right(Moved.Elsewhere(s, away))
+      case None =>
+        for {
+          id <- SqlLabels.intern(claim.label)
+          _ <- lapse(claim.subject, holder, id, at)
+          other <- SqlStatements
+            .cleared(
+              s"""WITH ${SqlClearance.With}
+                 |SELECT ${SqlClearance.kept("c")} AS shown, $Columns
+                 |  FROM $Labelled c JOIN grit.principals p ON p.id = c.principal_id
+                 | WHERE c.plugin = ? AND c.classification_id = ? AND c.holder = ? AND c.subject <> ?""".stripMargin
+            ) { ps =>
+              ps.setString(SqlClearance.Params + 1, PluginName.value(plugin))
+              ps.setInt(SqlClearance.Params + 2, id)
+              ps.setString(SqlClearance.Params + 3, ClaimHolder.value(holder))
+              ps.setString(SqlClearance.Params + 4, DocKey.value(claim.subject))
+            }(rs => claimOf(rs).map(c => Option.when(rs.getBoolean("shown"))(c)))
+            .flatMap(SqlStatements.valid)
+          answer <- other.headOption match {
+            case Some(shown) => Right(Moved.Holding(shown))
+            case None =>
+              SqlStatements
+                .cleared(
+                  s"""WITH ${SqlClearance.With},
+                     |moved AS (
+                     |  UPDATE grit.claims c
+                     |     SET holder = ?, role = ?, session_harness = ?, session_local = ?, made_at = ?
+                     |   WHERE c.plugin = ? AND c.subject = ? AND c.holder = ? AND c.made_at = ?
+                     |     AND c.classification_id = ? AND ${SqlClearance.kept("c")}
+                     |  RETURNING c.*)
+                     |SELECT $Active AS active FROM moved c""".stripMargin
+                ) { ps =>
+                  val P = SqlClearance.Params
+                  ps.setString(P + 1, ClaimHolder.value(holder))
+                  ps.setString(P + 2, ClaimRole.value(role))
+                  SqlClaims.bindSession(ps, P + 3, Some(session))
+                  ps.setObject(P + 5, SqlDocuments.utc(at))
+                  ps.setString(P + 6, PluginName.value(plugin))
+                  ps.setString(P + 7, DocKey.value(claim.subject))
+                  ps.setString(P + 8, ClaimHolder.value(claim.holder))
+                  ps.setObject(P + 9, SqlDocuments.utc(claim.made))
+                  ps.setInt(P + 10, id)
+                }(SqlDocuments.instant(_, "active"))
+                .map(
+                  _.headOption.fold(Moved.Gone)(active =>
+                    Moved.Made(
+                      claim.copy(
+                        holder = holder,
+                        role = role,
+                        session = Some(session),
+                        made = at,
+                        active = active
+                      )
+                    )
+                  )
+                )
+          }
+        } yield answer
+    }
 
   def live(at: Instant)(using Tx^): Either[StoreError, Vector[Claim]] =
     SqlStatements

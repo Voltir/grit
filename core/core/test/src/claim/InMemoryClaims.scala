@@ -96,6 +96,34 @@ final class InMemoryClaims {
         case None => Right(None)
       }
 
+    def moved(
+        claim: Claim,
+        holder: ClaimHolder,
+        session: SessionId,
+        role: ClaimRole,
+        at: Instant
+    )(using Tx^): Either[StoreError, Moved] = {
+      def here(r: Row): Boolean = r.plugin == plugin && r.claim.label == claim.label
+      rows = rows.filterNot(r => here(r) && r.claim.holder == holder && lapsed(r, at))
+      val mine = rows.find(r =>
+        here(r) && r.claim.subject == claim.subject && r.claim.holder == claim.holder &&
+          r.claim.made == claim.made && reads(r)
+      )
+      val other =
+        rows.find(r => here(r) && r.claim.holder == holder && r.claim.subject != claim.subject)
+      (sessions(session).map(_._1).filter(_ != holder), mine, other) match {
+        case (Some(away), _, _) => Right(Moved.Elsewhere(session, away))
+        case (None, None, _) => Right(Moved.Gone)
+        case (None, Some(_), Some(o)) => Right(Moved.Holding(Option.when(reads(o))(read(o))))
+        case (None, Some(m), None) =>
+          val now = m.copy(claim =
+            m.claim.copy(holder = holder, role = role, session = Some(session), made = at)
+          )
+          rows = rows.map(r => if (r == m) now else r)
+          Right(Moved.Made(read(now)))
+      }
+    }
+
     def live(at: Instant)(using Tx^): Either[StoreError, Vector[Claim]] =
       Right(
         rows
