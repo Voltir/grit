@@ -57,8 +57,8 @@ object ClaimsLiveTests extends TestSuite {
 
   private val builder = ok(ClaimRole.of("builder"))
 
-  /** `subject`'s claim for `holder` in `c` at `label`, at `when`, by a transaction at
-    * `clearance`.
+  /** `subject`'s claim for `holder` in `c` at `label`, at `when`, worked by `session`, by a
+    * transaction at `clearance`.
     */
   private def claim(
       c: SqlClaims,
@@ -66,11 +66,20 @@ object ClaimsLiveTests extends TestSuite {
       holder: String,
       when: Instant,
       label: Label = Label.Public,
-      clearance: Clearance = Clearance.of(Label.Public)
+      clearance: Clearance = Clearance.of(Label.Public),
+      session: Option[SessionId] = None
   ): Claimed =
     ok(
       LiveDb.transaction(config, clearance)(
-        c.claim(ok(DocKey.of(subject)), ok(ClaimHolder.of(holder)), builder, None, by, label, when)
+        c.claim(
+          ok(DocKey.of(subject)),
+          ok(ClaimHolder.of(holder)),
+          builder,
+          session,
+          by,
+          label,
+          when
+        )
       )
     )
 
@@ -126,6 +135,26 @@ object ClaimsLiveTests extends TestSuite {
         case _ => None
       }
       assert(first == Some(("hidden-1", hour)), made(taken))
+    }
+
+    test(
+      "a claim's own session keeps it from lapsing only for a claimer who reads that session"
+    ) {
+      val c = new SqlClaims(ok(PluginName.of("claims-hidden-own")))
+      val hour = at.plusSeconds(3600)
+      val own = ok(SessionId.read("claude-code:hidden-own"))
+      val trial = TestLabels.Trial
+      val high = Clearance.of(trial)
+      HolderSessions.work(config, by, ok(ClaimHolder.of("hidden-3")), hour, trial, Some(own))
+      claim(c, "p/a", "hidden-3", at, trial, high, Some(own))
+      val lapse = at.plusMillis(Claims.Lease.toMillis)
+      val kept = claim(c, "p/a", "hidden-4", lapse, trial, high)
+      val taken = claim(c, "p/a", "hidden-4", lapse, trial)
+      val first = kept match {
+        case Claimed.Taken(Some(c)) => Some((ClaimHolder.value(c.holder), c.session, c.active))
+        case _ => None
+      }
+      assert(first == Some(("hidden-3", Some(own), hour)), made(taken))
     }
 
     test("the sweep deletes a claim once lapsed longer than a session counts as unended") {
