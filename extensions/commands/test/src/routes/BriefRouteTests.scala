@@ -116,7 +116,7 @@ object BriefRouteTests extends TestSuite {
     }
 
     test(
-      "a session whose holder's claim another session works is answered one line naming it and its takeover, never the brief"
+      "a session whose holder's claim another session works is answered one line naming it and its takeover, never the brief, and records nothing"
     ) {
       val script = new ScriptedSessions.Script
       // An hour before Now, so its claim is live then.
@@ -132,14 +132,18 @@ object BriefRouteTests extends TestSuite {
         got(ClaimRole.of("manager")),
         Some(id("s-0"))
       )
-      asked(script, Fresh) ==> (
-        Status.Ok,
-        "grit: no brief for this session. p/1 is claimed as manager for desktop/grit-dcfe7476, " +
-          "and session made-up:s-0 is working on it (last active 2026-11-13T11:00:00Z). The claim " +
-          "frees itself when that session ends, or at 2026-11-13T13:00:00Z if it does nothing " +
-          "more. To move it here now, the person who made the claim runs kalandra-cli " +
-          "project_claim themselves, outside any session, with: " +
-          """{"key":"p/1","role":"manager","holder":"desktop/grit-dcfe7476","takeover":"made-up:s-1"}"""
+      val answer = asked(script, Fresh)
+      (answer, script.called.collect { case r: ScriptedSessions.Call.Recorded => r }) ==> (
+        (
+          Status.Ok,
+          "grit: no brief for this session. p/1 is claimed as manager for desktop/grit-dcfe7476, " +
+            "and session made-up:s-0 is working on it (last active 2026-11-13T11:00:00Z). The claim " +
+            "frees itself when that session ends, or at 2026-11-13T13:00:00Z if it does nothing " +
+            "more. To move it here now, the person who made the claim runs kalandra-cli " +
+            "project_claim themselves, outside any session, with: " +
+            """{"key":"p/1","role":"manager","holder":"desktop/grit-dcfe7476","takeover":"made-up:s-1"}"""
+        ),
+        Vector.empty
       )
     }
 
