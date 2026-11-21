@@ -19,6 +19,11 @@ trait Sessions extends caps.Pure {
     *     `ended` event ends the session at its time, a `started` event after that opens it
     *     again ([[Session.ending]]), and a `closing` event's summary replaces its summary.
     *   - Past the log's overflow an event only moves the session's last event.
+    *   - When they end the session, every claim it works is worked by none, for its holder's next
+    *     session to take; otherwise, when `header` names a holder (the session starting or
+    *     resuming), the session takes every claim of its holder that no session works and that
+    *     has not lapsed ([[grit.core.claim.Claim.session]]). Both touch only claims kept at the
+    *     session's own label and in its own room.
     *
     * Recordings of one session wait on each other. Empty `events` begin no row. `Left(Invalid)`
     * when the session exists at a label this transaction does not read.

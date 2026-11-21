@@ -5,13 +5,14 @@ import java.util.concurrent.{ConcurrentLinkedQueue, CyclicBarrier, TimeUnit}
 
 import scala.jdk.CollectionConverters.*
 
-import grit.core.id.{ClaimHolder, Harness, SessionId}
+import grit.core.claim.{ClaimRole, Claimed}
+import grit.core.id.{ClaimHolder, DocKey, Harness, PluginName, SessionId}
 import grit.core.identity.{Principal, TestAccounts}
 import grit.core.place.{Namespace, Place}
 import grit.core.session.{Event, Log, Session, Sessions}
 import grit.core.store.StoreError
 import grit.core.visibility.{Clearance, Label, TestLabels}
-import grit.dbos.sql.{LiveDb, SqlIdentities, SqlSessions, TestPostgres}
+import grit.dbos.sql.{LiveDb, SqlClaims, SqlIdentities, SqlSessions, TestPostgres}
 
 import utest.*
 
@@ -71,6 +72,39 @@ object SqlSessionsTests extends TestSuite {
       holder: Option[ClaimHolder] = None
   ): Either[StoreError, Sessions.Recorded] =
     LiveDb.transaction(config, clearance)(sessions.record(header(local, label, holder), events))
+
+  private val claims = new SqlClaims(ok(PluginName.of("sessions-claims")))
+
+  /** `subject` claimed for `holder` at `t0`, worked by `session`, at `label`. */
+  private def claimFor(
+      subject: String,
+      holder: ClaimHolder,
+      label: Label = Label.Public,
+      clearance: Clearance = Low,
+      session: Option[SessionId] = None
+  ): Unit =
+    ok(
+      LiveDb.transaction(config, clearance)(
+        claims.claim(
+          ok(DocKey.of(subject)),
+          holder,
+          ok(ClaimRole.of("builder")),
+          session,
+          ann,
+          label,
+          t0
+        )
+      )
+    ) match {
+      case Claimed.Made(_) => ()
+      case other => throw new java.lang.AssertionError(s"$subject not claimed: $other")
+    }
+
+  /** The session working `subject`'s claim, as a transaction at `clearance` reads it live. */
+  private def workedBy(subject: String, clearance: Clearance = Low): Option[Option[SessionId]] =
+    ok(LiveDb.transaction(config, clearance)(claims.live(t0)))
+      .find(c => DocKey.value(c.subject) == subject)
+      .map(_.session)
 
   private def read(local: String, clearance: Clearance = Low): Option[Session] =
     LiveDb.transaction(config, clearance)(ok(sessions.read(id(local))))
@@ -319,6 +353,34 @@ object SqlSessionsTests extends TestSuite {
           (t0.plusSeconds(4), "c", Some("the first"))
         )
       )
+    }
+
+    test(
+      "a session's starting recording takes its holder's claim no session works; its recorded end frees it"
+    ) {
+      val h = ok(ClaimHolder.of("take/holder"))
+      claimFor("p/take", h)
+      record("s-take", Vector(event(1, Event.Kind.Started)), holder = Some(h))
+      val taken = workedBy("p/take")
+      record("s-take", Vector(event(2, Event.Kind.Ended)))
+      assert(taken == Some(Some(id("s-take"))), workedBy("p/take") == Some(None))
+    }
+
+    test("a session already open takes nothing when another's close frees its holder's claim") {
+      val h = ok(ClaimHolder.of("open/holder"))
+      record("s-open", Vector(event(1, Event.Kind.Started)), holder = Some(h))
+      record("s-closer", Vector(event(1, Event.Kind.Started)), holder = Some(h))
+      claimFor("p/open", h, session = Some(id("s-closer")))
+      record("s-closer", Vector(event(2, Event.Kind.Ended)))
+      record("s-open", Vector(event(3)))
+      assert(workedBy("p/open") == Some(None))
+    }
+
+    test("a starting session takes no claim of its holder kept at another label") {
+      val h = ok(ClaimHolder.of("high/holder"))
+      claimFor("p/high", h, label = TestLabels.Trial, clearance = High)
+      record("s-low", Vector(event(1, Event.Kind.Started)), holder = Some(h))
+      assert(workedBy("p/high", High) == Some(None))
     }
   }
 }

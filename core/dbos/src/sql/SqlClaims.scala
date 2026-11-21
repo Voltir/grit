@@ -364,6 +364,44 @@ private[dbos] object SqlClaims {
        |         WHERE s.harness = c.session_harness AND s.local = c.session_local
        |           AND ${SqlClearance.kept("s")}) END)""".stripMargin
 
+  /** What the recording of the session whose row id is `session` does to claims, at `at`: once
+    * `ended`, every claim it works is worked by none; otherwise, when `starting`, every claim of
+    * its holder that no session works and that has not lapsed at `at` is worked by it. Either way
+    * only claims kept at the session's own label and in its own room.
+    */
+  def recorded(session: Long, ended: Boolean, starting: Boolean, at: Instant)(using
+      Tx^
+  ): Either[StoreError, Unit] = {
+    val same =
+      "c.classification_id = s.classification_id AND c.room_id IS NOT DISTINCT FROM s.room_id"
+    if (ended)
+      SqlStatements
+        .update(
+          s"""UPDATE grit.claims c SET session_harness = NULL, session_local = NULL
+             |  FROM grit.sessions s
+             | WHERE s.id = ? AND c.session_harness = s.harness AND c.session_local = s.local
+             |   AND $same""".stripMargin
+        )(_.setLong(1, session))
+        .map(_ => ())
+    else if (starting)
+      SqlStatements
+        .cleared(
+          s"""WITH ${SqlClearance.With},
+             |taken AS (
+             |  UPDATE grit.claims c SET session_harness = s.harness, session_local = s.local
+             |    FROM grit.sessions s
+             |   WHERE s.id = ? AND c.holder = s.holder AND c.session_local IS NULL AND $same
+             |     AND $Active > ?
+             |  RETURNING 1)
+             |SELECT count(*) AS n FROM taken""".stripMargin
+        ) { ps =>
+          ps.setLong(SqlClearance.Params + 1, session)
+          ps.setObject(SqlClearance.Params + 2, SqlDocuments.utc(leased(at)))
+        }(_ => ())
+        .map(_ => ())
+    else Right(())
+  }
+
   /** `session` bound to the two parameters from `i`, its harness then its local id. */
   private[sql] def bindSession(
       ps: java.sql.PreparedStatement,

@@ -36,6 +36,13 @@ private[dbos] final class SqlSessions extends Sessions {
           logged = lines.collect { case Log.Line.Logged(_, e) => e }
           _ <- write(row.id, lines)
           _ <- update(row, fresh, logged, lines.size)
+          _ <- SqlClaims.recorded(
+            row.id,
+            ended = logged.exists(_.kind == Event.Kind.Ended) &&
+              Session.ending(row.ended, logged).isDefined,
+            starting = header.holder.isDefined && Session.ending(row.ended, logged).isEmpty,
+            at = events.maxByOption(_.at).fold(first.at)(_.at)
+          )
           _ <-
             if (logged.exists(_.kind == Event.Kind.Commit)) SqlNotices.send(SqlNotices.Sessions, "")
             else Right(())
