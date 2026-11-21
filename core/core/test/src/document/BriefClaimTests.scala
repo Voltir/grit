@@ -14,19 +14,25 @@ object BriefClaimTests extends TestSuite {
     ScriptedSessions.document("Work it.", EdgeContracts.At).copy(data = data)
 
   val tests = Tests {
-    test("a brief's claim reads back as it was kept, beside the plugin's own data") {
+    test("a brief's claim is kept under `claim` beside the plugin's own data, and read back") {
+      // Briefs in the store hold this form: a key renamed on both sides would pass a round trip
+      // and leave every brief already kept naming no claim, so its session opens with the brief.
       val about = BriefClaim(got(DocKey.of("p/1")), Some(Takeover("cli project_claim", "p/1")))
       val bare = BriefClaim(got(DocKey.of("p/2")), None)
-      val kept = BriefClaim.kept(ujson.Obj("holder" -> "h"), about)
-      (
-        BriefClaim.of(brief(kept)),
-        BriefClaim.of(brief(BriefClaim.kept(ujson.Obj(), bare))),
-        kept("holder")
-      ) ==> (
-        Some(about),
-        Some(bare),
-        ujson.Str("h")
+      val stored = ujson.Obj(
+        "holder" -> "h",
+        "claim" -> ujson.Obj(
+          "subject" -> "p/1",
+          "takeover" -> ujson.Obj("command" -> "cli project_claim", "key" -> "p/1")
+        )
       )
+      val storedBare = ujson.Obj("claim" -> ujson.Obj("subject" -> "p/2"))
+      (
+        BriefClaim.kept(ujson.Obj("holder" -> "h"), about),
+        BriefClaim.kept(ujson.Obj(), bare),
+        BriefClaim.of(brief(stored)),
+        BriefClaim.of(brief(storedBare))
+      ) ==> (stored, storedBare, Some(about), Some(bare))
     }
 
     test("a brief whose data names no claim says none") {
