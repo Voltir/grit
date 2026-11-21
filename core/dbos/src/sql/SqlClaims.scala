@@ -49,7 +49,7 @@ private[dbos] final class SqlClaims(plugin: PluginName) extends Claims {
     val P = SqlClearance.Params
     for {
       id <- SqlLabels.intern(kept)
-      _ <- lapse(subject, holder, id, at)
+      _ <- lapse(subject, holder, id, at, onSubject = true)
       inserted <- SqlStatements
         .cleared(
           s"""WITH ${SqlClearance.With},
@@ -90,18 +90,27 @@ private[dbos] final class SqlClaims(plugin: PluginName) extends Claims {
     } yield claimed
   }
 
-  /** The claims at the label whose id is `label` on `subject` or by `holder` that have lapsed at
-    * `at`, as this transaction reads sessions, deleted.
+  /** The claims at the label whose id is `label` by `holder`, and on `subject` when `onSubject`
+    * (else on any other subject), that have lapsed at `at`, as this transaction reads sessions,
+    * deleted.
     */
-  private def lapse(subject: DocKey, holder: ClaimHolder, label: Int, at: Instant)(using
+  private def lapse(
+      subject: DocKey,
+      holder: ClaimHolder,
+      label: Int,
+      at: Instant,
+      onSubject: Boolean
+  )(using
       Tx^
-  ): Either[StoreError, Unit] =
+  ): Either[StoreError, Unit] = {
+    val whose =
+      if (onSubject) "(c.subject = ? OR c.holder = ?)" else "c.subject <> ? AND c.holder = ?"
     SqlStatements
       .cleared(
         s"""WITH ${SqlClearance.With},
            |gone AS (
            |  DELETE FROM grit.claims c
-           |   WHERE c.plugin = ? AND c.classification_id = ? AND (c.subject = ? OR c.holder = ?)
+           |   WHERE c.plugin = ? AND c.classification_id = ? AND $whose
            |     AND $Active <= ?
            |  RETURNING 1)
            |SELECT count(*) AS n FROM gone""".stripMargin
@@ -113,6 +122,7 @@ private[dbos] final class SqlClaims(plugin: PluginName) extends Claims {
         ps.setObject(SqlClearance.Params + 5, SqlDocuments.utc(leased(at)))
       }(_ => ())
       .map(_ => ())
+  }
 
   /** What a claim of `subject` for `holder` as `role`, worked by `session`, at the label whose id
     * is `label` met: the holder's own claim on the subject renewed when the transaction reads it
@@ -215,7 +225,7 @@ private[dbos] final class SqlClaims(plugin: PluginName) extends Claims {
       case None =>
         for {
           id <- SqlLabels.intern(claim.label)
-          _ <- lapse(claim.subject, holder, id, at)
+          _ <- lapse(claim.subject, holder, id, at, onSubject = false)
           other <- SqlStatements
             .cleared(
               s"""WITH ${SqlClearance.With}

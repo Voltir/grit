@@ -383,6 +383,53 @@ abstract class ClaimsContract extends TestSuite {
       assert(moved == Moved.Gone, live(c, at) == Vector.empty)
     }
 
+    test(
+      "a move of a claim lapsed since is made, to another holder or to its own holder's other session"
+    ) {
+      val c = claims(plugin("claims-move-lapsed"))
+      claim(c, "p/a", "ml-1", working = Some(session("ml-a")))
+      claim(c, "p/b", "ml-3", working = Some(session("ml-c")))
+      val away = opened(Low)(
+        ok(
+          c.moved(
+            made("p/a", "ml-1", working = Some(session("ml-a"))),
+            holder("ml-2"),
+            session("ml-b"),
+            builder,
+            lapse
+          )
+        )
+      )
+      val own = opened(Low)(
+        ok(
+          c.moved(
+            made("p/b", "ml-3", working = Some(session("ml-c"))),
+            holder("ml-3"),
+            session("ml-d"),
+            builder,
+            lapse
+          )
+        )
+      )
+      assert(
+        away == Moved.Made(made("p/a", "ml-2", when = lapse, working = Some(session("ml-b")))),
+        own == Moved.Made(made("p/b", "ml-3", when = lapse, working = Some(session("ml-d"))))
+      )
+    }
+
+    test("a move to a holder whose other claim has lapsed deletes that claim first, and is made") {
+      val c = claims(plugin("claims-move-past"))
+      claim(c, "p/b", "mp-2")
+      claim(c, "p/a", "mp-1", when = hour)
+      val moved = opened(Low)(
+        ok(
+          c.moved(made("p/a", "mp-1", when = hour), holder("mp-2"), session("mp-b"), builder, lapse)
+        )
+      )
+      val now = made("p/a", "mp-2", when = lapse, working = Some(session("mp-b")))
+      assert(moved == Moved.Made(now), live(c, at) == Vector(now))
+    }
+
     test("a move to a session working as another holder is Elsewhere, moving nothing") {
       val c = claims(
         plugin("claims-move-elsewhere"),

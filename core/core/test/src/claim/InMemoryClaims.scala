@@ -104,7 +104,9 @@ final class InMemoryClaims {
         at: Instant
     )(using Tx^): Either[StoreError, Moved] = {
       def here(r: Row): Boolean = r.plugin == plugin && r.claim.label == claim.label
-      rows = rows.filterNot(r => here(r) && r.claim.holder == holder && lapsed(r, at))
+      rows = rows.filterNot(r =>
+        here(r) && r.claim.holder == holder && r.claim.subject != claim.subject && lapsed(r, at)
+      )
       val mine = rows.find(r =>
         here(r) && r.claim.subject == claim.subject && r.claim.holder == claim.holder &&
           r.claim.made == claim.made && reads(r)
