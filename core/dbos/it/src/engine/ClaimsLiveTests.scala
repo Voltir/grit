@@ -5,8 +5,8 @@ import java.util.concurrent.{Callable, CountDownLatch, Executors, TimeUnit}
 
 import scala.util.Using
 
-import grit.core.claim.{ClaimRole, Claimed, Claims}
-import grit.core.id.{ClaimHolder, DocKey, PluginName, PrincipalIds}
+import grit.core.claim.{ClaimRole, Claimed, Claims, Moved}
+import grit.core.id.{ClaimHolder, DocKey, PluginName, PrincipalIds, SessionId}
 import grit.core.identity.Principal
 import grit.core.session.Session
 import grit.core.store.{StoreError, Tx}
@@ -224,6 +224,58 @@ object ClaimsLiveTests extends TestSuite {
             case Claimed.Made(claim) => Right(Claimed.Taken(Some(claim)))
             case other => Right(other)
           }
+        ))
+      } finally pool.shutdownNow()
+    }
+
+    test(
+      "a move racing its target holder's claim on another subject waits for it, then is Holding, moving nothing"
+    ) {
+      val c = new SqlClaims(ok(PluginName.of("claims-move-raced")))
+      val first = claim(c, "p/moving", "move-race-1", at) match {
+        case Claimed.Made(m) => m
+        case other => throw new java.lang.AssertionError(s"not claimed: $other")
+      }
+      val target = ok(ClaimHolder.of("move-race-2"))
+      val made = new CountDownLatch(1)
+      val commit = new CountDownLatch(1)
+      val pool = Executors.newFixedThreadPool(2)
+      try {
+        val holding = pool.submit(new Callable[Claimed] {
+          def call(): Claimed = LiveDb.transaction(config, Clearance.of(Label.Public)) {
+            val got = ok(
+              c.claim(ok(DocKey.of("p/held")), target, builder, None, by, Label.Public, at)
+            )
+            made.countDown()
+            val _ = commit.await(10, TimeUnit.SECONDS)
+            got
+          }
+        })
+        assert(made.await(10, TimeUnit.SECONDS))
+        val moving = pool.submit(new Callable[Either[StoreError, Moved]] {
+          def call(): Either[StoreError, Moved] =
+            LiveDb.transaction(config, Clearance.of(Label.Public))(
+              c.moved(first, target, ok(SessionId.read("claude-code:move-race")), builder, at)
+            )
+        })
+        val waited = waiting()
+        commit.countDown()
+        val held = holding.get(10, TimeUnit.SECONDS)
+        // The claim read back names its person's accounts; the one made, as it was given.
+        val moved = moving.get(10, TimeUnit.SECONDS).map {
+          case Moved.Holding(Some(h)) => Moved.Holding(Some(h.copy(by = by)))
+          case other => other
+        }
+        val left = ok(LiveDb.transaction(config)(c.live(at))).map(m =>
+          (DocKey.value(m.subject), ClaimHolder.value(m.holder))
+        )
+        (waited, moved, left) ==> ((
+          true,
+          held match {
+            case Claimed.Made(h) => Right(Moved.Holding(Some(h)))
+            case other => Right(other)
+          },
+          Vector("p/held" -> "move-race-2", "p/moving" -> "move-race-1")
         ))
       } finally pool.shutdownNow()
     }

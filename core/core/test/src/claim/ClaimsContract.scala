@@ -383,6 +383,17 @@ abstract class ClaimsContract extends TestSuite {
       assert(moved == Moved.Gone, live(c, at) == Vector.empty)
     }
 
+    test("a move of a claim released since is Gone, though its target holder holds another") {
+      val c = claims(plugin("claims-move-gone-holding"))
+      claim(c, "p/a", "mgh-1")
+      claim(c, "p/b", "mgh-2")
+      release(c, "p/a")
+      val moved = opened(Low)(
+        ok(c.moved(made("p/a", "mgh-1"), holder("mgh-2"), session("mgh-b"), builder, at))
+      )
+      assert(moved == Moved.Gone, live(c, at) == Vector(made("p/b", "mgh-2")))
+    }
+
     test(
       "a move of a claim lapsed since is made, to another holder or to its own holder's other session"
     ) {

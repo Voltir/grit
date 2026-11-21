@@ -11,8 +11,8 @@ import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.Label
 
 /** [[Claims]] over `grit.claims`, `plugin`'s, leased on `grit.sessions` as the transaction reads
-  * them. Two claims racing for one subject or holder at a label never fail: the second waits for
-  * the first's transaction, then is refused.
+  * them. Two claims, or a claim and a move, racing for one subject or holder at a label never
+  * fail: the second waits for the first's transaction, then is refused.
   */
 private[dbos] final class SqlClaims(plugin: PluginName) extends Claims {
   import SqlClaims.*
@@ -226,60 +226,88 @@ private[dbos] final class SqlClaims(plugin: PluginName) extends Claims {
         for {
           id <- SqlLabels.intern(claim.label)
           _ <- lapse(claim.subject, holder, id, at, onSubject = false)
-          other <- SqlStatements
-            .cleared(
-              s"""WITH ${SqlClearance.With}
-                 |SELECT ${SqlClearance.kept("c")} AS shown, $Columns
-                 |  FROM $Labelled c JOIN grit.principals p ON p.id = c.principal_id
-                 | WHERE c.plugin = ? AND c.classification_id = ? AND c.holder = ? AND c.subject <> ?""".stripMargin
-            ) { ps =>
-              ps.setString(SqlClearance.Params + 1, PluginName.value(plugin))
-              ps.setInt(SqlClearance.Params + 2, id)
-              ps.setString(SqlClearance.Params + 3, ClaimHolder.value(holder))
-              ps.setString(SqlClearance.Params + 4, DocKey.value(claim.subject))
-            }(rs => claimOf(rs).map(c => Option.when(rs.getBoolean("shown"))(c)))
-            .flatMap(SqlStatements.valid)
-          answer <- other.headOption match {
-            case Some(shown) => Right(Moved.Holding(shown))
-            case None =>
-              SqlStatements
-                .cleared(
-                  s"""WITH ${SqlClearance.With},
-                     |moved AS (
-                     |  UPDATE grit.claims c
-                     |     SET holder = ?, role = ?, session_harness = ?, session_local = ?, made_at = ?
-                     |   WHERE c.plugin = ? AND c.subject = ? AND c.holder = ? AND c.made_at = ?
-                     |     AND c.classification_id = ? AND ${SqlClearance.kept("c")}
-                     |  RETURNING c.*)
-                     |SELECT $Active AS active FROM moved c""".stripMargin
-                ) { ps =>
-                  val P = SqlClearance.Params
-                  ps.setString(P + 1, ClaimHolder.value(holder))
-                  ps.setString(P + 2, ClaimRole.value(role))
-                  SqlClaims.bindSession(ps, P + 3, Some(session))
-                  ps.setObject(P + 5, SqlDocuments.utc(at))
-                  ps.setString(P + 6, PluginName.value(plugin))
-                  ps.setString(P + 7, DocKey.value(claim.subject))
-                  ps.setString(P + 8, ClaimHolder.value(claim.holder))
-                  ps.setObject(P + 9, SqlDocuments.utc(claim.made))
-                  ps.setInt(P + 10, id)
-                }(SqlDocuments.instant(_, "active"))
-                .map(
-                  _.headOption.fold(Moved.Gone)(active =>
-                    Moved.Made(
-                      claim.copy(
-                        holder = holder,
-                        role = role,
-                        session = Some(session),
-                        made = at,
-                        active = active
-                      )
-                    )
-                  )
+          // Under a savepoint: a move breaking claims_holder, as `holder`'s claim on another
+          // subject does (committed before it, or while it waited), fails and is undone, and the
+          // claim it met is read.
+          answer <- SqlSavepoints.atomic(move(claim, holder, session, role, at, id)) match {
+            case Right(moved) => Right(moved)
+            case Left(failed) =>
+              holding(claim.subject, holder, id)
+                .flatMap(
+                  _.fold[Either[StoreError, Moved]](Left(failed))(h => Right(Moved.Holding(h)))
                 )
           }
         } yield answer
     }
+
+  /** `claim` moved as [[moved]] moves it, at the label whose id is `label`: [[Moved.Gone]] when no
+    * row this transaction reads is it. Fails as the database does when the move breaks
+    * `claims_holder`.
+    */
+  private def move(
+      claim: Claim,
+      holder: ClaimHolder,
+      session: SessionId,
+      role: ClaimRole,
+      at: Instant,
+      label: Int
+  )(using Tx^): Either[StoreError, Moved] =
+    SqlStatements
+      .cleared(
+        s"""WITH ${SqlClearance.With},
+           |moved AS (
+           |  UPDATE grit.claims c
+           |     SET holder = ?, role = ?, session_harness = ?, session_local = ?, made_at = ?
+           |   WHERE c.plugin = ? AND c.subject = ? AND c.holder = ? AND c.made_at = ?
+           |     AND c.classification_id = ? AND ${SqlClearance.kept("c")}
+           |  RETURNING c.*)
+           |SELECT $Active AS active FROM moved c""".stripMargin
+      ) { ps =>
+        val P = SqlClearance.Params
+        ps.setString(P + 1, ClaimHolder.value(holder))
+        ps.setString(P + 2, ClaimRole.value(role))
+        SqlClaims.bindSession(ps, P + 3, Some(session))
+        ps.setObject(P + 5, SqlDocuments.utc(at))
+        ps.setString(P + 6, PluginName.value(plugin))
+        ps.setString(P + 7, DocKey.value(claim.subject))
+        ps.setString(P + 8, ClaimHolder.value(claim.holder))
+        ps.setObject(P + 9, SqlDocuments.utc(claim.made))
+        ps.setInt(P + 10, label)
+      }(SqlDocuments.instant(_, "active"))
+      .map(
+        _.headOption.fold(Moved.Gone)(active =>
+          Moved.Made(
+            claim.copy(
+              holder = holder,
+              role = role,
+              session = Some(session),
+              made = at,
+              active = active
+            )
+          )
+        )
+      )
+
+  /** `holder`'s claim at the label whose id is `label` on a subject other than `subject`, named
+    * only when this transaction reads it; `None` when it has none.
+    */
+  private def holding(subject: DocKey, holder: ClaimHolder, label: Int)(using
+      Tx^
+  ): Either[StoreError, Option[Option[Claim]]] =
+    SqlStatements
+      .cleared(
+        s"""WITH ${SqlClearance.With}
+           |SELECT ${SqlClearance.kept("c")} AS shown, $Columns
+           |  FROM $Labelled c JOIN grit.principals p ON p.id = c.principal_id
+           | WHERE c.plugin = ? AND c.classification_id = ? AND c.holder = ? AND c.subject <> ?""".stripMargin
+      ) { ps =>
+        ps.setString(SqlClearance.Params + 1, PluginName.value(plugin))
+        ps.setInt(SqlClearance.Params + 2, label)
+        ps.setString(SqlClearance.Params + 3, ClaimHolder.value(holder))
+        ps.setString(SqlClearance.Params + 4, DocKey.value(subject))
+      }(rs => claimOf(rs).map(c => Option.when(rs.getBoolean("shown"))(c)))
+      .flatMap(SqlStatements.valid)
+      .map(_.headOption)
 
   def live(at: Instant)(using Tx^): Either[StoreError, Vector[Claim]] =
     SqlStatements

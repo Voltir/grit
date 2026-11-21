@@ -118,7 +118,7 @@ trait Claims extends caps.Pure {
     * at `at`, keeping `by` and its label: [[Moved.Made]] with it moved. [[Moved.Holding]] when
     * `holder` has another live claim at that label, [[Moved.Elsewhere]] when this transaction
     * reads `session` working as another holder, each moving nothing; [[Moved.Gone]] when it is
-    * gone, as [[held]] finds it. A claim of `holder`'s on another subject, lapsed at `at`, is
+    * gone, as [[held]] finds it, though `holder` has another. A claim of `holder`'s on another subject, lapsed at `at`, is
     * deleted first. Who may
     * move it is the caller's rule.
     */
