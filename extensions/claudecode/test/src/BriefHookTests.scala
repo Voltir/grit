@@ -24,7 +24,7 @@ object BriefHookTests extends TestSuite {
 
   /** The lines `opening` gives a session in the fixtures' checkout working as `holder`. */
   private def holderLines(f: HookFixtures, session: String, holder: String): String =
-    s"grit: this session's claim holder is $holder.\n" +
+    s"grit: this session's claim holder is $holder, and its session is claude-code:$session.\n" +
       "grit: an agent this session starts has its own claim holder. This prints it, with the " +
       s"agent's type in place of TYPE: '${f.hook}' holder TYPE --dir '${f.proj}' --session '$session'"
 

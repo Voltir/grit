@@ -384,7 +384,7 @@ object ClaimTests extends TestSuite {
         .map(_.parameters("properties").obj.keySet.toSet)
       assert(
         schemas.size == 3,
-        claimed == Some(Set("key", "oldest", "role", "holder")),
+        claimed == Some(Set("key", "oldest", "role", "holder", "session", "takeover")),
         schemas.forall(s => !s.description.contains("slot") && !s.description.contains("`for`"))
       )
     }
@@ -466,7 +466,8 @@ object ClaimTests extends TestSuite {
         "holder" -> holder,
         "by" -> by,
         "since" -> at.toString,
-        "lapses" -> lapse.toString
+        "lapses" -> lapse.toString,
+        "session" -> ujson.Null
       )
       assert(
         listed == ujson.Obj("claims" -> ujson.Arr(one("p/1", "other"), one("p/2", holder))),

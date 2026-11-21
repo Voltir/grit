@@ -229,7 +229,7 @@ opening() {
   fi
   holder=$answer
   # TYPE, not <type>: pasted into a shell, `<type>` would be a redirect.
-  text="grit: this session's claim holder is $holder.
+  text="grit: this session's claim holder is $holder, and its session is $harness:$session.
 grit: an agent this session starts has its own claim holder. This prints it, with the agent's type in place of TYPE: $(sq "$self") holder TYPE --dir $(sq "$dir") --session $(sq "$session")"
   if [ "$source" = compact ]; then
     if ! ask /brief "harness=$harness" "session=$session" "dir=$dir" start=resume part=digest; then

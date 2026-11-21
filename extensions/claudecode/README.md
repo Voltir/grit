@@ -270,7 +270,7 @@ are in `opening`, not `brief`, as a brief may come near the 10,000-character cap
 has; they are, with `'<hook>'`, `'<dir>'` and `'<session>'` single-quoted for a shell:
 
 ```
-grit: this session's claim holder is <holder>.
+grit: this session's claim holder is <holder>, and its session is <harness>:<session>.
 grit: an agent this session starts has its own claim holder. This prints it, with the agent's type in place of TYPE: '<hook>' holder TYPE --dir '<dir>' --session '<session>'
 ```
 

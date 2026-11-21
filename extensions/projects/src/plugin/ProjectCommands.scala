@@ -2,7 +2,7 @@ package grit.projects.plugin
 
 import java.time.{Instant, ZoneOffset}
 
-import grit.core.claim.{Claim, ClaimRole, Claimed, Claims}
+import grit.core.claim.{Claim, ClaimRole, Claimed, Claims, Moved}
 import grit.core.document.{
   DocRef,
   DocText,
@@ -10,9 +10,18 @@ import grit.core.document.{
   DocumentKeeper,
   DocumentShelf,
   DocumentVersion,
+  Takeover,
   Written
 }
-import grit.core.id.{ClaimHolder, ConversationId, DocKey, DocumentVersionId, PrincipalId, TurnSeq}
+import grit.core.id.{
+  ClaimHolder,
+  ConversationId,
+  DocKey,
+  DocumentVersionId,
+  PrincipalId,
+  SessionId,
+  TurnSeq
+}
 import grit.core.identity.{Account, Principal}
 import grit.core.need.PluginReads
 import grit.core.place.Place
@@ -1317,15 +1326,17 @@ private[plugin] final class ProjectCommands(
       "Claims an artifact for a session or agent to work in a role, until project_release " +
         "frees it; the artifact itself is not changed. Give `key`, or `oldest` (`project`, " +
         "`kind`, `state`): of that kind's artifacts in that state that no one holds, the one " +
-        "that entered it first; its answer names the artifact claimed. " +
-        "Keeps the artifact's brief for what it " +
+        "that entered it first; its answer names the artifact claimed. With `takeover`, the " +
+        "claim on `key` is moved to the session it names. Keeps the artifact's brief for what it " +
         "is claimed for, which that session is shown when its view is next rebuilt. Answers a " +
         "JSON object: `claimed`, a sentence saying what was claimed; `brief`, `kept` or " +
         "`none`; and with `none`, `note`, saying why. Refused, naming who holds it, when it " +
         "is claimed already; refused, naming the artifact, when what it is claimed for works " +
         "another; refused for a role, a kind or a state the project's method lacks; refused " +
-        "for both or neither of `key` and `oldest`; and refused, saying there is nothing to " +
-        "take, when `oldest` finds none. A role the method says " +
+        "for both or neither of `key` and `oldest`; refused, saying there is nothing to take, " +
+        "when `oldest` finds none; refused for a claim another session of `holder` works, " +
+        "naming it and how to move it; and refused for `takeover` of a claim someone else made, " +
+        "or given by a session rather than its person. A role the method says " +
         "covers claims everything under the artifact too: such a claim is refused, naming " +
         "the other, when another session or agent holds one at, above or under it in that " +
         "role or another that covers. A claim kept where the asker cannot read it " +
@@ -1345,20 +1356,41 @@ private[plugin] final class ProjectCommands(
             holder = Field.text(
               "Who works it: the session, or the agent type in it, whose brief is written, " +
                 s"as its edge names it; one line of at most ${ClaimHolder.Longest} characters."
-            )
+            ),
+            session = Field
+              .text(
+                "Give this only when you yourself will do the work: it is your own session, " +
+                  "`<harness>:<id>`, from this session's first lines. Never give it when " +
+                  "claiming for an agent or for anyone else: leave it out, and the agent's own " +
+                  "session takes the claim when it starts. Giving yours there makes the claim " +
+                  "yours, and the agent gets no brief."
+              )
+              .optional,
+            takeover = Field
+              .text(
+                "The session to move an existing claim to. The claim on `key` moves to it and " +
+                  "to `holder`, whichever session has it now. Only the person who made the " +
+                  "claim can, running the command themselves."
+              )
+              .optional
           )
         )
         .refine(a =>
           for {
+            session <- a.session
+              .fold(Right(None))(parsed("session", _, SessionId.read).map(Some(_)))
+            takeover <- a.takeover.fold(Right(None))(
+              parsed("takeover", _, SessionId.read).map(Some(_))
+            )
             target <- (a.key, a.oldest) match {
               case (Some(key), None) =>
-                parsed("key", key, ArtifactRef.read).map(Claiming.Target.Key(_))
+                parsed("key", key, ArtifactRef.read).map(Claiming.Target.Key(_, session))
               case (None, Some(o)) =>
                 for {
                   project <- parsed("oldest.project", o.project, ProjectKey.of)
                   kind <- parsed("oldest.kind", o.kind, KindName.of)
                   state <- parsed("oldest.state", o.state, StateName.of)
-                } yield Claiming.Target.Oldest(project, kind, state)
+                } yield Claiming.Target.Oldest(project, kind, state, session)
               case (Some(_), Some(_)) =>
                 Left(ArgsError.Refused("key", bothOrNeither("`key` and `oldest` are both given")))
               case (None, None) =>
@@ -1366,9 +1398,29 @@ private[plugin] final class ProjectCommands(
                   ArgsError.Refused("key", bothOrNeither("neither `key` nor `oldest` is given"))
                 )
             }
+            moving <- (target, takeover) match {
+              case (_, None) => Right(target)
+              case (Claiming.Target.Key(ref, None), Some(to)) =>
+                Right(Claiming.Target.MoveTo(ref, to))
+              case (Claiming.Target.Key(_, Some(_)), Some(_)) =>
+                Left(
+                  ArgsError.Refused(
+                    "takeover",
+                    "`session` and `takeover` are both given: give `session` to claim for your " +
+                      "own session, or `takeover` to move a claim to the session it names"
+                  )
+                )
+              case (Claiming.Target.Oldest(_, _, _, _) | Claiming.Target.MoveTo(_, _), Some(_)) =>
+                Left(
+                  ArgsError.Refused(
+                    "takeover",
+                    "`takeover` moves the claim on one artifact: give `key`, not `oldest`"
+                  )
+                )
+            }
             role <- parsed("role", a.role, RoleName.of)
             holder <- parsed("holder", a.holder, ClaimHolder.of)
-          } yield Claiming(target, role, holder)
+          } yield Claiming(moving, role, holder)
         )
     )
     def run(
@@ -1386,10 +1438,16 @@ private[plugin] final class ProjectCommands(
           method <- declared(own, project.pin)
           _ <- viewOf(method, args.role)
           whole <- refuse(Project.of(args.target.project, project.pin, project.artifacts))
+          _ <- args.target match {
+            case Claiming.Target.MoveTo(_, _) if moverOf(by) != Mover.Person =>
+              Left(Stop.Refused(s"takeover is given only by $PersonOnlyBy."))
+            case _ => Right(())
+          }
           live <- stored(claims.live(at))
           key <- args.target match {
-            case Claiming.Target.Key(ref) => resolved(project, ref)
-            case Claiming.Target.Oldest(p, kind, state) =>
+            case Claiming.Target.Key(ref, _) => resolved(project, ref)
+            case Claiming.Target.MoveTo(ref, _) => resolved(project, ref)
+            case Claiming.Target.Oldest(p, kind, state, _) =>
               for {
                 _ <- stateOf(method, kind, state)
                 dated <- Traversal.traverse(
@@ -1419,57 +1477,118 @@ private[plugin] final class ProjectCommands(
           }
           found <- artifact(project, key)
           (document, a) = found
-          _ <- uncovered(method, whole, ids(project), live, key, args.role, args.holder)
-          claimed <- claimedFor(claims, document, args, by.person, at)
-          made <- claimed match {
-            case Claimed.Made(c) => Right(c)
-            case Claimed.Taken(first) =>
+          // A takeover's claim, live on the artifact, and the session it moves to.
+          moving = args.target match {
+            case Claiming.Target.MoveTo(_, to) =>
+              live.find(_.subject == document.key).map((_, to))
+            case Claiming.Target.Key(_, _) | Claiming.Target.Oldest(_, _, _, _) => None
+          }
+          _ <- moving match {
+            case Some((c, _)) if c.by.id != by.person.id =>
               Left(
                 Stop.Refused(
-                  first.fold(s"${a.head.called} is claimed already; project_release frees it")(c =>
-                    s"${a.head.called} is claimed already, as ${ClaimRole.value(c.role)} for " +
-                      s"${ClaimHolder.value(c.holder)} by ${accounts(c.by)} since ${c.made}; " +
-                      s"it lapses at ${c.lapses} unless they keep working; project_release frees it"
+                  s"${a.head.called} was claimed by ${accounts(c.by)}, as " +
+                    s"${ClaimRole.value(c.role)} for ${ClaimHolder.value(c.holder)}; takeover " +
+                    "moves only a claim you made yourself. project_release frees it."
+                )
+              )
+            case _ => Right(())
+          }
+          _ <- uncovered(
+            method,
+            whole,
+            ids(project),
+            moving.fold(live)((c, _) => live.filterNot(_ == c)),
+            key,
+            args.role,
+            args.holder
+          )
+          asked = args.target match {
+            case Claiming.Target.Key(_, s) => s
+            case Claiming.Target.Oldest(_, _, _, s) => s
+            case Claiming.Target.MoveTo(_, to) => Some(to)
+          }
+          made <- moving match {
+            case Some((c, to)) =>
+              stored(claims.moved(c, args.holder, to, args.role, at)).flatMap {
+                case Moved.Made(m) => Right(m)
+                case Moved.Holding(other) => Left(holdingRefused(project, holder, other))
+                case Moved.Elsewhere(s, other) => Left(elsewhereRefused(s, other, holder))
+                case Moved.Gone =>
+                  Left(Stop.Refused(s"${a.head.called}'s claim is gone; nothing was moved"))
+              }
+            case None =>
+              claimedFor(claims, document, args, asked, by.person, at).flatMap {
+                case Claimed.Made(c) => Right(c)
+                case Claimed.Taken(first) =>
+                  Left(
+                    Stop.Refused(
+                      first.fold(s"${a.head.called} is claimed already; project_release frees it")(
+                        c =>
+                          s"${a.head.called} is claimed already, as ${ClaimRole.value(c.role)} " +
+                            s"for ${ClaimHolder.value(c.holder)} by ${accounts(c.by)} since " +
+                            s"${c.made}; it lapses at ${c.lapses} unless they keep working; " +
+                            "project_release frees it"
+                      )
+                    )
                   )
-                )
-              )
-            case Claimed.Holding(other) =>
-              Left(
-                Stop.Refused(
-                  other.fold(
-                    s"$holder works another artifact already; ${releaseFirst("it")}"
-                  )(c =>
-                    s"$holder works ${subjectOf(project, c)} already, claimed since ${c.made}; " +
-                      s"it lapses at ${c.lapses} unless they keep working; ${releaseFirst("it")}"
+                case Claimed.Holding(other) => Left(holdingRefused(project, holder, other))
+                case Claimed.HeldBy(c) =>
+                  val move = asked.fold("")(s =>
+                    " " + Takeover.said(
+                      Takeover(claimCommand, a.head.key.value),
+                      c.role,
+                      args.holder,
+                      s,
+                      "to your session"
+                    )
                   )
-                )
-              )
-            case Claimed.HeldBy(c) =>
-              Left(
-                Stop.Refused(
-                  s"${a.head.called} is claimed already as ${ClaimRole.value(c.role)} for " +
-                    ClaimHolder.value(c.holder) +
-                    c.session.fold("")(s => s", ${Claims.working(c, s)}") +
-                    ". Nothing was changed."
-                )
-              )
-            case Claimed.Elsewhere(s, other) =>
-              Left(
-                Stop.Refused(
-                  s"session ${s.written} works as ${ClaimHolder.value(other)}, not $holder"
-                )
-              )
+                  Left(
+                    Stop.Refused(
+                      s"${a.head.called} is claimed already as ${ClaimRole.value(c.role)} for " +
+                        ClaimHolder.value(c.holder) +
+                        c.session.fold("")(s => s", ${Claims.working(c, s)}") +
+                        s". Nothing was changed.$move"
+                    )
+                  )
+                case Claimed.Elsewhere(s, other) => Left(elsewhereRefused(s, other, holder))
+              }
           }
           // The role has a view and the artifact is the project's, so the claim has its brief.
           unkept <- rendered(method, whole, ids(project), Vector(made)).headOption
             .toRight(Stop.Refused(s"${a.head.called} has no brief as ${RoleName.value(args.role)}"))
             .flatMap(briefed(own, _, document.place, project, at, claimCommand))
         } yield AnswerText.claimed(
-          s"Claimed ${AnswerText.named(a.head)} as ${RoleName.value(args.role)} for $holder.",
+          moving.fold(
+            s"Claimed ${AnswerText.named(a.head)} as ${RoleName.value(args.role)} for $holder" +
+              made.session
+                .filterNot(asked.contains)
+                .fold(".")(s => s"; session ${s.written} is working on it.")
+          )((_, to) =>
+            s"Moved ${AnswerText.named(a.head)} to $holder as ${RoleName.value(args.role)}, " +
+              s"for session ${to.written}."
+          ),
           unkept
         )
       }
     }
+
+    /** The refusal of a claim for `holder` holding `other`, another of `project`'s artifacts. */
+    private def holdingRefused(project: Loaded, holder: String, other: Option[Claim]): Stop =
+      Stop.Refused(
+        other.fold(s"$holder works another artifact already; ${releaseFirst("it")}")(c =>
+          s"$holder works ${subjectOf(project, c)} already, claimed since ${c.made}" +
+            c.session.fold("")(s => s", worked by session ${s.written}") +
+            s"; it lapses at ${c.lapses} unless they keep working; ${releaseFirst("it")}"
+        )
+      )
+
+    /** The refusal of a claim for `holder` given session `s`, which works as `other`. */
+    private def elsewhereRefused(s: SessionId, other: ClaimHolder, holder: String): Stop =
+      Stop.Refused(
+        s"session ${s.written} works as ${ClaimHolder.value(other)}, not $holder. Leave " +
+          "`session` out when you claim for an agent or anyone else."
+      )
   }
 
   /** `project_release`. */

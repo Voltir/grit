@@ -6,7 +6,7 @@ import scala.annotation.tailrec
 
 import grit.core.claim.{Claim, ClaimRole, Claimed, Claims}
 import grit.core.document.{Document, DocumentVersion}
-import grit.core.id.{ClaimHolder, DocKey}
+import grit.core.id.{ClaimHolder, DocKey, SessionId}
 import grit.core.identity.Principal
 import grit.core.store.Tx
 import grit.projects.artifact.{Artifact, Project}
@@ -19,17 +19,18 @@ import Stop.stored
 
 private[plugin] object ProjectCovers {
 
-  /** [[Claims.claim]] of `document`, the artifact `args` names, as `args` asks, by `by`, at its
-    * label.
+  /** [[Claims.claim]] of `document`, the artifact `args` names, as `args` asks, worked by
+    * `session`, by `by`, at its label.
     */
   private[plugin] def claimedFor(
       claims: Claims,
       document: Document,
       args: Claiming,
+      session: Option[SessionId],
       by: Principal.Person,
       at: Instant
   )(using Tx^)(using Locked): Either[Stop, Claimed] =
-    stored(claims.claim(document.key, args.holder, args.role, None, by, document.label, at))
+    stored(claims.claim(document.key, args.holder, args.role, session, by, document.label, at))
 
   /** What claim `c` holds, named as [[ArtifactHead.called]] names it when it is an artifact of
     * `project`, matched by its document's key; else its subject as stored.

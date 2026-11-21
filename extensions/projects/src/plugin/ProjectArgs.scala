@@ -3,7 +3,7 @@ package grit.projects.plugin
 import java.time.{Instant, LocalDate}
 
 import grit.core.document.DocRef
-import grit.core.id.{ClaimHolder, DocumentVersionId}
+import grit.core.id.{ClaimHolder, DocumentVersionId, SessionId}
 import grit.core.tool.{Args, ArgsError, Field}
 import grit.projects.artifact.Body
 import grit.projects.name.{
@@ -440,21 +440,34 @@ private[plugin] object ProjectArgs {
 
   object Claiming {
 
-    /** Which artifact a claim is of. */
+    /** Which artifact a claim is of, and the session it is for. */
     enum Target extends caps.Pure {
 
-      /** The artifact `key` names. */
-      case Key(key: ArtifactRef)
+      /** The artifact `key` names, worked by `session` (none: its holder's next session to
+        * start).
+        */
+      case Key(key: ArtifactRef, session: Option[SessionId])
 
       /** Of `project`'s artifacts of `kind` in `state` that no live claim holds or covers, the
-        * one that entered `state` first, ties by number.
+        * one that entered `state` first, ties by number; worked by `session` as [[Key]]'s is.
         */
-      case Oldest(override val project: ProjectKey, kind: KindName, state: StateName)
+      case Oldest(
+          override val project: ProjectKey,
+          kind: KindName,
+          state: StateName,
+          session: Option[SessionId]
+      )
+
+      /** `key`'s claim moved to `to` and to the claim's holder, whoever works it, by the person
+        * who made it; claimed for them when none holds it.
+        */
+      case MoveTo(key: ArtifactRef, to: SessionId)
 
       /** The project the claim is made in. */
       def project: ProjectKey = this match {
-        case Key(key) => key.project
-        case Oldest(project, _, _) => project
+        case Key(key, _) => key.project
+        case Oldest(project, _, _, _) => project
+        case MoveTo(key, _) => key.project
       }
     }
   }

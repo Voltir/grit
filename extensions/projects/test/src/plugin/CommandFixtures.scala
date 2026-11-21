@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.claim.{Claims, InMemoryClaims}
 import grit.core.document.{Document, DocumentKeeper, DocumentTerms, InMemoryDocuments}
-import grit.core.id.{ClaimHolder, DocKey}
+import grit.core.id.{ClaimHolder, DocKey, SessionId}
 import grit.core.identity.{Principal, TestAccounts}
 import grit.core.need.PluginReads
 import grit.core.place.Place
@@ -123,11 +123,12 @@ object CommandFixtures {
     */
   final class Store(
       terms: DocumentTerms = Projects.Terms,
-      declared: Vector[Method] = Vector(method())
+      declared: Vector[Method] = Vector(method()),
+      sessions: Map[SessionId, (ClaimHolder, Instant)] = Map.empty
   ) {
     val documents = new InMemoryDocuments
     val keeper: DocumentKeeper = documents.keeper(Projects.Name, terms)
-    val claims: Claims = new InMemoryClaims().of(Projects.Name, _ => None)
+    val claims: Claims = new InMemoryClaims().of(Projects.Name, _ => None, sessions.get)
     declared.foreach(m => done(ask(plugin(), this, "project_declare", declaring(m))))
     def reads: PluginReads = PluginReads(new InMemoryPlugins().docs(Projects.Name), keeper)
     def count: Int =

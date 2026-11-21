@@ -97,6 +97,24 @@ object ProjectsLiveTests extends TestSuite {
       at.plusSeconds(2L * 86_400)
     )
 
+  /** The holder each current version of `key`'s brief is the brief of ([[DocRef.brief]]). */
+  private def briefedFor(config: grit.dbos.sql.DbConfig, key: String = "p/1"): Vector[String] =
+    LiveDb.transaction(config) { (tx: Tx^) ?=>
+      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+      Using.resource(
+        conn.prepareStatement(
+          "SELECT r.ref FROM grit.documents d JOIN grit.document_refs r ON r.version = d.version " +
+            "WHERE d.plugin = 'projects' AND d.key = ? AND d.superseded_at IS NULL AND r.kind = ?"
+        )
+      ) { ps =>
+        ps.setString(1, s"$key#brief")
+        ps.setString(2, DocRef.Brief)
+        Using.resource(ps.executeQuery())(rs =>
+          Iterator.continually(rs).takeWhile(_.next()).map(_.getString(1)).toVector
+        )
+      }
+    }
+
   /** The text of each current version of `key`'s brief, as the database holds it. */
   private def currentBrief(config: grit.dbos.sql.DbConfig, key: String = "p/3"): Vector[String] =
     LiveDb.transaction(config) { (tx: Tx^) ?=>
@@ -159,6 +177,47 @@ object ProjectsLiveTests extends TestSuite {
               if ujson.read(said)("claims").arr.map(c => (c("key").str, c("holder").str)) ==
                 Vector(("p/1", "coder/abc")) =>
         }
+      }
+    }
+
+    test(
+      "a takeover through the edge moves a claim to another holder's session, and its brief: the old holder has none, the new one has it"
+    ) {
+      CommandRooms.commanding("projects_takeover", _ => Vector(atInternal)) {
+        (config, _, commands) =>
+          declared(commands)
+          val moved = for {
+            _ <- ran(commands, ann, desk, ToolName("project_new"), "project" -> "p")
+            _ <- keep(commands, desk, "a", "Taken over.")
+            _ <- ran(
+              commands,
+              ann,
+              desk,
+              ToolName("project_claim"),
+              "key" -> "p/a",
+              "role" -> "builder",
+              "holder" -> "desk/grit-1",
+              "session" -> "claude-code:s-a"
+            )
+            before = briefedFor(config)
+            answer <- commands.run(
+              ann,
+              desk,
+              Integrity.Authority,
+              ToolName("project_claim"),
+              ujson.Obj(
+                "key" -> "p/a",
+                "role" -> "builder",
+                "holder" -> "laptop/grit-2",
+                "takeover" -> "claude-code:s-b"
+              ),
+              at
+            )
+          } yield (before, answer.getClass)
+          assert(
+            moved == Right((Vector("desk/grit-1"), classOf[CommandOutcome.Done])),
+            briefedFor(config) == Vector("laptop/grit-2")
+          )
       }
     }
 

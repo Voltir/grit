@@ -354,8 +354,8 @@ object AnswerText {
 
   /** Live claims as a JSON object a program reads: `claims`, each its artifact's `key`, its
     * `role`, `holder`, who it is claimed for, `by`, who claimed it (written as given), `since`,
-    * when it was made, and `lapses`, when it lapses unless its holder keeps working; in the order
-    * given.
+    * when it was made, `lapses`, when it lapses unless its holder keeps working, and `session`,
+    * the session working it, `null` while none does; in the order given.
     */
   def claims(held: Vector[(ArtifactKey, Claim, String)]): String =
     ujson.write(
@@ -367,7 +367,8 @@ object AnswerText {
             "holder" -> ClaimHolder.value(c.holder),
             "by" -> by,
             "since" -> c.made.toString,
-            "lapses" -> c.lapses.toString
+            "lapses" -> c.lapses.toString,
+            "session" -> c.session.fold[ujson.Value](ujson.Null)(s => ujson.Str(s.written))
           )
         })
       )
