@@ -271,6 +271,25 @@ object SessionClaimTests extends TestSuite {
       )
     }
 
+    test("a claim of the oldest artifact for a session is worked by that session") {
+      val projects = plugin()
+      val store = Store()
+      holding(projects, store)
+      done(
+        ask(
+          projects,
+          store,
+          "project_claim",
+          "oldest" -> ujson.Obj("project" -> "p", "kind" -> "note", "state" -> "open"),
+          "role" -> "builder",
+          "holder" -> holder,
+          "session" -> "claude-code:s-a"
+        )
+      )
+      live(store).map(c => (ClaimHolder.value(c.holder), c.session)) ==>
+        Vector((holder, Some(session("s-a"))))
+    }
+
     test("arguments that contradict or do not parse are refused before anything is read") {
       val projects = plugin()
       (
