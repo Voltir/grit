@@ -2,7 +2,8 @@ package grit.core.edge
 
 import java.time.Instant
 
-import grit.core.document.Document
+import grit.core.claim.Claim
+import grit.core.document.{Document, Takeover}
 import grit.core.id.{ClaimHolder, Harness, SessionId}
 import grit.core.identity.Account
 import grit.core.place.Place
@@ -32,9 +33,10 @@ trait EdgeSessions extends caps.SharedCapability {
   def lately(room: Place, id: SessionId): Either[StoreError, Option[Session.Lately]]
 
   /** What the session `own`, working as `holder`, opens with: the brief kept for `holder`, current
-    * at `at` ([[grit.core.document.DocumentSearch.briefOf]]), and what `own` itself did lately
-    * ([[grit.core.session.Sessions.lately]]), whichever other sessions work as `holder`; none when
-    * it has no record. Both are read in one read-only transaction opened for the person `by` is
+    * at `at` ([[grit.core.document.DocumentSearch.briefOf]]), unless the claim it is for (its
+    * plugin's live claim on the subject its data names, [[grit.core.document.BriefClaim]]) is
+    * worked by a session other than `own`: then that claim, and never the brief. And what `own`
+    * itself did lately ([[grit.core.session.Sessions.lately]]); none when it has no record. Both are read in one read-only transaction opened for the person `by` is
     * linked to then, in `room` ([[grit.core.visibility.Subject.Person]]), so each is one that
     * person reads there, and none when they read none; what it answers may be shown in `room` and
     * nowhere lower. [[BriefError.NotVouched]] for an account no person is linked to;
@@ -102,12 +104,30 @@ object EdgeSessions {
     ): Either[BriefError, Briefed] = Left(BriefError.Unavailable(Unrecorded))
   }
 
-  /** A session's opening as data: `brief`, its holder's brief, and `lately`, what the session
-    * itself did lately. An edge shows them as a turn's opening does ([[grit.core.context.Shown.brief]], and
-    * [[grit.core.session.SessionDigest.of]] at [[grit.core.session.SessionDigest.Chars]]).
+  /** A session's opening as data: `brief`, what it is shown of its holder's brief, and `lately`,
+    * what the session itself did lately. An edge shows them as a turn's opening does
+    * ([[grit.core.context.Shown.brief]], and [[grit.core.session.SessionDigest.of]] at
+    * [[grit.core.session.SessionDigest.Chars]]).
     */
-  final case class Briefed(brief: Option[Document], lately: Option[Session.Lately])
-      extends caps.Pure
+  final case class Briefed(brief: Briefed.Brief, lately: Option[Session.Lately]) extends caps.Pure
+
+  object Briefed {
+
+    /** What a session is shown of its holder's brief. */
+    enum Brief extends caps.Pure {
+
+      /** None is current for its holder. */
+      case Absent
+
+      /** `document`, the brief of a claim no session or this session works. */
+      case Kept(document: Document)
+
+      /** No brief: another session works `claim`, the claim it is for; `takeover`, how a person
+        * moves it, when the brief names a way.
+        */
+      case Held(claim: Claim, takeover: Option[Takeover])
+    }
+  }
 
   private val Unrecorded = "this edge was given no session record"
   private val NoRecord = StoreError.Invalid(Unrecorded)

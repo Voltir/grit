@@ -3,6 +3,7 @@ package grit.dbos.sql
 import java.time.Instant
 import javax.sql.DataSource
 
+import grit.core.document.{BriefClaim, Document}
 import grit.core.edge.{BriefError, EdgeSessions}
 import grit.core.id.{ClaimHolder, SessionId}
 import grit.core.identity.{Account, Principal}
@@ -31,8 +32,11 @@ private[dbos] final class SqlEdgeSessions(jot: Jot, dataSource: DataSource, open
     ) { (_, tx) =>
       (for {
         brief <- search.briefOf(holder, at)(using tx)
+        shown <- brief.fold[Either[StoreError, EdgeSessions.Briefed.Brief]](
+          Right(EdgeSessions.Briefed.Brief.Absent)
+        )(d => SqlEdgeSessions.shown(d, holder, own, at)(using tx))
         lately <- sessions.lately(own)(using tx)
-      } yield EdgeSessions.Briefed(brief, lately)).left.map(e => BriefError.Unavailable(e.toString))
+      } yield EdgeSessions.Briefed(shown, lately)).left.map(e => BriefError.Unavailable(e.toString))
     }
 
   private val search = new SqlDocumentSearch
@@ -95,5 +99,29 @@ private[dbos] final class SqlEdgeSessions(jot: Jot, dataSource: DataSource, open
           }
         case _ => Left(StoreError.Invalid(s"no person is linked to ${Account.written(by)}"))
       }
+    }
+}
+
+private[dbos] object SqlEdgeSessions {
+
+  /** What a session `own`, working as `holder`, is shown of `brief` at `at`: the claim its data
+    * names, when a session other than `own` works it (its plugin's live claim on that subject by
+    * `holder`), else the brief.
+    */
+  private def shown(brief: Document, holder: ClaimHolder, own: SessionId, at: Instant)(using
+      Tx^
+  ): Either[StoreError, EdgeSessions.Briefed.Brief] =
+    BriefClaim.of(brief) match {
+      case None => Right(EdgeSessions.Briefed.Brief.Kept(brief))
+      case Some(about) =>
+        new SqlClaims(brief.plugin)
+          .live(at)
+          .map(
+            _.find(c => c.subject == about.subject && c.holder == holder)
+              .filter(_.session.exists(_ != own))
+              .fold(EdgeSessions.Briefed.Brief.Kept(brief))(
+                EdgeSessions.Briefed.Brief.Held(_, about.takeover)
+              )
+          )
     }
 }

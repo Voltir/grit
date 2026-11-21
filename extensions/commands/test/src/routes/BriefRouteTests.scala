@@ -1,12 +1,17 @@
 package grit.commands.routes
 
+import java.time.Instant
+
+import grit.core.claim.{Claim, ClaimRole}
 import grit.core.context.Shown
-import grit.core.document.DocRef
+import grit.core.document.{BriefClaim, DocRef, Takeover}
 import grit.core.edge.{EdgeContracts, EdgeSessions, ScriptedSessions}
 import grit.core.either.Got.got
-import grit.core.id.{ClaimHolder, Harness, SessionId}
+import grit.core.id.{ClaimHolder, DocKey, Harness, PrincipalIds, SessionId}
+import grit.core.identity.Principal
 import grit.core.place.Place
 import grit.core.session.{Event, Session, SessionDigest}
+import grit.core.visibility.Label
 import grit.edge.http.{Status, Verb}
 
 import utest.*
@@ -109,6 +114,41 @@ object BriefRouteTests extends TestSuite {
         (Status.Ok, ""),
         (Status.Ok, Shown.briefText(brief)),
         (Status.Ok, Shown.briefText(brief))
+      )
+    }
+
+    test(
+      "a session whose holder's claim another session works is answered one line naming it and its takeover, never the brief"
+    ) {
+      val script = new ScriptedSessions.Script
+      val made = Instant.parse("2026-11-13T10:00:00Z")
+      val subject = got(DocKey.of("p/1"))
+      val brief = ScriptedSessions.document("Manage the milestone.", made)
+      val move = Takeover("kalandra-cli project_claim", "p/1")
+      script.brief(
+        Holder,
+        brief.copy(data = BriefClaim.kept(ujson.Obj(), BriefClaim(subject, Some(move))))
+      )
+      script.claim(
+        Claim(
+          subject,
+          Holder,
+          got(ClaimRole.of("manager")),
+          new Principal.Person(PrincipalIds.stored("local"), Set.empty),
+          made,
+          Label.Public,
+          Some(id("s-0")),
+          made
+        )
+      )
+      asked(script, Fresh) ==> (
+        Status.Ok,
+        "grit: no brief for this session. p/1 is claimed as manager for desktop/grit-dcfe7476, " +
+          "and session made-up:s-0 is working on it (last active 2026-11-13T10:00:00Z). The claim " +
+          "frees itself when that session ends, or at 2026-11-13T12:00:00Z if it does nothing " +
+          "more. To move it here now, the person who made the claim runs kalandra-cli " +
+          "project_claim themselves, outside any session, with: " +
+          """{"key":"p/1","role":"manager","holder":"desktop/grit-dcfe7476","takeover":"made-up:s-1"}"""
       )
     }
 

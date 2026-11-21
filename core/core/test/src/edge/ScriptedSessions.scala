@@ -2,7 +2,8 @@ package grit.core.edge
 
 import java.time.Instant
 
-import grit.core.document.{DocText, Document, Placement}
+import grit.core.claim.Claim
+import grit.core.document.{BriefClaim, DocText, Document, Placement}
 import grit.core.either.Got.got
 import grit.core.id.{ClaimHolder, DocKey, DocumentVersionId, PluginName, SessionId}
 import grit.core.identity.{Account, Principal, TestAccounts}
@@ -15,7 +16,7 @@ import grit.core.visibility.{Integrity, Label}
   * `vouched`. Held to [[EdgeSessionsContract]]; it reads no labels or rooms, so every session
   * and brief is every vouched account's, and what a session did lately is its record alone (its
   * summary the newest closing it logged, its counters its events'), with no commits, edits or
-  * reads; it never ends a session. While the script is failing, every call fails as a database that
+  * reads; it never ends a session, and every claim it holds is live. While the script is failing, every call fails as a database that
   * cannot be read does. Every call is recorded in the script.
   */
 final class ScriptedSessions(vouched: Set[Account], script: ScriptedSessions.Script)
@@ -66,7 +67,15 @@ final class ScriptedSessions(vouched: Set[Account], script: ScriptedSessions.Scr
       case None =>
         Right(
           EdgeSessions.Briefed(
-            script.briefOf(holder, at),
+            script.briefOf(holder, at).fold(EdgeSessions.Briefed.Brief.Absent) { d =>
+              val about = BriefClaim.of(d)
+              about
+                .flatMap(b => script.claimOn(b.subject, holder))
+                .filter(_.session.exists(_ != own))
+                .fold(EdgeSessions.Briefed.Brief.Kept(d))(
+                  EdgeSessions.Briefed.Brief.Held(_, about.flatMap(_.takeover))
+                )
+            },
             script.session(own).map(ScriptedSessions.lately)
           )
         )
@@ -130,6 +139,8 @@ object ScriptedSessions {
     @caps.unsafe.untrackedCaptures
     private var briefs = Vector.empty[(ClaimHolder, Document)]
     @caps.unsafe.untrackedCaptures
+    private var claims = Vector.empty[Claim]
+    @caps.unsafe.untrackedCaptures
     private var calls = Vector.empty[Call]
     @caps.unsafe.untrackedCaptures
     private var failure = Option.empty[String]
@@ -144,6 +155,12 @@ object ScriptedSessions {
     def brief(holder: ClaimHolder, document: Document): Unit = synchronized {
       briefs = briefs :+ (holder -> document)
     }
+
+    /** Keeps `claim` as live, whatever the time. */
+    def claim(claim: Claim): Unit = synchronized { claims = claims :+ claim }
+
+    private[ScriptedSessions] def claimOn(subject: DocKey, holder: ClaimHolder): Option[Claim] =
+      synchronized(claims.findLast(c => c.subject == subject && c.holder == holder))
 
     /** The session `id`, as recorded. */
     def session(id: SessionId): Option[Session] = synchronized(sessions.find(_.id == id))

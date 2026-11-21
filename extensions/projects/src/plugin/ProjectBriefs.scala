@@ -3,7 +3,7 @@ package grit.projects.plugin
 import java.time.Instant
 
 import grit.core.claim.{Claim, ClaimRole}
-import grit.core.document.{DocRef, DocText, DocumentKeeper}
+import grit.core.document.{BriefClaim, DocRef, DocText, DocumentKeeper, Takeover}
 import grit.core.id.{ClaimHolder, DocKey, DocumentVersionId}
 import grit.core.place.Place
 import grit.core.store.{StoreError, Tx}
@@ -90,7 +90,8 @@ private[plugin] object ProjectBriefs {
     DocKey.of(s"${DocKey.value(stored)}#brief")
 
   /** Keeps `r`'s brief through `own`, at its claim's label and at `place`, as the brief of the
-    * claim's holder ([[DocRef.brief]]), its data naming the holder, believed at no more than the
+    * claim's holder ([[DocRef.brief]]), its data naming the holder and the claim, which a person
+    * moves to another session with `claimCommand` ([[grit.core.document.BriefClaim]]), believed at no more than the
     * least of what it shows as `project` holds them ([[Brief.shows]]), unless the one current
     * there is that brief already: `None` when it is current, else why none is, the one current
     * there withdrawn: it is over [[DocRef.BriefChars]], or the plugin is full.
@@ -100,14 +101,18 @@ private[plugin] object ProjectBriefs {
       r: Rendered,
       place: Place,
       project: Loaded,
-      at: Instant
+      at: Instant,
+      claimCommand: String
   )(using
       Tx^
   )(using Locked): Either[Stop, Option[String]] = {
     val over =
       f"it is over ${DocRef.BriefChars}%,d characters; shorten the artifact or what its role carries"
     val (label, holder) = (r.claim.label, r.claim.holder)
-    val data = ujson.Obj(BriefHolder -> ClaimHolder.value(holder))
+    val data = BriefClaim.kept(
+      ujson.Obj(BriefHolder -> ClaimHolder.value(holder)),
+      BriefClaim(r.claim.subject, Some(Takeover(claimCommand, r.key.value)))
+    )
     // A shown artifact `project` holds no document of is believed at nothing, so a brief
     // rendered from another project's value fails closed.
     val whole = Tx.top

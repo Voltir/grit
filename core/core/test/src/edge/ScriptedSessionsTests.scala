@@ -2,7 +2,12 @@ package grit.core.edge
 
 import java.time.Instant
 
-import grit.core.id.ClaimHolder
+import grit.core.claim.{Claim, ClaimRole}
+import grit.core.document.BriefClaim
+import grit.core.either.Got.got
+import grit.core.id.{ClaimHolder, DocKey, PrincipalIds, SessionId}
+import grit.core.identity.Principal
+import grit.core.visibility.Label
 
 /** The sessions contract, kept by the scripted fake. */
 object ScriptedSessionsTests extends EdgeSessionsContract {
@@ -14,4 +19,32 @@ object ScriptedSessionsTests extends EdgeSessionsContract {
 
   protected def brief(holder: ClaimHolder, text: String, written: Instant): Unit =
     script.brief(holder, ScriptedSessions.document(text, written))
+
+  protected def claimedBrief(
+      holder: ClaimHolder,
+      text: String,
+      written: Instant,
+      subject: DocKey,
+      session: SessionId
+  ): Unit = {
+    val d = ScriptedSessions.document(text, written)
+    script.brief(
+      holder,
+      d.copy(data =
+        BriefClaim.kept(ujson.Obj(), BriefClaim(subject, Some(EdgeSessionsContract.Moving)))
+      )
+    )
+    script.claim(
+      Claim(
+        subject,
+        holder,
+        got(ClaimRole.of("builder")),
+        new Principal.Person(PrincipalIds.stored("contracted"), Set.empty),
+        written,
+        Label.Public,
+        Some(session),
+        written
+      )
+    )
+  }
 }

@@ -1,7 +1,7 @@
 package grit.projects.plugin
 
 import grit.core.claim.{Claim, ClaimRole, Claims}
-import grit.core.document.{DocText, Document}
+import grit.core.document.{BriefClaim, DocText, Document, Takeover}
 import grit.core.id.{ClaimHolder, DocKey}
 import grit.core.plugin.CommandOutcome
 import grit.core.tool.ToolName
@@ -164,6 +164,22 @@ object ClaimTests extends TestSuite {
       )
       briefOf(store, holder).map(_.text).map(DocText.value) ==> Some(rendered)
     }
+    test(
+      "a claim's brief names its claim's subject and how a person moves it, by the deployment's command line"
+    ) {
+      val projects = plugin(commandLine = Some("bin/desk"))
+      val store = Store()
+      holding(projects, store)
+      done(claimed(projects, store))
+      (
+        briefOf(store, holder).flatMap(BriefClaim.of),
+        briefOf(Store(), holder)
+      ) ==> (
+        Some(BriefClaim(right(DocKey.of("p/1")), Some(Takeover("bin/desk project_claim", "p/1")))),
+        None
+      )
+    }
+
     test("a release withdraws the brief, claimed still or not") {
       val projects = plugin()
       val store = Store()

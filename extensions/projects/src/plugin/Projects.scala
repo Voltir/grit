@@ -24,13 +24,14 @@ final class Projects private (
     checks: Vector[TransitionCheck],
     default: MethodName,
     turns: TurnCommands,
-    methodsAt: Label
+    methodsAt: Label,
+    commandLine: Option[String]
 ) extends Plugin {
   val name: PluginName = Projects.Name
   val version: Int = 1
   override val documents: Option[Documents] = Some(Projects.Kept)
   override val commands: Vector[PluginCommand[?]] =
-    new ProjectCommands(checks, default, turns, methodsAt).all
+    new ProjectCommands(checks, default, turns, methodsAt, commandLine).all
 }
 
 object Projects {
@@ -72,15 +73,22 @@ object Projects {
     * `project_declare`, new projects under the latest version of `default`. Each method version
     * is kept and read at `methodsAt` alone, so it has one digest whoever reads it: give a label
     * every caller of its commands reads. A declaration from a room that writes at another label
-    * is refused; a caller who cannot read `methodsAt` finds no method declared.
+    * is refused; a caller who cannot read `methodsAt` finds no method declared. `commandLine` is
+    * how a person runs one of its commands themselves, the command's name and its JSON arguments
+    * following (`bin/kalandra`); a claim's brief names it where it tells how to move the claim to
+    * another session, and without one names the command alone.
     */
   def of(
       checks: Vector[TransitionCheck],
       default: MethodName,
       turns: TurnCommands = TurnCommands.Shipped,
-      methodsAt: Label = Label.Public
+      methodsAt: Label = Label.Public,
+      commandLine: Option[String] = None
   ): Either[MethodRefusal.CheckTwice, Projects] =
-    Method.checksTwice(checks).headOption.toLeft(new Projects(checks, default, turns, methodsAt))
+    Method
+      .checksTwice(checks)
+      .headOption
+      .toLeft(new Projects(checks, default, turns, methodsAt, commandLine))
 
   /** A watch for the artifact kept under `stored` to be in one of `states`, or why not: no
     * states. `stored` is the key it was first kept under: its id for an artifact made with one,

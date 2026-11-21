@@ -106,9 +106,12 @@ object CommandFixtures {
       .fold(e => throw new java.lang.AssertionError(e.toString), identity)
   }
 
-  def plugin(turns: TurnCommands = TurnCommands.Shipped): Projects =
+  def plugin(
+      turns: TurnCommands = TurnCommands.Shipped,
+      commandLine: Option[String] = None
+  ): Projects =
     Projects
-      .of(TransitionChecks.all, methodName, turns)
+      .of(TransitionChecks.all, methodName, turns, commandLine = commandLine)
       .fold(e => throw new java.lang.AssertionError(e.toString), identity)
 
   /** `m` and its worked `examples` as `project_declare` takes them. */

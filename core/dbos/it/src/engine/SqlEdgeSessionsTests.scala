@@ -203,7 +203,13 @@ object SqlEdgeSessionsTests extends TestSuite {
   ): Either[BriefError, (Option[String], Option[SessionId])] =
     briefing
       .briefed(Nick, room, holder, own, t0.plusSeconds(1000))
-      .map(b => (b.brief.map(d => DocKey.value(d.key)), b.lately.map(_.session.id)))
+      .map { b =>
+        val key = b.brief match {
+          case EdgeSessions.Briefed.Brief.Kept(d) => Some(DocKey.value(d.key))
+          case EdgeSessions.Briefed.Brief.Absent | EdgeSessions.Briefed.Brief.Held(_, _) => None
+        }
+        (key, b.lately.map(_.session.id))
+      }
 
   val tests = Tests {
 

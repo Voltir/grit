@@ -53,10 +53,17 @@ private[plugin] final class ProjectCommands(
     checks: Vector[TransitionCheck],
     default: MethodName,
     turns: TurnCommands,
-    methodsAt: Label
+    methodsAt: Label,
+    commandLine: Option[String]
 ) extends caps.Pure {
 
   private val declaring = new MethodCommands(checks, methodsAt)
+
+  /** What a person runs to give `project_claim` themselves, as a brief names it. */
+  private def claimCommand: String = {
+    val name = ToolName.value(ProjectClaim.spec.name)
+    commandLine.fold(name)(c => s"$c $name")
+  }
 
   import ProjectArgs.*
   import ProjectBriefs.*
@@ -1456,7 +1463,7 @@ private[plugin] final class ProjectCommands(
           // The role has a view and the artifact is the project's, so the claim has its brief.
           unkept <- rendered(method, whole, ids(project), Vector(made)).headOption
             .toRight(Stop.Refused(s"${a.head.called} has no brief as ${RoleName.value(args.role)}"))
-            .flatMap(briefed(own, _, document.place, project, at))
+            .flatMap(briefed(own, _, document.place, project, at, claimCommand))
         } yield AnswerText.claimed(
           s"Claimed ${AnswerText.named(a.head)} as ${RoleName.value(args.role)} for $holder.",
           unkept
@@ -2084,7 +2091,7 @@ private[plugin] final class ProjectCommands(
         p.documents.find(_._2.head.key == r.key).map(d => (r, d._1.place, p))
       )).getOrElse(Vector.empty)
       _ <- Traversal
-        .traverse(briefs)((r, place, p) => briefed(own, r, place, p, at))
+        .traverse(briefs)((r, place, p) => briefed(own, r, place, p, at, claimCommand))
         .map((_: Vector[Option[String]]) => ())
     } yield ()
 

@@ -2,8 +2,9 @@ package grit.core.edge
 
 import java.time.Instant
 
+import grit.core.document.{DocText, Takeover}
 import grit.core.either.Got.got
-import grit.core.id.{ClaimHolder, Harness, SessionId}
+import grit.core.id.{ClaimHolder, DocKey, Harness, SessionId}
 import grit.core.place.{Namespace, Place}
 import grit.core.session.Event
 import grit.core.store.StoreError
@@ -30,6 +31,18 @@ abstract class EdgeSessionsContract extends TestSuite {
     */
   protected def brief(holder: ClaimHolder, text: String, written: Instant): Unit
 
+  /** Keeps `text` as `holder`'s brief as [[brief]] does, its data naming the claim on `subject`
+    * and [[EdgeSessionsContract.Moving]] ([[grit.core.document.BriefClaim]]), and that claim, live, for `holder`,
+    * worked by `session`.
+    */
+  protected def claimedBrief(
+      holder: ClaimHolder,
+      text: String,
+      written: Instant,
+      subject: DocKey,
+      session: SessionId
+  ): Unit
+
   import EdgeContracts.*
   import EdgeSessionsContract.*
 
@@ -44,9 +57,15 @@ abstract class EdgeSessionsContract extends TestSuite {
 
   private def opening(holder: ClaimHolder, own: SessionId) =
     recording(_.briefed(Reader, Room, holder, own, At.plusSeconds(1000)))
-      .map(b =>
-        (b.brief.map(d => grit.core.document.DocText.value(d.text)), b.lately.map(_.session.id))
-      )
+      .map(b => (shown(b.brief), b.lately.map(_.session.id)))
+
+  /** What `brief` shows: its text, or for a claim another session works, that session. */
+  private def shown(brief: EdgeSessions.Briefed.Brief): Option[String] = brief match {
+    case EdgeSessions.Briefed.Brief.Absent => None
+    case EdgeSessions.Briefed.Brief.Kept(d) => Some(DocText.value(d.text))
+    case EdgeSessions.Briefed.Brief.Held(c, t) =>
+      Some(s"held by ${c.session.map(_.written)} for ${ClaimHolder.value(c.holder)}, moved by $t")
+  }
 
   val tests = Tests {
     test("a batch is logged once: its events counted, and recording it again logs none") {
@@ -167,6 +186,32 @@ abstract class EdgeSessionsContract extends TestSuite {
       )
     }
 
+    test(
+      "briefed answers a session another session's claim in place of its brief, and the brief to the session working it"
+    ) {
+      val h = got(ClaimHolder.of("contract/held"))
+      worked("worker", h, 1)
+      claimedBrief(
+        h,
+        "Work the held thing.",
+        At,
+        got(DocKey.of("contract/held-1")),
+        session("worker")
+      )
+      worked("bystander", h, 2)
+      (opening(h, session("worker")), opening(h, session("bystander"))) ==> (
+        Right((Some("Work the held thing."), Some(session("worker")))),
+        Right(
+          (
+            Some(
+              s"held by Some(${session("worker").written}) for contract/held, moved by ${Some(Moving)}"
+            ),
+            Some(session("bystander"))
+          )
+        )
+      )
+    }
+
     test("briefed for an account no person is linked to is NotVouched") {
       recording(
         _.briefed(Stranger, Room, got(ClaimHolder.of("contract/briefed")), session("asked"), At)
@@ -179,6 +224,9 @@ abstract class EdgeSessionsContract extends TestSuite {
 object EdgeSessionsContract {
 
   val Contracted: Harness = got(Harness.of("contracted"))
+
+  /** The takeover every claimed brief here names. */
+  val Moving: Takeover = Takeover("contract-cli claim", "c/held")
 
   /** The contracted harness's session `local`. */
   def session(local: String): SessionId = got(SessionId.of(Contracted, local))

@@ -5,9 +5,11 @@ import java.time.Instant
 import scala.concurrent.duration.*
 
 import grit.commands.machine.{ClaimHolders, MachineName}
+import grit.core.claim.{Claim, ClaimRole, Claims}
 import grit.core.context.Shown
+import grit.core.document.Takeover
 import grit.core.edge.{BriefError, EdgeSessions}
-import grit.core.id.{ClaimHolder, Harness, SessionId}
+import grit.core.id.{ClaimHolder, DocKey, Harness, SessionId}
 import grit.core.place.Directory
 import grit.core.session.SessionDigest
 import grit.edge.http.{Request, Status}
@@ -111,8 +113,9 @@ private[commands] object Briefing {
   /** What `/brief` answers for `asked` once briefed `came` to that, at `now`: 200 with the part
     * asked for, empty when there is none, a digest left out when its session last did something
     * longer than [[Recent]] before `now`; at most [[grit.core.document.DocRef.BriefChars]] of a
-    * brief, fenced, or [[SessionDigest.Chars]] of a digest. 403 for an account no person is
-    * linked to; 503 when the database could not be read.
+    * brief, fenced, or [[SessionDigest.Chars]] of a digest; for a brief another session's claim
+    * holds, its one line ([[held]]). 403 for an account no person is linked to; 503 when the
+    * database could not be read.
     */
   def briefed(
       asked: BriefRequest,
@@ -123,7 +126,12 @@ private[commands] object Briefing {
     case Left(BriefError.Unavailable(cause)) => RouteReply.unavailable(cause)
     case Right(b) =>
       asked.part match {
-        case Part.Brief => (Status.Ok, b.brief.fold("")(Shown.briefText))
+        case Part.Brief =>
+          b.brief match {
+            case EdgeSessions.Briefed.Brief.Absent => (Status.Ok, "")
+            case EdgeSessions.Briefed.Brief.Kept(d) => (Status.Ok, Shown.briefText(d))
+            case EdgeSessions.Briefed.Brief.Held(c, t) => (Status.Ok, held(c, t, asked))
+          }
         case Part.Digest =>
           val since = now.minusMillis(Recent.toMillis)
           (
@@ -136,6 +144,21 @@ private[commands] object Briefing {
           )
         case Part.Neither => (Status.Ok, "")
       }
+  }
+
+  /** The one line a session `asked` opens with in place of its brief while another session works
+    * `claim`: whose it is, who works it and when it frees itself, and how a person moves it to
+    * this session (`takeover`), or that releasing it frees it.
+    */
+  def held(claim: Claim, takeover: Option[Takeover], asked: BriefRequest): String = {
+    val key = takeover.fold(DocKey.value(claim.subject))(_.key)
+    val named = s"grit: no brief for this session. $key is claimed as " +
+      s"${ClaimRole.value(claim.role)} for ${ClaimHolder.value(claim.holder)}"
+    val working = claim.session.fold(named)(s => s"$named, ${Claims.working(claim, s)}")
+    val moving = takeover.fold("Releasing the claim frees it now.")(
+      Takeover.said(_, claim.role, asked.holder, asked.session, "here")
+    )
+    s"$working. $moving"
   }
 
   private val TypeAndSession =
