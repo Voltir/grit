@@ -402,12 +402,13 @@ private[dbos] object SqlClaims {
        |         WHERE s.harness = c.session_harness AND s.local = c.session_local
        |           AND ${SqlClearance.kept("s")}) END)""".stripMargin
 
-  /** What the recording of the session whose row id is `session` does to claims, at `at`: once
-    * `ended`, every claim it works is worked by none; otherwise, when `starting`, every claim of
-    * its holder that no session works and that has not lapsed at `at` is worked by it. Either way
-    * only claims kept at the session's own label and in its own room.
+  /** What the recording of the session whose row id is `session`, once its row holds the events,
+    * does to claims: once `ended`, every claim it works is worked by none; otherwise, when
+    * `starting`, every claim of its holder that no session works is worked by it, lapsed or not,
+    * since the session's own event renews such a claim's lease ([[Active]]). Either way only
+    * claims kept at the session's own label and in its own room.
     */
-  def recorded(session: Long, ended: Boolean, starting: Boolean, at: Instant)(using
+  def recorded(session: Long, ended: Boolean, starting: Boolean)(using
       Tx^
   ): Either[StoreError, Unit] = {
     val same =
@@ -429,13 +430,9 @@ private[dbos] object SqlClaims {
              |  UPDATE grit.claims c SET session_harness = s.harness, session_local = s.local
              |    FROM grit.sessions s
              |   WHERE s.id = ? AND c.holder = s.holder AND c.session_local IS NULL AND $same
-             |     AND $Active > ?
              |  RETURNING 1)
              |SELECT count(*) AS n FROM taken""".stripMargin
-        ) { ps =>
-          ps.setLong(SqlClearance.Params + 1, session)
-          ps.setObject(SqlClearance.Params + 2, SqlDocuments.utc(leased(at)))
-        }(_ => ())
+        )(_.setLong(SqlClearance.Params + 1, session))(_ => ())
         .map(_ => ())
     else Right(())
   }

@@ -40,8 +40,7 @@ private[dbos] final class SqlSessions extends Sessions {
             row.id,
             ended = logged.exists(_.kind == Event.Kind.Ended) &&
               Session.ending(row.ended, logged).isDefined,
-            starting = header.holder.isDefined && Session.ending(row.ended, logged).isEmpty,
-            at = events.maxByOption(_.at).fold(first.at)(_.at)
+            starting = header.holder.isDefined && Session.ending(row.ended, logged).isEmpty
           )
           _ <-
             if (logged.exists(_.kind == Event.Kind.Commit)) SqlNotices.send(SqlNotices.Sessions, "")
