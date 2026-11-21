@@ -42,5 +42,9 @@ object ShellcheckTests extends TestSuite {
         findings(f.machine.root, Files.readString(f.hook)) ==> Vector.empty
       }
     }
+    test("shellcheck finds nothing in scripts/coder-needs") {
+      val script = Path.of(sys.env.getOrElse("GRIT_CODER_NEEDS", "no GRIT_CODER_NEEDS"))
+      Bash.inTemp(dir => findings(dir, Files.readString(script)) ==> Vector.empty)
+    }
   }
 }

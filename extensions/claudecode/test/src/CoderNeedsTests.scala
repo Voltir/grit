@@ -1,0 +1,243 @@
+package grit.claudecode
+
+import java.nio.file.{Files, Path}
+
+import scala.jdk.CollectionConverters.*
+
+import grit.commands.machine.MachineName
+import grit.commands.routes.RouteFixtures.Machine
+
+import utest.*
+
+/** scripts/coder-needs in a checkout joined to the edge itself, every other program it asks
+  * (getconf, docker, ssh, the scout binary) a fake in the machine's `bin`, and origin a bare
+  * repository beside the checkout.
+  */
+object CoderNeedsTests extends TestSuite {
+
+  private def env(name: String): Path =
+    Path.of(sys.env.getOrElse(name, throw new java.lang.AssertionError(s"no $name")))
+
+  /** The fakes of a machine that lacks nothing, over `f`'s joined checkout. */
+  private final class Needs(val f: HookFixtures) {
+    val machine: JoinFixtures = f.machine
+    val scout: Path =
+      machine.write(machine.root.resolve("scout-bin/scout"), "#!/bin/sh\nexit 2\n", true)
+
+    def getconf(answer: String): Path =
+      machine.write(machine.bin.resolve("getconf"), s"#!/bin/sh\n$answer\n", executable = true)
+
+    def docker(info: Int, port: String): Path =
+      machine.write(
+        machine.bin.resolve("docker"),
+        s"""#!/bin/sh
+           |case "$$1" in
+           |  info) exit $info ;;
+           |  compose) [ -n '$port' ] && echo '$port' ;;
+           |esac
+           |""".stripMargin,
+        executable = true
+      )
+
+    /** The bare repository every checkout here has as origin. */
+    val origin: Path = machine.root.resolve("origin.git")
+
+    /** The real scripts/scout, put into `checkout`. */
+    def scoutScript(checkout: Path): Unit = {
+      val _ = machine.write(
+        checkout.resolve("scripts/scout"),
+        Files.readString(env("GRIT_SCOUT_SCRIPT")),
+        executable = true
+      )
+    }
+
+    locally {
+      val _ = getconf("echo 'glibc 2.39'")
+      val _ = docker(0, "0.0.0.0:5432")
+      scoutScript(f.proj)
+      val _ = machine.sh(machine.root, "git init -q --bare origin.git")
+      val _ = machine.sh(f.proj, s"git remote add origin '${origin}'")
+    }
+
+    /** coder-needs run in `in`, given `more` besides SCOUT naming the fake binary. */
+    def run(more: Map[String, String] = Map.empty, in: Path = f.proj): Bash.Done =
+      Bash.run(
+        in,
+        machine.home,
+        machine.bin,
+        Seq(env("GRIT_CODER_NEEDS").toString),
+        env = Map("SCOUT" -> scout.toString) ++ more
+      )
+  }
+
+  private def needs[A](body: Needs => A): A = HookFixtures(f => body(new Needs(f)))
+
+  /** A PATH of `bin` and every system program but `name`. */
+  private def without(n: Needs, name: String): String = {
+    val tools = Files.createDirectories(n.machine.root.resolve("tools"))
+    Bash.SystemPath.split(':').reverse.foreach { d =>
+      val dir = Path.of(d)
+      if (Files.isDirectory(dir))
+        Files.list(dir).iterator().asScala.foreach { p =>
+          val link = tools.resolve(p.getFileName)
+          if (
+            p.getFileName.toString != name && !Files.exists(
+              link,
+              java.nio.file.LinkOption.NOFOLLOW_LINKS
+            )
+          )
+            Files.createSymbolicLink(link, p)
+        }
+    }
+    Files.deleteIfExists(n.machine.bin.resolve(name))
+    s"${n.machine.bin}:$tools"
+  }
+
+  private val Docker = "for the local databases and the integration suites"
+
+  val tests = Tests {
+    test(
+      "on a machine lacking nothing, one line names the machine the edge knows, and it exits 0"
+    ) {
+      needs { n =>
+        val done = n.run()
+        (done.exit, done.out) ==> ((
+          0,
+          Vector(
+            s"coder-needs: nothing lacking; the edge names this machine ${MachineName.value(Machine)}"
+          )
+        ))
+      }
+    }
+
+    test("a glibc older than 2.39, or none, is named as what Mill's launcher needs") {
+      needs { n =>
+        val _ = n.getconf("echo 'glibc 2.35'")
+        val old = n.run()
+        val _ = n.getconf("exit 1")
+        val none = n.run()
+        val lack = "for Mill's native launcher, which ./mill runs"
+        (old.exit, old.out, none.exit, none.out) ==> ((
+          1,
+          Vector(s"coder-needs: lacks glibc 2.39 or later (this has glibc 2.35), $lack"),
+          1,
+          Vector(s"coder-needs: lacks glibc 2.39 or later (this has none), $lack")
+        ))
+      }
+    }
+
+    test("no scout binary where scripts/scout looks is named, with where to put one") {
+      needs { n =>
+        val done = n.run(Map("SCOUT" -> n.machine.root.resolve("nowhere/scout").toString))
+        (done.exit, done.out) ==> ((
+          1,
+          Vector(
+            "coder-needs: lacks the scout binary, for reading Scala: link it at ~/Projects/Spikes/scout-bin/scout or set SCOUT"
+          )
+        ))
+      }
+    }
+
+    test(
+      "docker absent, its daemon not answering, and Postgres not publishing 5432 each name one lack"
+    ) {
+      needs { n =>
+        val _ = n.docker(1, "0.0.0.0:5432")
+        val down = n.run()
+        val _ = n.docker(0, "")
+        val unpublished = n.run()
+        val absent = n.run(Map("PATH" -> without(n, "docker")))
+        (
+          absent.out,
+          down.out,
+          unpublished.out,
+          Set(absent.exit, down.exit, unpublished.exit)
+        ) ==> ((
+          Vector(s"coder-needs: lacks docker on PATH, $Docker"),
+          Vector(
+            s"coder-needs: lacks a running Docker daemon (docker info did not answer), $Docker"
+          ),
+          Vector(
+            "coder-needs: lacks the compose Postgres publishing port 5432, for the local databases: " +
+              "docker compose up -d, or restart its container once nothing else holds 5432"
+          ),
+          Set(1)
+        ))
+      }
+    }
+
+    test(
+      "no origin, and an origin that does not authenticate, are each named as a push credential's lack"
+    ) {
+      needs { n =>
+        val _ = n.machine.sh(n.f.proj, "git remote remove origin")
+        val none = n.run()
+        val _ = n.machine.sh(n.f.proj, "git remote add origin ssh://git@example.invalid/r.git")
+        val _ =
+          n.machine.write(n.machine.bin.resolve("ssh"), "#!/bin/sh\nexit 255\n", executable = true)
+        val ssh = n.run()
+        val _ = n.machine.sh(n.f.proj, "git remote set-url origin https://example.invalid/r.git")
+        val https = n.run()
+        def refused(url: String) =
+          s"coder-needs: lacks a git credential that can push to origin ($url), for pushing built branches"
+        (none.exit, none.out, ssh.exit, ssh.out, https.exit, https.out) ==> ((
+          1,
+          Vector("coder-needs: lacks a remote origin, for pushing built branches"),
+          1,
+          Vector(refused("ssh://git@example.invalid/r.git")),
+          1,
+          Vector(refused("https://example.invalid/r.git"))
+        ))
+      }
+    }
+
+    test(
+      "a checkout never joined, and an edge that does not answer, are each named as the edge's lack"
+    ) {
+      needs { n =>
+        val alone = n.machine.checkout("alone")
+        val _ = n.machine.sh(alone, s"git remote add origin '${n.origin}'")
+        n.scoutScript(alone)
+        val unjoined = n.run(in = alone)
+        val gone = HookFixtures.closedPort
+        val down = n.run(Map("GRIT_EDGE" -> s"http://127.0.0.1:$gone"))
+        (unjoined.exit, unjoined.out, down.exit, down.out) ==> ((
+          1,
+          Vector(
+            s"coder-needs: lacks this checkout's join to the edge (no hook at ${n.machine.hook(alone)}), " +
+              "for claims and briefs: run the edge's join"
+          ),
+          1,
+          Vector(
+            s"coder-needs: lacks the edge's answer for this checkout's claim holder (holder: the edge at " +
+              s"http://127.0.0.1:$gone did not answer), for claims and briefs"
+          )
+        ))
+      }
+    }
+
+    test("every lack at once is one line each, in a fixed order") {
+      needs { n =>
+        val _ = n.getconf("exit 1")
+        val _ = n.docker(1, "")
+        val _ = n.machine.sh(n.f.proj, "git remote remove origin")
+        val done = n.run(
+          Map(
+            "SCOUT" -> n.machine.root.resolve("nowhere/scout").toString,
+            "GRIT_EDGE" -> s"http://127.0.0.1:${HookFixtures.closedPort}"
+          )
+        )
+        (done.exit, done.out.map(_.split(' ').take(4).mkString(" "))) ==> ((
+          1,
+          Vector(
+            "coder-needs: lacks glibc 2.39",
+            "coder-needs: lacks the scout",
+            "coder-needs: lacks a running",
+            "coder-needs: lacks a remote",
+            "coder-needs: lacks the edge's"
+          )
+        ))
+      }
+    }
+  }
+}

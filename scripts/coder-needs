@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# coder-needs: whether this machine has what a grit coder needs, installing nothing. The /take
+# skill runs it before its first claim; it runs alone too, from anywhere in a checkout joined to
+# the edge:
+#
+#   scripts/coder-needs
+#
+# Prints one line and exits 0 when nothing is lacking, naming the machine the edge knows this one
+# by; otherwise one line for each lack, naming it and what it is for, and exits 1. It reaches the
+# network only through the edge (the join's hook, `holder`) and `git ls-remote origin`, each
+# bounded by a timeout. A credential git authenticates with is not proved to have write access.
+set -uo pipefail
+
+lacks=0
+lack() {
+  printf 'coder-needs: lacks %s\n' "$1"
+  lacks=$((lacks + 1))
+}
+
+top=$(git rev-parse --show-toplevel 2> /dev/null) || {
+  echo "coder-needs: not inside a git checkout; run it in one" >&2
+  exit 2
+}
+
+# Mill's native launcher is linked against glibc 2.39; Mill fetches the JDK itself (build.mill's
+# jvmId), so neither a JDK nor Mill is a thing this machine can lack.
+libc=$(getconf GNU_LIBC_VERSION 2> /dev/null) || libc=''
+if [[ $libc =~ ^glibc\ ([0-9]+)\.([0-9]+) ]]; then
+  if ((BASH_REMATCH[1] < 2 || (BASH_REMATCH[1] == 2 && BASH_REMATCH[2] < 39))); then
+    lack "glibc 2.39 or later (this has $libc), for Mill's native launcher, which ./mill runs"
+  fi
+else
+  lack "glibc 2.39 or later (this has none), for Mill's native launcher, which ./mill runs"
+fi
+
+# scripts/scout exits 127 when it finds no binary, so where it looks has one home.
+"$top/scripts/scout" > /dev/null 2>&1 < /dev/null
+if [ "$?" = 127 ]; then
+  lack "the scout binary, for reading Scala: link it at ~/Projects/Spikes/scout-bin/scout or set SCOUT"
+fi
+
+# The compose project's name is pinned, so its Postgres is found from any worktree.
+databases="for the local databases and the integration suites"
+if ! command -v docker > /dev/null 2>&1; then
+  lack "docker on PATH, $databases"
+elif ! timeout 10 docker info > /dev/null 2>&1; then
+  lack "a running Docker daemon (docker info did not answer), $databases"
+else
+  port=$(timeout 10 docker compose -f "$top/docker-compose.yml" port postgres 5432 2> /dev/null) || port=''
+  if [[ $port != *:5432 ]]; then
+    lack "the compose Postgres publishing port 5432, for the local databases: docker compose up -d, or restart its container once nothing else holds 5432"
+  fi
+fi
+
+# An https remote needs a credential a helper gives without asking; its output is never kept.
+if ! url=$(git remote get-url --push origin 2> /dev/null); then
+  lack "a remote origin, for pushing built branches"
+else
+  pushes=1
+  if [[ $url == http://* || $url == https://* ]]; then
+    printf 'url=%s\n\n' "$url" |
+      GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=false SSH_ASKPASS=false git credential fill 2> /dev/null |
+      grep -q '^password=' || pushes=0
+  fi
+  if [ "$pushes" = 1 ]; then
+    GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=false GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh} -o BatchMode=yes" \
+      timeout 20 git ls-remote origin HEAD > /dev/null 2>&1 < /dev/null || pushes=0
+  fi
+  [ "$pushes" = 1 ] || lack "a git credential that can push to origin ($url), for pushing built branches"
+fi
+
+# The holder's first segment is the machine's name, as the edge's configuration gives it.
+machine=''
+common=$(git rev-parse --path-format=absolute --git-common-dir 2> /dev/null) || common=''
+hook=$common/grit/claude-code/hook
+if [ ! -x "$hook" ]; then
+  lack "this checkout's join to the edge (no hook at $hook), for claims and briefs: run the edge's join"
+else
+  said=$(mktemp)
+  if holder=$("$hook" holder --dir "$top" 2> "$said" < /dev/null) && [ -n "$holder" ]; then
+    machine=${holder%%/*}
+  else
+    why=$(tail -n 1 "$said")
+    why=${why#grit * hook: }
+    lack "the edge's answer for this checkout's claim holder (${why:-it printed none}), for claims and briefs"
+  fi
+  rm -f "$said"
+fi
+
+[ "$lacks" = 0 ] || exit 1
+printf 'coder-needs: nothing lacking; the edge names this machine %s\n' "$machine"
