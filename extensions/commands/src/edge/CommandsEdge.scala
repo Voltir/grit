@@ -19,7 +19,10 @@ import grit.std.collect.Collect.firstRepeat
   * `at`, each request in `room`. Every request is first admitted by `hosts`, or answered 403; then
   *   - `POST /command/<name>` runs the command `name` (a plugin's, or one of `own`) with its body,
   *     a JSON object (an empty body: none; any other, 400), as the request's caller, answered
-  *     as [[grit.commands.routes.RouteReply.command]] says;
+  *     as [[grit.commands.routes.RouteReply.command]] says; for the harness session one
+  *     `Grit-Session: <harness>:<local>` header names (none without one; two, or one naming no
+  *     session, 400), whose writes of a key another session's claim works are refused
+  *     ([[grit.core.plugin.KeepingCommand.run]]);
   *   - `POST /mcp` takes one MCP message: `tools/list` lists the plugins' offered commands,
   *     `tools/call` runs one as `/command` would;
   *   - `POST /wait` waits on the store for a commit, or for what `holding` reads, blocking for the

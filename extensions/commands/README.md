@@ -30,7 +30,9 @@ In dependency order, each package importing only those before it:
   so is a key of `/wait`'s body; a command's arguments are its plugin's to refuse, and an event
   line's unread key refuses that line alone. A request `Hosts` does not
   admit (403), or `Callers` finds no caller for (401), is refused before any route, and no route
-  sees its `Authorization` header; no GET runs a command. The listener's own answers, 413, 400
+  sees its `Authorization` header; no GET runs a command. A command posted to `/command` runs for
+  the session its `Grit-Session` header names, so that a session whose claim was taken over
+  cannot write what it claimed; `/mcp` carries no session, and runs every command for none. The listener's own answers, 413, 400
   and 503, come before the caller is read.
 - **`edge`**: `CommandsEdge`, the `ServedEdge` a deployment mounts: `of` refuses what cannot be
   served safely (two own commands of one name, a caller outside its realm, an address beyond
