@@ -42,7 +42,7 @@ abstract class PluginCommandsContract extends TestSuite {
   import PluginCommandsContract.*
 
   private def run(name: ToolName, args: ujson.Value, by: Account = Reader) =
-    commanding(_.run(by, Room, Integrity.Member, name, args, At))
+    commanding(_.run(by, Room, Integrity.Member, None, name, args, At))
 
   val tests = Tests {
     test("every command is offered by its name, with whether it only reads") {

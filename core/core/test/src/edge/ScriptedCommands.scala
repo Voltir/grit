@@ -2,6 +2,7 @@ package grit.core.edge
 
 import java.time.Instant
 
+import grit.core.id.SessionId
 import grit.core.identity.Account
 import grit.core.place.Place
 import grit.core.plugin.CommandOutcome
@@ -34,11 +35,14 @@ final class ScriptedCommands(
       by: Account,
       room: Place,
       believed: Integrity,
+      session: Option[SessionId],
       name: ToolName,
       args: ujson.Value,
       at: Instant
   ): Either[CommandError, CommandOutcome] = {
-    synchronized { runs = runs :+ ScriptedCommands.Ran(by, room, believed, name, args, at) }
+    synchronized {
+      runs = runs :+ ScriptedCommands.Ran(by, room, believed, session, name, args, at)
+    }
     offers.find(_.listed.schema.name == ToolName.value(name)) match {
       case None => Left(CommandError.Unknown(name))
       case Some(o) =>
@@ -68,6 +72,7 @@ object ScriptedCommands {
       by: Account,
       room: Place,
       believed: Integrity,
+      session: Option[SessionId],
       name: ToolName,
       args: ujson.Value,
       at: Instant

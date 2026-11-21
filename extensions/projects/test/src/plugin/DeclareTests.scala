@@ -96,7 +96,7 @@ object DeclareTests extends TestSuite {
     test("a declaration through a turn, or believed below Authority, is refused, keeping nothing") {
       val store = Store(declared = Vector.empty)
       val turn = CommandBy.Turn(person, TurnRef(ConversationId("c7"), TurnSeq(5)))
-      val member = CommandBy.Direct(person, Integrity.Member)
+      val member = CommandBy.Direct(person, Integrity.Member, None)
       (
         askBy(turn)(plugin(), store, "project_declare", declaring(method())),
         askBy(member)(plugin(), store, "project_declare", declaring(method())),

@@ -163,7 +163,7 @@ object CommandFixtures {
 
   /** `who` giving a command directly, believed at `Authority`, as the local operator is. */
   def direct(who: Principal.Person = person): CommandBy =
-    CommandBy.Direct(who, Integrity.Authority)
+    CommandBy.Direct(who, Integrity.Authority, None)
 
   /** As [[ask]], asked for `who` at `when`, from a room `cleared` (public unless given). */
   def askBy(who: CommandBy, when: Instant = at, cleared: Clearance = Clearance.of(Label.Public))(
@@ -202,9 +202,9 @@ object CommandFixtures {
     given Tx = TestTx.fake(cleared, visibility)
     // As the edge does, a direct caller is handed their integrity met with the room's cap.
     val (by, believed) = who match {
-      case CommandBy.Direct(p, b) =>
+      case CommandBy.Direct(p, b, session) =>
         val most = visibility.believedIn(room, b)
-        (CommandBy.Direct(p, most), most)
+        (CommandBy.Direct(p, most, session), most)
       case turn: CommandBy.Turn => (turn, stamped)
     }
     projects.commands.find(c => ToolName.value(c.spec.name) == name) match {
@@ -250,7 +250,7 @@ object CommandFixtures {
       store: Store,
       name: String,
       args: (String, ujson.Value)*
-  ): CommandOutcome = askBy(CommandBy.Direct(who, believed))(projects, store, name, args*)
+  ): CommandOutcome = askBy(CommandBy.Direct(who, believed, None))(projects, store, name, args*)
 
   /** How far the current document of `key` at public is believed, as [[Integrity.written]]
     * writes it: what a projects command kept it at.

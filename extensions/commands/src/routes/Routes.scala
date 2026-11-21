@@ -7,7 +7,7 @@ import grit.commands.declare.{HoldingWatch, OwnCommand, RunCommand}
 import grit.core.clock.Clock
 import grit.core.edge.Adapter
 import grit.core.edge.{EdgeSessions, EdgeWatch, PluginCommands}
-import grit.core.id.{ClaimHolder, Harness}
+import grit.core.id.{ClaimHolder, Harness, SessionId}
 import grit.core.json.Fields
 import grit.core.place.Place
 import grit.core.tool.ToolName
@@ -76,7 +76,7 @@ private[commands] final class Routes private (
           Routes.arguments(request.body) match {
             case Left(why) => Response.text(Status.BadRequest, why)
             case Right(args) =>
-              val (status, text) = run(caller, name, args)
+              val (status, text) = run(caller, None, name, args)
               Response.text(status, text)
           }
       }
@@ -97,7 +97,7 @@ private[commands] final class Routes private (
             .toOption
             .filter(n => commands.offered.exists(_.schema.name == ToolName.value(n))) match {
             case None => CallResult.NoSuchTool
-            case Some(name) => RouteReply.call(run(caller, name, call.arguments))
+            case Some(name) => RouteReply.call(run(caller, None, name, call.arguments))
           }
         )
     }
@@ -151,7 +151,7 @@ private[commands] final class Routes private (
         .arguments(request.body)
         .left
         .map(Status.BadRequest -> _)
-        .flatMap(Waited.watchOf(_, caller.machine, holding, ran(caller), clock.now())) match {
+        .flatMap(Waited.watchOf(_, caller.machine, holding, ran(caller, None), clock.now())) match {
         case Left((status, why)) => Response.text(status, why)
         case Right((what, within)) =>
           val (status, text) = Waited.watched(
@@ -167,15 +167,15 @@ private[commands] final class Routes private (
   /** `name` run for `caller` with `args`: a deployment's own command of that name, guarding or
     * added, in place of a plugin's.
     */
-  private def run(caller: Caller, name: ToolName, args: ujson.Obj) =
+  private def run(caller: Caller, session: Option[SessionId], name: ToolName, args: ujson.Obj) =
     own.find(_.name == name) match {
       case Some(o) if !caller.believed.dominates(o.least) => RouteReply.below(name, o.least)
-      case Some(o) => RouteReply.command(o.run(ran(caller), args))
-      case None => RouteReply.command(ran(caller)(name, args))
+      case Some(o) => RouteReply.command(o.run(ran(caller, session), args))
+      case None => RouteReply.command(ran(caller, session)(name, args))
     }
 
-  private def ran(caller: Caller): RunCommand = (name, args) =>
-    commands.run(caller.account, room, caller.believed, name, args, clock.now())
+  private def ran(caller: Caller, session: Option[SessionId]): RunCommand = (name, args) =>
+    commands.run(caller.account, room, caller.believed, session, name, args, clock.now())
 }
 
 private[commands] object Routes {

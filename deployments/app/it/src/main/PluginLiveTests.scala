@@ -326,7 +326,15 @@ object PluginLiveTests extends TestSuite {
       "a keeping command keeps at the room's label, believed at no more than the edge gave, answering Done"
     ) {
       commanding("command_keeps") { (config, engine, commands) =>
-        commands.run(ann, desk, Integrity.Member, ToolName("note"), note("k", "hello"), at) ==>
+        commands.run(
+          ann,
+          desk,
+          Integrity.Member,
+          None,
+          ToolName("note"),
+          note("k", "hello"),
+          at
+        ) ==>
           Right(CommandOutcome.Done("kept k"))
         kept(config, engine, "notebook") ==> Vector(("k", "internal", "member"))
       }
@@ -334,7 +342,15 @@ object PluginLiveTests extends TestSuite {
 
     test("an edge's integrity above the room's cap is cut to the cap") {
       commanding("command_capped") { (config, engine, commands) =>
-        commands.run(ann, team, Integrity.Member, ToolName("note"), note("k", "hello"), at) ==>
+        commands.run(
+          ann,
+          team,
+          Integrity.Member,
+          None,
+          ToolName("note"),
+          note("k", "hello"),
+          at
+        ) ==>
           Right(CommandOutcome.Done("kept k"))
         kept(config, engine, "notebook") ==> Vector(("k", "internal", "outside"))
       }
@@ -342,7 +358,15 @@ object PluginLiveTests extends TestSuite {
 
     test("a refused command keeps nothing it wrote first") {
       commanding("command_refused") { (config, engine, commands) =>
-        commands.run(ann, desk, Integrity.Member, ToolName("note"), note("k", "refuse"), at) ==>
+        commands.run(
+          ann,
+          desk,
+          Integrity.Member,
+          None,
+          ToolName("note"),
+          note("k", "refuse"),
+          at
+        ) ==>
           Right(CommandOutcome.Refused("refused"))
         kept(config, engine, "notebook") ==> Vector()
       }
@@ -362,7 +386,8 @@ object PluginLiveTests extends TestSuite {
 
     test("a keeping command that only reads and writes is Left(Store(DatabaseError))") {
       commanding("command_peeks") { (config, engine, commands) =>
-        val ran = commands.run(ann, desk, Integrity.Member, ToolName("peek"), note("k", "x"), at)
+        val ran =
+          commands.run(ann, desk, Integrity.Member, None, ToolName("peek"), note("k", "x"), at)
         assertMatch(ran) {
           case Left(CommandError.Store(_, StoreError.DatabaseError(cause)))
               if cause.contains("read-only") =>
@@ -373,7 +398,8 @@ object PluginLiveTests extends TestSuite {
 
     test("a reading command that writes is Left(Store(DatabaseError))") {
       commanding("command_sneaks") { (config, engine, commands) =>
-        val ran = commands.run(ann, desk, Integrity.Member, ToolName("sneak"), note("k", "x"), at)
+        val ran =
+          commands.run(ann, desk, Integrity.Member, None, ToolName("sneak"), note("k", "x"), at)
         assertMatch(ran) {
           case Left(CommandError.Store(_, StoreError.DatabaseError(cause)))
               if cause.contains("read-only") =>
@@ -384,7 +410,7 @@ object PluginLiveTests extends TestSuite {
 
     test("a write past the bound is Left(Store(Full)), keeping nothing") {
       commanding("command_full") { (config, engine, commands) =>
-        commands.run(ann, desk, Integrity.Member, ToolName("twice"), note("k", "x"), at) ==>
+        commands.run(ann, desk, Integrity.Member, None, ToolName("twice"), note("k", "x"), at) ==>
           Left(CommandError.Store(ToolName("twice"), StoreError.Full(1)))
         kept(config, engine, "ledger") ==> Vector()
       }
@@ -392,13 +418,29 @@ object PluginLiveTests extends TestSuite {
 
     test("a command reads nothing above its asker's clearance") {
       commanding("command_cleared") { (_, _, commands) =>
-        commands.run(bea, board, Integrity.Member, ToolName("note"), note("b", "board"), at) ==>
+        commands.run(
+          bea,
+          board,
+          Integrity.Member,
+          None,
+          ToolName("note"),
+          note("b", "board"),
+          at
+        ) ==>
           Right(CommandOutcome.Done("kept b"))
-        commands.run(ann, board, Integrity.Member, ToolName("note"), note("a", "staff"), at) ==>
+        commands.run(
+          ann,
+          board,
+          Integrity.Member,
+          None,
+          ToolName("note"),
+          note("a", "staff"),
+          at
+        ) ==>
           Right(CommandOutcome.Done("kept a"))
         (
-          commands.run(ann, board, Integrity.Member, ToolName("list"), note("", ""), at),
-          commands.run(bea, board, Integrity.Member, ToolName("list"), note("", ""), at)
+          commands.run(ann, board, Integrity.Member, None, ToolName("list"), note("", ""), at),
+          commands.run(bea, board, Integrity.Member, None, ToolName("list"), note("", ""), at)
         ) ==> (Right(CommandOutcome.Done("staff")), Right(CommandOutcome.Done("board,staff")))
       }
     }
@@ -406,9 +448,17 @@ object PluginLiveTests extends TestSuite {
     test("unknown names, unread arguments and unlinked accounts are Left, keeping nothing") {
       commanding("command_unread") { (config, engine, commands) =>
         (
-          commands.run(ann, desk, Integrity.Member, ToolName("forget"), note("k", "x"), at),
-          commands.run(ann, desk, Integrity.Member, ToolName("note"), ujson.Obj("key" -> "k"), at),
-          commands.run(nobody, desk, Integrity.Member, ToolName("note"), note("k", "x"), at)
+          commands.run(ann, desk, Integrity.Member, None, ToolName("forget"), note("k", "x"), at),
+          commands.run(
+            ann,
+            desk,
+            Integrity.Member,
+            None,
+            ToolName("note"),
+            ujson.Obj("key" -> "k"),
+            at
+          ),
+          commands.run(nobody, desk, Integrity.Member, None, ToolName("note"), note("k", "x"), at)
         ) ==> (
           Left(CommandError.Unknown(ToolName("forget"))),
           Left(CommandError.Unread(ToolName("note"), "`text` is missing: it takes text.")),

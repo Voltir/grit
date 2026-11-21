@@ -2,6 +2,7 @@ package grit.core.edge
 
 import java.time.Instant
 
+import grit.core.id.SessionId
 import grit.core.identity.Account
 import grit.core.place.Place
 import grit.core.plugin.{CommandOutcome, Commanded}
@@ -21,17 +22,20 @@ trait PluginCommands extends caps.SharedCapability {
     * opened for the person `by` is linked to then, in `room`
     * ([[grit.core.visibility.Subject.Person]]); what it keeps is kept at `room`'s label joined
     * with the transaction's floor and believed at no more than `believed` (the integrity the edge
-    * gives what `by` says there) met with `room`'s declared cap. [[CommandError.Unknown]] for a
-    * name no enabled plugin's command has; [[CommandError.Unread]] with the reason, for arguments
-    * its spec does not read; [[CommandError.NotVouched]] for an account no person is linked to;
-    * [[CommandError.Store]] when the command's own store call failed (its plugin's bound refusing
-    * a write, [[StoreError.Full]]; a reading command's write); [[CommandError.Unavailable]] when
+    * gives what `by` says there) met with `room`'s declared cap, for the harness `session`
+    * calling, when the edge was told one. [[CommandError.Unknown]] for a name no enabled plugin's
+    * command has; [[CommandError.Unread]] with the reason, for arguments its spec does not read;
+    * [[CommandError.NotVouched]] for an account no person is linked to; [[CommandError.Store]]
+    * when the command's own store call failed (its plugin's bound refusing a write,
+    * [[StoreError.Full]]; a write of a key another session's claim works, when `session` is
+    * given, [[StoreError.Worked]]; a reading command's write); [[CommandError.Unavailable]] when
     * the database could not open or commit the transaction. Nothing is kept on a `Left`.
     */
   def run(
       by: Account,
       room: Place,
       believed: Integrity,
+      session: Option[SessionId],
       name: ToolName,
       args: ujson.Value,
       at: Instant
@@ -67,6 +71,7 @@ object PluginCommands {
         by: Account,
         room: Place,
         believed: Integrity,
+        session: Option[SessionId],
         name: ToolName,
         args: ujson.Value,
         at: Instant

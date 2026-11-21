@@ -2744,7 +2744,7 @@ private[plugin] object ProjectCommands {
     * that wrote for them when one did.
     */
   private[plugin] def author(by: CommandBy): String = by match {
-    case CommandBy.Direct(person, _) => accounts(person)
+    case CommandBy.Direct(person, _, _) => accounts(person)
     case CommandBy.Turn(person, turn) =>
       s"${accounts(person)}, through grit (turn ${TurnSeq.value(turn.turnSeq)} of conversation " +
         s"${ConversationId.value(turn.conversationId)})"
@@ -2754,7 +2754,7 @@ private[plugin] object ProjectCommands {
     * more, else another (a turn, or a caller believed lower).
     */
   private[plugin] def moverOf(by: CommandBy): Mover = by match {
-    case CommandBy.Direct(_, believed) if believed.dominates(Integrity.Authority) => Mover.Person
+    case CommandBy.Direct(_, believed, _) if believed.dominates(Integrity.Authority) => Mover.Person
     case _ => Mover.Other
   }
 

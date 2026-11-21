@@ -9,7 +9,7 @@ import scala.util.control.NonFatal
 import grit.core.claim.Claims
 import grit.core.document.{DocumentKeeper, DocumentTerms}
 import grit.core.edge.{CommandError, PluginCommands}
-import grit.core.id.PluginName
+import grit.core.id.{PluginName, SessionId}
 import grit.core.identity.{Account, Principal}
 import grit.core.need.PluginReads
 import grit.core.place.Place
@@ -51,6 +51,7 @@ private[dbos] final class SqlPluginCommands(
       by: Account,
       room: Place,
       believed: Integrity,
+      session: Option[SessionId],
       name: ToolName,
       args: ujson.Value,
       at: Instant
@@ -58,9 +59,9 @@ private[dbos] final class SqlPluginCommands(
     commanded.find(_.command.spec.name == name) match {
       case None => Left(CommandError.Unknown(name))
       case Some(Commanded.Reading(plugin, command)) =>
-        reading(command, plugin, by, room, believed, name, args, at)
+        reading(command, plugin, by, room, believed, session, name, args, at)
       case Some(Commanded.Keeping(plugin, terms, command)) =>
-        keeping(command, plugin, terms, by, room, believed, name, args, at)
+        keeping(command, plugin, terms, by, room, believed, session, name, args, at)
     }
 
   private def reading[A <: caps.Pure](
@@ -69,6 +70,7 @@ private[dbos] final class SqlPluginCommands(
       by: Account,
       room: Place,
       believed: Integrity,
+      session: Option[SessionId],
       name: ToolName,
       args: ujson.Value,
       at: Instant
@@ -79,7 +81,7 @@ private[dbos] final class SqlPluginCommands(
         transaction(by, room, name, keeps = false)((person, tx) =>
           command.run(
             a,
-            CommandBy.Direct(person, Tx.visibility(tx).believedIn(room, believed)),
+            CommandBy.Direct(person, Tx.visibility(tx).believedIn(room, believed), session),
             reads(plugin),
             at
           )(using tx)
@@ -93,6 +95,7 @@ private[dbos] final class SqlPluginCommands(
       by: Account,
       room: Place,
       believed: Integrity,
+      session: Option[SessionId],
       name: ToolName,
       args: ujson.Value,
       at: Instant
@@ -104,7 +107,7 @@ private[dbos] final class SqlPluginCommands(
           KeepingCommand.run(
             command,
             a,
-            CommandBy.Direct(person, Tx.visibility(tx).believedIn(room, believed)),
+            CommandBy.Direct(person, Tx.visibility(tx).believedIn(room, believed), session),
             keeper(plugin, terms),
             claims(plugin),
             room,

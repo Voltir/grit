@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.claim.Claims
 import grit.core.document.{DocumentKeeper, DocumentTerms}
-import grit.core.id.{PluginName, TurnRef}
+import grit.core.id.{PluginName, SessionId, TurnRef}
 import grit.core.identity.Principal
 import grit.core.need.PluginReads
 import grit.core.place.Place
@@ -66,8 +66,10 @@ object KeepingCommand {
 
   /** `command` run on `args` for `by` at `at`, keeping through `keeper`, each document believed
     * at no more than `believed` met with `room`'s declared cap
-    * ([[grit.core.visibility.Visibility.capOf]], ADR 0036), and claiming through `claims`. Its
-    * caller commits only on [[CommandOutcome.Done]].
+    * ([[grit.core.visibility.Visibility.capOf]], ADR 0036), and claiming through `claims`. When
+    * `by` is [[CommandBy.Direct]] with a session, a `write` or `withdraw` of a key another
+    * session's live claim in `claims` works is refused ([[DocumentKeeper.workedBy]]); a turn's
+    * writes are not fenced. Its caller commits only on [[CommandOutcome.Done]].
     */
   def run[A <: caps.Pure](
       command: KeepingCommand[A],
@@ -81,7 +83,13 @@ object KeepingCommand {
   )(using tx: Tx^): Either[StoreError, CommandOutcome] = {
     // As an inbound entry is believed: no more than the room's cap.
     val most = Tx.visibility(tx).believedIn(room, believed)
-    command.run(args, by, DocumentKeeper.believedAtMost(keeper, most), claims, at)
+    val believing = DocumentKeeper.believedAtMost(keeper, most)
+    val own = by match {
+      case CommandBy.Direct(_, _, Some(session)) =>
+        DocumentKeeper.workedBy(believing, claims, session)
+      case _ => believing
+    }
+    command.run(args, by, own, claims, at)
   }
 }
 
@@ -91,9 +99,9 @@ object KeepingCommand {
 enum CommandBy extends caps.Pure {
 
   /** The integrity its caller's words are believed at, met with their room's declared cap (ADR
-    * 0036).
+    * 0036), and the harness session calling, when the edge was told one.
     */
-  case Direct(person: Principal.Person, believed: Integrity)
+  case Direct(person: Principal.Person, believed: Integrity, session: Option[SessionId])
   case Turn(person: Principal.Person, turn: TurnRef)
 
   def person: Principal.Person

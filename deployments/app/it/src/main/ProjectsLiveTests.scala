@@ -51,7 +51,7 @@ object ProjectsLiveTests extends TestSuite {
       name: ToolName,
       args: (String, ujson.Value)*
   ): Either[grit.core.edge.CommandError, CommandOutcome] =
-    commands.run(by, room, Integrity.Member, name, ujson.Obj.from(args), at)
+    commands.run(by, room, Integrity.Member, None, name, ujson.Obj.from(args), at)
 
   /** `m` declared through the edge from [[desk]], by [[ann]] believed at Authority. */
   private def declared(
@@ -63,6 +63,7 @@ object ProjectsLiveTests extends TestSuite {
         ann,
         desk,
         Integrity.Authority,
+        None,
         ToolName("project_declare"),
         ujson.Obj(CommandFixtures.declaring(m)),
         at
@@ -87,6 +88,7 @@ object ProjectsLiveTests extends TestSuite {
       by,
       room,
       Integrity.Member,
+      None,
       ToolName("project_sweep"),
       ujson.Obj(
         "project" -> "p",
@@ -204,6 +206,7 @@ object ProjectsLiveTests extends TestSuite {
               ann,
               desk,
               Integrity.Authority,
+              None,
               ToolName("project_claim"),
               ujson.Obj(
                 "key" -> "p/a",
@@ -257,6 +260,7 @@ object ProjectsLiveTests extends TestSuite {
             ann,
             room,
             believed,
+            None,
             ToolName("project_declare"),
             ujson.Obj(CommandFixtures.declaring(CommandFixtures.method())),
             at
@@ -307,6 +311,7 @@ object ProjectsLiveTests extends TestSuite {
           ann,
           desk,
           believed,
+          None,
           ToolName("project_move"),
           ujson.Obj("key" -> "p/a", "state" -> to),
           at
@@ -346,6 +351,7 @@ object ProjectsLiveTests extends TestSuite {
           ann,
           room,
           Integrity.Authority,
+          None,
           ToolName("project_declare"),
           ujson.Obj(CommandFixtures.declaring(people)),
           at
@@ -354,6 +360,7 @@ object ProjectsLiveTests extends TestSuite {
           ann,
           room,
           Integrity.Authority,
+          None,
           ToolName("project_move"),
           ujson.Obj("key" -> "p/a", "state" -> "done"),
           at
@@ -407,6 +414,7 @@ object ProjectsLiveTests extends TestSuite {
               ann,
               desk,
               Integrity.Authority,
+              None,
               ToolName("project_move"),
               ujson.Obj("key" -> "p/a", "state" -> "closed"),
               at
@@ -1044,6 +1052,7 @@ object ProjectsLiveTests extends TestSuite {
             ann,
             desk,
             Integrity.Authority,
+            None,
             ToolName("project_rekey"),
             ujson.Obj("project" -> "p"),
             at

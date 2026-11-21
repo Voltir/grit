@@ -33,7 +33,7 @@ object CarriedIntegrityTests extends TestSuite {
     askThrough(
       store.keeper,
       store.claims,
-      CommandBy.Direct(person, believed),
+      CommandBy.Direct(person, believed, None),
       visibility = TestLabels.Trialled
     )(projects, store, name, args*)
 
@@ -169,7 +169,7 @@ object CarriedIntegrityTests extends TestSuite {
         askThrough(
           store.keeper,
           store.claims,
-          CommandBy.Direct(person, Integrity.top(capped.compartments)),
+          CommandBy.Direct(person, Integrity.top(capped.compartments), None),
           room = room,
           visibility = capped
         )(plugin(), store, "project_declare", declaring(m))

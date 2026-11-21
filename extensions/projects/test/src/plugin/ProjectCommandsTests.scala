@@ -98,7 +98,8 @@ object ProjectCommandsTests extends TestSuite {
       def move(who: CommandBy, to: String) =
         askBy(who)(projects, store, "project_move", "key" -> "p/a", "state" -> to)
       val building = move(turn, "building")
-      val refused = (move(turn, "done"), move(CommandBy.Direct(person, Integrity.Member), "done"))
+      val refused =
+        (move(turn, "done"), move(CommandBy.Direct(person, Integrity.Member, None), "done"))
       val stayed = shown(projects, store, "p/a").contains("state: building")
       val personal = move(direct(), "done")
       (
