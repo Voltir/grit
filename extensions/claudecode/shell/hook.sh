@@ -275,11 +275,55 @@ alive() {
   fi
 }
 
+# Ends each other session whose file says its harness died on this machine, a boot since or its
+# process gone or another in its place, each in a post of its own, the file removed once the edge
+# keeps the end; a session of another machine's name, or of another pid namespace on this boot,
+# is left as it is. A file it cannot read is removed, saying so. Sets `swept` to how many it ended.
+sweep() {
+  local f name fields why line n at host boot ns comm
+  local -a v=() stat=()
+  swept=0
+  here || return 0
+  for f in "$lives"/*; do
+    [ -f "$f" ] || continue
+    name=${f##*/}
+    [ "$name" != "$session" ] || continue
+    fields=$(jq -r '
+      def word: if type == "string" and . != "" and (test("[[:cntrl:]]") | not) then . else error("no word") end;
+      .host, .boot, .ns, .pid, .start, .dir | word' "$f" 2> /dev/null) || fields=''
+    mapfile -t v <<< "$fields"
+    if ! [[ $name =~ $id && ${#v[@]} == 6 && ${v[3]} =~ ^[1-9][0-9]*$ && ${v[4]} =~ ^[0-9]+$ ]]; then
+      rm -f -- "$f"
+      say "removed the session file $f, which it could not read"
+      continue
+    fi
+    [ "${v[0]}" = "$host" ] || continue
+    if [ "${v[1]}" != "$boot" ]; then
+      why=rebooted
+    elif [ "${v[2]}" != "$ns" ]; then
+      continue
+    elif ! stat_of "${v[3]}"; then
+      why=gone
+    elif [ "${stat[19]-}" != "${v[4]}" ]; then
+      why=reused
+    else
+      continue
+    fi
+    stamp
+    line=$(jq -nc --arg s "$name" --arg d "${v[5]}" --arg n "$n" --arg at "$at" --arg why "$why" \
+      '{session: $s, dir: $d, n: $n, at: $at, event: "ended", shape: {reason: "stopped", found: $why}}') || continue
+    if send "$line" "the end of the stopped session $name" was; then
+      rm -f -- "$f"
+      swept=$((swept + 1))
+    fi
+  done
+}
+
 # What a session opens with besides its brief: the claim holder it works as, how an agent it
 # starts learns its own, and after a compaction the digest of what it did lately. A session that
 # starts afresh (a clear among them) has none: its brief is the handover.
 opening() {
-  local holder text
+  local holder text swept
   payload || return 0
   [ "$event" = SessionStart ] || return 0
   alive
@@ -291,6 +335,7 @@ opening() {
     return 0
   fi
   holder=$answer
+  sweep
   # TYPE, not <type>: pasted into a shell, `<type>` would be a redirect.
   text="grit: this session's claim holder is $holder, and its session is $harness:$session.
 grit: an agent this session starts has its own claim holder. This prints it, with the agent's type in place of TYPE: $(sq "$self") holder TYPE --dir $(sq "$dir") --session $(sq "$session")"
