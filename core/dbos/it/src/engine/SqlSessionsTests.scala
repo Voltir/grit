@@ -376,6 +376,40 @@ object SqlSessionsTests extends TestSuite {
       assert(workedBy("p/open") == Some(None))
     }
 
+    test(
+      "a session's starting recording takes its holder's free claim though it had lapsed, its own event renewing the lease"
+    ) {
+      val h = ok(ClaimHolder.of("late/holder"))
+      claimFor("p/late", h)
+      record("s-late", Vector(event(3 * 3600, Event.Kind.Started)), holder = Some(h))
+      assert(workedBy("p/late") == Some(Some(id("s-late"))))
+    }
+
+    test(
+      "a session's recorded end frees only the claims it works: another session's of its holder, and its own at another label, stay"
+    ) {
+      val h = ok(ClaimHolder.of("both/holder"))
+      record("s-stays", Vector(event(1, Event.Kind.Started)), holder = Some(h))
+      claimFor("p/stays", h, session = Some(id("s-stays")))
+      record("s-ends", Vector(event(1, Event.Kind.Started)), holder = Some(h))
+      claimFor("p/above", h, TestLabels.Trial, High, Some(id("s-ends")))
+      record("s-ends", Vector(event(2, Event.Kind.Ended)))
+      assert(
+        workedBy("p/stays") == Some(Some(id("s-stays"))),
+        workedBy("p/above", High) == Some(Some(id("s-ends")))
+      )
+    }
+
+    test("a session resumed after its recorded end takes its holder's free claim again") {
+      val h = ok(ClaimHolder.of("resumed/holder"))
+      claimFor("p/resumed", h)
+      record("s-resumed", Vector(event(1, Event.Kind.Started)), holder = Some(h))
+      record("s-resumed", Vector(event(2, Event.Kind.Ended)))
+      val freed = workedBy("p/resumed")
+      record("s-resumed", Vector(event(3, Event.Kind.Started)), holder = Some(h))
+      assert(freed == Some(None), workedBy("p/resumed") == Some(Some(id("s-resumed"))))
+    }
+
     test("a starting session takes no claim of its holder kept at another label") {
       val h = ok(ClaimHolder.of("high/holder"))
       claimFor("p/high", h, label = TestLabels.Trial, clearance = High)
