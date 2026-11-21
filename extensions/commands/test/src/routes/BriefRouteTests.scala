@@ -143,6 +143,28 @@ object BriefRouteTests extends TestSuite {
       )
     }
 
+    test(
+      "a session whose holder's claim another session works, with no takeover named, is told releasing it frees it"
+    ) {
+      val script = new ScriptedSessions.Script
+      val made = Instant.parse("2026-11-13T11:00:00Z")
+      script.claimedBrief(
+        Holder,
+        ScriptedSessions.document("Manage the milestone.", made),
+        got(DocKey.of("p/1")),
+        None,
+        got(ClaimRole.of("manager")),
+        Some(id("s-0"))
+      )
+      asked(script, Fresh) ==> (
+        Status.Ok,
+        "grit: no brief for this session. p/1 is claimed as manager for desktop/grit-dcfe7476, " +
+          "and session made-up:s-0 is working on it (last active 2026-11-13T11:00:00Z). The claim " +
+          "frees itself when that session ends, or at 2026-11-13T13:00:00Z if it does nothing " +
+          "more. Releasing the claim frees it now."
+      )
+    }
+
     test("a brief of DocRef.BriefChars characters, the most one holds, is answered whole") {
       val script = new ScriptedSessions.Script
       val brief =
