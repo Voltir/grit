@@ -4,7 +4,7 @@ import grit.commands.caller.{Caller, Callers}
 import grit.commands.declare.OwnCommand
 import grit.core.edge.{Adapter, CommandError, EdgeContracts}
 import grit.core.either.Got.got
-import grit.core.id.Harness
+import grit.core.id.{Harness, SessionId}
 import grit.core.plugin.CommandOutcome
 import grit.core.store.StoreError
 import grit.core.tool.ToolName
@@ -170,6 +170,38 @@ object CommandRouteTests extends TestSuite {
           Now
         ),
         (Owner.account, EdgeContracts.Room, Integrity.Member, done, ujson.Obj("text" -> "it"), Now)
+      )
+    }
+
+    test("a command runs for the session its Grit-Session header names, none without one") {
+      val commands = scripted(Vector(listed("done", reads = false)))(answering)
+      val r = routed(commands)
+      def sent(headers: (String, String)*) = {
+        val got = r.answer(
+          request(
+            Verb.Post,
+            "/command/done",
+            """{"text":"it"}""",
+            Vector("Host" -> "localhost:7317") ++ headers
+          )
+        )
+        (got.status, got.body)
+      }
+      val named = sent("Grit-Session" -> "claude-code:abc/agent-1")
+      val unnamed = sent()
+      val malformed = sent("Grit-Session" -> "no harness")
+      val twice = sent("Grit-Session" -> "claude-code:a", "Grit-Session" -> "claude-code:b")
+      assert(
+        named == (Status.Ok, "did it"),
+        unnamed == (Status.Ok, "did it"),
+        malformed == (
+          Status.BadRequest,
+          "the Grit-Session header names no session: " +
+            SessionId.read("no harness").left.getOrElse("")
+        ),
+        twice == (Status.BadRequest, "send one Grit-Session header, not several"),
+        commands.ran.map(_.session) ==
+          Vector(Some(got(SessionId.read("claude-code:abc/agent-1"))), None)
       )
     }
   }

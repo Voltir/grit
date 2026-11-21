@@ -8,7 +8,8 @@ import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.Using
 
 import grit.core.document.{DocRef, DocText}
-import grit.core.id.DocKey
+import grit.core.either.Got.got
+import grit.core.id.{DocKey, SessionId}
 import grit.core.identity.Account
 import grit.core.place.Place
 import grit.core.plugin.CommandOutcome
@@ -248,6 +249,66 @@ object ProjectsLiveTests extends TestSuite {
             ),
             briefedFor(config) == Vector("laptop/grit-2")
           )
+      }
+    }
+
+    test(
+      "a session whose claim was taken over is refused a move of its artifact, which the taker then makes"
+    ) {
+      CommandRooms.commanding("projects_fenced", _ => Vector(atInternal)) { (_, _, commands) =>
+        declared(commands)
+        val (a, b) =
+          (got(SessionId.read("claude-code:s-a")), got(SessionId.read("claude-code:s-b")))
+        def move(session: SessionId) = commands.run(
+          ann,
+          desk,
+          Integrity.Authority,
+          Some(session),
+          ToolName("project_move"),
+          ujson.Obj("key" -> "p/a", "state" -> "closed"),
+          at
+        )
+        val moves = for {
+          _ <- ran(commands, ann, desk, ToolName("project_new"), "project" -> "p")
+          _ <- keep(commands, desk, "a", "Fenced.")
+          _ <- ran(
+            commands,
+            ann,
+            desk,
+            ToolName("project_claim"),
+            "key" -> "p/a",
+            "role" -> "builder",
+            "holder" -> "desk/grit-1",
+            "session" -> "claude-code:s-a"
+          )
+          // A takeover is a person's: believed at Authority, with no session of its own.
+          taken <- commands.run(
+            ann,
+            desk,
+            Integrity.Authority,
+            None,
+            ToolName("project_claim"),
+            ujson.Obj(
+              "key" -> "p/a",
+              "role" -> "builder",
+              "holder" -> "laptop/grit-2",
+              "takeover" -> "claude-code:s-b"
+            ),
+            at
+          )
+        } yield (taken.getClass, move(a), move(b))
+        moves ==> Right(
+          (
+            classOf[CommandOutcome.Done],
+            Left(
+              grit.core.edge.CommandError.Store(
+                ToolName("project_move"),
+                StoreError.Worked(got(DocKey.of("p/1")), b)
+              )
+            ),
+            Right(CommandOutcome.Done("Moved p/1 a (note, closed)."))
+          )
+        )
       }
     }
 

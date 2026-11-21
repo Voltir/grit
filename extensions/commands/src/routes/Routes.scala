@@ -73,10 +73,10 @@ private[commands] final class Routes private (
       ToolName.of(raw) match {
         case Left(_) => Response.text(Status.NotFound, s"no command is named $raw")
         case Right(name) =>
-          Routes.arguments(request.body) match {
+          Routes.sessionOf(request).flatMap(s => Routes.arguments(request.body).map((s, _))) match {
             case Left(why) => Response.text(Status.BadRequest, why)
-            case Right(args) =>
-              val (status, text) = run(caller, None, name, args)
+            case Right((session, args)) =>
+              val (status, text) = run(caller, session, name, args)
               Response.text(status, text)
           }
       }
@@ -235,6 +235,24 @@ private[commands] object Routes {
     * holds its place among [[EdgeWatch.Most]] until then.
     */
   val Within: FiniteDuration = 5.minutes
+
+  /** `Grit-Session`: the header naming the harness session a command is run for, as
+    * [[SessionId.written]] writes it.
+    */
+  val Session: String = "Grit-Session"
+
+  /** The session `request`'s one [[Session]] header names, none without one, or why not. */
+  def sessionOf(request: Request): Either[String, Option[SessionId]] =
+    request.headerValues(Session) match {
+      case Vector() => Right(None)
+      case Vector(one) =>
+        SessionId
+          .read(one)
+          .map(Some(_))
+          .left
+          .map(why => s"the $Session header names no session: $why")
+      case _ => Left(s"send one $Session header, not several")
+    }
 
   /** `body` as a command's arguments: an empty body none, otherwise a JSON object, or why not. */
   def arguments(body: String): Either[String, ujson.Obj] =
