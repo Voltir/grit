@@ -346,6 +346,27 @@ private[dbos] final class SqlClaims(plugin: PluginName) extends Claims {
       .flatMap(SqlStatements.valid)
       .map(_.headOption)
 
+  def on(subject: DocKey, at: Instant)(using Tx^): Either[StoreError, Vector[Claim]] =
+    SqlStatements
+      .cleared(
+        s"""WITH ${SqlClearance.With},
+           |locked AS (
+           |  SELECT c.* FROM grit.claims c
+           |   WHERE c.plugin = ? AND c.subject = ? AND ${SqlClearance.kept("c")}
+           |     FOR UPDATE OF c)
+           |SELECT $Columns
+           |  FROM (SELECT k.*, ${SqlLabels.columns("l")}
+           |          FROM locked k JOIN grit.classifications l ON l.id = k.classification_id) c
+           |  JOIN grit.principals p ON p.id = c.principal_id
+           | WHERE $Active > ?
+           | ORDER BY c.made_at, c.holder""".stripMargin
+      ) { ps =>
+        ps.setString(SqlClearance.Params + 1, PluginName.value(plugin))
+        ps.setString(SqlClearance.Params + 2, DocKey.value(subject))
+        ps.setObject(SqlClearance.Params + 3, SqlDocuments.utc(leased(at)))
+      }(claimOf)
+      .flatMap(SqlStatements.valid)
+
   def lock(subject: DocKey)(using Tx^): Either[StoreError, Unit] =
     SqlStatements
       .one("SELECT pg_advisory_xact_lock(?, hashtext(? || ' ' || ?))") { ps =>

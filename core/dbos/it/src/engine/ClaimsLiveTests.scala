@@ -200,6 +200,36 @@ object ClaimsLiveTests extends TestSuite {
       } finally pool.shutdownNow()
     }
 
+    test(
+      "a transaction asking for a subject's claims waits for one releasing it, then finds none"
+    ) {
+      val c = new SqlClaims(ok(PluginName.of("claims-on-raced")))
+      val _ = claim(c, "p/on", "on-1", at)
+      val subject = ok(DocKey.of("p/on"))
+      val released = new CountDownLatch(1)
+      val commit = new CountDownLatch(1)
+      val pool = Executors.newFixedThreadPool(2)
+      try {
+        val first = pool.submit(new Callable[Boolean] {
+          def call(): Boolean = LiveDb.transaction(config, Clearance.of(Label.Public)) {
+            val gone = ok(c.release(subject, Label.Public)).isDefined
+            released.countDown()
+            val _ = commit.await(10, TimeUnit.SECONDS)
+            gone
+          }
+        })
+        assert(released.await(10, TimeUnit.SECONDS))
+        val second = pool.submit(new Callable[Either[StoreError, Int]] {
+          def call(): Either[StoreError, Int] =
+            LiveDb.transaction(config, Clearance.of(Label.Public))(c.on(subject, at).map(_.size))
+        })
+        val waited = waiting()
+        commit.countDown()
+        (waited, first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS)) ==>
+          ((true, true, Right(0)))
+      } finally pool.shutdownNow()
+    }
+
     test("of two transactions claiming one subject at once, the second waits and is refused") {
       val c = new SqlClaims(ok(PluginName.of("claims-raced")))
       val made = new CountDownLatch(1)

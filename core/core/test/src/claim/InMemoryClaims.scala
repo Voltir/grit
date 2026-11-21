@@ -147,6 +147,16 @@ final class InMemoryClaims {
       )
 
     // Single-threaded: no other transaction runs to hold it.
+    def on(subject: DocKey, at: Instant)(using Tx^): Either[StoreError, Vector[Claim]] =
+      Right(
+        rows
+          .filter(r =>
+            r.plugin == plugin && r.claim.subject == subject && reads(r) && !lapsed(r, at)
+          )
+          .map(read)
+          .sortBy(c => (c.made, ClaimHolder.value(c.holder)))
+      )
+
     def lock(subject: DocKey)(using Tx^): Either[StoreError, Unit] = Right(())
   }
 

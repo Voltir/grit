@@ -276,6 +276,24 @@ abstract class ClaimsContract extends TestSuite {
       )
     }
 
+    test("on answers its subject's live claim at each label it reads, oldest first") {
+      val c = claims(plugin("claims-on"))
+      // The older claim is at the higher label and by the later holder, so that neither a
+      // label's order nor a holder's is the order asked for.
+      claim(c, "p/a", "on-2", TestLabels.Trial, High)
+      claim(c, "p/a", "on-1", when = hour)
+      claim(c, "p/b", "on-3")
+      def on(clearance: Clearance, when: Instant) = opened(clearance)(ok(c.on(key("p/a"), when)))
+      val older = made("p/a", "on-2", TestLabels.Trial)
+      val newer = made("p/a", "on-1", when = hour)
+      assert(
+        on(High, hour) == Vector(older, newer),
+        on(Low, hour) == Vector(newer),
+        on(High, lapse) == Vector(newer),
+        opened(High)(ok(c.on(key("p/c"), hour))) == Vector.empty
+      )
+    }
+
     test("a lock keeps no claim: its subject is claimed after it, in the same transaction") {
       val c = claims(plugin("claims-lock"))
       val claimed = opened(Low) {

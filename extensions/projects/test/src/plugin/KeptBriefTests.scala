@@ -109,6 +109,8 @@ object KeptBriefTests extends TestSuite {
       def live(at: Instant)(using Tx^): Either[StoreError, Vector[Claim]] = Right(read)
       def held(claim: Claim)(using Tx^): Either[StoreError, Option[Claim]] =
         store.claims.held(claim)
+      def on(subject: DocKey, at: Instant)(using Tx^): Either[StoreError, Vector[Claim]] =
+        store.claims.on(subject, at)
       def lock(subject: DocKey)(using Tx^): Either[StoreError, Unit] =
         store.claims.lock(subject)
     }
@@ -521,6 +523,8 @@ object KeptBriefTests extends TestSuite {
         def live(at: Instant)(using Tx^): Either[StoreError, Vector[Claim]] = store.claims.live(at)
         def held(claim: Claim)(using Tx^): Either[StoreError, Option[Claim]] =
           store.claims.held(claim)
+        def on(subject: DocKey, at: Instant)(using Tx^): Either[StoreError, Vector[Claim]] =
+          store.claims.on(subject, at)
         // The keep holding the project's lock commits while the claim waits for it.
         def lock(subject: DocKey)(using Tx^): Either[StoreError, Unit] = {
           done(keep(projects, store, "m", "The note, rewritten.", "cites" -> ujson.Arr("p/c")))
