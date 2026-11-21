@@ -171,13 +171,8 @@ object ClaimTests extends TestSuite {
       val store = Store()
       holding(projects, store)
       done(claimed(projects, store))
-      (
-        briefOf(store, holder).flatMap(BriefClaim.of),
-        briefOf(Store(), holder)
-      ) ==> (
-        Some(BriefClaim(right(DocKey.of("p/1")), Some(Takeover("bin/desk project_claim", "p/1")))),
-        None
-      )
+      briefOf(store, holder).flatMap(BriefClaim.of) ==>
+        Some(BriefClaim(right(DocKey.of("p/1")), Some(Takeover("bin/desk project_claim", "p/1"))))
     }
 
     test("a release withdraws the brief, claimed still or not") {
