@@ -179,6 +179,8 @@ object PluginCaptureTests extends TestSuite {
       |    Right(Vector.empty)
       |  def held(claim: Claim)(using Tx^): Either[StoreError, Option[Claim]] =
       |    Right(None)
+      |  def on(subject: DocKey, at: java.time.Instant)(using Tx^): Either[StoreError, Vector[Claim]] =
+      |    Right(Vector.empty)
       |  def lock(subject: DocKey)(using Tx^): Either[StoreError, Unit] =
       |    Right(())
       |}
