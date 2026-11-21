@@ -22,7 +22,7 @@ object ScriptedSessionsTests extends EdgeSessionsContract {
       text: String,
       written: Instant,
       subject: DocKey,
-      session: SessionId
+      session: Option[SessionId]
   ): Unit =
     script.claimedBrief(
       holder,
@@ -30,6 +30,6 @@ object ScriptedSessionsTests extends EdgeSessionsContract {
       subject,
       Some(EdgeSessionsContract.Moving),
       got(ClaimRole.of("builder")),
-      Some(session)
+      session
     )
 }

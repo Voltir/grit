@@ -2,6 +2,7 @@ package grit.core.edge
 
 import java.time.Instant
 
+import grit.core.claim.Claims
 import grit.core.document.{DocText, Takeover}
 import grit.core.either.Got.got
 import grit.core.id.{ClaimHolder, DocKey, Harness, SessionId}
@@ -32,15 +33,15 @@ abstract class EdgeSessionsContract extends TestSuite {
   protected def brief(holder: ClaimHolder, text: String, written: Instant): Unit
 
   /** Keeps `text` as `holder`'s brief as [[brief]] does, its data naming the claim on `subject`
-    * and [[EdgeSessionsContract.Moving]] ([[grit.core.document.BriefClaim]]), and that claim, live, for `holder`,
-    * worked by `session`.
+    * and [[EdgeSessionsContract.Moving]] ([[grit.core.document.BriefClaim]]), and that claim,
+    * made at `written` for `holder`, worked by `session`.
     */
   protected def claimedBrief(
       holder: ClaimHolder,
       text: String,
       written: Instant,
       subject: DocKey,
-      session: SessionId
+      session: Option[SessionId]
   ): Unit
 
   import EdgeContracts.*
@@ -55,8 +56,8 @@ abstract class EdgeSessionsContract extends TestSuite {
   // The holder the session `id` works as, when it has a record.
   private def holderOf(id: SessionId) = recording(_.lately(Room, id)).map(_.map(_.session.holder))
 
-  private def opening(holder: ClaimHolder, own: SessionId) =
-    recording(_.briefed(Reader, Room, holder, own, At.plusSeconds(1000)))
+  private def opening(holder: ClaimHolder, own: SessionId, at: Instant = At.plusSeconds(1000)) =
+    recording(_.briefed(Reader, Room, holder, own, at))
       .map(b => (shown(b.brief), b.lately.map(_.session.id)))
 
   /** What `brief` shows: its text, or for a claim another session works, that session. */
@@ -196,7 +197,7 @@ abstract class EdgeSessionsContract extends TestSuite {
         "Work the held thing.",
         At,
         got(DocKey.of("contract/held-1")),
-        session("worker")
+        Some(session("worker"))
       )
       worked("bystander", h, 2)
       (opening(h, session("worker")), opening(h, session("bystander"))) ==> (
@@ -209,6 +210,29 @@ abstract class EdgeSessionsContract extends TestSuite {
             Some(session("bystander"))
           )
         )
+      )
+    }
+
+    test(
+      "briefed answers the brief whoever asks while no session works its claim, or once the session working it has lapsed"
+    ) {
+      val (free, lapsed) =
+        (got(ClaimHolder.of("contract/free")), got(ClaimHolder.of("contract/lapsed")))
+      claimedBrief(free, "Work the free thing.", At, got(DocKey.of("contract/free-1")), None)
+      worked("lapsing", lapsed, 1)
+      claimedBrief(
+        lapsed,
+        "Work the lapsed thing.",
+        At,
+        got(DocKey.of("contract/lapsed-1")),
+        Some(session("lapsing"))
+      )
+      (
+        opening(free, session("newcomer")),
+        opening(lapsed, session("successor"), At.plusSeconds(1).plusMillis(Claims.Lease.toMillis))
+      ) ==> (
+        Right((Some("Work the free thing."), None)),
+        Right((Some("Work the lapsed thing."), None))
       )
     }
 

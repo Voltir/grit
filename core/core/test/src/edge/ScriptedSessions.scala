@@ -16,7 +16,7 @@ import grit.core.visibility.{Integrity, Label}
   * `vouched`. Held to [[EdgeSessionsContract]]; it reads no labels or rooms, so every session
   * and brief is every vouched account's, and what a session did lately is its record alone (its
   * summary the newest closing it logged, its counters its events'), with no commits, edits or
-  * reads; it never ends a session, and every claim it holds is live. While the script is failing, every call fails as a database that
+  * reads; it never ends a session, and a claim it holds lapses as [[Script.claim]] says. While the script is failing, every call fails as a database that
   * cannot be read does. Every call is recorded in the script.
   */
 final class ScriptedSessions(vouched: Set[Account], script: ScriptedSessions.Script)
@@ -70,7 +70,7 @@ final class ScriptedSessions(vouched: Set[Account], script: ScriptedSessions.Scr
             script.briefOf(holder, at).fold(EdgeSessions.Briefed.Brief.Absent) { d =>
               val about = BriefClaim.of(d)
               about
-                .flatMap(b => script.claimOn(b.subject, holder))
+                .flatMap(b => script.claimOn(b.subject, holder, at))
                 .filter(_.session.exists(_ != own))
                 .fold(EdgeSessions.Briefed.Brief.Kept(d))(
                   EdgeSessions.Briefed.Brief.Held(_, about.flatMap(_.takeover))
@@ -156,8 +156,11 @@ object ScriptedSessions {
       briefs = briefs :+ (holder -> document)
     }
 
-    /** Keeps `claim` as live, whatever the time. */
-    def claim(claim: Claim): Unit = synchronized { claims = claims :+ claim }
+    /** Keeps `claim`, live a lease after its [[Claim.active]] as this script reads it: the latest
+      * of its `made` and the last event of its session, or while it has none, of every session
+      * working as its holder.
+      */
+    private def claim(claim: Claim): Unit = synchronized { claims = claims :+ claim }
 
     /** Keeps `document` as `holder`'s brief, its data naming the claim on `subject` and
       * `takeover` ([[BriefClaim]]), and that claim: `holder`'s as `role`, made by a person when
@@ -192,8 +195,22 @@ object ScriptedSessions {
       )
     }
 
-    private[ScriptedSessions] def claimOn(subject: DocKey, holder: ClaimHolder): Option[Claim] =
-      synchronized(claims.findLast(c => c.subject == subject && c.holder == holder))
+    /** `holder`'s claim on `subject` live at `at`, its `active` as [[claim]] reads it. */
+    private[ScriptedSessions] def claimOn(
+        subject: DocKey,
+        holder: ClaimHolder,
+        at: Instant
+    ): Option[Claim] = synchronized {
+      claims
+        .findLast(c => c.subject == subject && c.holder == holder)
+        .map { c =>
+          val worked = c.session.fold(sessions.filter(_.holder.contains(c.holder)))(s =>
+            sessions.filter(_.id == s)
+          )
+          c.copy(active = (c.made +: worked.map(_.lastEvent)).max)
+        }
+        .filter(_.lapses.isAfter(at))
+    }
 
     /** The session `id`, as recorded. */
     def session(id: SessionId): Option[Session] = synchronized(sessions.find(_.id == id))

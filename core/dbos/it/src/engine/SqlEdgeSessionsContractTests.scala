@@ -67,7 +67,7 @@ object SqlEdgeSessionsContractTests extends EdgeSessionsContract {
       text: String,
       written: Instant,
       subject: DocKey,
-      session: SessionId
+      session: Option[SessionId]
   ): Unit = {
     val _ = LiveDb
       .transaction(config, Clearance.of(Label.Public))(
@@ -91,7 +91,7 @@ object SqlEdgeSessionsContractTests extends EdgeSessionsContract {
             subject,
             holder,
             got(ClaimRole.of("builder")),
-            Some(session),
+            session,
             person,
             Label.Public,
             written

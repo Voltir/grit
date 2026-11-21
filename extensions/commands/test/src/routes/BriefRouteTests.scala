@@ -119,7 +119,8 @@ object BriefRouteTests extends TestSuite {
       "a session whose holder's claim another session works is answered one line naming it and its takeover, never the brief"
     ) {
       val script = new ScriptedSessions.Script
-      val made = Instant.parse("2026-11-13T10:00:00Z")
+      // An hour before Now, so its claim is live then.
+      val made = Instant.parse("2026-11-13T11:00:00Z")
       val subject = got(DocKey.of("p/1"))
       val brief = ScriptedSessions.document("Manage the milestone.", made)
       val move = Takeover("kalandra-cli project_claim", "p/1")
@@ -134,8 +135,8 @@ object BriefRouteTests extends TestSuite {
       asked(script, Fresh) ==> (
         Status.Ok,
         "grit: no brief for this session. p/1 is claimed as manager for desktop/grit-dcfe7476, " +
-          "and session made-up:s-0 is working on it (last active 2026-11-13T10:00:00Z). The claim " +
-          "frees itself when that session ends, or at 2026-11-13T12:00:00Z if it does nothing " +
+          "and session made-up:s-0 is working on it (last active 2026-11-13T11:00:00Z). The claim " +
+          "frees itself when that session ends, or at 2026-11-13T13:00:00Z if it does nothing " +
           "more. To move it here now, the person who made the claim runs kalandra-cli " +
           "project_claim themselves, outside any session, with: " +
           """{"key":"p/1","role":"manager","holder":"desktop/grit-dcfe7476","takeover":"made-up:s-1"}"""
