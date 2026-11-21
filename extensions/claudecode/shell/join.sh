@@ -608,6 +608,8 @@ undo_join() {
       put_kept "$exclude" 0644 "$excluding"
     fi
     rm -f -- "$H"
+    # The hook's session files, which it keeps beside itself.
+    rm -rf -- "${H%/*}/sessions"
     rmdir -- "${H%/*}" 2> /dev/null || true
     rmdir -- "${H%/*/*}" 2> /dev/null || true
     for f in post-commit post-rewrite; do

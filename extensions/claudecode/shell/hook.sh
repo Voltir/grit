@@ -58,7 +58,7 @@ if [ -z "${GRIT_HOOK_STARTED-}" ]; then
   fi
   self=${BASH_SOURCE[0]}
   [[ $self == /* ]] || self=$PWD/$self
-  GRIT_HOOK_STARTED=${EPOCHREALTIME//[!0-9]/} GRIT_HOOK_SELF=$self GRIT_EDGE=$edge \
+  GRIT_HOOK_STARTED=${EPOCHREALTIME//[!0-9]/} GRIT_HOOK_SELF=$self GRIT_HOOK_PARENT=$PPID GRIT_EDGE=$edge \
     timeout -k 0.2 "$bound" bash -- "$self" "$@"
   rc=$?
   case $rc in
@@ -70,7 +70,13 @@ fi
 
 started=$GRIT_HOOK_STARTED
 self=$GRIT_HOOK_SELF
-unset GRIT_HOOK_STARTED GRIT_HOOK_SELF
+# The process that ran the hook: Claude Code's `sh -c`, or Claude Code itself.
+parent=${GRIT_HOOK_PARENT-}
+unset GRIT_HOOK_STARTED GRIT_HOOK_SELF GRIT_HOOK_PARENT
+# Where /proc is read: GRIT_HOOK_PROC, which tests alone set, names a directory standing in for it.
+proc=${GRIT_HOOK_PROC:-/proc}
+# The sessions' files, one a session from its start until its end is recorded, beside the hook.
+lives=${self%/*}/sessions
 export TZ=UTC
 deadline=$((10#$started + bound * 1000000))
 # The session and agent ids the hook sends; one that does not match is never sent. An agent's type
@@ -213,6 +219,62 @@ brief() {
   fi
 }
 
+# Sets `comm` to the name of the process $1 and `stat` to the fields of its stat after the name,
+# the third first, read after the last `)` as a name may hold one; fails when there is no such
+# process.
+stat_of() {
+  local text
+  [[ $1 =~ ^[1-9][0-9]*$ ]] || return 1
+  { text=$(< "$proc/$1/stat"); } 2> /dev/null && [[ $text == *') '* ]] || return 1
+  comm=${text#*\(} comm=${comm%)*}
+  read -ra stat <<< "${text##*) }"
+}
+
+# The harness's process, on stdout: the nearest process above the hook that is none of the shells
+# and the watchdog it runs under; fails when one on the way cannot be read.
+harnessed() {
+  local p=$parent k comm
+  local -a stat=()
+  for ((k = 0; k < 8; k++)); do
+    stat_of "$p" || return 1
+    case $comm in
+      sh | dash | bash | timeout) p=${stat[1]-} ;;
+      *)
+        printf '%s\n' "$p"
+        return 0
+        ;;
+    esac
+  done
+  return 1
+}
+
+# Sets `host`, `boot` and `ns` to this machine's name, its boot's id and the pid namespace the hook
+# runs in; fails when one cannot be read.
+here() {
+  { host=$(< "$proc/sys/kernel/hostname") && boot=$(< "$proc/sys/kernel/random/boot_id"); } 2> /dev/null &&
+    ns=$(readlink -- "$proc/self/ns/pid") && [ -n "$host" ] && [ -n "$boot" ] && [ -n "$ns" ]
+}
+
+# Keeps the file of the session `session` in `dir`, `lives/<session>`, for a later start to tell
+# whether it died: one JSON object of strings, `host`, `boot` and `ns` as `here` reads them, `pid`
+# the harness's process, `start` that process's start in clock ticks since boot (field 22 of its
+# stat), and `dir`. Says why when it cannot.
+alive() {
+  local pid host boot ns comm tmp=''
+  local -a stat=()
+  if ! pid=$(harnessed) || ! stat_of "$pid" || ! [[ ${stat[19]-} =~ ^[0-9]+$ ]] || ! here; then
+    say "could not read which process runs this session, so a later start cannot end it should it stop without saying so"
+    return 0
+  fi
+  if ! mkdir -p -- "$lives" || ! tmp=$(mktemp -- "$lives/.$session.XXXXXX") ||
+    ! jq -nc --arg host "$host" --arg boot "$boot" --arg ns "$ns" --arg pid "$pid" --arg start "${stat[19]-}" --arg dir "$dir" \
+      '{host: $host, boot: $boot, ns: $ns, pid: $pid, start: $start, dir: $dir}' > "$tmp" ||
+    ! mv -f -- "$tmp" "$lives/$session"; then
+    [ -z "$tmp" ] || rm -f -- "$tmp"
+    say "could not keep this session's file in $lives, so a later start cannot end it should it stop without saying so"
+  fi
+}
+
 # What a session opens with besides its brief: the claim holder it works as, how an agent it
 # starts learns its own, and after a compaction the digest of what it did lately. A session that
 # starts afresh (a clear among them) has none: its brief is the handover.
@@ -220,6 +282,7 @@ opening() {
   local holder text
   payload || return 0
   [ "$event" = SessionStart ] || return 0
+  alive
   if ! ask /holder "harness=$harness" "dir=$dir"; then
     say "the edge at $edge did not answer for the holder"
     return 0
@@ -321,28 +384,33 @@ toplevel() {
 }
 
 # Posts the event lines $1 to the edge, each line's fate said on stderr when it was not kept, $2
-# naming them and $3 its verb, `was` or `were`. Nothing is kept to resend.
+# naming them and $3 its verb, `was` or `were`; fails when any was not kept. Nothing is kept to
+# resend.
 send() {
   local out code answer secs why
   if ! left; then
     say "$2 $3 dropped: no time was left for its post"
-    return 0
+    return 1
   fi
   out=$(curl -q -s "${direct[@]+"${direct[@]}"}" --connect-timeout 0.3 --max-time "$secs" -H @<(authorization) -H 'Content-Type: application/x-ndjson' \
     --data-binary @- -w '\n%{http_code}' -- "$edge/events?harness=$harness" <<< "$1") || {
     say "$2 $3 dropped: the edge at $edge did not answer"
-    return 0
+    return 1
   }
   code=${out##*$'\n'} answer=${out%$'\n'*}
   case $code in
     200)
       why=$(jq -r '.refused[]? | "line \(.line) refused: \(.why)"' <<< "$answer" 2> /dev/null) || why=''
-      [ -z "$why" ] || while IFS= read -r out; do say "$2: $out"; done <<< "$why"
+      [ -z "$why" ] || {
+        while IFS= read -r out; do say "$2: $out"; done <<< "$why"
+        return 1
+      }
       ;;
     413) say "$2 $3 dropped: the edge at $edge took its post as too long (413)" ;;
     401) answered "$2" 401 "$answer" ;;
     *) say "the edge at $edge answered $code to $2, keeping nothing: ${answer%%$'\n'*}" ;;
   esac
+  [ "$code" = 200 ]
 }
 
 # The event line of a Claude Code hook, in grit's words, from the payload `input` and the shell's
@@ -440,7 +508,10 @@ event() {
     say "could not read $event as an event; it was dropped"
     return 0
   }
-  [ -z "$line" ] || send "$line" "$event" was
+  # A session whose end is recorded needs its file no more.
+  if [ -n "$line" ] && send "$line" "$event" was && [ "$event" = SessionEnd ]; then
+    rm -f -- "$lives/$session"
+  fi
 }
 
 # Whether a rebase is in progress in this worktree.
