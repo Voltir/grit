@@ -5,8 +5,8 @@ import java.time.Instant
 import grit.core.claim.{Claim, ClaimRole}
 import grit.core.document.BriefClaim
 import grit.core.either.Got.got
-import grit.core.id.{ClaimHolder, DocKey, PrincipalIds, SessionId}
-import grit.core.identity.Principal
+import grit.core.id.{ClaimHolder, DocKey, SessionId}
+import grit.core.identity.{Principal, TestAccounts}
 import grit.core.visibility.Label
 
 /** The sessions contract, kept by the scripted fake. */
@@ -39,7 +39,10 @@ object ScriptedSessionsTests extends EdgeSessionsContract {
         subject,
         holder,
         got(ClaimRole.of("builder")),
-        new Principal.Person(PrincipalIds.stored("contracted"), Set.empty),
+        new Principal.Person(
+          TestAccounts.principalId(TestAccounts.account("slack:T1/U-ann")),
+          Set.empty
+        ),
         written,
         Label.Public,
         Some(session),

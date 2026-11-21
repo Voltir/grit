@@ -7,8 +7,8 @@ import grit.core.context.Shown
 import grit.core.document.{BriefClaim, DocRef, Takeover}
 import grit.core.edge.{EdgeContracts, EdgeSessions, ScriptedSessions}
 import grit.core.either.Got.got
-import grit.core.id.{ClaimHolder, DocKey, Harness, PrincipalIds, SessionId}
-import grit.core.identity.Principal
+import grit.core.id.{ClaimHolder, DocKey, Harness, SessionId}
+import grit.core.identity.{Principal, TestAccounts}
 import grit.core.place.Place
 import grit.core.session.{Event, Session, SessionDigest}
 import grit.core.visibility.Label
@@ -134,7 +134,10 @@ object BriefRouteTests extends TestSuite {
           subject,
           Holder,
           got(ClaimRole.of("manager")),
-          new Principal.Person(PrincipalIds.stored("local"), Set.empty),
+          new Principal.Person(
+            TestAccounts.principalId(TestAccounts.account("slack:T1/U-ann")),
+            Set.empty
+          ),
           made,
           Label.Public,
           Some(id("s-0")),

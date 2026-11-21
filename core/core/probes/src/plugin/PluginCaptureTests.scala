@@ -169,10 +169,12 @@ object PluginCaptureTests extends TestSuite {
     */
   private val claimsHoldDb =
     """final class ClaimsHold(db: Db^) extends Claims {
-      |  def claim(subject: DocKey, holder: ClaimHolder, role: ClaimRole, by: Principal.Person, label: Label, at: java.time.Instant)(using Tx^): Either[StoreError, Claimed] =
+      |  def claim(subject: DocKey, holder: ClaimHolder, role: ClaimRole, session: Option[SessionId], by: Principal.Person, label: Label, at: java.time.Instant)(using Tx^): Either[StoreError, Claimed] =
       |    db.read(Subject.Public)(Right(Claimed.Taken(None)))
       |  def release(subject: DocKey, label: Label)(using Tx^): Either[StoreError, Option[Claim]] =
       |    db.read(Subject.Public)(Right(None))
+      |  def moved(claim: Claim, holder: ClaimHolder, session: SessionId, role: ClaimRole, at: java.time.Instant)(using Tx^): Either[StoreError, Moved] =
+      |    Right(Moved.Gone)
       |  def live(at: java.time.Instant)(using Tx^): Either[StoreError, Vector[Claim]] =
       |    Right(Vector.empty)
       |  def held(claim: Claim)(using Tx^): Either[StoreError, Option[Claim]] =
