@@ -56,7 +56,14 @@ Decision:
   in one transaction. A keep never changes a state.
 - **A claim is one of the plugin's claims** (`grit.core.claim.Claims`, ADR 0050), never a
   document. A harness's holder is one rule, `ClaimHolders.of`, computed by the commands edge
-  (ADR 0062) alone.
+  (ADR 0062) alone. **A claim is worked by one session at a time**, and its lease is that
+  session's: a claim made for a holder before its session exists (a manager claiming for an
+  agent) is taken by the holder's next session to start; another session of the holder is shown
+  one line naming the claim in place of its brief, and is refused the claim; a recorded end frees
+  it for the next, a crash lets it lapse. `project_claim`'s `takeover` moves a claim to another
+  session, and to its holder, whatever holds it now, so work goes on from another machine. Only a
+  person moves one, and only one they made; the gate guards accidents, not an adversary, since
+  `project_release` reads no `by` and frees any claim (who may move what is its own work).
 
 Consequences:
 

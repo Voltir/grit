@@ -106,8 +106,8 @@ In dependency order, each with the core packages it imports:
   compartment's policy applied to it, the one write kept below its transaction's floor.
   ← `id`, `place`, `period`, `visibility`, `store`, `flow`, `tool`, `screen`
 - **`claim`**: which holder works a plugin's subject, as which role: one live claim per subject
-  and per holder at each label, never versioned, leased on the sessions working as its holder,
-  deleted by its release or once lapsed. ← `id`, `identity`, `visibility`, `store`
+  and per holder at each label, never versioned, leased on the session working it (until one
+  does, on the sessions working as its holder), deleted by its release or once lapsed. ← `id`, `identity`, `visibility`, `store`
 - **`files`**: files as the engine and edges see them: what a file's bytes are (`Kind`), the
   `Format`s a deployment reads each kind with (an extension point) into `grit.prose`'s form,
   every span noted with where it lies, never silently wrong (what a read covers and missed is

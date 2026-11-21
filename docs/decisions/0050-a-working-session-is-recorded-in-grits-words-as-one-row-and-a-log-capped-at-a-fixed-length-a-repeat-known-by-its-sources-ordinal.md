@@ -22,8 +22,10 @@ Decision:
   a place with no label meaning, so that who is working where is one equality read), when it
   started, last did something and ended, its closing summary, and counters of its tool calls, edits,
   commits and bytes read, and the claim holder it works as, from the first recording that names
-  one and never changed after, whose claims its last event keeps from lapsing. A session that never says it ended counts as ended a fixed
-  time after its last event.
+  one and never changed after. A claim names the session working it, whose last event keeps it
+  from lapsing; one no session works yet is kept by its holder's sessions until a session of the
+  holder starts or resumes, which takes it, and a recorded end frees it again (ADR 0049). A
+  session that never says it ended counts as ended a fixed time after its last event.
 - **Its log is lines in grit's words** (`grit.session_events`): `started`, `read`, `edited`,
   `ran`, `commit`, `closing`, `ended`, each with a small shape of what it was and never its
   content. Up to a fixed number of lines, the last an `overflow` standing for every event after
@@ -46,7 +48,7 @@ Decision:
   harness from the request, never a line; works out the holder itself, from the machine, the
   session's directory and an agent's type; places each worktree on the caller's machine; and
   refuses a line dated more than a small skew past its own clock, since a session's last event
-  keeps its holder's claims from lapsing. A line refused is named and the rest kept, so one bad
+  keeps the claims it works from lapsing. A line refused is named and the rest kept, so one bad
   line loses nothing else.
 - **Both are deleted by the collector** (ADR 0014): the sweep writes a tombstone on a session's
   log a month after it ends and on its row half a year after, and the collector spares one
