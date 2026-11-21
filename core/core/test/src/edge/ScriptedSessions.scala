@@ -16,7 +16,9 @@ import grit.core.visibility.{Integrity, Label}
   * `vouched`. Held to [[EdgeSessionsContract]]; it reads no labels or rooms, so every session
   * and brief is every vouched account's, and what a session did lately is its record alone (its
   * summary the newest closing it logged, its counters its events'), with no commits, edits or
-  * reads; it never ends a session, and a claim it holds lapses as [[Script.claim]] says. While the script is failing, every call fails as a database that
+  * reads; an `ended` event ends a session and leaves each claim it works worked by none, a batch
+  * naming a holder otherwise gives its session each claim of that holder no session works, and a
+  * claim it holds lapses as [[Script.claim]] says. While the script is failing, every call fails as a database that
   * cannot be read does. Every call is recorded in the script.
   */
 final class ScriptedSessions(vouched: Set[Account], script: ScriptedSessions.Script)
@@ -225,8 +227,9 @@ object ScriptedSessions {
         briefs.collect { case (h, d) if h == holder && !d.written.isAfter(at) => d }.lastOption
       }
 
-    /** Logs each batch's events new to its session, as `by`: how many. A batch with none begins
-      * no session, but gives one with no holder the batch's, as grit.dbos' sessions do.
+    /** Logs each batch's events new to its session, as `by`: how many, its claims moved as
+      * [[ScriptedSessions]] says. A batch with none begins no session, but gives one with no
+      * holder the batch's, as grit.dbos' sessions do.
       */
     private[ScriptedSessions] def log(
         by: Principal.Person,
@@ -243,6 +246,17 @@ object ScriptedSessions {
         } else {
           ordinals = ordinals.updated(b.id, seen ++ fresh.map(_.n))
           val said = fresh.sortBy(_.n).collect { case Event(_, _, Event.Kind.Closing(s), _) => s }
+          val ending =
+            Session.ending(sessions.find(_.id == b.id).flatMap(_.ended), fresh.sortBy(_.n))
+          claims =
+            if (ending.isDefined)
+              claims.map(c => if (c.session.contains(b.id)) c.copy(session = None) else c)
+            else
+              b.holder.fold(claims)(h =>
+                claims.map(c =>
+                  if (c.holder == h && c.session.isEmpty) c.copy(session = Some(b.id)) else c
+                )
+              )
           sessions = sessions.find(_.id == b.id) match {
             case Some(_) =>
               sessions.map(o =>
@@ -252,7 +266,8 @@ object ScriptedSessions {
                     lastEvent = (o.lastEvent +: fresh.map(_.at)).max,
                     summary = said.lastOption.orElse(o.summary),
                     counters = o.counters + Session.Counters.of(fresh),
-                    holder = o.holder.orElse(b.holder)
+                    holder = o.holder.orElse(b.holder),
+                    ended = ending
                   )
               )
             case None =>
@@ -263,7 +278,7 @@ object ScriptedSessions {
                 Label.Public,
                 b.at,
                 fresh.map(_.at).min,
-                None,
+                ending,
                 fresh.map(_.at).max,
                 said.lastOption,
                 Session.Counters.of(fresh),

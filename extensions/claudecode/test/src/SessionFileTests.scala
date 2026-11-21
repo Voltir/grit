@@ -5,6 +5,13 @@ import java.time.Instant
 
 import scala.jdk.CollectionConverters.*
 
+import grit.commands.machine.ClaimHolders
+import grit.commands.routes.RouteFixtures.Machine
+import grit.core.claim.ClaimRole
+import grit.core.edge.ScriptedSessions
+import grit.core.either.Got.got
+import grit.core.id.DocKey
+import grit.core.place.Directory
 import grit.core.session.Event
 
 import utest.*
@@ -87,7 +94,9 @@ object SessionFileTests extends TestSuite {
   private def withProc(f: HookFixtures, proc: Path): Map[String, String] =
     f.claude + ("GRIT_HOOK_PROC" -> proc.toString)
 
-  /** A file for the session `local` as the hook writes one, in `f`'s checkout. */
+  /** A file for the session `local` as the hook writes one, of a session in `dir` (by default
+    * `f`'s checkout).
+    */
   private def planted(
       f: HookFixtures,
       local: String,
@@ -95,7 +104,8 @@ object SessionFileTests extends TestSuite {
       boot: String = "this-boot",
       ns: String = "pid:[1]",
       pid: Long,
-      start: String = "500"
+      start: String = "500",
+      dir: Option[Path] = None
   ): Unit = {
     val text = ujson.write(
       ujson.Obj(
@@ -104,16 +114,18 @@ object SessionFileTests extends TestSuite {
         "ns" -> ns,
         "pid" -> pid.toString,
         "start" -> start,
-        "dir" -> f.proj.toString
+        "dir" -> dir.getOrElse(f.proj).toString
       )
     )
     val _ = f.machine.write(sessions(f).resolve(local), text)
   }
 
-  /** The session `local` recorded as started in `f`'s checkout a minute ago, by this machine. */
-  private def started(f: HookFixtures, local: String): Unit = {
+  /** The session `local` recorded as started in `dir` (by default `f`'s checkout) a minute ago,
+    * by this machine.
+    */
+  private def started(f: HookFixtures, local: String, dir: Option[Path] = None): Unit = {
     val line =
-      s"""{"session":"$local","dir":"${f.proj}","n":"1","at":"${Instant
+      s"""{"session":"$local","dir":"${dir.getOrElse(f.proj)}","n":"1","at":"${Instant
           .now()
           .minusSeconds(60)}","event":"started"}"""
     val _ = f.post("/events?harness=claude-code", line) ==> (
@@ -121,6 +133,23 @@ object SessionFileTests extends TestSuite {
       """{"recorded":1,"refused":[]}"""
     )
   }
+
+  /** `text` kept as the brief of the holder of a session in `dir`, for the claim on `subject`,
+    * worked by the session `local`.
+    */
+  private def claimed(f: HookFixtures, dir: Path, subject: String, text: String, local: String) =
+    f.script.claimedBrief(
+      ClaimHolders.of(Machine, got(Directory.of(dir.toString)), None),
+      ScriptedSessions.document(text, Instant.now().minusSeconds(3600)),
+      got(DocKey.of(subject)),
+      None,
+      got(ClaimRole.of("builder")),
+      Some(f.session(local))
+    )
+
+  /** What the edge answers a session starting afresh in `dir` when it asks for its brief. */
+  private def briefOf(f: HookFixtures, dir: Path): String =
+    f.get(s"/brief?harness=claude-code&session=onlooker&dir=${dir}&start=fresh")._2
 
   /** An event's shape, as JSON. */
   private def shape(e: Event): ujson.Value = ujson.read(Event.Shape.value(e.shape))
@@ -204,6 +233,34 @@ object SessionFileTests extends TestSuite {
         val run = f.run("opening", f.payload("session-start-startup.json"), withProc(f, proc))
         f.script.failing(None)
         (run.exit, files(f).contains("gone")) ==> (0, true)
+      }
+    }
+    test(
+      "a dead session's claim is free once a start has ended it, and taken by the starting session when it is its holder's"
+    ) {
+      HookFixtures { f =>
+        val proc = faked(f)
+        val other = Files.createDirectories(f.proj.resolve("other"))
+        started(f, "here")
+        started(f, "there", Some(other))
+        planted(f, "here", pid = 4002)
+        planted(f, "there", pid = 4003, dir = Some(other))
+        claimed(f, f.proj, "p/1", "Work the first thing.", "here")
+        claimed(f, other, "p/2", "Work the second thing.", "there")
+        val before = (briefOf(f, f.proj), briefOf(f, other))
+        val env = withProc(f, proc)
+        val _ = f.run("opening", f.payload("session-start-startup.json"), env)
+        val _ = f.run("event", f.payload("session-start-startup.json"), env)
+        def worker(brief: String) =
+          "session claude-code:([^ ]+) is working on it".r.findFirstMatchIn(brief).map(_.group(1))
+        val freed = briefOf(f, other)
+        (
+          worker(before._1),
+          worker(before._2),
+          worker(briefOf(f, f.proj)),
+          worker(freed),
+          freed.contains("Work the second thing.")
+        ) ==> (Some("here"), Some("there"), Some(First), None, true)
       }
     }
     test("an undo removes the session files with the hook") {

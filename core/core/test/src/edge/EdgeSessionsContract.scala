@@ -236,6 +236,33 @@ abstract class EdgeSessionsContract extends TestSuite {
       )
     }
 
+    test(
+      "a session's end leaves the claim it works worked by none, and its holder's next session to start takes it"
+    ) {
+      val h = got(ClaimHolder.of("contract/ending"))
+      worked("ending", h, 1)
+      claimedBrief(
+        h,
+        "Work the ending thing.",
+        At,
+        got(DocKey.of("contract/ending-1")),
+        Some(session("ending"))
+      )
+      val _ = record(Reader, ended(session("ending"), 2))
+      val freed = opening(h, session("onlooker"))
+      worked("next", h, 3)
+      (freed, opening(h, session("onlooker"))) ==> (
+        Right((Some("Work the ending thing."), None)),
+        Right(
+          (
+            Some(
+              s"held by Some(${session("next").written}) for contract/ending, moved by ${Some(Moving)}"
+            ),
+            None
+          )
+        )
+      )
+    }
     test("briefed for an account no person is linked to is NotVouched") {
       recording(
         _.briefed(Stranger, Room, got(ClaimHolder.of("contract/briefed")), session("asked"), At)
@@ -261,6 +288,25 @@ object EdgeSessionsContract {
   /** `id`'s edits at each of `seconds` after [[EdgeContracts.At]], each its own ordinal, at
     * [[Worktree]], as `holder` when given.
     */
+  /** `id`'s end, `second` after [[EdgeContracts.At]], its ordinal `second`, at [[Worktree]]. */
+  def ended(id: SessionId, second: Long): EdgeSessions.Batch =
+    EdgeSessions.Batch(
+      id,
+      None,
+      Worktree,
+      None,
+      Vector(
+        got(
+          Event.of(
+            second,
+            EdgeContracts.At.plusSeconds(second),
+            Event.Kind.Ended,
+            Event.Shape.Empty
+          )
+        )
+      )
+    )
+
   def batch(id: SessionId, holder: Option[ClaimHolder], seconds: Long*): EdgeSessions.Batch =
     EdgeSessions.Batch(
       id,
