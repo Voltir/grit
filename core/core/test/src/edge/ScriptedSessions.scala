@@ -2,8 +2,8 @@ package grit.core.edge
 
 import java.time.Instant
 
-import grit.core.claim.Claim
-import grit.core.document.{BriefClaim, DocText, Document, Placement}
+import grit.core.claim.{Claim, ClaimRole}
+import grit.core.document.{BriefClaim, DocText, Document, Placement, Takeover}
 import grit.core.either.Got.got
 import grit.core.id.{ClaimHolder, DocKey, DocumentVersionId, PluginName, SessionId}
 import grit.core.identity.{Account, Principal, TestAccounts}
@@ -158,6 +158,39 @@ object ScriptedSessions {
 
     /** Keeps `claim` as live, whatever the time. */
     def claim(claim: Claim): Unit = synchronized { claims = claims :+ claim }
+
+    /** Keeps `document` as `holder`'s brief, its data naming the claim on `subject` and
+      * `takeover` ([[BriefClaim]]), and that claim: `holder`'s as `role`, made by a person when
+      * `document` was written, worked by `session`.
+      */
+    def claimedBrief(
+        holder: ClaimHolder,
+        document: Document,
+        subject: DocKey,
+        takeover: Option[Takeover],
+        role: ClaimRole,
+        session: Option[SessionId]
+    ): Unit = {
+      brief(
+        holder,
+        document.copy(data = BriefClaim.kept(ujson.Obj(), BriefClaim(subject, takeover)))
+      )
+      claim(
+        Claim(
+          subject,
+          holder,
+          role,
+          new Principal.Person(
+            TestAccounts.principalId(TestAccounts.account("slack:T1/U-ann")),
+            Set.empty
+          ),
+          document.written,
+          Label.Public,
+          session,
+          document.written
+        )
+      )
+    }
 
     private[ScriptedSessions] def claimOn(subject: DocKey, holder: ClaimHolder): Option[Claim] =
       synchronized(claims.findLast(c => c.subject == subject && c.holder == holder))

@@ -2,16 +2,14 @@ package grit.commands.routes
 
 import java.time.Instant
 
-import grit.core.claim.{Claim, ClaimRole}
+import grit.core.claim.ClaimRole
 import grit.core.context.Shown
-import grit.core.document.{BriefClaim, DocRef, Takeover}
+import grit.core.document.{DocRef, Takeover}
 import grit.core.edge.{EdgeContracts, EdgeSessions, ScriptedSessions}
 import grit.core.either.Got.got
 import grit.core.id.{ClaimHolder, DocKey, Harness, SessionId}
-import grit.core.identity.{Principal, TestAccounts}
 import grit.core.place.Place
 import grit.core.session.{Event, Session, SessionDigest}
-import grit.core.visibility.Label
 import grit.edge.http.{Status, Verb}
 
 import utest.*
@@ -125,24 +123,13 @@ object BriefRouteTests extends TestSuite {
       val subject = got(DocKey.of("p/1"))
       val brief = ScriptedSessions.document("Manage the milestone.", made)
       val move = Takeover("kalandra-cli project_claim", "p/1")
-      script.brief(
+      script.claimedBrief(
         Holder,
-        brief.copy(data = BriefClaim.kept(ujson.Obj(), BriefClaim(subject, Some(move))))
-      )
-      script.claim(
-        Claim(
-          subject,
-          Holder,
-          got(ClaimRole.of("manager")),
-          new Principal.Person(
-            TestAccounts.principalId(TestAccounts.account("slack:T1/U-ann")),
-            Set.empty
-          ),
-          made,
-          Label.Public,
-          Some(id("s-0")),
-          made
-        )
+        brief,
+        subject,
+        Some(move),
+        got(ClaimRole.of("manager")),
+        Some(id("s-0"))
       )
       asked(script, Fresh) ==> (
         Status.Ok,
