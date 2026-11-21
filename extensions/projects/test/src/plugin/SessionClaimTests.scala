@@ -1,8 +1,8 @@
 package grit.projects.plugin
 
 import grit.core.claim.Claim
-import grit.core.document.DocText
-import grit.core.id.{ClaimHolder, SessionId}
+import grit.core.document.{BriefClaim, DocText, Takeover}
+import grit.core.id.{ClaimHolder, DocKey, SessionId}
 import grit.core.plugin.CommandOutcome
 import grit.core.visibility.Integrity
 import grit.projects.method.{Cover, MethodFixtures, RoleView}
@@ -47,6 +47,38 @@ object SessionClaimTests extends TestSuite {
 
   private def live(store: Store): Vector[Claim] =
     inTx(store.claims.live(at)).fold(e => throw new java.lang.AssertionError(e.toString), identity)
+
+  /** Ten minutes after [[CommandFixtures.at]]: when [[takenOver]] asks, so a claim moved is seen
+    * made anew.
+    */
+  private val later = at.plusSeconds(600)
+
+  /** `p/a`'s claim taken over as builder for `forHolder` and its session `to`, at [[later]]. */
+  private def takenOver(projects: Projects, store: Store, forHolder: String, to: String) =
+    askAt(later)(
+      projects,
+      store,
+      "project_claim",
+      "key" -> "p/a",
+      "role" -> "builder",
+      "holder" -> forHolder,
+      "takeover" -> to
+    )
+
+  /** `p/a`'s brief as builder, as `project_brief` renders it. */
+  private def rendered(projects: Projects, store: Store): String =
+    done(
+      ask(projects, store, "project_brief", "key" -> "p/a", "role" -> "builder", "chars" -> 9500)
+    )
+
+  /** The claim a brief of `p/1` names, and how it is taken over. */
+  private val takeover = BriefClaim(right(DocKey.of("p/1")), Some(Takeover("project_claim", "p/1")))
+
+  /** `forHolder`'s brief after [[later]]: its text and the claim its data names. */
+  private def briefed(projects: Projects, store: Store, forHolder: String) =
+    briefOf(store, forHolder, later.plusSeconds(1)).flatMap(d =>
+      BriefClaim.of(d).map(c => (DocText.value(d.text), c))
+    )
 
   private def claimedSaying(said: String): CommandOutcome =
     CommandOutcome.Done(ujson.write(ujson.Obj("claimed" -> said, "brief" -> "kept")))
@@ -107,15 +139,33 @@ object SessionClaimTests extends TestSuite {
       val store = Store()
       holding(projects, store)
       done(claim(projects, store, holder, "session" -> "claude-code:s-a"))
-      val moved = claim(projects, store, "laptop/grit-2", "takeover" -> "claude-code:s-b")
+      val moved = takenOver(projects, store, "laptop/grit-2", "claude-code:s-b")
       assert(
         moved == claimedSaying(
           "Moved p/1 a (note, open) to laptop/grit-2 as builder, for session claude-code:s-b."
         ),
         live(store).map(c => (ClaimHolder.value(c.holder), c.session, c.made)) ==
-          Vector(("laptop/grit-2", Some(session("s-b")), at)),
-        briefOf(store, holder).isEmpty,
-        briefOf(store, "laptop/grit-2").map(d => DocText.value(d.text)).nonEmpty
+          Vector(("laptop/grit-2", Some(session("s-b")), later)),
+        briefOf(store, holder, later.plusSeconds(1)).isEmpty,
+        briefed(projects, store, "laptop/grit-2") == Some((rendered(projects, store), takeover))
+      )
+    }
+
+    test(
+      "takeover by the claim's own holder moves it from one of its sessions to another, keeping its brief"
+    ) {
+      val projects = plugin()
+      val store = Store()
+      holding(projects, store)
+      done(claim(projects, store, holder, "session" -> "claude-code:s-a"))
+      val moved = takenOver(projects, store, holder, "claude-code:s-b")
+      assert(
+        moved == claimedSaying(
+          s"Moved p/1 a (note, open) to $holder as builder, for session claude-code:s-b."
+        ),
+        live(store).map(c => (ClaimHolder.value(c.holder), c.session, c.made)) ==
+          Vector((holder, Some(session("s-b")), later)),
+        briefed(projects, store, holder) == Some((rendered(projects, store), takeover))
       )
     }
 
