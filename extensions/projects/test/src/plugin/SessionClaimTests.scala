@@ -271,6 +271,42 @@ object SessionClaimTests extends TestSuite {
       )
     }
 
+    test(
+      "takeover to a holder working another artifact, or to a session working as another holder, is refused, moving nothing"
+    ) {
+      val projects = plugin()
+      val store =
+        Store(sessions = Map(session("s-x") -> (right(ClaimHolder.of("elsewhere/grit-3")), at)))
+      holding(projects, store)
+      done(claim(projects, store, holder, "session" -> "claude-code:s-a"))
+      done(
+        ask(
+          projects,
+          store,
+          "project_claim",
+          "key" -> "p/b",
+          "role" -> "builder",
+          "holder" -> "laptop/grit-2"
+        )
+      )
+      val before = live(store)
+      (
+        takenOver(projects, store, "laptop/grit-2", "claude-code:s-b"),
+        takenOver(projects, store, "other/grit-4", "claude-code:s-x"),
+        live(store) == before
+      ) ==> (
+        CommandOutcome.Refused(
+          s"laptop/grit-2 works p/2 b already, claimed since $at; it lapses at " +
+            s"${at.plusSeconds(7200)} unless they keep working; release it with project_release first"
+        ),
+        CommandOutcome.Refused(
+          "session claude-code:s-x works as elsewhere/grit-3, not other/grit-4. Leave `session` " +
+            "out when you claim for an agent or anyone else."
+        ),
+        true
+      )
+    }
+
     test("a claim of the oldest artifact for a session is worked by that session") {
       val projects = plugin()
       val store = Store()
