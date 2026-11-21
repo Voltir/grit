@@ -213,9 +213,36 @@ object ProjectsLiveTests extends TestSuite {
               ),
               at
             )
-          } yield (before, answer.getClass)
+            listed <- ran(commands, ann, desk, ToolName("project_claims"))
+          } yield (
+            before,
+            answer,
+            listed match {
+              case CommandOutcome.Done(said) =>
+                ujson
+                  .read(said)("claims")
+                  .arr
+                  .toVector
+                  .map(c => (c("key").str, c("holder").str, c("session").str))
+              case other => Vector((other.toString, "", ""))
+            }
+          )
           assert(
-            moved == Right((Vector("desk/grit-1"), classOf[CommandOutcome.Done])),
+            moved == Right(
+              (
+                Vector("desk/grit-1"),
+                CommandOutcome.Done(
+                  ujson.write(
+                    ujson.Obj(
+                      "claimed" -> ("Moved p/1 a (note, open) to laptop/grit-2 as builder, " +
+                        "for session claude-code:s-b."),
+                      "brief" -> "kept"
+                    )
+                  )
+                ),
+                Vector(("p/1", "laptop/grit-2", "claude-code:s-b"))
+              )
+            ),
             briefedFor(config) == Vector("laptop/grit-2")
           )
       }
