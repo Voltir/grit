@@ -120,6 +120,7 @@ object ClaimTests extends TestSuite {
               person,
               at,
               Label.Public,
+              None,
               at
             )
           )

@@ -12,19 +12,21 @@ import grit.dbos.sql.{DbConfig, LiveDb, SqlSessions}
 /** Sessions working as a claim holder, the lease of its claims, for the claims suites. */
 object HolderSessions {
 
-  /** A session of its own in `config` run by `by`, kept at `label`, working as `holder`, its one
-    * event at `at`.
+  /** A session in `config` run by `by`, kept at `label`, working as `holder`, its one event at
+    * `at`: `session`, or one of the holder's own.
     */
   def work(
       config: DbConfig,
       by: Principal.Person,
       holder: ClaimHolder,
       at: Instant,
-      label: Label = Label.Public
+      label: Label = Label.Public,
+      session: Option[SessionId] = None
   ): Unit = {
     val recorded = for {
       harness <- Harness.of("claude-code")
-      id <- SessionId.of(harness, s"works-${ClaimHolder.value(holder)}")
+      own <- SessionId.of(harness, s"works-${ClaimHolder.value(holder)}")
+      id = session.getOrElse(own)
       shape <- Event.Shape.of(ujson.Obj())
       event <- Event.of(at.toEpochMilli, at, Event.Kind.Edited, shape)
       place = Place.under(Namespace.Fs, Vector("/work/grit"))

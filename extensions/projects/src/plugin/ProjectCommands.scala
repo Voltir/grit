@@ -1437,6 +1437,21 @@ private[plugin] final class ProjectCommands(
                   )
                 )
               )
+            case Claimed.HeldBy(c) =>
+              Left(
+                Stop.Refused(
+                  s"${a.head.called} is claimed already as ${ClaimRole.value(c.role)} for " +
+                    ClaimHolder.value(c.holder) +
+                    c.session.fold("")(s => s", ${Claims.working(c, s)}") +
+                    ". Nothing was changed."
+                )
+              )
+            case Claimed.Elsewhere(s, other) =>
+              Left(
+                Stop.Refused(
+                  s"session ${s.written} works as ${ClaimHolder.value(other)}, not $holder"
+                )
+              )
           }
           // The role has a view and the artifact is the project's, so the claim has its brief.
           unkept <- rendered(method, whole, ids(project), Vector(made)).headOption

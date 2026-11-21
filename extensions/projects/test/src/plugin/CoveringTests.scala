@@ -132,6 +132,7 @@ object CoveringTests extends TestSuite {
           right(DocKey.of("p/3")),
           right(ClaimHolder.of("h2")),
           right(ClaimRole.of("manager")),
+          None,
           person,
           Label.Public,
           at

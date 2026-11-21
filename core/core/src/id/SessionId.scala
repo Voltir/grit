@@ -53,4 +53,12 @@ object SessionId {
     */
   def of(harness: Harness, local: String): Either[String, SessionId] =
     Bounded.text("a session's id", local, Longest).map(new SessionId(harness, _))
+
+  /** `text` as [[SessionId.written]] writes a session, or why not. */
+  def read(text: String): Either[String, SessionId] =
+    // A harness's name is a slug, holding no `:`: the first one ends it.
+    text.indexOf(':') match {
+      case -1 => Left("not a session's id, written <harness>:<id>")
+      case i => Harness.of(text.take(i)).flatMap(of(_, text.drop(i + 1)))
+    }
 }

@@ -2,7 +2,7 @@ package grit.core.claim
 
 import java.time.Instant
 
-import grit.core.id.{ClaimHolder, DocKey, PluginName}
+import grit.core.id.{ClaimHolder, DocKey, PluginName, SessionId}
 import grit.core.identity.{Account, Principal, TestAccounts}
 import grit.core.place.{Namespace, Place}
 import grit.core.store.{StoreError, Tx}
@@ -16,9 +16,14 @@ import utest.*
 abstract class ClaimsContract extends TestSuite {
 
   /** `plugin`'s claims in the store under test, each holder in `worked` having worked a session
-    * whose last event is at its time, kept where every transaction here reads it.
+    * whose last event is at its time, and each session in `sessions` working as its holder, its
+    * last event at its time, all kept where every transaction here reads them.
     */
-  protected def claims(plugin: PluginName, worked: Map[ClaimHolder, Instant]): Claims
+  protected def claims(
+      plugin: PluginName,
+      worked: Map[ClaimHolder, Instant],
+      sessions: Map[SessionId, (ClaimHolder, Instant)] = Map.empty
+  ): Claims
 
   private def claims(plugin: PluginName): Claims = claims(plugin, Map.empty)
 
@@ -41,6 +46,8 @@ abstract class ClaimsContract extends TestSuite {
 
   private def holder(s: String): ClaimHolder = ok(ClaimHolder.of(s))
 
+  private def session(s: String): SessionId = ok(SessionId.read(s"claude-code:$s"))
+
   private val builder: ClaimRole = ok(ClaimRole.of("builder"))
 
   private val at: Instant = Instant.parse("2026-03-01T00:00:00Z")
@@ -59,9 +66,10 @@ abstract class ClaimsContract extends TestSuite {
       label: Label = Label.Public,
       clearance: Clearance = Low,
       when: Instant = at,
-      role: ClaimRole = builder
+      role: ClaimRole = builder,
+      working: Option[SessionId] = None
   ): Claimed =
-    opened(clearance)(ok(c.claim(key(subject), holder(by), role, ann, label, when)))
+    opened(clearance)(ok(c.claim(key(subject), holder(by), role, working, ann, label, when)))
 
   private def release(
       c: Claims,
@@ -79,9 +87,10 @@ abstract class ClaimsContract extends TestSuite {
       by: String,
       label: Label = Label.Public,
       when: Instant = at,
-      active: Option[Instant] = None
+      active: Option[Instant] = None,
+      working: Option[SessionId] = None
   ): Claim =
-    Claim(key(subject), holder(by), builder, ann, when, label, active.getOrElse(when))
+    Claim(key(subject), holder(by), builder, ann, when, label, working, active.getOrElse(when))
 
   val tests = Tests {
     test("a claim made is the claim given, kept at its label") {
@@ -271,13 +280,78 @@ abstract class ClaimsContract extends TestSuite {
       val c = claims(plugin("claims-lock"))
       val claimed = opened(Low) {
         ok(c.lock(key("p#lock")))
-        ok(c.claim(key("p#lock"), holder("lock-1"), builder, ann, Label.Public, at))
+        ok(c.claim(key("p#lock"), holder("lock-1"), builder, None, ann, Label.Public, at))
       }
       (claimed, live(c, at)) ==> (
         Claimed.Made(made("p#lock", "lock-1")),
         Vector(
           made("p#lock", "lock-1")
         )
+      )
+    }
+
+    test(
+      "a claim's session keeps it live a lease after its own last event, whatever another session of its holder does"
+    ) {
+      val c = claims(
+        plugin("claims-own-lease"),
+        Map(holder("own-1") -> hour),
+        Map(session("own-a") -> (holder("own-1"), at))
+      )
+      claim(c, "p/a", "own-1", working = Some(session("own-a")))
+      val taken = claim(c, "p/a", "own-2", when = lapse)
+      assert(taken == Claimed.Made(made("p/a", "own-2", when = lapse)))
+    }
+
+    test("a claim made with a session is worked by it, and its lease is that session's") {
+      val c = claims(
+        plugin("claims-sessioned"),
+        Map.empty,
+        Map(session("worked-a") -> (holder("sessioned-1"), hour))
+      )
+      val made1 = claim(c, "p/a", "sessioned-1", working = Some(session("worked-a")))
+      assert(
+        made1 == Claimed.Made(
+          made("p/a", "sessioned-1", active = Some(hour), working = Some(session("worked-a")))
+        )
+      )
+    }
+
+    test("a second session claiming its holder's claim is answered HeldBy, changing nothing") {
+      val c = claims(plugin("claims-held-by"))
+      claim(c, "p/a", "held-1", working = Some(session("held-a")))
+      val second = claim(c, "p/a", "held-1", working = Some(session("held-b")))
+      val first = made("p/a", "held-1", working = Some(session("held-a")))
+      assert(second == Claimed.HeldBy(first), live(c, at) == Vector(first))
+    }
+
+    test("a claim no session works takes the session that claims it again") {
+      val c = claims(plugin("claims-taken-by"))
+      claim(c, "p/a", "take-1")
+      val again = claim(c, "p/a", "take-1", working = Some(session("take-a")))
+      val now = made("p/a", "take-1", working = Some(session("take-a")))
+      assert(again == Claimed.Made(now), live(c, at) == Vector(now))
+    }
+
+    test("a re-claim naming no session keeps the session its claim has") {
+      val c = claims(plugin("claims-keeps-session"))
+      claim(c, "p/a", "keep-1", working = Some(session("keep-a")))
+      val again = claim(c, "p/a", "keep-1")
+      assert(
+        again == Claimed.Made(made("p/a", "keep-1", working = Some(session("keep-a"))))
+      )
+    }
+
+    test("a session working as another holder is answered Elsewhere, claiming nothing") {
+      val c = claims(
+        plugin("claims-elsewhere"),
+        Map.empty,
+        Map(session("away-a") -> (holder("away-2"), at))
+      )
+      val refused = claim(c, "p/a", "away-1", working = Some(session("away-a")))
+      assert(
+        refused == Claimed.Elsewhere(session("away-a"), holder("away-2")),
+        live(c, at) == Vector.empty
       )
     }
   }

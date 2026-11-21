@@ -6,7 +6,6 @@ import grit.core.id.{
   ConversationId,
   DocumentVersionId,
   FileHandle,
-  Harness,
   PeriodRef,
   PeriodSeq,
   PieceSetId,
@@ -166,18 +165,8 @@ object Target {
             .toRight(s"${kind.name} $key: not a period")
         case _ => Left(s"${kind.name} $key: not a period")
       }
-    // A harness's name is a slug, holding no `:`: the first one ends it.
     def sessionOf(make: SessionId => Target) =
-      key.indexOf(':') match {
-        case -1 => Left(s"${kind.name} $key: not a session's")
-        case i =>
-          Harness
-            .of(key.take(i))
-            .flatMap(SessionId.of(_, key.drop(i + 1)))
-            .map(make)
-            .left
-            .map(why => s"${kind.name} $key: $why")
-      }
+      SessionId.read(key).map(make).left.map(why => s"${kind.name} $key: $why")
     def pluginOf(make: PluginName => Target) =
       PluginName.of(key).map(make).left.map(why => s"${kind.name} $key: $why")
     kind match {

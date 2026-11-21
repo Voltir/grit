@@ -29,7 +29,7 @@ private[plugin] object ProjectCovers {
       by: Principal.Person,
       at: Instant
   )(using Tx^)(using Locked): Either[Stop, Claimed] =
-    stored(claims.claim(document.key, args.holder, args.role, by, document.label, at))
+    stored(claims.claim(document.key, args.holder, args.role, None, by, document.label, at))
 
   /** What claim `c` holds, named as [[ArtifactHead.called]] names it when it is an artifact of
     * `project`, matched by its document's key; else its subject as stored.

@@ -1104,10 +1104,13 @@ CREATE INDEX IF NOT EXISTS idx_document_refs_ref ON grit.document_refs (kind, md
 -- `role`, made by `principal_id` at `made_at`. At each label (`classification_id`, its maker's
 -- label joined with their transaction's floor) a plugin holds one claim per subject and one per
 -- holder among those not lapsed; `room_id` is the room it was made in
--- (grit.core.visibility.Item.Kept), NULL for none. Its lease is computed when read, never
--- written: the latest of `made_at` and its holder's sessions' `last_event_at`
--- (grit.sessions.holder), plus grit.core.claim.Claims.Lease. Never versioned: a release deletes
--- its row.
+-- (grit.core.visibility.Item.Kept), NULL for none. `session_harness` and `session_local` name
+-- the session working it (grit.sessions' harness and local), NULL until a session of its holder
+-- starts and takes it, and again once that session's end frees it; never a foreign key, since
+-- either may be deleted first. Its lease is computed when read, never written: the latest of
+-- `made_at` and its session's `last_event_at`, or while it has none, its holder's sessions'
+-- (grit.sessions.holder), plus grit.core.claim.Claims.Lease. A claim whose session's row is
+-- gone reads `made_at` alone, lapses and is swept. Never versioned: a release deletes its row.
 -- Retention: expiring: deleted by its release, by a claim taking it over once lapsed, by the
 -- sweep once lapsed longer than grit.core.session.Session.Unended, and with a plugin no longer
 -- enabled (Target.Disabled). Steady state: one row of about 250 bytes per live claim, tens of
@@ -1121,8 +1124,12 @@ CREATE TABLE IF NOT EXISTS grit.claims (
     made_at           TIMESTAMPTZ NOT NULL,
     classification_id SMALLINT NOT NULL REFERENCES grit.classifications(id),
     room_id           UUID REFERENCES grit.places(id),
+    -- Last, where the ALTER that added them puts them.
+    session_harness   TEXT CHECK (session_harness ~ '^[a-z][a-z0-9-]{0,63}$'),
+    session_local     TEXT CHECK (length(session_local) BETWEEN 1 AND 200),
     PRIMARY KEY (plugin, subject, classification_id),
-    CONSTRAINT claims_holder UNIQUE (plugin, holder, classification_id)
+    CONSTRAINT claims_holder UNIQUE (plugin, holder, classification_id),
+    CONSTRAINT claims_session CHECK ((session_harness IS NULL) = (session_local IS NULL))
 );
 
 -- Each working session's record (grit.core.session.Sessions): a grit turn's or a harness's,

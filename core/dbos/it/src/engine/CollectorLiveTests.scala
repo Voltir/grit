@@ -1386,7 +1386,7 @@ object CollectorLiveTests extends TestSuite {
           holder <- ClaimHolder.of("session").left.map(StoreError.Invalid(_))
           role <- ClaimRole.of("builder").left.map(StoreError.Invalid(_))
           local = new Principal.Person(PrincipalIds.stored("local"), Set.empty)
-          made <- claims.claim(subject, holder, role, local, Label.Public, now)
+          made <- claims.claim(subject, holder, role, None, local, Label.Public, now)
         } yield made match {
           case Claimed.Made(_) => true
           case _ => false

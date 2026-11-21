@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.claim.{Claim, ClaimRole, Claimed, Claims}
 import grit.core.document.{DocRef, DocText, Document, DocumentKeeper}
-import grit.core.id.{ClaimHolder, DocKey}
+import grit.core.id.{ClaimHolder, DocKey, SessionId}
 import grit.core.identity.Principal
 import grit.core.place.Place
 import grit.core.plugin.CommandOutcome
@@ -90,11 +90,12 @@ object KeptBriefTests extends TestSuite {
           subject: DocKey,
           holder: ClaimHolder,
           role: ClaimRole,
+          session: Option[SessionId],
           by: Principal.Person,
           label: Label,
           at: Instant
       )(using Tx^): Either[StoreError, Claimed] =
-        store.claims.claim(subject, holder, role, by, label, at)
+        store.claims.claim(subject, holder, role, session, by, label, at)
       def release(subject: DocKey, label: Label)(using Tx^): Either[StoreError, Option[Claim]] =
         store.claims.release(subject, label)
       def live(at: Instant)(using Tx^): Either[StoreError, Vector[Claim]] = Right(read)
@@ -493,11 +494,12 @@ object KeptBriefTests extends TestSuite {
             subject: DocKey,
             holder: ClaimHolder,
             role: ClaimRole,
+            session: Option[SessionId],
             by: Principal.Person,
             label: Label,
             at: Instant
         )(using Tx^): Either[StoreError, Claimed] =
-          store.claims.claim(subject, holder, role, by, label, at)
+          store.claims.claim(subject, holder, role, session, by, label, at)
         def release(subject: DocKey, label: Label)(using Tx^): Either[StoreError, Option[Claim]] =
           store.claims.release(subject, label)
         def live(at: Instant)(using Tx^): Either[StoreError, Vector[Claim]] = store.claims.live(at)

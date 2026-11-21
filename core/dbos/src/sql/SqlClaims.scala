@@ -4,7 +4,7 @@ import java.sql.ResultSet
 import java.time.Instant
 
 import grit.core.claim.{Claim, ClaimRole, Claimed, Claims}
-import grit.core.id.{ClaimHolder, DocKey, PluginName}
+import grit.core.id.{ClaimHolder, DocKey, Harness, PluginName, SessionId}
 import grit.core.identity.Principal
 import grit.core.session.Session
 import grit.core.store.{StoreError, Tx}
@@ -21,11 +21,15 @@ private[dbos] final class SqlClaims(plugin: PluginName) extends Claims {
       subject: DocKey,
       holder: ClaimHolder,
       role: ClaimRole,
+      session: Option[SessionId],
       by: Principal.Person,
       label: Label,
       at: Instant
   )(using tx: Tx^): Either[StoreError, Claimed] =
-    claiming(subject, holder, role, by, label, at, again = true)
+    SqlClaims.elsewhere(session, holder).flatMap {
+      case Some((s, other)) => Right(Claimed.Elsewhere(s, other))
+      case None => claiming(subject, holder, role, session, by, label, at, again = true)
+    }
 
   /** [[claim]]; when the holder's own claim it found is released before its renewal, it claims
     * once more when `again`, else fails.
@@ -34,6 +38,7 @@ private[dbos] final class SqlClaims(plugin: PluginName) extends Claims {
       subject: DocKey,
       holder: ClaimHolder,
       role: ClaimRole,
+      session: Option[SessionId],
       by: Principal.Person,
       label: Label,
       at: Instant,
@@ -50,8 +55,9 @@ private[dbos] final class SqlClaims(plugin: PluginName) extends Claims {
           s"""WITH ${SqlClearance.With},
              |made AS (
              |  INSERT INTO grit.claims
-             |         (plugin, subject, holder, role, principal_id, made_at, classification_id, room_id)
-             |  VALUES (?, ?, ?, ?, ?, ?, ?, ${SqlDocuments.RoomId})
+             |         (plugin, subject, holder, role, principal_id, made_at, classification_id, room_id,
+             |          session_harness, session_local)
+             |  VALUES (?, ?, ?, ?, ?, ?, ?, ${SqlDocuments.RoomId}, ?, ?)
              |  ON CONFLICT DO NOTHING RETURNING *)
              |SELECT $Active AS active FROM made c""".stripMargin
         ) { ps =>
@@ -63,13 +69,16 @@ private[dbos] final class SqlClaims(plugin: PluginName) extends Claims {
           ps.setObject(P + 6, SqlDocuments.utc(at))
           ps.setInt(P + 7, id)
           ps.setString(P + 8, SqlDocuments.room(clearance))
+          SqlClaims.bindSession(ps, P + 9, session)
         }(SqlDocuments.instant(_, "active"))
       claimed <- inserted.headOption match {
-        case Some(active) => Right(Claimed.Made(Claim(subject, holder, role, by, at, kept, active)))
+        case Some(active) =>
+          Right(Claimed.Made(Claim(subject, holder, role, by, at, kept, session, active)))
         case None =>
-          conflict(subject, holder, role, id).flatMap {
+          conflict(subject, holder, role, session, id).flatMap {
             case Some(met) => Right(met)
-            case None if again => claiming(subject, holder, role, by, label, at, again = false)
+            case None if again =>
+              claiming(subject, holder, role, session, by, label, at, again = false)
             case None =>
               Left(
                 StoreError.Invalid(
@@ -105,14 +114,19 @@ private[dbos] final class SqlClaims(plugin: PluginName) extends Claims {
       }(_ => ())
       .map(_ => ())
 
-  /** What a claim of `subject` for `holder` as `role` at the label whose id is `label` met: the
-    * holder's own claim on the subject renewed when the transaction reads it, else a claim on
-    * the subject before one by the holder, each named only when the transaction reads it;
-    * `None` when the holder's own claim it read was released before it was renewed.
+  /** What a claim of `subject` for `holder` as `role`, worked by `session`, at the label whose id
+    * is `label` met: the holder's own claim on the subject renewed when the transaction reads it
+    * (or [[Claimed.HeldBy]] when another session than `session` works it), else a claim on the
+    * subject before one by the holder, each named only when the transaction reads it; `None` when
+    * the holder's own claim it read was released, or taken by a session, before it was renewed.
     */
-  private def conflict(subject: DocKey, holder: ClaimHolder, role: ClaimRole, label: Int)(using
-      Tx^
-  ): Either[StoreError, Option[Claimed]] =
+  private def conflict(
+      subject: DocKey,
+      holder: ClaimHolder,
+      role: ClaimRole,
+      session: Option[SessionId],
+      label: Int
+  )(using Tx^): Either[StoreError, Option[Claimed]] =
     SqlStatements
       .cleared(
         s"""WITH ${SqlClearance.With}
@@ -134,30 +148,43 @@ private[dbos] final class SqlClaims(plugin: PluginName) extends Claims {
         )
       )
       .flatMap {
+        case (c, true, true)
+            if c.holder == holder && session.exists(s => c.session.exists(_ != s)) =>
+          Right(Some(Claimed.HeldBy(c)))
         case (c, true, true) if c.holder == holder =>
-          renew(c, role, label).map(_.map(Claimed.Made(_)))
+          renew(c, role, c.session.orElse(session), label).map(_.map(Claimed.Made(_)))
         case (c, taken, shown) =>
           val named = Option.when(shown)(c)
           Right(Some(if (taken) Claimed.Taken(named) else Claimed.Holding(named)))
       }
 
-  /** `claim`, kept at the label whose id is `label`, made `role`: `None` when it is gone. */
-  private def renew(claim: Claim, role: ClaimRole, label: Int)(using
+  /** `claim`, kept at the label whose id is `label`, made `role` and worked by `session`: `None`
+    * when it is gone, or another session works it than the one it was read with.
+    */
+  private def renew(claim: Claim, role: ClaimRole, session: Option[SessionId], label: Int)(using
       Tx^
   ): Either[StoreError, Option[Claim]] =
     SqlStatements
-      .update(
-        "UPDATE grit.claims SET role = ? WHERE plugin = ? AND subject = ? AND holder = ? " +
-          "AND made_at = ? AND classification_id = ?"
+      .cleared(
+        s"""WITH ${SqlClearance.With},
+           |renewed AS (
+           |  UPDATE grit.claims SET role = ?, session_harness = ?, session_local = ?
+           |   WHERE plugin = ? AND subject = ? AND holder = ? AND made_at = ? AND classification_id = ?
+           |     AND session_harness IS NOT DISTINCT FROM ? AND session_local IS NOT DISTINCT FROM ?
+           |  RETURNING *)
+           |SELECT $Active AS active FROM renewed c""".stripMargin
       ) { ps =>
-        ps.setString(1, ClaimRole.value(role))
-        ps.setString(2, PluginName.value(plugin))
-        ps.setString(3, DocKey.value(claim.subject))
-        ps.setString(4, ClaimHolder.value(claim.holder))
-        ps.setObject(5, SqlDocuments.utc(claim.made))
-        ps.setInt(6, label)
-      }
-      .map(n => Option.when(n > 0)(claim.copy(role = role)))
+        val P = SqlClearance.Params
+        ps.setString(P + 1, ClaimRole.value(role))
+        SqlClaims.bindSession(ps, P + 2, session)
+        ps.setString(P + 4, PluginName.value(plugin))
+        ps.setString(P + 5, DocKey.value(claim.subject))
+        ps.setString(P + 6, ClaimHolder.value(claim.holder))
+        ps.setObject(P + 7, SqlDocuments.utc(claim.made))
+        ps.setInt(P + 8, label)
+        SqlClaims.bindSession(ps, P + 9, claim.session)
+      }(SqlDocuments.instant(_, "active"))
+      .map(_.headOption.map(active => claim.copy(role = role, session = session, active = active)))
 
   def release(subject: DocKey, label: Label)(using tx: Tx^): Either[StoreError, Option[Claim]] =
     SqlStatements
@@ -261,12 +288,49 @@ private[dbos] object SqlClaims {
   /** The latest a claim's [[Claim.active]] may be and have lapsed at `at`. */
   private def leased(at: Instant): Instant = at.minusMillis(Claims.Lease.toMillis)
 
-  /** [[Claim.active]] of the claim row `c`: the latest of its making and the last events of the
-    * sessions working as its holder that [[SqlClearance.With]]'s clearance reads.
+  /** [[Claim.active]] of the claim row `c`: the latest of its making and the last event of its
+    * session, or while it has none, of the sessions working as its holder, that
+    * [[SqlClearance.With]]'s clearance reads.
     */
   private val Active: String =
-    s"""GREATEST(c.made_at, (SELECT max(s.last_event_at) FROM grit.sessions s
-       |                    WHERE s.holder = c.holder AND ${SqlClearance.kept("s")}))""".stripMargin
+    s"""GREATEST(c.made_at, CASE WHEN c.session_local IS NULL
+       |  THEN (SELECT max(s.last_event_at) FROM grit.sessions s
+       |         WHERE s.holder = c.holder AND ${SqlClearance.kept("s")})
+       |  ELSE (SELECT s.last_event_at FROM grit.sessions s
+       |         WHERE s.harness = c.session_harness AND s.local = c.session_local
+       |           AND ${SqlClearance.kept("s")}) END)""".stripMargin
+
+  /** `session` bound to the two parameters from `i`, its harness then its local id. */
+  private[sql] def bindSession(
+      ps: java.sql.PreparedStatement,
+      i: Int,
+      session: Option[SessionId]
+  ): Unit = {
+    ps.setString(i, session.map(s => Harness.value(s.harness)).orNull)
+    ps.setString(i + 1, session.map(_.local).orNull)
+  }
+
+  /** The session given and the holder it works as, when this transaction reads it working as
+    * another than `holder`; `None` when it works as `holder`, as none, or is not read.
+    */
+  private def elsewhere(session: Option[SessionId], holder: ClaimHolder)(using
+      Tx^
+  ): Either[StoreError, Option[(SessionId, ClaimHolder)]] =
+    session match {
+      case None => Right(None)
+      case Some(s) =>
+        SqlStatements
+          .cleared(
+            s"""WITH ${SqlClearance.With}
+               |SELECT s.holder FROM grit.sessions s
+               | WHERE s.harness = ? AND s.local = ? AND s.holder IS NOT NULL
+               |   AND ${SqlClearance.kept("s")}""".stripMargin
+          )(ps => bindSession(ps, SqlClearance.Params + 1, Some(s)))(rs =>
+            ClaimHolder.of(rs.getString("holder"))
+          )
+          .flatMap(SqlStatements.valid)
+          .map(_.headOption.filter(_ != holder).map((s, _)))
+    }
 
   private val LabelId: String = SqlDocuments.LabelId
 
@@ -280,7 +344,8 @@ private[dbos] object SqlClaims {
     */
   private val Columns: String =
     s"c.subject, c.holder, c.role, c.made_at, $Active AS active, c.label_level, c.label_compartments, " +
-      s"c.principal_id, p.kind, ${SqlIdentities.heldOf("c.principal_id")} AS held"
+      s"c.principal_id, p.kind, ${SqlIdentities.heldOf("c.principal_id")} AS held, " +
+      "c.session_harness, c.session_local"
 
   private def claimOf(rs: ResultSet): Either[String, Claim] =
     for {
@@ -288,6 +353,7 @@ private[dbos] object SqlClaims {
       holder <- ClaimHolder.of(rs.getString("holder"))
       role <- ClaimRole.of(rs.getString("role"))
       by <- SqlIdentities.person(rs, "a claim is made")
+      session <- sessionOf(rs)
     } yield Claim(
       subject,
       holder,
@@ -295,6 +361,15 @@ private[dbos] object SqlClaims {
       by,
       SqlDocuments.instant(rs, "made_at"),
       SqlLabels.read(rs),
+      session,
       SqlDocuments.instant(rs, "active")
     )
+
+  /** The session the row `rs` names in `session_harness` and `session_local`, none when NULL. */
+  private def sessionOf(rs: ResultSet): Either[String, Option[SessionId]] =
+    (Option(rs.getString("session_harness")), Option(rs.getString("session_local"))) match {
+      case (Some(h), Some(l)) => Harness.of(h).flatMap(SessionId.of(_, l)).map(Some(_))
+      case (None, None) => Right(None)
+      case _ => Left("a claim names half a session")
+    }
 }

@@ -2,7 +2,7 @@ package grit.core.claim
 
 import java.time.Instant
 
-import grit.core.id.{ClaimHolder, DocKey, PluginName}
+import grit.core.id.{ClaimHolder, DocKey, PluginName, SessionId}
 import grit.core.identity.Principal
 import grit.core.place.Place
 import grit.core.store.{StoreError, Tx}
@@ -18,15 +18,21 @@ final class InMemoryClaims {
   @caps.unsafe.untrackedCaptures
   private var rows = Vector.empty[Row]
 
-  /** `plugin`'s claims, each holder's sessions last working at `worked` of it, as the store's
-    * sessions this transaction reads would say.
+  /** `plugin`'s claims, each holder's sessions last working at `worked` of it, and each session
+    * working as the holder `sessions` gives it, last at its time, as the store's sessions this
+    * transaction reads would say.
     */
-  def of(plugin: PluginName, worked: ClaimHolder -> Option[Instant]): Claims = new Claims {
+  def of(
+      plugin: PluginName,
+      worked: ClaimHolder -> Option[Instant],
+      sessions: SessionId -> Option[(ClaimHolder, Instant)] = _ => None
+  ): Claims = new Claims {
 
-    /** `r`'s claim, active as `worked` says. */
+    /** `r`'s claim, active as its session's last event says, or while it has none, `worked`. */
     private def read(r: Row): Claim = {
       val c = r.claim
-      c.copy(active = worked(c.holder).filter(_.isAfter(c.made)).getOrElse(c.made))
+      val last = c.session.fold(worked(c.holder))(s => sessions(s).map(_._2))
+      c.copy(active = last.filter(_.isAfter(c.made)).getOrElse(c.made))
     }
 
     private def lapsed(r: Row, at: Instant): Boolean = !at.isBefore(read(r).lapses)
@@ -35,6 +41,7 @@ final class InMemoryClaims {
         subject: DocKey,
         holder: ClaimHolder,
         role: ClaimRole,
+        session: Option[SessionId],
         by: Principal.Person,
         label: Label,
         at: Instant
@@ -47,16 +54,33 @@ final class InMemoryClaims {
       )
       val atLabel = rows.filter(here)
       def shown(r: Row): Option[Claim] = Option.when(reads(r))(read(r))
-      (atLabel.find(_.claim.subject == subject), atLabel.find(_.claim.holder == holder)) match {
-        case (Some(mine), _) if mine.claim.holder == holder && reads(mine) =>
-          val renewed = mine.copy(claim = mine.claim.copy(role = role))
+      val elsewhere = session.flatMap(s => sessions(s).map(_._1).filter(_ != holder).map((s, _)))
+      (
+        elsewhere,
+        atLabel.find(_.claim.subject == subject),
+        atLabel.find(_.claim.holder == holder)
+      ) match {
+        case (Some((s, other)), _, _) => Right(Claimed.Elsewhere(s, other))
+        case (None, Some(mine), _)
+            if mine.claim.holder == holder && reads(mine) &&
+              session.exists(s => mine.claim.session.exists(_ != s)) =>
+          Right(Claimed.HeldBy(read(mine)))
+        case (None, Some(mine), _) if mine.claim.holder == holder && reads(mine) =>
+          val renewed =
+            mine.copy(claim =
+              mine.claim.copy(role = role, session = mine.claim.session.orElse(session))
+            )
           rows = rows.map(r => if (r == mine) renewed else r)
           Right(Claimed.Made(read(renewed)))
-        case (Some(first), _) => Right(Claimed.Taken(shown(first)))
-        case (None, Some(other)) => Right(Claimed.Holding(shown(other)))
-        case (None, None) =>
+        case (None, Some(first), _) => Right(Claimed.Taken(shown(first)))
+        case (None, None, Some(other)) => Right(Claimed.Holding(shown(other)))
+        case (None, None, None) =>
           val made =
-            Row(plugin, Claim(subject, holder, role, by, at, kept, at), clearance.own.map(_.room))
+            Row(
+              plugin,
+              Claim(subject, holder, role, by, at, kept, session, at),
+              clearance.own.map(_.room)
+            )
           rows = rows :+ made
           Right(Claimed.Made(read(made)))
       }

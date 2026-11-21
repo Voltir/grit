@@ -82,7 +82,7 @@ object TargetTests extends TestSuite {
           "session Claude:a: a harness's name holds 'C', not a lowercase letter, a digit or '-': Claude"
         )
       Target.read(Target.Kind.SessionEvents, "grit") ==> Left(
-        "session-events grit: not a session's"
+        "session-events grit: not a session's id, written <harness>:<id>"
       )
       Target.Kind.named("purge") ==> None
     }

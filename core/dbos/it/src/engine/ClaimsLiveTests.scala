@@ -70,7 +70,7 @@ object ClaimsLiveTests extends TestSuite {
   ): Claimed =
     ok(
       LiveDb.transaction(config, clearance)(
-        c.claim(ok(DocKey.of(subject)), ok(ClaimHolder.of(holder)), builder, by, label, when)
+        c.claim(ok(DocKey.of(subject)), ok(ClaimHolder.of(holder)), builder, None, by, label, when)
       )
     )
 
@@ -102,9 +102,9 @@ object ClaimsLiveTests extends TestSuite {
         for {
           holder <- ClaimHolder.of("session").left.map(StoreError.Invalid(_))
           role <- ClaimRole.of("builder").left.map(StoreError.Invalid(_))
-          first <- c.claim(key, holder, role, by, Label.Public, at)
+          first <- c.claim(key, holder, role, None, by, Label.Public, at)
           freed <- c.release(key, Label.Public)
-          again <- c.claim(key, holder, role, by, Label.Public, at)
+          again <- c.claim(key, holder, role, None, by, Label.Public, at)
         } yield (made(first), freed.nonEmpty, made(again))
       )
       val after = versioned()
@@ -184,6 +184,7 @@ object ClaimsLiveTests extends TestSuite {
                 ok(DocKey.of("p/race")),
                 ok(ClaimHolder.of("race-1")),
                 builder,
+                None,
                 by,
                 Label.Public,
                 at
@@ -202,6 +203,7 @@ object ClaimsLiveTests extends TestSuite {
                 ok(DocKey.of("p/race")),
                 ok(ClaimHolder.of("race-2")),
                 builder,
+                None,
                 by,
                 Label.Public,
                 at
@@ -240,6 +242,7 @@ object ClaimsLiveTests extends TestSuite {
                 ok(DocKey.of("p/one")),
                 ok(ClaimHolder.of("lock-1")),
                 builder,
+                None,
                 by,
                 Label.Public,
                 at
