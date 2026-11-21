@@ -75,7 +75,7 @@ object SessionClaimTests extends TestSuite {
   private val takeover = BriefClaim(right(DocKey.of("p/1")), Some(Takeover("project_claim", "p/1")))
 
   /** `forHolder`'s brief after [[later]]: its text and the claim its data names. */
-  private def briefed(projects: Projects, store: Store, forHolder: String) =
+  private def briefed(store: Store, forHolder: String) =
     briefOf(store, forHolder, later.plusSeconds(1)).flatMap(d =>
       BriefClaim.of(d).map(c => (DocText.value(d.text), c))
     )
@@ -147,7 +147,7 @@ object SessionClaimTests extends TestSuite {
         live(store).map(c => (ClaimHolder.value(c.holder), c.session, c.made)) ==
           Vector(("laptop/grit-2", Some(session("s-b")), later)),
         briefOf(store, holder, later.plusSeconds(1)).isEmpty,
-        briefed(projects, store, "laptop/grit-2") == Some((rendered(projects, store), takeover))
+        briefed(store, "laptop/grit-2") == Some((rendered(projects, store), takeover))
       )
     }
 
@@ -165,7 +165,7 @@ object SessionClaimTests extends TestSuite {
         ),
         live(store).map(c => (ClaimHolder.value(c.holder), c.session, c.made)) ==
           Vector((holder, Some(session("s-b")), later)),
-        briefed(projects, store, holder) == Some((rendered(projects, store), takeover))
+        briefed(store, holder) == Some((rendered(projects, store), takeover))
       )
     }
 
