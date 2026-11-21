@@ -1,6 +1,6 @@
 package grit.core.store
 
-import grit.core.id.EntryId
+import grit.core.id.{DocKey, EntryId, SessionId}
 
 /** A failure a store caller is expected to handle.
   *
@@ -24,6 +24,11 @@ enum StoreError {
     */
   case Full(bound: Int)
 
+  /** A `write` or `withdraw` of `subject`, which a claim another session than the caller's, `by`,
+    * works; nothing was written ([[grit.core.document.DocumentKeeper.workedBy]]).
+    */
+  case Worked(subject: DocKey, by: SessionId)
+
   /** What a person or a log is told of this error. A workflow step records it in its output,
     * so changing a wording changes that step's encoding (ADR 0004).
     */
@@ -33,6 +38,9 @@ enum StoreError {
     case Invalid(cause) => cause
     case Full(bound) =>
       s"its plugin already holds the $bound documents it may, so nothing was kept"
+    case Worked(subject, by) =>
+      s"${DocKey.value(subject)} is claimed, and session ${by.written} is working on it. " +
+        "Nothing was written."
   }
 
   /** This error's case alone, for a record that must not keep what [[described]] can quote of
@@ -43,5 +51,6 @@ enum StoreError {
     case DatabaseError(_) => "database error"
     case Invalid(_) => "invalid"
     case Full(_) => "full"
+    case Worked(_, _) => "worked"
   }
 }

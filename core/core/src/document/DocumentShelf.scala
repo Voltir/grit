@@ -2,7 +2,8 @@ package grit.core.document
 
 import java.time.{Instant, LocalDate}
 
-import grit.core.id.{DocKey, DocumentVersionId}
+import grit.core.claim.Claims
+import grit.core.id.{DocKey, DocumentVersionId, SessionId}
 import grit.core.place.Place
 import grit.core.screen.Benched
 import grit.core.store.{StoreError, Tx}
@@ -245,7 +246,70 @@ object DocumentKeeper {
   def believedAtMost(keeper: DocumentKeeper, most: Integrity): DocumentKeeper =
     new AtMost(keeper, most)
 
-  private final class AtMost(keeper: DocumentKeeper, most: Integrity) extends DocumentKeeper {
+  /** `keeper`, refusing a `write` or `withdraw` of a key with a live claim in `claims` that a
+    * session other than `session` works: [[StoreError.Worked]], naming the first such claim's
+    * session in [[Claims.on]]'s order. Every other call is `keeper`'s.
+    */
+  def workedBy(keeper: DocumentKeeper, claims: Claims, session: SessionId): DocumentKeeper =
+    new WorkedBy(keeper, claims, session)
+
+  private final class WorkedBy(keeper: DocumentKeeper, claims: Claims, session: SessionId)
+      extends Forwarding(keeper) {
+
+    override def write(
+        key: DocKey,
+        label: Label,
+        integrity: Integrity,
+        place: Place,
+        text: DocText,
+        data: ujson.Value,
+        pointer: Option[Pointer],
+        at: Instant,
+        refs: Set[DocRef]
+    )(using Tx^): Either[StoreError, Written] =
+      unworked(key, at).flatMap(_ =>
+        keeper.write(key, label, integrity, place, text, data, pointer, at, refs)
+      )
+
+    override def withdraw(key: DocKey, label: Label, at: Instant)(using
+        Tx^
+    ): Either[StoreError, Option[DocumentVersionId]] =
+      unworked(key, at).flatMap(_ => keeper.withdraw(key, label, at))
+
+    private def unworked(key: DocKey, at: Instant)(using Tx^): Either[StoreError, Unit] =
+      claims.on(key, at).flatMap { live =>
+        live.flatMap(_.session).find(_ != session) match {
+          case Some(by) => Left(StoreError.Worked(key, by))
+          case None => Right(())
+        }
+      }
+  }
+
+  private final class AtMost(keeper: DocumentKeeper, most: Integrity) extends Forwarding(keeper) {
+
+    override def believing(integrity: Integrity): Integrity =
+      keeper.believing(integrity.meet(most))
+
+    override def write(
+        key: DocKey,
+        label: Label,
+        integrity: Integrity,
+        place: Place,
+        text: DocText,
+        data: ujson.Value,
+        pointer: Option[Pointer],
+        at: Instant,
+        refs: Set[DocRef]
+    )(using Tx^): Either[StoreError, Written] =
+      keeper.write(key, label, integrity.meet(most), place, text, data, pointer, at, refs)
+
+    override def keepDeclassified(row: Declassified.Row, at: Instant)(using
+        Tx^
+    ): Either[StoreError, Written] = keeper.keepDeclassified(row.believedAtMost(most), at)
+  }
+
+  /** Every call `keeper`'s: what a wrapper overrides only where it differs. */
+  private abstract class Forwarding(keeper: DocumentKeeper) extends DocumentKeeper {
 
     def current(key: DocKey, label: Label)(using Tx^): Either[StoreError, Option[Document]] =
       keeper.current(key, label)
@@ -260,7 +324,7 @@ object DocumentKeeper {
 
     def labels(key: DocKey)(using Tx^): Either[StoreError, Vector[Label]] = keeper.labels(key)
 
-    def believing(integrity: Integrity): Integrity = keeper.believing(integrity.meet(most))
+    def believing(integrity: Integrity): Integrity = keeper.believing(integrity)
 
     def newest(n: Int)(using Tx^): Either[StoreError, Vector[Document]] = keeper.newest(n)
 
@@ -282,7 +346,7 @@ object DocumentKeeper {
         at: Instant,
         refs: Set[DocRef]
     )(using Tx^): Either[StoreError, Written] =
-      keeper.write(key, label, integrity.meet(most), place, text, data, pointer, at, refs)
+      keeper.write(key, label, integrity, place, text, data, pointer, at, refs)
 
     def withdraw(key: DocKey, label: Label, at: Instant)(using
         Tx^
@@ -305,7 +369,7 @@ object DocumentKeeper {
 
     def keepDeclassified(row: Declassified.Row, at: Instant)(using
         Tx^
-    ): Either[StoreError, Written] = keeper.keepDeclassified(row.believedAtMost(most), at)
+    ): Either[StoreError, Written] = keeper.keepDeclassified(row, at)
 
     def checks(policy: DeclassificationPolicy)(using
         Tx^

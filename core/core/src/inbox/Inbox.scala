@@ -280,6 +280,7 @@ object InboxError {
     case StoreError.DatabaseError(cause) => Unavailable(cause)
     case StoreError.Invalid(why) => Invalid(why)
     case StoreError.Full(bound) => Invalid(s"a plugin's $bound documents are all it may hold")
+    case w: StoreError.Worked => Invalid(w.described)
     case StoreError.DuplicateId(id) =>
       Unavailable(s"entry ${EntryId.value(id)} appeared mid-transaction")
   }
