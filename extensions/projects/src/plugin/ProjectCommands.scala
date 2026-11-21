@@ -2641,8 +2641,8 @@ private[plugin] object ProjectCommands {
 
   /** Who [[moverOf]] moves as a person, in the words of every refusal that names the rule. */
   private[plugin] val PersonOnlyBy: String =
-    "a caller believed at Authority giving the command directly, never through a turn or by a " +
-      "session believed lower"
+    "a person running the command themselves, from a command line this deployment trusts to " +
+      "speak for them, never a turn or a session working for them"
 
   /** Who `person` is, as a claim or a writer names them: each of their accounts, sorted. */
   private[plugin] def accounts(person: Principal.Person): String = {
