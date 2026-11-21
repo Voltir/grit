@@ -271,7 +271,7 @@ object SessionClaimTests extends TestSuite {
       )
     }
 
-    test("session with takeover, or takeover with oldest, is refused before anything is read") {
+    test("arguments that contradict or do not parse are refused before anything is read") {
       val projects = plugin()
       (
         refusedArgs(
@@ -298,6 +298,14 @@ object SessionClaimTests extends TestSuite {
           "role" -> "builder",
           "holder" -> holder,
           "session" -> "s-a"
+        ),
+        refusedArgs(
+          projects,
+          "project_claim",
+          "key" -> "p/a",
+          "role" -> "builder",
+          "holder" -> holder,
+          "takeover" -> "s-b"
         )
       ) ==> (
         Some(
@@ -305,6 +313,7 @@ object SessionClaimTests extends TestSuite {
             "session, or `takeover` to move a claim to the session it names"
         ),
         Some("`takeover` moves the claim on one artifact: give `key`, not `oldest`"),
+        Some("not a session's id, written <harness>:<id>"),
         Some("not a session's id, written <harness>:<id>")
       )
     }
