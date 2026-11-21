@@ -32,6 +32,27 @@ object ClaimSessionMigrationTests extends TestSuite {
       java.sql.DriverManager.getConnection(config.jdbcUrl, config.user, config.password)
     )(conn => Using.resource(conn.createStatement())(_.execute(statements)))
 
+  /** Each constraint on `grit.claims` in `config`, by name, as Postgres defines it. */
+  private def constraints(config: DbConfig): Vector[(String, String)] =
+    Using.resource(
+      java.sql.DriverManager.getConnection(config.jdbcUrl, config.user, config.password)
+    ) { conn =>
+      Using.resource(
+        conn
+          .createStatement()
+          .executeQuery(
+            "SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint " +
+              "WHERE conrelid = 'grit.claims'::regclass ORDER BY conname"
+          )
+      )(rs =>
+        Iterator
+          .continually(rs)
+          .takeWhile(_.next())
+          .map(r => (r.getString(1), r.getString(2)))
+          .toVector
+      )
+    }
+
   private def ok[A](e: Either[Any, A]): A =
     e.fold(err => throw new java.lang.AssertionError(s"$err"), identity)
 
@@ -79,24 +100,25 @@ object ClaimSessionMigrationTests extends TestSuite {
       .fold(e => Left(e.getMessage), _.left.map(_.toString))
 
   val tests = Tests {
-    test(
-      "before the file a claim cannot be made; after it, one made before reads with no session and one is made with its session; run again, it changes nothing"
-    ) {
+    test("claim-session.sql brings an older grit.claims to this schema, keeping its claims") {
       val config = previous("claim_session")
+      val fresh = TestPostgres.freshDatabase("claim_session_fresh")
+      LiveEngine.open(fresh, "test").close()
       claimed(config, "p/a", "new-1", None) match {
         case Left(why) => assert(why.contains("session_"))
         case other => throw new java.lang.AssertionError(s"not refused: $other")
       }
       sql(config, migration)
-      sql(config, migration)
       val s = ok(SessionId.read("claude-code:migrated-a"))
       val made = claimed(config, "p/a", "new-1", Some(s))
-      val old = ok(LiveDb.transaction(config)(claims.live(Instant.EPOCH)))
-        .find(c => DocKey.value(c.subject) == "p/old")
-        .map(_.session)
+      // Run again once a claim names its session: the second run changes neither it nor the schema.
+      sql(config, migration)
+      val sessions = ok(LiveDb.transaction(config)(claims.live(Instant.EPOCH)))
+        .map(c => (DocKey.value(c.subject), c.session))
       assert(
         made.toOption.collect { case Claimed.Made(c) => c.session } == Some(Some(s)),
-        old == Some(None)
+        sessions == Vector(("p/a", Some(s)), ("p/old", None)),
+        constraints(config) == constraints(fresh)
       )
     }
   }
