@@ -339,6 +339,11 @@ opening() {
   # TYPE, not <type>: pasted into a shell, `<type>` would be a redirect.
   text="grit: this session's claim holder is $holder, and its session is $harness:$session.
 grit: an agent this session starts has its own claim holder. This prints it, with the agent's type in place of TYPE: $(sq "$self") holder TYPE --dir $(sq "$dir") --session $(sq "$session")"
+  case $swept in
+    0) ;;
+    1) text+=$'\ngrit: ended 1 session of this checkout that had stopped without saying so.' ;;
+    *) text+=$'\n'"grit: ended $swept sessions of this checkout that had stopped without saying so." ;;
+  esac
   if [ "$source" = compact ]; then
     if ! ask /brief "harness=$harness" "session=$session" "dir=$dir" start=resume part=digest; then
       say "the edge at $edge did not answer for the digest"

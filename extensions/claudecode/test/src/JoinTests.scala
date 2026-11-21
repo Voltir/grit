@@ -530,7 +530,8 @@ object JoinTests extends TestSuite {
         val dir = f.checkout("work")
         val tools = Files.createDirectories(f.root.resolve("tools"))
         // Every program the join and the hook run but jq, and rmdir, which only an undo runs.
-        Vector("bash", "git", "curl", "cat", "chmod", "cp", "grep", "mkdir", "mktemp", "mv", "rm")
+        Vector("bash", "git", "curl", "cat", "chmod", "cp", "grep", "mkdir", "mktemp", "mv")
+          .appendedAll(Vector("readlink", "rm"))
           .appendedAll(Vector("stat", "timeout", "tr"))
           .foreach(t => Files.createSymbolicLink(tools.resolve(t), Path.of(s"/usr/bin/$t")))
         val before = f.tree(dir)

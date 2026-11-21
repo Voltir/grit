@@ -27,7 +27,7 @@ it is absent. A finding the scripts mean is disabled beside it, with its reason.
 ## Requires
 
 bash 5, jq 1.6 or later, curl, git 2.36 or later, grep, and coreutils' `cat`, `chmod`, `cp`,
-`mkdir`, `mktemp`, `mv`, `rm`, `rmdir`, `stat`, `timeout` (the hook's watchdog) and `tr`, on the
+`mkdir`, `mktemp`, `mv`, `readlink`, `rm`, `rmdir`, `stat`, `timeout` (the hook's watchdog) and `tr`, on the
 machine the join runs on (`shared.sh`'s `missing` is their one list); `--retire` needs GNU coreutils' `realpath`, for its `-e` and `-m`, and is refused without
 it. The unit tests run them too, with no skip, and `ssh-keygen`, to sign a commit.
 
@@ -147,7 +147,8 @@ the old hook, and a join at the new path adds a second set, so run the undo befo
 **Undo** removes the checkout's handlers (rewriting the settings only when it held one) and its
 MCP entry, but only an entry the join would have written, an `http://` or `https://` host and
 port with the path `/mcp` and nothing after, as a checkout never joined may hold another (printed,
-and left as it is); the hook, the git hooks it marked and its two lines in info/exclude go too,
+and left as it is); the hook and its [session files](#sessions-that-stopped-without-saying-so),
+the git hooks it marked and its two lines in info/exclude go too,
 unless another worktree's settings still name the hook, when they are kept and the worktree
 named. Nothing retired is restored. A `hooks` the removal leaves empty goes, and settings left
 holding the join's mark alone are removed; any other file, a person's own `{}` among them, stays.
@@ -223,7 +224,7 @@ session's directory, `CLAUDE_PROJECT_DIR` (recorded: an agent in a worktree has 
 |---|---|---|---|---|
 | `brief` | SessionStart | `source` (docs, recorded) | `GET /brief`, `start=fresh` at `startup` and `clear`, `start=resume` at `resume`, `compact` and `fork` (a fork has a new id and goes on from its window) | the brief as context; nothing when it is empty |
 | `brief` | SubagentStart | `agent_id`, `agent_type` (recorded) | `GET /brief…&agent&type&start=fresh` | the brief as context; nothing for an agent of no type |
-| `opening` | SessionStart | `source` | `GET /holder`; then after `compact` `part=digest&start=resume`, the session's own digest, and at no other start, as the brief is a fresh start's handover | the holder lines, then the digest, as context |
+| `opening` | SessionStart | `source`; the session files | keeps the session's file; `GET /holder`; once it answers, `ended` for each session that stopped, a post apiece ([below](#sessions-that-stopped-without-saying-so)); then after `compact` `part=digest&start=resume`, the session's own digest, and at no other start, as the brief is a fresh start's handover | the holder lines, a line when it ended any, then the digest, as context |
 | `header` | Claude Code's MCP entry, as its `headersHelper` | the credential's file | nothing | `{"Authorization":"Bearer <credential>"}`; exit 1, printing nothing, for a checkout joined with none |
 | `holder [<type> --dir <dir> --session <id>]` | a Bash tool | `CLAUDE_PROJECT_DIR`, `CLAUDE_CODE_SESSION_ID` (recorded: a Bash tool has only the second) | `GET /holder`, with `session` and `type` for an agent's | the holder, one line; exit 1 when the edge did not give it |
 | `event` | PostToolUse, PostToolUseFailure | `tool_name`, `tool_input`; PostToolUse's `tool_response` (recorded; a failure carries `error` and none, so it posts `ok: false` and 0 bytes) | `POST /events`: Read, `read` `{path, worktree?, ok}`, `bytes` those of `tool_response.file.content`; Edit, Write, MultiEdit, NotebookEdit, `edited` `{path, worktree?, ok}`; Bash, `ran` `{program, ok}`; an MCP tool, `read` `{named?, tool, ok}`, `bytes` those of its text blocks (recorded), with nothing named for scout's `find` and `area`; any other tool, nothing | nothing |
@@ -231,7 +232,7 @@ session's directory, `CLAUDE_PROJECT_DIR` (recorded: an agent in a worktree has 
 | `event` | SubagentStart, SubagentStop | `agent_id`, `agent_type` | `started`, `ended`, on the agent | nothing |
 | `event` | Stop | `last_assistant_message` (docs, recorded) | `closing`, `text` its first 2,000 characters; nothing when it is empty | nothing |
 | `event` | PostCompact | `compact_summary`, `trigger` (docs, recorded) | `closing`, `text` the summary's first 2,000 characters, `{trigger}` | nothing |
-| `event` | SessionEnd | `reason` | `ended` `{reason}` | nothing |
+| `event` | SessionEnd | `reason` | `ended` `{reason}`, the session's file removed once the edge keeps it | nothing |
 | `commit` | git's post-commit | `CLAUDE_CODE_SESSION_ID` | `commit` `{sha, subject}` | nothing |
 | `rewrite amend\|rebase` | git's post-rewrite | its stdin, a line `<old> <new>` a commit (docs: githooks) | a line per commit it left, in order, in posts of at most 256 KiB, `{sha, subject, replaces}` | nothing |
 
@@ -309,6 +310,38 @@ environment names (`http_proxy`, `all_proxy`, …) never carries its requests of
 Every request is curl's with `-q`, so no `~/.curlrc` changes what it sends or how its answer is
 read.
 
+### Sessions that stopped without saying so
+
+A session that dies (a crash, a killed terminal, a machine restart) posts no `ended`, and its
+claims would wait for their lease. So each session's start keeps a file for it, and ends the
+sessions whose files say they died; the lease stays the backstop for every case this cannot
+decide.
+
+- **The file**, `sessions/<session>` beside the hook (shared by the repository's worktrees),
+  written by `opening` at every start: one JSON object of strings, `host` (this machine's name,
+  `/proc/sys/kernel/hostname`), `boot` (`/proc/sys/kernel/random/boot_id`), `ns` (the pid
+  namespace the hook runs in, `readlink /proc/self/ns/pid`), `pid` (the harness's process),
+  `start` (field 22 of that process's `/proc/<pid>/stat`, read after the last `)`, its start in
+  clock ticks since boot) and `dir`. The harness is the nearest process above the hook that is
+  no `sh`, `dash`, `bash` or `timeout`: Claude Code runs a hook as `/bin/sh -c '<hook> <role>'`,
+  and the hook reruns itself under its watchdog ([observed](#claude-codes-hook-contract)). A SessionEnd the edge keeps removes
+  the file; one it did not keep leaves it. A file that cannot be written is said on stderr, and
+  the session goes on.
+- **Dead**, read by the next start once the edge has answered for its holder: a file of this
+  machine's name whose `boot` is not this boot's, or, in this pid namespace, whose process is
+  gone or started at another tick. For each, an `ended` line, `{reason: "stopped", found:
+  "rebooted" | "gone" | "reused"}`, `n` and `at` as any line's, posted on its own, since a post
+  is one session's lines; its file is removed once the edge keeps it, and left for the next start
+  when not. A file of another machine's name (a home two machines share) or of another pid
+  namespace on this boot is left as it is. A file it cannot read is removed, saying so on stderr,
+  and decides nothing. The edge records an `ended` on any session of the caller's person, so
+  ending a session wrongly ends it until its next `started`.
+- **What the session is told**, one line after the holder lines when it ended any:
+  `grit: ended <n> session(s) of this checkout that had stopped without saying so.` (`1
+  session`, `2 sessions`).
+
+Tests read `/proc` from the directory `GRIT_HOOK_PROC` names, which nothing else sets.
+
 ## Smoke run
 
 `SmokeEdge`, in the test sources, serves the edge on a free port over scripted sessions on the
@@ -367,6 +400,9 @@ a trial and not kept.
 - Hooks of user, project and local settings all run; settings are reloaded when a file changes
   (docs: settings `#settings-precedence`, `#when-edits-take-effect`). `claude -p` in a folder never
   trusted ran `.claude/settings.local.json`'s hooks (recorded).
+- A command hook runs as `/bin/sh -c '<command>'`, a child of the `claude` process, which waits
+  on it: SessionStart's and an async PostToolUse's alike (observed, Claude Code 2.1.303 in
+  `claude -p`, its `/bin/sh` dash).
 - A hook has `CLAUDE_PROJECT_DIR` (docs; recorded). A Bash tool, and a git hook it runs, have
   `CLAUDE_CODE_SESSION_ID`, the session's id, and no `CLAUDE_PROJECT_DIR` and no agent id
   (recorded: `bash-tool-env.txt`). **`CLAUDE_CODE_CHILD_SESSION=1` is set in a session's own

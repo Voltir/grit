@@ -11,7 +11,7 @@ loopback='^http://(localhost|127\.[0-9]+\.[0-9]+\.[0-9]+|\[::1\])(:[0-9]+)?$'
 # runs `rmdir`. Prints those PATH lacks, comma-separated; nothing when it has them all.
 missing() {
   local p lacks=''
-  for p in git jq curl cat chmod cp grep mkdir mktemp mv rm rmdir stat timeout tr; do
+  for p in git jq curl cat chmod cp grep mkdir mktemp mv readlink rm rmdir stat timeout tr; do
     command -v "$p" > /dev/null 2>&1 || lacks+=${lacks:+, }$p
   done
   printf '%s' "$lacks"

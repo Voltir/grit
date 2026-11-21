@@ -263,6 +263,30 @@ object SessionFileTests extends TestSuite {
         ) ==> (Some("here"), Some("there"), Some(First), None, true)
       }
     }
+    test("a start's opening says how many sessions it ended, and nothing of none") {
+      HookFixtures { f =>
+        val proc = faked(f)
+        def said() = {
+          val run = f.run("opening", f.payload("session-start-startup.json"), withProc(f, proc))
+          HookFixtures
+            .printed(run)("hookSpecificOutput")("additionalContext")
+            .str
+            .linesIterator
+            .filter(_.startsWith("grit: ended"))
+            .toVector
+        }
+        val none = said()
+        planted(f, "gone", pid = 4002)
+        val one = said()
+        planted(f, "gone", pid = 4002)
+        planted(f, "rebooted", boot = "an-earlier-boot", pid = 4003)
+        (none, one, said()) ==> (
+          Vector.empty,
+          Vector("grit: ended 1 session of this checkout that had stopped without saying so."),
+          Vector("grit: ended 2 sessions of this checkout that had stopped without saying so.")
+        )
+      }
+    }
     test("an undo removes the session files with the hook") {
       HookFixtures { f =>
         val _ = f.run("opening", f.payload("session-start-startup.json"))
