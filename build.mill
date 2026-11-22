@@ -542,8 +542,8 @@ object grit extends Module {
      * does the pinned shellcheck (bash scripts/fetch-shellcheck.sh), for ShellcheckTests, with
      * its content signature, read by no test, so that `testCached` reruns when the binary is
      * fetched, bumped or removed. scripts/coder-needs, which asks the hook, and scripts/scout,
-     * which it runs, ride there too, for CoderNeedsTests, as inputs; and scripts/check, for
-     * GateRecordTests. */
+     * which it runs, ride there too, for CoderNeedsTests, as inputs; and scripts/check and
+     * scripts/gate-stamp, for GateRecordTests and GateStampTests. */
     object test extends GritTests {
       def moduleDeps =
         super.moduleDeps ++ Seq[JavaModule](grit.core.test, grit.commands.test, grit.host)
@@ -551,9 +551,11 @@ object grit extends Module {
       def coderNeeds = Task.Source(mill.api.BuildCtx.workspaceRoot / "scripts" / "coder-needs")
       def scout = Task.Source(mill.api.BuildCtx.workspaceRoot / "scripts" / "scout")
       def check = Task.Source(mill.api.BuildCtx.workspaceRoot / "scripts" / "check")
+      def gateStamp = Task.Source(mill.api.BuildCtx.workspaceRoot / "scripts" / "gate-stamp")
       def forkEnv = Task {
         super.forkEnv() ++ Map(
           "GRIT_CHECK" -> check().path.toString,
+          "GRIT_GATE_STAMP" -> gateStamp().path.toString,
           "GRIT_CODER_NEEDS" -> coderNeeds().path.toString,
           "GRIT_SCOUT_SCRIPT" -> scout().path.toString,
           "GRIT_CLAUDECODE_SHELL" -> shell().path.toString,

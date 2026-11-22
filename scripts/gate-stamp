@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+# gate-stamp: posts the commit status grit/gate, success, on a commit the gate passed in this
+# worktree, so that main may move to it (the /land skill). The stamp means gated, never reviewed.
+#
+#   scripts/gate-stamp [<sha>]         # stamps <sha>, or HEAD
+#   scripts/gate-stamp --check <sha>   # whether <sha> carries the stamp
+#
+# It posts only when each of these holds, in this order; else it prints one line naming the first
+# that does not, posts nothing, and exits 1:
+#   - HEAD is <sha>, and git status --porcelain (untracked files included) prints nothing;
+#   - out/check/passed, scripts/check's record of a whole gate that passed, began and ended on
+#     <sha> with a clean tree at both ends;
+#   - its base is a proper ancestor of <sha>, and an ancestor of origin/main as last fetched;
+#   - it ran the integration suites the change reaches (its `it` is not `skipped`);
+#   - a branch of origin, as last fetched, holds <sha>: GitHub has no commit it was not pushed;
+#   - origin is a GitHub repository (git@github.com:O/R, ssh://git@github.com/O/R or
+#     https://github.com/O/R, with or without .git), which it posts to.
+# The description names what the gate ran (check, check --it or check --it-reached) and the base's
+# short SHA. When gh refuses, its last line is printed and it exits 1; the record is left, so a
+# rerun once gh is fixed needs no second gate.
+#
+# It posts as the account gh is logged in to (gh auth login), never as a token in the
+# environment: GITHUB_TOKEN and GH_TOKEN, which gh would prefer, are unset for each call.
+#
+# --check exits 0 when grit/gate's latest state on <sha> is success, and 1 otherwise or when gh
+# refuses. A usage error exits 2.
+set -uo pipefail
+
+usage() { sed -n '2,/^set -uo/p' "$0" | sed '$d; s/^# \{0,1\}//' >&2; exit 2; }
+say() { printf 'gate-stamp: %s\n' "$1"; }
+refuse() { say "$1"; exit 1; }
+
+top=$(git rev-parse --show-toplevel 2> /dev/null) || {
+  echo "gate-stamp: not inside a git checkout; run it in the one the gate ran in" >&2
+  exit 2
+}
+cd "$top" || exit 2
+
+checking=false
+case ${1:-} in
+  -h | --help) usage ;;
+  --check) [ $# -eq 2 ] || usage; checking=true; shift ;;
+  -*) usage ;;
+  *) [ $# -le 1 ] || usage ;;
+esac
+sha=$(git rev-parse --verify -q "${1:-HEAD}^{commit}") || {
+  echo "gate-stamp: ${1:-HEAD} names no commit" >&2
+  exit 2
+}
+short() { git rev-parse --short "$1"; }
+
+# Sets repo to the owner and name of origin's GitHub repository, as O/R, or refuses.
+repository() {
+  local url
+  url=$(git remote get-url origin 2> /dev/null) || refuse "origin is not set"
+  if [[ $url =~ ^(git@github\.com:|ssh://git@github\.com/|https://github\.com/)([^/]+)/([^/]+)$ ]]; then
+    repo=${BASH_REMATCH[2]}/${BASH_REMATCH[3]%.git}
+  else
+    refuse "origin ($url) is not a GitHub repository"
+  fi
+}
+
+gh_() { env -u GITHUB_TOKEN -u GH_TOKEN gh "$@"; }
+
+if $checking; then
+  repository
+  said=$(mktemp)
+  answer=$(gh_ api "repos/$repo/commits/$sha/status" 2> "$said") ||
+    refuse "gh refused the read: $(tail -n 1 "$said")"
+  rm -f "$said"
+  read -r state description < <(jq -r \
+    'first(.statuses[] | select(.context == "grit/gate") | "\(.state) \(.description // "")") // ""' \
+    <<< "$answer")
+  case ${state:-} in
+    success) say "$(short "$sha") carries grit/gate success ($description)"; exit 0 ;;
+    '') refuse "$(short "$sha") carries no grit/gate stamp" ;;
+    *) refuse "$(short "$sha") carries grit/gate $state, not success" ;;
+  esac
+fi
+
+head=$(git rev-parse HEAD)
+[ "$head" = "$sha" ] || refuse "HEAD is $(short "$head"), not $(short "$sha")"
+dirty=$(git status --porcelain | wc -l)
+[ "$dirty" -eq 0 ] ||
+  refuse "the tree is not clean (git status --porcelain prints $dirty line$([ "$dirty" -eq 1 ] || echo s))"
+
+record=out/check/passed
+[ -f "$record" ] ||
+  refuse "no gate record in $record: run scripts/check here, which writes one when a whole gate passes"
+field() { sed -n "s/^$1 //p" "$record" | head -n 1; }
+began=$(field sha) ended=$(field end)
+if [ "$began" != "$sha" ] || [ "$ended" != "$sha" ]; then
+  if [ "$began" = "$sha" ] || [ "$ended" = "$sha" ]; then
+    refuse "HEAD moved while the gate ran ($(short "$began") to $(short "$ended"))"
+  fi
+  refuse "the gate's record names $(short "$began"), not $(short "$sha")"
+fi
+[ "$(field clean-start)" = yes ] || refuse "the tree was not clean when the gate began"
+[ "$(field clean-end)" = yes ] || refuse "the tree was not clean when the gate ended"
+
+base=$(field base)
+[ -n "$base" ] || refuse "the gate ran with no base: set CHECK_BASE"
+if [ "$base" = "$sha" ] || ! git merge-base --is-ancestor "$base" "$sha" 2> /dev/null; then
+  refuse "the gate's base $(short "$base") is not a proper ancestor of $(short "$sha")"
+fi
+git merge-base --is-ancestor "$base" refs/remotes/origin/main 2> /dev/null ||
+  refuse "the gate's base $(short "$base") is not on origin/main"
+
+case $(field it) in
+  all) ran="check --it" ;;
+  reached) ran="check --it-reached" ;;
+  unreached) ran=check ;;
+  *) refuse "the change reaches integration suites and the gate skipped them: run scripts/check --it-reached" ;;
+esac
+
+[ -n "$(git branch -r --list 'origin/*' --contains "$sha")" ] ||
+  refuse "origin does not have it; push the branch first"
+repository
+
+description="$ran, base $(short "$base")"
+said=$(mktemp)
+if ! gh_ api -X POST "repos/$repo/statuses/$sha" -f state=success -f context=grit/gate \
+  -f "description=$description" > /dev/null 2> "$said"; then
+  why=$(tail -n 1 "$said")
+  rm -f "$said"
+  refuse "gh refused the post: $why"
+fi
+rm -f "$said"
+say "posted grit/gate success on $(short "$sha") ($description) to $repo"

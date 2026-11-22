@@ -2,7 +2,7 @@ package grit.claudecode
 
 import java.nio.file.{Files, Path}
 
-/** A checkout holding the real scripts/check, every program they run
+/** A checkout holding the real scripts/check and scripts/gate-stamp, every program they run
   * (Mill, the law, the tier scripts, scripts/it) a stub that notes its arguments in its own log
   * under the machine's `HOME`, and a fake `gh` in the machine's `bin`. Its `main` holds one
   * commit; `work`, checked out, one more. origin is a GitHub address never reached: its
@@ -43,6 +43,11 @@ final class GateFixtures(val machine: JoinFixtures) {
 
   locally {
     val _ = machine.write(dir.resolve("scripts/check"), Files.readString(env("GRIT_CHECK")), true)
+    val _ = machine.write(
+      dir.resolve("scripts/gate-stamp"),
+      Files.readString(env("GRIT_GATE_STAMP")),
+      true
+    )
     val graph = Graph.map(g => s"\"$g\"").mkString("[", ",", "]")
     val _ = stub(
       "mill",
@@ -105,6 +110,10 @@ final class GateFixtures(val machine: JoinFixtures) {
   /** scripts/check run with `args`, given `more` in its environment. */
   def check(args: Seq[String], more: Map[String, String] = Map.empty): Bash.Done =
     Bash.run(dir, machine.home, machine.bin, "scripts/check" +: args, env = more)
+
+  /** scripts/gate-stamp run with `args`, given `more` in its environment. */
+  def stamp(args: Seq[String], more: Map[String, String] = Map.empty): Bash.Done =
+    Bash.run(dir, machine.home, machine.bin, "scripts/gate-stamp" +: args, env = more)
 
   /** The gate's record, or `None` when there is none. */
   def record: Option[String] = machine.read(dir.resolve("out/check/passed"))
