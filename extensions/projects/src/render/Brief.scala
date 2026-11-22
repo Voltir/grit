@@ -61,27 +61,51 @@ object Brief {
       view: RoleView,
       chars: Int
   ): Either[BriefRefusal, Brief] =
+    whole(project, judged, view).flatMap { (ownText: String, carried: Vector[ArtifactKey]) =>
+      val held = carried.toSet
+      if (ownText.length > chars) Left(BriefRefusal.Over(ownText.length))
+      else
+        Right(
+          fit(
+            judged,
+            carried,
+            ownText,
+            reach(project, judged, view).filterNot(c => held(c._1.head.key)),
+            chars
+          )
+        )
+    }
+
+  /** The characters [[of]] judges against its budget: those of `judged`'s brief for `view`
+    * before `## Cited`, which [[BriefRefusal.Over]] carries.
+    */
+  def size(
+      project: Project,
+      judged: ArtifactKey,
+      view: RoleView
+  ): Either[BriefRefusal.Unknown, Int] =
+    whole(project, judged, view).map(_._1.length)
+
+  /** The text before `## Cited` of `judged`'s brief for `view`, and the keys it carries. */
+  private def whole(
+      project: Project,
+      judged: ArtifactKey,
+      view: RoleView
+  ): Either[BriefRefusal.Unknown, (String, Vector[ArtifactKey])] =
     project.artifacts.find(_.head.key == judged) match {
       case None => Left(BriefRefusal.Unknown(judged))
       case Some(own) =>
         val carried = project.artifacts
           .filter(a => a.head.key != judged && a.head.handle.exists(view.carried.contains))
           .sortBy(_.head.handle.fold("")(Handle.value))
-        val ownText = headerLine(project, own) + "\n\n" + Body.markdown(own.body) +
-          (if (carried.isEmpty) ""
-           else "\n\n## Carried\n\n" + carried.map(section).mkString("\n\n"))
-        val held = carried.map(_.head.key).toSet
-        if (ownText.length > chars) Left(BriefRefusal.Over(ownText.length))
-        else
-          Right(
-            fit(
-              judged,
-              carried.map(_.head.key),
-              ownText,
-              reach(project, judged, view).filterNot(c => held(c._1.head.key)),
-              chars
-            )
+        Right(
+          (
+            headerLine(project, own) + "\n\n" + Body.markdown(own.body) +
+              (if (carried.isEmpty) ""
+               else "\n\n## Carried\n\n" + carried.map(section).mkString("\n\n")),
+            carried.map(_.head.key)
           )
+        )
     }
 
   private def headerLine(project: Project, a: Artifact): String =

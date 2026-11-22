@@ -152,6 +152,17 @@ object ProjectMarkdownTests extends TestSuite {
       at("0") ==> Left("version 0 is no version: a whole number, 1 or more")
       at("x") ==> Left("version x is no version: a whole number, 1 or more")
     }
+    test(
+      "a shown file whose front matter says a brief is over its budget reads back as without it"
+    ) {
+      val one = DocumentVersionId.of(1).getOrElse(sys.error("no version"))
+      val a = artifact("a", "A", "Body.")
+      val shown = ProjectMarkdown.shown(a, one)
+      ProjectMarkdown.readShown(
+        shown.replace("version: 1\n", "version: 1\nbrief: builder 9,501 of 9,500\n")
+      ) ==> ProjectMarkdown.readShown(shown)
+      assert(ProjectMarkdown.readShown(shown) == Right((a, one)))
+    }
     test("a hard-wrapped paragraph is kept as one paragraph with no breaks") {
       val body = right(
         Body.read("A plan wrapped\nat its source's width,\nas files are.", MethodFixtures.ids)

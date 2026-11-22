@@ -10,8 +10,9 @@ import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.Integrity
 import grit.projects.artifact.{ArtifactHead, Project}
 import grit.projects.method.{Method, RoleView}
-import grit.projects.name.ArtifactKey
+import grit.projects.name.{ArtifactKey, RoleName, StateName}
 import grit.projects.render.{Brief, BriefRefusal}
+import grit.prose.words.Words
 import grit.std.either.Traversal
 
 import ProjectCommands.*
@@ -72,11 +73,9 @@ private[plugin] object ProjectBriefs {
       } yield {
         val (c, key, view) = (r.claim, r.key, r.view)
         val held = changed.filter(h => h.key == key || h.handle.exists(view.carried.contains))
-        val cut = size - DocRef.BriefChars
         f"the brief of ${key.value}, claimed as ${ClaimRole.value(c.role)} for " +
-          f"${ClaimHolder.value(c.holder)}, would be $size%,d characters, $cut%,d over the " +
-          f"${DocRef.BriefChars}%,d a brief holds (the artifact with what its role always " +
-          f"carries): cut at least $cut%,d character${if (cut == 1) "" else "s"} from " +
+          f"${ClaimHolder.value(c.holder)}, ${overBy(size)} (the artifact with what its role " +
+          f"always carries): ${cutting(size)} from " +
           (if (held.isEmpty) changed else held).map(_.key.value).mkString(", ")
       }
     } match {
@@ -84,6 +83,54 @@ private[plugin] object ProjectBriefs {
       case refusals => Left(Stop.Refused(refusals.mkString("; ")))
     }
   }
+
+  /** A brief of `size` characters against the budget: `would be <size> characters, <cut> over
+    * the 9,500 a brief holds`.
+    */
+  private def overBy(size: Int): String =
+    f"would be $size%,d characters, ${size - DocRef.BriefChars}%,d over the " +
+      f"${DocRef.BriefChars}%,d a brief holds"
+
+  /** What a brief of `size` characters is to lose: `cut at least <cut> characters`. */
+  private def cutting(size: Int): String = {
+    val cut = size - DocRef.BriefChars
+    f"cut at least $cut%,d character${if (cut == 1) "" else "s"}"
+  }
+
+  /** Each view of `method` claimed in `head`'s kind in some state ([[RoleView.claimedIn]]) whose
+    * brief of `head`'s artifact within `project` would pass [[DocRef.BriefChars]], in role order,
+    * with the characters it would be ([[Brief.size]]); none, its briefs never measured, when no
+    * view is claimed in the kind.
+    */
+  private[plugin] def overBudget(
+      method: Method,
+      project: Project,
+      head: ArtifactHead
+  ): Vector[(view: RoleView, size: Int)] =
+    method.views
+      .filter(_.claimedIn.contains(head.kind))
+      .sortBy(v => RoleName.value(v.role))
+      .flatMap(v =>
+        Brief
+          .size(project, head.key, v)
+          .toOption
+          .filter(_ > DocRef.BriefChars)
+          .map(s => (view = v, size = s))
+      )
+
+  /** What a keep or an edit answers of `head` after its version, for each brief of
+    * [[overBudget]]: `Its brief as <role> would be <size> characters, <cut> over the 9,500 a brief
+    * holds: cut at least <cut> characters before it moves to <states>.`, the states it is claimed
+    * in, in its kind's order; empty when there is none.
+    */
+  private[plugin] def overNote(method: Method, project: Project, head: ArtifactHead): String =
+    overBudget(method, project, head).map { o =>
+      val order = method.kinds.find(_.name == head.kind).fold(Vector.empty[StateName])(_.all)
+      val states = o.view.claimedIn.getOrElse(head.kind, Set.empty)
+      val named = order.filter(states.contains).map(StateName.value)
+      s" Its brief as ${RoleName.value(o.view.role)} ${overBy(o.size)}: ${cutting(o.size)} " +
+        s"before it moves to ${Words.alternatives(named)}."
+    }.mkString
 
   /** The key the brief of the artifact kept under `stored` is kept under: that key and `#brief`. */
   private[plugin] def briefKey(stored: DocKey): Either[String, DocKey] =

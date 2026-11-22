@@ -188,7 +188,9 @@ private[plugin] final class ProjectCommands(
         "leave out handle, parent or cites to keep them as they are; give cites as [] to clear " +
         "them, or handle or parent as \"\" to remove it; give version, as project_show shows " +
         "it, to keep it only if no one has kept it since. Answers with the artifact's key and " +
-        "the version it is kept at. Refused, keeping nothing: for a key, parent or cite the " +
+        "the version it is kept at, then, for each role claimed in its kind whose brief of it " +
+        "would pass the characters a brief holds, the characters to cut before it moves to a " +
+        "state that role is claimed in. Refused, keeping nothing: for a key, parent or cite the " +
         "project lacks, naming the nearest it has; for a version that is not the artifact's " +
         "current one; for a handle another artifact holds, or a change of one a role's brief " +
         f"carries by name; and when the brief of an artifact claimed in the project would pass ${DocRef.BriefChars}%,d " +
@@ -242,7 +244,7 @@ private[plugin] final class ProjectCommands(
     )(using Tx^): Either[StoreError, CommandOutcome] =
       answered(
         alone(own, claims, args.project, by, at, "keep")(Step.Keep(args))
-          .map(done => done.version.fold(done.said)(AnswerText.nowAt(done.said, _)))
+          .map(done => done.version.fold(done.said)(AnswerText.nowAt(done.said, _)) + done.over)
       )
   }
 
@@ -257,7 +259,8 @@ private[plugin] final class ProjectCommands(
         "state, parent and cites as they are. Give old and new to replace one exact text, " +
         "copied from project_show, which the body must hold exactly once; or section and body " +
         "to replace what follows one `##` heading, up to the next, keeping the heading. Give " +
-        "the version project_show shows. Answers with the version it is kept at. Refused, " +
+        "the version project_show shows. Answers with the version it is kept at, and what to " +
+        "cut of its briefs as project_keep does. Refused, " +
         "keeping nothing: for a version that is not the artifact's current one, naming the one " +
         "it is at; for old text held twice or not at all; for a section no heading names, or " +
         s"a heading several sections share; and as project_keep refuses. ${KeepMeaning.size}",
@@ -292,7 +295,7 @@ private[plugin] final class ProjectCommands(
         done <- alone(own, claims, key.project, by, at, "edit")(Step.Edit(args))
         // An edit that changes nothing writes nothing, and the version given is current.
         now = done.version.getOrElse(args.version)
-      } yield AnswerText.nowAt(done.said, now)
+      } yield AnswerText.nowAt(done.said, now) + done.over
     }
   }
 
@@ -694,12 +697,12 @@ private[plugin] final class ProjectCommands(
                 )
               )
             case Changed.Unsettled(_, why) => Left(Stop.Refused(s"Nothing was kept: $why"))
-            case Changed.Done(answers, _) if args.dry =>
+            case Changed.Done(answers, _, _, _) if args.dry =>
               Right(
                 s"Dry run, nothing kept. Each step would answer:\n" +
                   each(answers.map(a => Right(a.said)))
               )
-            case Changed.Done(answers, _) =>
+            case Changed.Done(answers, _, _, _) =>
               Right(s"Every step is done:\n${each(answers.map(a => Right(a.said)))}")
           }
       }
@@ -732,7 +735,11 @@ private[plugin] final class ProjectCommands(
         "version (what project_keep's and project_edit's version takes), then its text as " +
         "markdown. With head, only those lines, its opening paragraph and the names of its " +
         "sections: enough to tell what it is without reading it all. With section, those lines " +
-        "and that one section alone; refused when no section has that name, or several do.",
+        "and that one section alone; refused when no section has that name, or several do. " +
+        "Its current version's lines end with `brief:` when the brief of a role claimed in its " +
+        f"kind would pass the ${DocRef.BriefChars}%,d characters a brief holds, naming the " +
+        "role and the characters it would be: cut it before it moves to a state that role is " +
+        "claimed in.",
       Args
         .of(
           (
@@ -801,22 +808,46 @@ private[plugin] final class ProjectCommands(
               version <- refuse(readable(document))
             } yield (document, version)
         }
-      def shown(key: ArtifactRef)(kept: (Document, Artifact)): Either[Stop, String] =
+      // The current version's briefs are measured, and only when a view of its method is claimed
+      // in some kind: a project whose method does not read is shown without them.
+      def measured(project: Loaded): Option[(Method, Project)] =
+        for {
+          _ <- Option.when(args.at.isEmpty)(())
+          method <- declaring
+            .ifDeclared(own.documents, project.pin.method, project.pin.version)
+            .toOption
+            .flatten
+          if method.views.exists(_.claimedIn.nonEmpty)
+          whole <- Project.of(project.key, project.pin, project.artifacts).toOption
+        } yield (method, whole)
+      def shown(key: ArtifactRef, measure: Option[(Method, Project)])(
+          kept: (Document, Artifact)
+      ): Either[Stop, String] = {
+        val over = measure.fold(Vector.empty)((m, p) =>
+          overBudget(m, p, kept._2.head).map(o => (role = o.view.role, size = o.size))
+        )
         args.part match {
-          case ShowPart.Whole => Right(ProjectMarkdown.shown(kept._2, kept._1.version))
-          case ShowPart.Head => Right(ProjectMarkdown.head(kept._2, kept._1.version))
+          case ShowPart.Whole => Right(ProjectMarkdown.shown(kept._2, kept._1.version, over))
+          case ShowPart.Head => Right(ProjectMarkdown.head(kept._2, kept._1.version, over))
           case ShowPart.Section(title) =>
             ProjectMarkdown
-              .section(kept._2, kept._1.version, title)
+              .section(kept._2, kept._1.version, title, over)
               .left
               .map(why => Stop.Refused(s"${key.value}: $why"))
         }
+      }
       args.keys match {
         case ShowKeys.One(key) =>
-          loaded(own.documents, key.project).flatMap(version(_, key)).flatMap(shown(key))
+          loaded(own.documents, key.project).flatMap(p =>
+            version(p, key).flatMap(shown(key, measured(p)))
+          )
         case ShowKeys.Several(keys) =>
           // Each project read once, however many of its keys are asked for.
-          val projects = keys.map(_.project).distinct.map(p => p -> loaded(own.documents, p)).toMap
+          val projects = keys
+            .map(_.project)
+            .distinct
+            .map(p => p -> loaded(own.documents, p).map(l => (l, measured(l))))
+            .toMap
           keys
             .foldLeft[Either[Stop, Vector[String]]](Right(Vector.empty)) { (acc, key) =>
               acc.flatMap { done =>
@@ -825,8 +856,7 @@ private[plugin] final class ProjectCommands(
                     key.project,
                     Left(Stop.Refused(s"no project ${ProjectKey.value(key.project)}"))
                   )
-                  .flatMap(version(_, key))
-                  .flatMap(shown(key)) match {
+                  .flatMap((p, measure) => version(p, key).flatMap(shown(key, measure))) match {
                   case Right(text) => Right(done :+ text)
                   case Left(Stop.Refused(why)) => Right(done :+ s"$why\n")
                   case Left(failed) => Left(failed)
@@ -2107,8 +2137,9 @@ private[plugin] final class ProjectCommands(
   }
 
   /** `step` taken alone over project `key`, as `project_keep` or `project_move` takes it, saying
-    * `verb` of an artifact kept below this room: its answer and the version the artifact it names
-    * is now at, none when it wrote that one no new version; or why it was refused.
+    * `verb` of an artifact kept below this room: its answer, the version the artifact it names
+    * is now at, none when it wrote that one no new version, and what to cut of each of its briefs
+    * over their budget ([[overNote]]); or why it was refused.
     */
   private def alone(
       own: DocumentKeeper,
@@ -2119,7 +2150,7 @@ private[plugin] final class ProjectCommands(
       verb: String
   )(step: Step)(using
       Tx^
-  ): Either[Stop, (said: String, version: Option[DocumentVersionId])] =
+  ): Either[Stop, (said: String, version: Option[DocumentVersionId], over: String)] =
     changed(own, claims, key, by, at, verb, Vector(step), dry = false).flatMap {
       case Changed.Refused(answers) =>
         Left(
@@ -2128,9 +2159,17 @@ private[plugin] final class ProjectCommands(
           )
         )
       case Changed.Unsettled(_, why) => Left(Stop.Refused(why))
-      case Changed.Done(answers, versions) =>
+      case Changed.Done(answers, versions, after, method) =>
         answers.headOption
-          .map(a => (said = a.said, version = versions.get(a.artifact)))
+          .map(a =>
+            (
+              said = a.said,
+              version = versions.get(a.artifact),
+              over = after.artifacts
+                .find(_.head.key == a.artifact)
+                .fold("")(x => overNote(method, after, x.head))
+            )
+          )
           .toRight(Stop.Refused("nothing was asked"))
     }
 
@@ -2168,12 +2207,12 @@ private[plugin] final class ProjectCommands(
             settled(claims, project, method, key, stepping, at, verb) match {
               case Left(Stop.Refused(why)) => Right(Changed.Unsettled(all, why))
               case Left(failed) => Left(failed)
-              case Right(_) if dry => Right(Changed.Done(all, Map.empty))
-              case Right(_) =>
+              case Right(after) if dry => Right(Changed.Done(all, Map.empty, after, method))
+              case Right(after) =>
                 for {
                   versions <- wrote(own, project, stepping, author(by), at)
                   _ <- rebriefed(own, held, key, at)
-                } yield Changed.Done(all, versions)
+                } yield Changed.Done(all, versions, after, method)
             }
           }
       } yield done
@@ -2535,14 +2574,18 @@ private[plugin] object ProjectCommands {
       */
     case Unsettled(answers: Vector[(said: String, artifact: ArtifactKey)], why: String)
 
-    /** Every step was taken, and kept at `versions` (none when dry). */
+    /** Every step was taken, and kept at `versions` (none when dry), making `after` of the
+      * project under `method`.
+      */
     case Done(
         answers: Vector[(said: String, artifact: ArtifactKey)],
-        versions: Map[ArtifactKey, DocumentVersionId]
+        versions: Map[ArtifactKey, DocumentVersionId],
+        after: Project,
+        method: Method
     )
   }
 
-  /** Nothing, or why what `steps` made of `project` may not be kept: a brief over its budget
+  /** The project `steps` made of `project`, or why it may not be kept: a brief over its budget
     * ([[within]]), or an artifact changed, or the index when a step minted an id, kept below what
     * this room writes ([[atTheirLabels]], saying `verb`).
     */
@@ -2554,7 +2597,7 @@ private[plugin] object ProjectCommands {
       steps: Stepping,
       at: Instant,
       verb: String
-  )(using Tx^): Either[Stop, Unit] =
+  )(using Tx^): Either[Stop, Project] =
     for {
       after <- refuse(Project.of(key, project.pin, steps.artifacts))
       live <- stored(claims.live(at))
@@ -2576,7 +2619,7 @@ private[plugin] object ProjectCommands {
             .map((d, a) => d -> a.head.key.value),
         verb
       )
-    } yield ()
+    } yield after
 
   /** Keeps each artifact `steps` changed through `own`, once, as they left it ([[kept]]), carrying
     * the words [[Stepping.whose]] says it holds; and the project's index, when a step minted an

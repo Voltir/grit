@@ -2,6 +2,7 @@ package grit.projects.render
 
 import scala.util.Try
 
+import grit.core.document.DocRef
 import grit.core.id.DocumentVersionId
 import grit.projects.artifact.Pin
 import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project, Rank}
@@ -13,6 +14,7 @@ import grit.projects.name.{
   KindName,
   MethodName,
   ProjectKey,
+  RoleName,
   StateName
 }
 
@@ -48,42 +50,59 @@ object ProjectMarkdown {
     * absent one as `null`, references by id, cites as a flow list), then its body as markdown.
     */
   def text(artifact: Artifact): String =
-    filed(artifact.head, None, Body.markdown(artifact.body))
+    filed(artifact.head, None, Vector.empty, Body.markdown(artifact.body))
 
   /** `artifact` kept as `version`, as `project_show` gives it: [[text]] with a last front
     * matter line `version: <n>`, which [[readShown]] reads back and [[read]] never does: an export
-    * holds no version.
+    * holds no version. When `over` names any role, a line after it,
+    * `brief: <role> <size> of 9,500`, each such role in order, `; ` between them, says that role's
+    * brief of it would be `size` characters, past what a brief holds ([[Brief.size]]).
     */
-  def shown(artifact: Artifact, version: DocumentVersionId): String =
-    filed(artifact.head, Some(version), Body.markdown(artifact.body))
+  def shown(
+      artifact: Artifact,
+      version: DocumentVersionId,
+      over: Vector[(role: RoleName, size: Int)] = Vector.empty
+  ): String =
+    filed(artifact.head, Some(version), over, Body.markdown(artifact.body))
 
-  /** `text` as [[shown]] writes it, read back: the artifact, and the version it was kept as; or why
-    * not: front matter that is not [[shown]]'s (an exported file's, with no `version`, among them),
-    * a version that is no whole number of 1 or more, or what [[read]] refuses of one artifact's
-    * file.
+  /** `text` as [[shown]] writes it, read back: the artifact, and the version it was kept as, its
+    * `brief` line, when it has one, passed over; or why not: front matter that is not [[shown]]'s
+    * (an exported file's, with no `version`, among them), a version that is no whole number of 1
+    * or more, or what [[read]] refuses of one artifact's file.
     */
   def readShown(text: String): Either[String, (Artifact, DocumentVersionId)] =
     for {
-      (fields, body) <- frontMatter(text, HeadFields :+ "version")
+      (fields, body) <- frontMatter(text, HeadFields :+ "version", Vector(BriefField))
       version <- fields("version").toLongOption
         .flatMap(DocumentVersionId.of)
         .toRight(s"version ${fields("version")} is no version: a whole number, 1 or more")
       artifact <- headed(fields, body)
     } yield (artifact, version)
 
-  /** `head`'s front matter, `version` its last line if given, then `text`. */
-  private def filed(head: ArtifactHead, version: Option[DocumentVersionId], text: String): String =
-    fronted(head, version) + "\n" + text + "\n"
+  /** `head`'s front matter, `version` and the briefs `over` their budget last ([[shown]]), then
+    * `text`.
+    */
+  private def filed(
+      head: ArtifactHead,
+      version: Option[DocumentVersionId],
+      over: Vector[(role: RoleName, size: Int)],
+      text: String
+  ): String =
+    fronted(head, version, over) + "\n" + text + "\n"
 
   /** `artifact` kept as `version` without its whole body: [[shown]]'s front matter, then its body's
     * first paragraph whole ([[Body.lead]]), then `Sections: ` and its `##` headings' titles, `; `
     * between them (`none` when it has none), with the size of its body ([[AnswerText.size]]):
     * `Sections: Goal; Reads (2.4 KB in all)`.
     */
-  def head(artifact: Artifact, version: DocumentVersionId): String = {
+  def head(
+      artifact: Artifact,
+      version: DocumentVersionId,
+      over: Vector[(role: RoleName, size: Int)] = Vector.empty
+  ): String = {
     val sections = Body.sections(artifact.body)
     val lead = Body.lead(artifact.body, Int.MaxValue)
-    fronted(artifact.head, Some(version)) + "\n" + Vector(lead)
+    fronted(artifact.head, Some(version), over) + "\n" + Vector(lead)
       .filter(_.nonEmpty)
       .map(_ + "\n\n")
       .mkString +
@@ -97,12 +116,17 @@ object ProjectMarkdown {
   def section(
       artifact: Artifact,
       version: DocumentVersionId,
-      title: String
+      title: String,
+      over: Vector[(role: RoleName, size: Int)] = Vector.empty
   ): Either[String, String] =
-    Body.section(artifact.body, title).map(filed(artifact.head, Some(version), _))
+    Body.section(artifact.body, title).map(filed(artifact.head, Some(version), over, _))
 
-  /** `h` as front matter, `version` its last line when given. */
-  private def fronted(h: ArtifactHead, version: Option[DocumentVersionId]): String =
+  /** `h` as front matter, `version` and then the briefs `over` their budget last when given. */
+  private def fronted(
+      h: ArtifactHead,
+      version: Option[DocumentVersionId],
+      over: Vector[(role: RoleName, size: Int)] = Vector.empty
+  ): String =
     front(
       Vector(
         "id" -> h.key.value,
@@ -114,8 +138,18 @@ object ProjectMarkdown {
         "rank" -> Rank.value(h.rank),
         "cites" -> h.cites.map(_.value).mkString("[", ", ", "]"),
         "by" -> h.by.fold("null")(quoted)
-      ) ++ version.map(v => "version" -> DocumentVersionId.value(v).toString)
+      ) ++ version.map(v => "version" -> DocumentVersionId.value(v).toString) ++
+        Option
+          .when(over.nonEmpty)(
+            BriefField -> over
+              .map(o => f"${RoleName.value(o.role)} ${o.size}%,d of ${DocRef.BriefChars}%,d")
+              .mkString("; ")
+          )
+          .toVector
     )
+
+  /** The front matter field [[shown]] names the briefs over their budget in. */
+  private val BriefField: String = "brief"
 
   /** Files as [[render]] writes them, as a project, or every file that is not one, with why: a
     * missing or unreadable [[Index]], a file whose front matter is not [[render]]'s, a body
@@ -196,7 +230,11 @@ object ProjectMarkdown {
   /** `text`'s front matter, holding exactly `names`, each once, as each name's value (empty
     * for any other name), and what follows it.
     */
-  private def frontMatter(text: String, names: Vector[String]): Either[String, (Fields, String)] = {
+  private def frontMatter(
+      text: String,
+      names: Vector[String],
+      optional: Vector[String] = Vector.empty
+  ): Either[String, (Fields, String)] = {
     val end = text.indexOf("\n---\n", 3)
     if (!text.startsWith("---\n") || end < 0) Left("no front matter between --- lines")
     else {
@@ -211,8 +249,8 @@ object ProjectMarkdown {
         case Some(why) => Left(why)
         case None =>
           val pairs = fields.collect { case Right(p) => p }
-          val named = pairs.map(_._1)
-          if (named.sorted != names.sorted)
+          val named = pairs.map(_._1).filterNot(optional.contains)
+          if (named.sorted != names.sorted || pairs.size - named.size > optional.size)
             Left(s"front matter names ${named.mkString(", ")}, not ${names.mkString(", ")}")
           else {
             val values = pairs.toMap
