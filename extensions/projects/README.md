@@ -26,7 +26,8 @@ Packages, in one-way order (each names only those before it):
   `TransitionCheck` (compiled, pure, deterministic and versioned; the built-ins in
   `TransitionChecks`), `TransitionAction` (grit's, never a method's code) and `RoleView` (what a role is shown,
   what it always carries, whether its claim covers what sits under its artifact, and its
-  `Holders`: anyone, a session, or agents of named types);
+  `Holders`: anyone, a session, or agents of named types; and the states of each kind its work is
+  claimed in, where its brief may not pass its budget);
   `Method.move`, the one move a live `project_move` and a bench replay both make; and
   `MethodBench`, which replays a method's worked examples (`Example`), so a method that does
   not do what its author says is refused; and `MethodJson`, a method with its examples

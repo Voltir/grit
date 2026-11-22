@@ -79,6 +79,14 @@ object MethodJson {
             o("holders") =
               ujson.Obj(AgentHolders -> strings(types.toVector.map(AgentType.value).sorted))
         }
+        if (v.claimedIn.nonEmpty)
+          o(ClaimedIn) = ujson.Obj.from(
+            v.claimedIn.toVector
+              .map((k, states) =>
+                KindName.value(k) -> strings(states.toVector.map(StateName.value).sorted)
+              )
+              .sortBy(_._1)
+          )
         o
       }),
       "checks" -> ujson.Arr.from(method.checks.sortBy(c => CheckName.value(c.name)).map { c =>
@@ -155,6 +163,7 @@ object MethodJson {
   private val Anyone = "anyone"
   private val SessionHolders = "session"
   private val AgentHolders = "agents"
+  private val ClaimedIn = "claimed-in"
   private val PersonMover = "person"
   private val AgentMover = "agent"
 
@@ -281,8 +290,22 @@ object MethodJson {
               s"""{"$AgentHolders": [agent types]}"""
           )
       }
+      claimed <- f.added(ClaimedIn)
+      claimedIn <- claimed match {
+        case None => Right(Map.empty[KindName, Set[StateName]])
+        case Some(o: ujson.Obj) =>
+          val each = Fields(f.what, o)
+          traverse(o.value.keys.toVector.sorted) { k =>
+            for {
+              kind <- KindName.of(k).left.map(why => s"${f.what}'s $ClaimedIn: $why")
+              states <- names(each, k)(StateName.of)
+            } yield kind -> states.toSet
+          }.map(_.toMap)
+        case Some(_) =>
+          Left(s"${f.what}'s $ClaimedIn is not an object of kinds, each naming its states")
+      }
       view <- RoleView
-        .of(role, kinds.toSet, depth, carried.toSet, covers, holders)
+        .of(role, kinds.toSet, depth, carried.toSet, covers, holders, claimedIn)
         .left
         .map(w => s"${f.what}: $w")
     } yield view
@@ -348,5 +371,7 @@ object MethodJson {
     case MethodRefusal.NotCompiled(check) => s"check $check is not compiled"
     case MethodRefusal.Unreachable(kind, state) =>
       s"state $state of kind $kind is reached by no transition from its first"
+    case MethodRefusal.ClaimedInUndeclared(role, kind, state) =>
+      s"role $role is claimed in state $state of kind $kind, which declares no such state"
   }
 }

@@ -187,7 +187,8 @@ final case class Method private (
 
   /** The digest of its data and of each check's name and version: equal for equal methods,
     * whatever order their kinds, transitions, role views, states and checks are declared in. A
-    * view carrying nothing or covering nothing, a role anyone may hold, a transition anyone makes,
+    * view carrying nothing, covering nothing or claimed in nothing, a role anyone may hold, a
+    * transition anyone makes,
     * or a kind that may sit anywhere, adds nothing to the digest.
     */
   def digest: Sha256 = {
@@ -225,7 +226,13 @@ final case class Method private (
             case Holders.Anyone => ""
             case Holders.Session => field("session")
             case Holders.Agents(types) => field("agents") + names(types.map(AgentType.value))
-          })
+          }) + (if (v.claimedIn.isEmpty) ""
+                else
+                  field("claimed-in") + names(
+                    v.claimedIn.map((k, states) =>
+                      field(KindName.value(k)) + names(states.map(StateName.value))
+                    )
+                  ))
       } ++ checks.map(c => "check " + field(CheckName.value(c.name)) + field(c.version.toString))
     Sha256.text(
       (Vector(field(MethodName.value(name)), field(version.toString)) ++ lines.sorted)
@@ -247,7 +254,8 @@ object Method {
   /** These as a method, or every reason not ([[MethodRefusal]]): a version under 1; a kind, state,
     * role or check named twice; an end state, a transition (its action's kind among them), a role
     * view or a kind's nesting naming a kind or state not declared; a transition from an end state;
-    * a check not in `compiled`; a state its kind's first cannot reach.
+    * a check not in `compiled`; a state its kind's first cannot reach; a view claimed in a state
+    * its kind does not declare.
     */
   def of(
       name: MethodName,
@@ -292,6 +300,18 @@ object Method {
           .filterNot(declared.contains)
           .map(UndeclaredKind(_)) ++
         named.filterNot(compiled.map(_.name).contains).map(NotCompiled(_)) ++
+        views.flatMap { v =>
+          v.claimedIn.toVector.sortBy((k, _) => KindName.value(k)).flatMap { (k, states) =>
+            declared
+              .get(k)
+              .fold(Vector.empty)(kind =>
+                states.toVector
+                  .sortBy(StateName.value)
+                  .filterNot(kind.all.contains)
+                  .map(ClaimedInUndeclared(v.role, k, _))
+              )
+          }
+        } ++
         kinds.flatMap { k =>
           val reached = reachable(k, transitions)
           k.states.distinct.filterNot(reached).map(Unreachable(k.name, _))
@@ -418,4 +438,7 @@ enum MethodRefusal extends caps.Pure {
 
   /** No transition reaches this state from its kind's first. */
   case Unreachable(kind: KindName, state: StateName)
+
+  /** A role view is claimed in a state its kind does not declare. */
+  case ClaimedInUndeclared(role: RoleName, kind: KindName, state: StateName)
 }

@@ -85,6 +85,8 @@ enum TransitionAction extends caps.Pure {
 /** What `role` is shown working on an artifact: it, and what it cites to `depth` links, of
   * `kinds`; whole, whatever it cites, each artifact of the project whose handle is one of
   * `carried`; never what the project's conversations said. Claimed only for `holders`.
+  * `claimedIn` names, for some of its kinds, the states the role's work on an artifact of that
+  * kind is claimed in: there the role's brief of it may not pass its budget.
   */
 final case class RoleView private (
     role: RoleName,
@@ -92,7 +94,8 @@ final case class RoleView private (
     depth: Int,
     carried: Set[Handle],
     covers: Cover,
-    holders: Holders
+    holders: Holders,
+    claimedIn: Map[KindName, Set[StateName]]
 ) extends caps.Pure
 
 /** What a claim as a view's role covers: its artifact alone, or what sits under it too, at any
@@ -139,17 +142,32 @@ object RoleView {
   /** 3: the most links a role view follows. */
   val Deepest: Int = 3
 
-  /** This view, or why not: `depth` under 0 or over [[Deepest]], or `kinds` empty. */
+  /** This view, or why not: `depth` under 0 or over [[Deepest]], `kinds` empty, or `claimedIn`
+    * naming a kind not among `kinds`, or a kind with no state. Whether each state is its kind's
+    * is judged where the method is whole ([[Method.of]]).
+    */
   def of(
       role: RoleName,
       kinds: Set[KindName],
       depth: Int,
       carried: Set[Handle] = Set.empty,
       covers: Cover = Cover.Alone,
-      holders: Holders = Holders.Anyone
-  ): Either[String, RoleView] =
+      holders: Holders = Holders.Anyone,
+      claimedIn: Map[KindName, Set[StateName]] = Map.empty
+  ): Either[String, RoleView] = {
+    val named = claimedIn.toVector.sortBy((k, _) => KindName.value(k))
     if (depth < 0 || depth > Deepest)
       Left(s"a role view's depth is $depth, not 0 to $Deepest")
     else if (kinds.isEmpty) Left("a role view shows no kind")
-    else Right(new RoleView(role, kinds, depth, carried, covers, holders))
+    else
+      named.collectFirst {
+        case (k, _) if !kinds.contains(k) =>
+          s"a role view is claimed in kind ${KindName.value(k)}, which it does not show"
+        case (k, states) if states.isEmpty =>
+          s"a role view is claimed in no state of kind ${KindName.value(k)}"
+      } match {
+        case Some(why) => Left(why)
+        case None => Right(new RoleView(role, kinds, depth, carried, covers, holders, claimedIn))
+      }
+  }
 }

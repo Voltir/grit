@@ -303,6 +303,65 @@ object MethodJsonTests extends TestSuite {
         )
       ))
     }
+    test(
+      "a view's claimed-in is written only when it names a kind, and read back under an equal digest"
+    ) {
+      def method(claimedIn: Option[ujson.Value]) = {
+        val json = declared()
+        claimedIn.foreach(c => json("views")(0)("claimed-in") = c)
+        right(MethodJson.read(json, TransitionChecks.all).left.map(_.mkString("; "))).method
+      }
+      def round(m: Method) = {
+        val json = MethodJson.written(m, Vector.empty)
+        (
+          json("views")(0).obj.get("claimed-in"),
+          MethodJson.read(json, TransitionChecks.all).map(_.method.digest) == Right(m.digest)
+        )
+      }
+      val claimed = ujson.Obj("note" -> ujson.Arr("closed", "open"))
+      val (plain, empty, named) =
+        (
+          method(None),
+          method(Some(ujson.Obj())),
+          method(Some(ujson.Obj("note" -> ujson.Arr("open", "closed"))))
+        )
+      // Pinned: the stored form a method's file holds, its states in order.
+      (
+        round(plain),
+        round(empty),
+        round(named),
+        plain.digest == empty.digest,
+        plain.digest == named.digest
+      ) ==> (
+        (None, true),
+        (None, true),
+        (Some(claimed), true),
+        true,
+        false
+      )
+    }
+    test(
+      "a view's claimed-in is refused for a kind it does not show, no state, or a state its kind lacks, naming the view"
+    ) {
+      def read(claimedIn: ujson.Value) = {
+        val json = declared()
+        json("views")(0)("claimed-in") = claimedIn
+        MethodJson.read(json, TransitionChecks.all).map(_ => ())
+      }
+      (
+        read(ujson.Arr("note")),
+        read(ujson.Obj("plan" -> ujson.Arr("open"))),
+        read(ujson.Obj("note" -> ujson.Arr())),
+        read(ujson.Obj("note" -> ujson.Arr("shut")))
+      ) ==> ((
+        Left(Vector("view 1's claimed-in is not an object of kinds, each naming its states")),
+        Left(Vector("view 1: a role view is claimed in kind plan, which it does not show")),
+        Left(Vector("view 1: a role view is claimed in no state of kind note")),
+        Left(
+          Vector("role builder is claimed in state shut of kind note, which declares no such state")
+        )
+      ))
+    }
     test("a nesting neither anywhere, root nor under kinds is refused, naming the kind") {
       val json = declared()
       json("kinds")(0)("nesting") = "inside"
