@@ -22,7 +22,7 @@ object GateStampTests extends TestSuite {
   }
 
   /** The post the fake gh is given for `sha`, with `description`. */
-  private def post(g: GateFixtures, sha: String, description: String): String =
+  private def post(sha: String, description: String): String =
     s"|api -X POST repos/someone/somerepo/statuses/$sha -f state=success -f context=grit/gate " +
       s"-f description=$description"
 
@@ -45,7 +45,7 @@ object GateStampTests extends TestSuite {
           Vector(
             s"gate-stamp: posted grit/gate success on ${g.short(head)} ($description) to someone/somerepo"
           ),
-          Vector(post(g, head, description))
+          Vector(post(head, description))
         ))
       }
     }
@@ -60,8 +60,8 @@ object GateStampTests extends TestSuite {
         g.remote("work", reached)
         val _ = g.stamp(Seq(reached))
         g.calls("gh") ==> Vector(
-          post(g, all, s"check --it, base ${g.short("main")}"),
-          post(g, reached, s"check --it-reached, base ${g.short("main")}")
+          post(all, s"check --it, base ${g.short("main")}"),
+          post(reached, s"check --it-reached, base ${g.short("main")}")
         )
       }
     }
@@ -231,7 +231,7 @@ object GateStampTests extends TestSuite {
           ),
           0,
           0,
-          Vector(post(g, head, description), post(g, head, description))
+          Vector(post(head, description), post(head, description))
         ))
       }
     }
@@ -241,11 +241,11 @@ object GateStampTests extends TestSuite {
         val head = gated(g)
         val failed = g.stamp(Seq(), Map("FAKE_GH_FAILS" -> "HTTP 401: Bad credentials"))
         val again = g.stamp(Seq())
-        (failed.exit, failed.out, again.exit, g.record.isDefined) ==> ((
+        (failed.exit, failed.out, again.exit, g.calls("gh").lastOption) ==> ((
           1,
           Vector("gate-stamp: gh refused the post: HTTP 401: Bad credentials"),
           0,
-          true
+          Some(post(head, s"check, base ${g.short("main")}"))
         ))
       }
     }
