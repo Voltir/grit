@@ -138,9 +138,9 @@ object BriefRouteTests extends TestSuite {
           Status.Ok,
           "grit: no brief for this session. p/1 is claimed as manager for desktop/grit-dcfe7476, " +
             "and session made-up:s-0 is working on it (last active 2026-11-13T11:00:00Z). The claim " +
-            "frees itself when that session ends, or at 2026-11-13T13:00:00Z if it does nothing " +
-            "more. To move it here now, the person who made the claim runs kalandra-cli " +
-            "project_claim themselves, outside any session, with: " +
+            "frees itself when that session ends, or at 2026-11-13T13:00:00Z if neither it nor an " +
+            "agent it started does anything more. To move it here now, the person who made the " +
+            "claim runs kalandra-cli project_claim themselves, outside any session, with: " +
             """{"key":"p/1","role":"manager","holder":"desktop/grit-dcfe7476","takeover":"made-up:s-1"}"""
         ),
         Vector.empty
@@ -164,8 +164,8 @@ object BriefRouteTests extends TestSuite {
         Status.Ok,
         "grit: no brief for this session. p/1 is claimed as manager for desktop/grit-dcfe7476, " +
           "and session made-up:s-0 is working on it (last active 2026-11-13T11:00:00Z). The claim " +
-          "frees itself when that session ends, or at 2026-11-13T13:00:00Z if it does nothing " +
-          "more. Releasing the claim frees it now."
+          "frees itself when that session ends, or at 2026-11-13T13:00:00Z if neither it nor an " +
+          "agent it started does anything more. Releasing the claim frees it now."
       )
     }
 
