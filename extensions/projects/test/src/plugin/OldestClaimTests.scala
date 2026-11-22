@@ -2,7 +2,9 @@ package grit.projects.plugin
 
 import java.time.Instant
 
+import grit.core.document.DocumentVersion
 import grit.core.plugin.CommandOutcome
+import grit.core.tool.{ArgsError, ToolName}
 import grit.projects.method.{Cover, MethodFixtures, RoleView}
 
 import utest.*
@@ -60,6 +62,26 @@ object OldestClaimTests extends TestSuite {
       "holder" -> holder
     )
 
+  /** The versions, newest first, of a change `p/1` kept at second 1, moved to building at 2 and
+    * kept again at 3 and 4.
+    */
+  private def building(): Vector[DocumentVersion] = {
+    val projects = plugin()
+    val store = Store()
+    started(projects, store)
+    keptAt(second(1), projects, store, "x", "change")
+    movedAt(second(2), projects, store, "x", "building")
+    keptAt(second(3), projects, store, "x", "change", "body" -> "## Why\n\nKept again.")
+    keptAt(second(4), projects, store, "x", "change", "body" -> "## Why\n\nAnd again.")
+    val key = MethodFixtures.right(grit.core.id.DocKey.of("p/1"))
+    inTx(store.keeper.versions(key, grit.core.visibility.Label.Public, 10))
+      .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+  }
+
+  /** When `versions` entered building, each read as the plugin reads it. */
+  private def enteredOf(versions: Vector[DocumentVersion]): Option[Instant] =
+    ProjectCovers.entered(versions, ProjectCommands.readable, MethodFixtures.state("building"))
+
   private def claimedKept(said: String): CommandOutcome =
     CommandOutcome.Done(ujson.write(ujson.Obj("claimed" -> said, "brief" -> "kept")))
 
@@ -88,13 +110,15 @@ object OldestClaimTests extends TestSuite {
       val projects = plugin()
       val store = Store()
       started(projects, store)
-      keptAt(second(1), projects, store, "c", "change")
-      keptAt(second(2), projects, store, "d", "change")
-      movedAt(second(3), projects, store, "d", "building")
-      movedAt(second(4), projects, store, "c", "building")
-      keptAt(second(5), projects, store, "d", "change", "body" -> "## Why\n\nKept again.")
+      // `e`, the earliest kept, is left in its first state.
+      keptAt(second(1), projects, store, "e", "change")
+      keptAt(second(2), projects, store, "c", "change")
+      keptAt(second(3), projects, store, "d", "change")
+      movedAt(second(4), projects, store, "d", "building")
+      movedAt(second(5), projects, store, "c", "building")
+      keptAt(second(6), projects, store, "d", "change", "body" -> "## Why\n\nKept again.")
       oldest(projects, store, "change", "building") ==>
-        claimedKept("Claimed p/2 d (change, building) as builder for h1.")
+        claimedKept("Claimed p/3 d (change, building) as builder for h1.")
     }
 
     test("of two that entered the state at one instant, oldest claims the lower number") {
@@ -142,19 +166,7 @@ object OldestClaimTests extends TestSuite {
     test(
       "a state is entered when the version moving it there was written, or else the earliest kept in it"
     ) {
-      val projects = plugin()
-      val store = Store()
-      started(projects, store)
-      keptAt(second(1), projects, store, "x", "change")
-      movedAt(second(2), projects, store, "x", "building")
-      keptAt(second(3), projects, store, "x", "change", "body" -> "## Why\n\nKept again.")
-      keptAt(second(4), projects, store, "x", "change", "body" -> "## Why\n\nAnd again.")
-      val key = MethodFixtures.right(grit.core.id.DocKey.of("p/1"))
-      val kept = inTx(store.keeper.versions(key, grit.core.visibility.Label.Public, 10))
-        .fold(e => throw new java.lang.AssertionError(e.toString), identity)
-      val building = MethodFixtures.state("building")
-      def enteredOf(versions: Vector[grit.core.document.DocumentVersion]) =
-        ProjectCovers.entered(versions, ProjectCommands.readable, building)
+      val kept = building()
       // The last as if it had left the state and come back: entered at its return.
       val returned = Vector(kept(0), kept(3), kept(2))
       (kept.size, enteredOf(kept), enteredOf(kept.take(2)), enteredOf(kept.take(1))) ==>
@@ -163,6 +175,71 @@ object OldestClaimTests extends TestSuite {
       enteredOf(kept.drop(3)) ==> None
     }
 
+    test("a withdrawal, or a version that does not read, ends a run in the state") {
+      val kept = building()
+      val withdrawn = DocumentVersion.Withdrawal(
+        kept(1).match {
+          case DocumentVersion.Holding(d) => d.version
+          case DocumentVersion.Withdrawal(v, _) => v
+        },
+        second(3)
+      )
+      val unreadable = kept(1) match {
+        case DocumentVersion.Holding(d) => DocumentVersion.Holding(d.copy(data = ujson.Null))
+        case w => w
+      }
+      (
+        enteredOf(Vector(kept(0), withdrawn, kept(2))),
+        enteredOf(Vector(kept(0), unreadable, kept(2)))
+      ) ==> (Some(second(4)), Some(second(4)))
+    }
+    test("oldest as a covering role skips an artifact above another holder's covering claim") {
+      val projects = plugin()
+      val store = Store(declared =
+        Vector(
+          method(roles =
+            Vector(
+              right(RoleView.of(role("manager"), Set(note.name), 1, covers = Cover.Under)),
+              right(RoleView.of(role("builder"), Set(note.name, change.name), 1))
+            )
+          )
+        )
+      )
+      started(projects, store)
+      keptAt(second(1), projects, store, "a", "note")
+      keptAt(second(2), projects, store, "b", "note", "parent" -> "p/a")
+      keptAt(second(3), projects, store, "c", "note")
+      claimedAt(second(4), projects, store, "b", "h2", as = "manager")
+      oldest(projects, store, "note", "open", as = "manager") ==>
+        claimedKept("Claimed p/3 c (note, open) as manager for h1.")
+    }
+    test("oldest's project, kind or state that does not parse is refused at its path") {
+      val claim = plugin().commands.find(c => ToolName.value(c.spec.name) == "project_claim")
+      def refused(project: String, kind: String, state: String) =
+        claim.flatMap(
+          _.spec.args
+            .read(
+              ujson.Obj(
+                "oldest" -> ujson.Obj("project" -> project, "kind" -> kind, "state" -> state),
+                "role" -> "builder",
+                "holder" -> "h1"
+              )
+            )
+            .left
+            .toOption
+        )
+      def holds(what: String, c: Char, text: String) =
+        s"$what holds '$c', not a lowercase letter, a digit or '-': $text"
+      (
+        refused("P q", "note", "open"),
+        refused("p", "N q", "open"),
+        refused("p", "note", "O q")
+      ) ==> (
+        Some(ArgsError.Refused("oldest.project", holds("a project's key", 'P', "P q"))),
+        Some(ArgsError.Refused("oldest.kind", holds("a kind's name", 'N', "N q"))),
+        Some(ArgsError.Refused("oldest.state", holds("a state's name", 'O', "O q")))
+      )
+    }
     test("oldest with none left unclaimed says there is nothing to take") {
       val projects = plugin()
       val store = Store()
