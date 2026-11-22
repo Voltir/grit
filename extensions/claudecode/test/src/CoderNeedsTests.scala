@@ -306,15 +306,19 @@ object CoderNeedsTests extends TestSuite {
           n.f.proj,
           "git config credential.helper '!f() { echo username=u; echo password=p; }; f'"
         )
+        // A proxy at a closed loopback port fails the push with no lookup and no network; what
+        // git says of it is curl's, so only coder-needs' own words around it are pinned.
+        val _ = n.machine.sh(
+          n.f.proj,
+          s"git config http.proxy http://127.0.0.1:${HookFixtures.closedPort}"
+        )
         val done = n.run()
-        (done.exit, done.out) ==> ((
-          1,
-          Vector(
-            "coder-needs: lacks write access to origin as git authenticates here " +
-              "(fatal: unable to access 'https://example.invalid/r.git/': Could not resolve host: example.invalid), " +
-              "for pushing built branches"
-          )
-        ))
+        val refused = done.out.filter(line =>
+          line.startsWith(
+            "coder-needs: lacks write access to origin as git authenticates here ("
+          ) && line.endsWith("), for pushing built branches")
+        )
+        (done.exit, done.out.size, refused.size) ==> ((1, 1, 1))
       }
     }
     test("outside a git checkout it says to run it in one, and exits 2") {
