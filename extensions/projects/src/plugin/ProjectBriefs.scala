@@ -74,8 +74,7 @@ private[plugin] object ProjectBriefs {
       (if (held.isEmpty) changed else held).map(_.key.value).mkString(", ")
     }
     def clause(key: ArtifactKey, as: String, size: Int, view: RoleView): String =
-      s"the brief of ${key.value}$as ${overBy(size)} (the artifact with what its role always " +
-        s"carries): ${cutting(size)} from ${from(key, view)}"
+      overClause(key, as, size, from(key, view))
     lazy val was =
       before.fold(Vector.empty[Rendered])(rendered(method, _, keys, claimed.map(_.claim)))
     val ofClaims = claimed.flatMap { r =>
@@ -93,8 +92,6 @@ private[plugin] object ProjectBriefs {
         )
       )
     }
-    def claimedIn(view: RoleView, head: ArtifactHead): Boolean =
-      view.claimedIn.get(head.kind).exists(_.contains(head.state))
     val unclaimed = for {
       view <- method.views.filter(_.claimedIn.nonEmpty).sortBy(v => RoleName.value(v.role))
       reached = changed.exists(_.handle.exists(view.carried.contains))
@@ -114,6 +111,41 @@ private[plugin] object ProjectBriefs {
       case refusals => Left(Stop.Refused(refusals.mkString("; ")))
     }
   }
+
+  /** Nothing, or the refusal of a claim of `head`'s artifact within `project` as `view`'s role:
+    * `head` is in a state the view is claimed in ([[RoleView.claimedIn]]) and its brief would pass
+    * [[DocRef.BriefChars]].
+    */
+  private[plugin] def claimable(
+      project: Project,
+      view: RoleView,
+      head: ArtifactHead
+  ): Either[Stop, Unit] =
+    Option
+      .when(claimedIn(view, head))(Brief.size(project, head.key, view).toOption)
+      .flatten
+      .filter(_ > DocRef.BriefChars) match {
+      case None => Right(())
+      case Some(size) =>
+        Left(
+          Stop.Refused(
+            overClause(head.key, s" as ${RoleName.value(view.role)}", size, head.key.value) +
+              ". Nothing was claimed."
+          )
+        )
+    }
+
+  /** Whether `view` is claimed in `head`'s kind in its state. */
+  private def claimedIn(view: RoleView, head: ArtifactHead): Boolean =
+    view.claimedIn.get(head.kind).exists(_.contains(head.state))
+
+  /** The refusal of `key`'s brief `as` a role, `size` characters, cut `from` those named: `the
+    * brief of <key><as> would be <size> characters, <cut> over the 9,500 a brief holds (the
+    * artifact with what its role always carries): cut at least <cut> characters from <from>`.
+    */
+  private def overClause(key: ArtifactKey, as: String, size: Int, from: String): String =
+    s"the brief of ${key.value}$as ${overBy(size)} (the artifact with what its role always " +
+      s"carries): ${cutting(size)} from $from"
 
   /** A brief of `size` characters against the budget: `would be <size> characters, <cut> over
     * the 9,500 a brief holds`.

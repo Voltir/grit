@@ -1368,7 +1368,9 @@ private[plugin] final class ProjectCommands(
         "JSON object: `claimed`, a sentence saying what was claimed; `brief`, `kept` or " +
         "`none`; and with `none`, `note`, saying why. Refused, naming who holds it, when it " +
         "is claimed already; refused, naming the artifact, when what it is claimed for works " +
-        "another; refused for a role, a kind or a state the project's method lacks; refused " +
+        "another; refused for a role, a kind or a state the project's method lacks; refused, " +
+        "naming the characters to cut, when the artifact is in a state the role is claimed in " +
+        f"and its brief would pass ${DocRef.BriefChars}%,d characters; refused " +
         "for a holder the role does not admit, naming the roles that do (a method may keep a " +
         "role for sessions, or for agents of named types); refused " +
         "for both or neither of `key` and `oldest`; refused, saying there is nothing to take, " +
@@ -1545,6 +1547,8 @@ private[plugin] final class ProjectCommands(
             args.role,
             args.holder
           )
+          // Before anything is claimed or moved, a claim or takeover whose brief could not be kept.
+          _ <- claimable(whole, view, a.head)
           asked = args.target match {
             case Claiming.Target.Key(_, s) => s
             case Claiming.Target.Oldest(_, _, _, s) => s

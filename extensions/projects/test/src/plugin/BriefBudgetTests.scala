@@ -15,20 +15,44 @@ object BriefBudgetTests extends TestSuite {
   import CommandFixtures.*
   import MethodFixtures.{change, note, right, role, state}
 
-  /** A builder claimed in changes that are building, and a reviewer of changes claimed in none. */
-  private val claimedIn = method(roles =
-    Vector(
-      right(
-        RoleView.of(
-          role("builder"),
-          Set(change.name, note.name),
-          1,
-          claimedIn = Map(change.name -> Set(state("building")))
-        )
-      ),
-      right(RoleView.of(role("reviewer"), Set(change.name), 1))
-    )
+  /** A builder, claimed in changes that are building when `claimed`, and a reviewer of changes
+    * claimed in none.
+    */
+  private def roles(claimed: Boolean): Vector[RoleView] = Vector(
+    right(
+      RoleView.of(
+        role("builder"),
+        Set(change.name, note.name),
+        1,
+        claimedIn =
+          if (claimed) Map(change.name -> Set(state("building"))) else Map.empty
+      )
+    ),
+    right(RoleView.of(role("reviewer"), Set(change.name), 1))
   )
+
+  private val claimedIn = method(roles = roles(claimed = true))
+
+  /** `p/a`, a change, building at a brief of 9,501 characters under a version that claims no
+    * role in it, then moved to version 2, where the builder is claimed in it.
+    */
+  private def buildingOver(): (plugin: Projects, store: Store) = {
+    val projects = plugin()
+    val store = Store(declared = Vector(method(roles = roles(claimed = false))))
+    started(projects, store)
+    kept(projects, store, "a", "change", "x" * 9435)
+    done(moved(projects, store, "building"))
+    done(
+      ask(
+        projects,
+        store,
+        "project_declare",
+        declaring(method(version = 2, roles = roles(claimed = true)))
+      )
+    )
+    done(ask(projects, store, "project_migrate", "project" -> "p", "version" -> 2))
+    (projects, store)
+  }
 
   /** 66 characters of header come before a change's body while it is proposed, so `n` characters
     * of body give a brief of `n + 66`.
@@ -163,9 +187,53 @@ object BriefBudgetTests extends TestSuite {
           "least 1 character from p/1"
       )
     }
+    test(
+      "a claim in a state its role is claimed in is refused when its brief would pass 9,500 characters, claiming nothing"
+    ) {
+      val (projects, store) = buildingOver()
+      (
+        claimed(projects, store, "builder"),
+        done(ask(projects, store, "project_claims")).contains("p/1")
+      ) ==> ((CommandOutcome.Refused(overAsBuilder(9501, "p/1") + ". Nothing was claimed."), false))
+    }
+    test(
+      "a claim over its brief's budget in a role claimed in no such state stands, with no brief"
+    ) {
+      val (projects, store) = buildingOver()
+      val answer = ujson.read(done(claimed(projects, store, "reviewer")))
+      answer("brief").str ==> "none"
+    }
+    test(
+      "a takeover into a role claimed in the artifact's state is refused when its brief would pass 9,500 characters, moving nothing"
+    ) {
+      val (projects, store) = buildingOver()
+      done(claimed(projects, store, "reviewer"))
+      (
+        ask(
+          projects,
+          store,
+          "project_claim",
+          "key" -> "p/a",
+          "role" -> "builder",
+          "holder" -> holder,
+          "takeover" -> "claude-code:s-b"
+        ),
+        ujson
+          .read(done(ask(projects, store, "project_claims")))("claims")
+          .arr
+          .map(c => c("role").str)
+          .toVector
+      ) ==> ((
+        CommandOutcome.Refused(overAsBuilder(9501, "p/1") + ". Nothing was claimed."),
+        Vector("reviewer")
+      ))
+    }
   }
 
   private val holder: String = "coder-opus/abc"
+
+  private def claimed(projects: Projects, store: Store, as: String): CommandOutcome =
+    ask(projects, store, "project_claim", "key" -> "p/a", "role" -> as, "holder" -> holder)
 
   private def moved(projects: Projects, store: Store, to: String): CommandOutcome =
     ask(projects, store, "project_move", "key" -> "p/a", "state" -> to)
