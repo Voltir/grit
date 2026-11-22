@@ -125,7 +125,7 @@ object ProjectMarkdown {
   private def fronted(
       h: ArtifactHead,
       version: Option[DocumentVersionId],
-      over: Vector[(role: RoleName, size: Int)] = Vector.empty
+      over: Vector[(role: RoleName, size: Int)]
   ): String =
     front(
       Vector(
