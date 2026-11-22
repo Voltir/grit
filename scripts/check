@@ -6,6 +6,8 @@
 #   scripts/check                                  # the commit gate: unit, law, probes a change
 #                                                  # reaches, format, clock, unsafe, docs, lint
 #   scripts/check --it                             # the same, and the integration tier
+#   scripts/check --it-reached                     # the same, the integration suites a change
+#                                                  # reaches (`reach`, below) in place of all
 #   scripts/check --probes                         # the same, and every capture probe
 #   scripts/check --milestone                      # the gate, every probe, the integration tier
 #   scripts/check --milestone --since <rev>        # and the commits touching core and an edge together
@@ -23,7 +25,8 @@
 #   unit  ./mill __.test.testCached: reruns a module's suites only when their inputs changed;
 #         a failure is never cached. (`__.testCached` would also match the `it` modules.)
 #   law   scripts/enola-law.sh.
-#   it    with --it: scripts/it __.it.testForked, every live suite rerun.
+#   it    with --it: scripts/it __.it.testForked, every live suite rerun. With --it-reached:
+#         the `it` modules a change reaches (`reach`, below), or nothing when it reaches none.
 #   probes  the capture probes (a `probes` module beside `test`: suites compiling probe sources
 #         against their module with its own flags) that a change reaches (`reach`, below: a
 #         change touching capture syntax), or with --probes every one, __.probes.testCached.
@@ -61,15 +64,33 @@
 # line does not claim a passed count: a run cut short by a compile error or a timeout has
 # fewer tests, not fewer failures.
 #
+# The gate's record, out/check/passed, is removed first by every invocation and written only by
+# a whole gate that passed (no target, and none of --no-lint, --no-unused, --only-unused). It is
+# what scripts/gate-stamp reads, one `key value` line each:
+#   sha          HEAD, in full, when the run began
+#   end          HEAD when it ended (a run that moved HEAD gated neither)
+#   base         the base `reach` measured the change from, in full, or empty when there was none
+#   flags        the arguments it was given
+#   it           all (--it or --milestone), reached (--it-reached, the reached suites run),
+#                unreached (the change reaches no `it` module), or skipped (it reaches one, and
+#                neither flag ran it)
+#   clean-start  yes or no: whether git status --porcelain (untracked files included) printed
+#   clean-end    nothing when the run began, and when it ended
+# CHECK_BASE=<commit> names the base in place of `git merge-base HEAD main`; one that names no
+# commit is a usage error.
+#
 # --timeout DUR bounds each tier's Mill call (a timeout(1) duration; default 20m). On expiry
 # the tier's Mill daemon is shut down, which stops the test JVMs it forked.
 set -euo pipefail
 
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+rm -f out/check/passed
+porcelain_empty() { [ -z "$(git status --porcelain 2>/dev/null)" ] && echo yes || echo no; }
+start_sha=$(git rev-parse HEAD 2>/dev/null || true) start_clean=$(porcelain_empty) flags="$*"
 
 usage() { sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//' >&2; exit 2; }
 
-timeout=20m it=false probes=false lint=true unused=true only=false milestone=false since="" targets=()
+timeout=20m it=false it_reached=false probes=false lint=true unused=true only=false milestone=false since="" targets=()
 while [ $# -gt 0 ]; do
   case $1 in
     --since) [ $# -ge 2 ] || usage; since=$2; shift 2 ;;
@@ -77,6 +98,7 @@ while [ $# -gt 0 ]; do
     --timeout) [ $# -ge 2 ] || usage; timeout=$2; shift 2 ;;
     --timeout=*) timeout=${1#*=}; shift ;;
     --it) it=true; shift ;;
+    --it-reached) it_reached=true; shift ;;
     --probes) probes=true; shift ;;
     --milestone) it=true probes=true milestone=true; shift ;;
     --no-lint) lint=false; shift ;;
@@ -87,17 +109,24 @@ while [ $# -gt 0 ]; do
     *) targets+=("$1"); shift ;;
   esac
 done
-if [ ${#targets[@]} -gt 0 ] && { $it || $probes; }; then
-  echo "check: --it, --probes and --milestone run whole tiers; name a module or suite instead" >&2
+if [ ${#targets[@]} -gt 0 ] && { $it || $it_reached || $probes; }; then
+  echo "check: --it, --it-reached, --probes and --milestone run whole tiers; name a module or suite instead" >&2
   exit 2
 fi
 if [ -n "$since" ] && ! $milestone; then
   echo "check: --since reports a milestone's co-changes; use it with --milestone" >&2
   exit 2
 fi
-if $only && { ! $lint || ! $unused || $it || $probes; }; then
-  echo "check: --only-unused runs the lint tier alone; drop --no-lint, --no-unused, --it, --probes or --milestone" >&2
+if $only && { ! $lint || ! $unused || $it || $it_reached || $probes; }; then
+  echo "check: --only-unused runs the lint tier alone; drop --no-lint, --no-unused, --it, --it-reached, --probes or --milestone" >&2
   exit 2
+fi
+base=${CHECK_BASE-$(git merge-base HEAD main 2>/dev/null || true)}
+if [ -n "$base" ]; then
+  base=$(git rev-parse --verify -q "$base^{commit}") || {
+    echo "check: CHECK_BASE=$CHECK_BASE names no commit" >&2
+    exit 2
+  }
 fi
 
 logs=out/check
@@ -259,9 +288,9 @@ run_tier() { # tier outdir reports-file -- command...
   [ "$rc" = 0 ] || status=1
 }
 
-# What a change reaches, from the files it touches since the merge base with main (committed,
-# uncommitted and untracked; with no main, everything) and build.mill's module graph
-# (`grit.moduleGraph`); CHECK_BASE=<commit> names another base. Prints three lines, each a tier's name and its Mill arguments, `+`-joined,
+# What a change reaches, from the files it touches since the base (CHECK_BASE, or the merge
+# base with main; committed, uncommitted and untracked; with no base, everything) and
+# build.mill's module graph (`grit.moduleGraph`). Prints four lines, each a tier's name and its Mill arguments, `+`-joined,
 # or the name alone when the change reaches nothing there:
 #   lint    each module holding a changed .scala file, and every module depending on one;
 #           every module (__.compile) when build.mill, .mill-version, .mill-jvm-opts or
@@ -275,13 +304,18 @@ run_tier() { # tier outdir reports-file -- command...
 #           directly (turn, tui, chat, app, kit, models: the stub the scenarios answer from),
 #           or it changed tui-gate or a build file. Not every module the chat depends on: that
 #           is every module, and the scenarios take minutes.
+#   it      each `it` module depending on a module whose sources or resources a change touches
+#           (src/ or resources/ under its folder, which holds schema.sql), or whose own folder
+#           it touches; every one (__.it.testForked) when build.mill, .mill-version,
+#           docker-compose.yml, scripts/it or docker/postgres/ changed, or when the graph or the
+#           base is unknown.
 reach() {
-  local base graph
-  base=${CHECK_BASE-$(git merge-base HEAD main 2>/dev/null || true)}
+  local graph
   if ! graph=$("${mill[@]}" show grit.moduleGraph 2>"$logs/graph.log"); then
     echo "lint __.compile"
     echo "probes __.probes.testCached"
     echo "tui scripts/tui-gate"
+    echo "it __.it.testForked"
     return
   fi
   python3 - "$base" "$graph" <<'PY'
@@ -292,6 +326,7 @@ if not base:
     print("lint __.compile")
     print("probes __.probes.testCached")
     print("tui scripts/tui-gate")
+    print("it __.it.testForked")
     sys.exit()
 
 def git(*args):
@@ -357,6 +392,17 @@ chat = {"grit.turn", "grit.tui", "grit.chat", "grit.app", "grit.kit", "grit.mode
 mains = {m for m, p in ((owner(p), p) for p in scala) if m and p.startswith(folder[m] + "/src/")}
 gate = {"build.mill", ".mill-version", "scripts/tui-gate", "scripts/tui-gate.py"}
 print("tui" + (" scripts/tui-gate" if changed & gate or mains & chat else ""))
+
+live = {"build.mill", ".mill-version", "docker-compose.yml", "scripts/it"}
+if changed & live or any(c.startswith("docker/postgres/") for c in changed):
+    print("it __.it.testForked")
+else:
+    owned = set()
+    for path in changed:
+        m = owner(path)
+        if m and (m.endswith(".it") or path.startswith((folder[m] + "/src/", folder[m] + "/resources/"))):
+            owned.add(m)
+    print("it " + joined(f"{m}.testForked" for m in closure(owned) if m.endswith(".it")))
 PY
 }
 
@@ -388,9 +434,18 @@ if [ ${#targets[@]} -eq 0 ]; then
       echo "== probes: no change touches capture syntax"
     fi
 
+    read -r -a it_reach <<<"$(sed -n 's/^it//p' <<<"$reached")"
+    it_args=() it_ran=unreached
     if $it; then
+      it_args=(__.it.testForked) it_ran=all
+    elif [ ${#it_reach[@]} -gt 0 ]; then
+      if $it_reached; then it_args=("${it_reach[@]}") it_ran=reached; else it_ran=skipped; fi
+    elif $it_reached; then
+      echo "== it: no change reaches an integration suite"
+    fi
+    if [ ${#it_args[@]} -gt 0 ]; then
       modules_of it | while read -r m; do report_path "$m" it testForked; done >"$logs/it.reports"
-      run_tier it out "$logs/it.reports" -- scripts/it "${mill[@]:1}" __.it.testForked
+      run_tier it out "$logs/it.reports" -- scripts/it "${mill[@]:1}" "${it_args[@]}"
     fi
 
     tui_args=$(sed -n 's/^tui //p' <<<"$reached")
@@ -534,6 +589,11 @@ if [ ${#targets[@]} -eq 0 ] && [ -n "$since" ]; then
   report=$(co_change "$since" 2>"$logs/co-change.err") || report="co-change: could not be read ($logs/co-change.err)"
   printf '%s\n' "$report" | tee "$logs/co-change.log"
   totals+=("$(head -1 <<<"$report") (reported, not gated)")
+fi
+
+if [ ${#targets[@]} -eq 0 ] && ! $only && $lint && $unused && [ "$status" = 0 ]; then
+  printf '%s %s\n' sha "$start_sha" end "$(git rev-parse HEAD)" base "$base" flags "$flags" \
+    it "$it_ran" clean-start "$start_clean" clean-end "$(porcelain_empty)" >"$logs/passed"
 fi
 
 echo "== totals"

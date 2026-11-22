@@ -18,7 +18,7 @@ object Bash {
   /** How a run ended: its exit code, its output's lines and its errors. */
   final case class Done(exit: Int, out: Vector[String], err: String)
 
-  /** The system's programs a test's bash may run: bash, jq, curl, git and coreutils. */
+  /** The system's programs a test's bash may run: bash, jq, curl, git, python3 and coreutils. */
   val SystemPath: String = "/usr/local/bin:/usr/bin:/bin"
 
   /** bash with `args`, in `dir`, reading `input`, given `within` to end, else failing the test.

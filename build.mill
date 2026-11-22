@@ -537,20 +537,23 @@ object grit extends Module {
       super.generatedSources() :+ PathRef(Task.dest)
     }
 
-    /* Runs bash 5, jq, curl and git through grit.host, against the commands edge itself. The
+    /* Runs bash 5, jq, curl, git and python3 through grit.host, against the commands edge itself. The
      * scripts' folder rides in the environment, for the test that Scripts holds their text; so
      * does the pinned shellcheck (bash scripts/fetch-shellcheck.sh), for ShellcheckTests, with
      * its content signature, read by no test, so that `testCached` reruns when the binary is
      * fetched, bumped or removed. scripts/coder-needs, which asks the hook, and scripts/scout,
-     * which it runs, ride there too, for CoderNeedsTests, as inputs. */
+     * which it runs, ride there too, for CoderNeedsTests, as inputs; and scripts/check, for
+     * GateRecordTests. */
     object test extends GritTests {
       def moduleDeps =
         super.moduleDeps ++ Seq[JavaModule](grit.core.test, grit.commands.test, grit.host)
       def shellcheck = Task.Source(mill.api.BuildCtx.workspaceRoot / "tools" / "shellcheck")
       def coderNeeds = Task.Source(mill.api.BuildCtx.workspaceRoot / "scripts" / "coder-needs")
       def scout = Task.Source(mill.api.BuildCtx.workspaceRoot / "scripts" / "scout")
+      def check = Task.Source(mill.api.BuildCtx.workspaceRoot / "scripts" / "check")
       def forkEnv = Task {
         super.forkEnv() ++ Map(
+          "GRIT_CHECK" -> check().path.toString,
           "GRIT_CODER_NEEDS" -> coderNeeds().path.toString,
           "GRIT_SCOUT_SCRIPT" -> scout().path.toString,
           "GRIT_CLAUDECODE_SHELL" -> shell().path.toString,
