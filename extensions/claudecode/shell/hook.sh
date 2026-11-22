@@ -290,9 +290,10 @@ alive() {
 }
 
 # Ends each other session whose file says its harness died on this machine, a boot since or its
-# process gone or another in its place, each in a post of its own, the file removed once the edge
-# keeps the end; a session of another machine's name, or of another pid namespace on this boot,
-# is left as it is. A file it cannot read is removed, saying so. Sets `swept` to how many it ended.
+# process gone or another in its place, each in a post of its own after its kept lines, the file
+# removed once the edge takes the end or it is kept; a session of another machine's name, or of
+# another pid namespace on this boot, is left as it is. A file it cannot read is removed, saying
+# so. Sets `swept` to how many it ended, and `quiet` once an end was kept, when it stops.
 sweep() {
   local f name fields why line n at host boot ns comm
   local -a v=() stat=()
@@ -332,8 +333,13 @@ sweep() {
         rm -f -- "$f"
         swept=$((swept + 1))
         ;;
-      # The end is in the session's queue, which a later start sends.
-      kept) rm -f -- "$f" ;;
+      # The end is in the session's queue, which a later start sends; the edge is not taking
+      # posts, so the start asks it nothing more.
+      kept)
+        rm -f -- "$f"
+        quiet=1
+        return 0
+        ;;
     esac
   done
 }
@@ -356,23 +362,21 @@ aged() {
       [ -e "$f" ] && [ "$name" != . ] && [ "$name" != .. ] || continue
       [[ $name =~ ^\.?([0-9]{19})(\..*)?$ ]] && ((10#${BASH_REMATCH[1]} >= cut)) && continue
       rm -f -- "$f"
-      [[ $name == .* ]] || k+=1
+      [[ ! $name =~ ^[0-9]{19}$ ]] || k+=1
     done
     rmdir -- "$d" 2> /dev/null
     ((k == 0)) || dropped "${d##*/}" "$k" "older than $((unended / 3600)) hours"
   done
 }
 
-# Sends what is kept, at a start once the edge has answered: the session's own queues first, then
-# each other queue, a dead session's with its end (`sweep`), a post each while the edge answers
-# and time is left.
+# Sends what is kept, at a start once the edge has answered: each queue of another session, a
+# dead session's with its end (`sweep`), a post each while the edge answers and time is left. The
+# session's own queues are its start's event's to send, ahead of its `started`.
 resend() {
-  local d
+  local d quiet=''
   aged
-  fate=taken
-  family ''
-  [ "$fate" = taken ] || [ "$fate" = refused ] || return 0
   sweep
+  [ -z "$quiet" ] || return 0
   for d in "$kept"/*; do
     [ -d "$d" ] || continue
     case ${d##*/} in "$session" | "$session"+*) continue ;; esac
@@ -540,8 +544,8 @@ stash() {
     tmp=''
     # A start removes the queues it leaves empty: one removed after mkdir is made again.
     if ! [[ ${fresh[i]} =~ ^[0-9]{19}$ ]] ||
-      ! { { mkdir -p -- "$q" && tmp=$(mktemp -- "$q/.${fresh[i]}.XXXXXX"); } 2> /dev/null ||
-        { mkdir -p -- "$q" && tmp=$(mktemp -- "$q/.${fresh[i]}.XXXXXX"); }; } ||
+      ! { { mkdir -p -- "$q" && tmp=$(mktemp -- "$q/.${fresh[i]}.XXXXXX"); } ||
+        { mkdir -p -- "$q" && tmp=$(mktemp -- "$q/.${fresh[i]}.XXXXXX"); }; } 2> /dev/null ||
       ! printf '%s' "${fresh[i + 1]}" > "$tmp" || ! mv -f -- "$tmp" "$q/${fresh[i]}"; then
       [ -z "$tmp" ] || rm -f -- "$tmp"
       say "$2 $3 dropped: it could not be kept in $q"

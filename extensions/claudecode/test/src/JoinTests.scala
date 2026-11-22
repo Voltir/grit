@@ -5,8 +5,6 @@ import java.nio.file.{Files, Path}
 
 import scala.concurrent.duration.*
 
-import grit.core.session.Session
-
 import utest.*
 
 /** The join script ([[ClaudeCode.adapter]]'s `join`), piped into bash in temporary checkouts with
@@ -93,7 +91,7 @@ object JoinTests extends TestSuite {
             true,
             Some(
               "#!/usr/bin/env bash\nharness='claude-code'\nedge='http://127.0.0.1:7317'\n" +
-                "edge=${GRIT_EDGE:-$edge}\n" + s"unended=${Session.Unended.toSeconds}\n" +
+                "edge=${GRIT_EDGE:-$edge}\n" + "unended=86400\n" +
                 Scripts.Shared + Scripts.Hook
             )
           )

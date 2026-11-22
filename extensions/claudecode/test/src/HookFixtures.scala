@@ -49,17 +49,23 @@ final class HookFixtures(
     * are each a minute: for a test of what a run posts, which a loaded machine's slowness must not
     * turn into a test of how soon. Throws when [[hook]] no longer sets each bound in one line.
     */
-  lazy val unbounded: Path = {
-    val text = Seq(
-      "\nbound=3\n" -> "\nbound=60\n",
-      "\ncommitted=1000000\n" -> "\ncommitted=60000000\n",
-      "\nended=1200000\n" -> "\nended=60000000\n"
-    ).foldLeft(Files.readString(hook)) { case (text, (was, is)) =>
+  lazy val unbounded: Path = variant(
+    "unbounded",
+    "\nbound=3\n" -> "\nbound=60\n",
+    "\ncommitted=1000000\n" -> "\ncommitted=60000000\n",
+    "\nended=1200000\n" -> "\nended=60000000\n"
+  )
+
+  /** A copy of [[hook]] beside it, `hook-<name>`, with each text `was` written `is`, for a test of
+    * what a constant or a line decides. Throws when [[hook]] holds a `was` not exactly once.
+    */
+  def variant(name: String, changes: (String, String)*): Path = {
+    val text = changes.foldLeft(Files.readString(hook)) { case (text, (was, is)) =>
       if (text.indexOf(was) < 0 || text.indexOf(was) != text.lastIndexOf(was))
-        throw new java.lang.AssertionError(s"the hook sets no one ${was.trim}")
+        throw new java.lang.AssertionError(s"the hook holds no one ${was.trim}")
       text.replace(was, is)
     }
-    val copy = Files.writeString(hook.resolveSibling("hook-unbounded"), text)
+    val copy = Files.writeString(hook.resolveSibling(s"hook-$name"), text)
     Files.setPosixFilePermissions(copy, PosixFilePermissions.fromString("rwx------"))
     copy
   }
@@ -294,15 +300,18 @@ object HookFixtures {
   }
 
   /** `body` given the port of a proxy on 127.0.0.1 to the edge on `edge`'s port, relaying each
-    * request as `relay` says, one at a time; closed after.
+    * request as `relay` says, one at a time, and how many connections it has accepted so far;
+    * closed after.
     */
-  def relaying[A](edge: Int, relay: Relay)(body: Int => A): A = {
+  def relaying[A](edge: Int, relay: Relay)(body: (Int, () => Int) => A): A = {
     val server = loopback(50)
     val relayed = new java.util.concurrent.atomic.AtomicInteger(0)
+    val accepted = new java.util.concurrent.atomic.AtomicInteger(0)
     val accepting = new Thread(() =>
       try
         while (true) {
           val client = server.accept()
+          val _ = accepted.incrementAndGet()
           try {
             val (head, request) = requestOf(client)
             if (relay == Relay.First && relayed.get() > 0) ()
@@ -328,7 +337,7 @@ object HookFixtures {
     )
     accepting.setDaemon(true)
     accepting.start()
-    try body(server.getLocalPort)
+    try body(server.getLocalPort, () => accepted.get())
     finally server.close()
   }
 

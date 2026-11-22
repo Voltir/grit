@@ -171,7 +171,7 @@ object SessionFileTests extends TestSuite {
       }
     }
     test(
-      "a session's end the edge did not take is kept in its queue, its file removed, and a later start in the checkout sends it"
+      "a session's end the edge did not take is sent by a later start in the checkout, and its file removed"
     ) {
       HookFixtures { f =>
         val _ = f.run("opening", f.payload("session-start-startup.json"))
@@ -217,6 +217,28 @@ object SessionFileTests extends TestSuite {
         )
       }
     }
+    test("a start stops ending dead sessions at the first end the edge leaves unanswered") {
+      HookFixtures { f =>
+        val proc = faked(f)
+        planted(f, "gone", pid = 4002)
+        planted(f, "lost", pid = 4003)
+        val asked = HookFixtures.relaying(f.port, HookFixtures.Relay.First) { (proxy, accepted) =>
+          val _ = f.run(
+            "opening",
+            f.payload("session-start-startup.json"),
+            withProc(f, proc) + ("GRIT_EDGE" -> s"http://127.0.0.1:$proxy")
+          )
+          accepted()
+        }
+        // The holder's, then the first end's.
+        (asked, files(f), f.queue("gone").size, f.queue("lost")) ==> (
+          2,
+          Vector(".kept", First, "lost"),
+          1,
+          Vector.empty
+        )
+      }
+    }
     test("a session file it cannot read is removed, saying so, and decides nothing") {
       HookFixtures { f =>
         val proc = faked(f)
@@ -235,7 +257,7 @@ object SessionFileTests extends TestSuite {
       }
     }
     test(
-      "a dead session's end the edge does not take is kept in its queue, its file removed, and the next start sends it"
+      "a dead session's end the edge does not take is sent by the next start, and its file removed"
     ) {
       HookFixtures { f =>
         val proc = faked(f)

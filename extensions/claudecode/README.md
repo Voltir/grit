@@ -334,7 +334,7 @@ decide.
   the session goes on.
 - **Dead**, read by the next start once the edge has answered for its holder: a file of this
   machine's name whose `boot` is not this boot's, or, in this pid namespace, whose process is
-  gone or started at another tick. For each, an `ended` line, `{reason: "stopped", found:
+  gone or started at another tick. For each, until the edge leaves one unanswered, an `ended` line, `{reason: "stopped", found:
   "rebooted" | "gone" | "reused"}`, `n` and `at` as any line's, posted with that session's kept lines ahead
   of it, since a post is one session's lines; its file is removed once the edge takes it or it is
   kept to send later. A file of another machine's name (a home two machines share) or of another pid
@@ -365,16 +365,18 @@ stderr.
   are async) are not ordered beyond that: a hook that keeps its line just after another read an
   empty queue and posted has its line arrive after that post's.
 - **When:** a line's own post carries its queue; once a post is taken, each other queue of the
-  session and its agents is posted. A start, once the edge has answered its holder, posts its own
-  queues, then every other queue of the checkout, a dead session's with its `ended` appended, one
-  post a queue while the edge answers. A SessionEnd kept, rather than taken, removes the session's
+  session and its agents is posted. So a start's own queues go with its `started`, ahead of it,
+  posted by the SessionStart event; its `opening`, once the edge has answered its holder, posts
+  every other queue of the checkout, a dead session's with its `ended` appended, one post a queue,
+  and asks nothing more after the first the edge leaves unanswered. The two never post one queue
+  twice. A SessionEnd kept, rather than taken, removes the session's
   file: its end is in the queue. A queue's lines leave it only when the edge answered for a post
   holding them, or for a bound.
 - **Bounds:** a queue holds at most 1,000 lines and 256 KiB, the oldest dropped first, and a line
   is dropped once its `n`, a reading of the clock, is older than `Session.Unended` (which the
   adapter writes into the hook as `unended`); each drop is one stderr line, `dropped the <k>
   oldest events kept for the session <id>: <why>`. A start removes every line and temporary file
-  past that age, and the queues left empty. So a key lives until its lines are taken or are
+  past that age, any entry of a queue no `n` names, and the queues left empty. So a key lives until its lines are taken or are
   `unended` old at the next start in the checkout.
 - **What is said:** `<what> was kept to send later: the edge at <edge> did not answer` (or `no
   time was left for its post`, or `the edge at <edge> answered <code> to <what>, which was kept
