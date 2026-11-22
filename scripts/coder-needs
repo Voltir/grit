@@ -7,8 +7,8 @@
 #
 # Prints one line and exits 0 when nothing is lacking, naming the machine the edge knows this one
 # by; otherwise one line for each lack, naming it and what it is for, and exits 1. It reaches the
-# network only through the edge (the join's hook, `holder`) and `git ls-remote origin`, each
-# bounded by a timeout. A credential git authenticates with is not proved to have write access.
+# network only through the edge (the join's hook, `holder`), `git ls-remote origin` and a dry-run
+# `git push` to origin, each bounded by a timeout.
 set -uo pipefail
 
 lacks=0
@@ -66,7 +66,19 @@ else
     GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=false GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh} -o BatchMode=yes" \
       timeout 20 git ls-remote origin HEAD > /dev/null 2>&1 < /dev/null || pushes=0
   fi
-  [ "$pushes" = 1 ] || lack "a git credential that can push to origin ($url), for pushing built branches"
+  if [ "$pushes" = 0 ]; then
+    lack "a git credential that can push to origin ($url), for pushing built branches"
+  else
+    # A dry run opens origin's receive-pack, where a forge refuses a credential that may only
+    # read, and creates nothing there. git's first line names the refusal; its last is advice.
+    said=$(mktemp)
+    if ! GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=false GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh} -o BatchMode=yes" \
+      timeout 20 git push --dry-run origin HEAD:refs/heads/coder-needs-probe > /dev/null 2> "$said" < /dev/null; then
+      why=$(grep -m 1 . "$said")
+      lack "write access to origin as git authenticates here (${why:-git printed nothing}), for pushing built branches"
+    fi
+    rm -f "$said"
+  fi
 fi
 
 # The holder's first segment is the machine's name, as the edge's configuration gives it.

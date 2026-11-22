@@ -206,6 +206,31 @@ object CoderNeedsTests extends TestSuite {
     }
 
     test(
+      "an origin that lists its refs but refuses a push is named as lacking write access, with git's first error line"
+    ) {
+      needs { n =>
+        // The bare origin answers ls-remote; its receive-pack, which a dry-run push still opens,
+        // refuses as a forge refuses a credential without write access.
+        val refuse = n.machine.write(
+          n.machine.root.resolve("refusing-receive-pack"),
+          "#!/bin/sh\necho 'ERROR: Permission to r.git denied to someone.' >&2\nexit 1\n",
+          executable = true
+        )
+        val _ = n.machine.sh(n.f.proj, s"git config remote.origin.receivepack '$refuse'")
+        val done = n.run()
+        val refs = n.machine.sh(n.machine.root, "git --git-dir=origin.git for-each-ref")
+        (done.exit, done.out, refs) ==> ((
+          1,
+          Vector(
+            "coder-needs: lacks write access to origin as git authenticates here " +
+              "(ERROR: Permission to r.git denied to someone.), for pushing built branches"
+          ),
+          Vector()
+        ))
+      }
+    }
+
+    test(
       "a checkout never joined, and an edge that does not answer, are each named as the edge's lack"
     ) {
       needs { n =>
@@ -247,7 +272,9 @@ object CoderNeedsTests extends TestSuite {
         )
       }
     }
-    test("an https push URL a credential helper answers for lacks nothing") {
+    test(
+      "an https push URL a credential helper answers for is proved by a push, not taken on the credential's word"
+    ) {
       needs { n =>
         val _ =
           n.machine.sh(n.f.proj, "git remote set-url --push origin https://example.invalid/r.git")
@@ -257,9 +284,11 @@ object CoderNeedsTests extends TestSuite {
         )
         val done = n.run()
         (done.exit, done.out) ==> ((
-          0,
+          1,
           Vector(
-            s"coder-needs: nothing lacking; the edge names this machine ${MachineName.value(Machine)}"
+            "coder-needs: lacks write access to origin as git authenticates here " +
+              "(fatal: unable to access 'https://example.invalid/r.git/': Could not resolve host: example.invalid), " +
+              "for pushing built branches"
           )
         ))
       }
