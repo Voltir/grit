@@ -24,16 +24,26 @@ object CoderNeedsTests extends TestSuite {
     val scout: Path =
       machine.write(machine.root.resolve("scout-bin/scout"), "#!/bin/sh\nexit 2\n", true)
 
+    /** A getconf whose `GNU_LIBC_VERSION` runs `answer`; any other variable it does not know. */
     def getconf(answer: String): Path =
-      machine.write(machine.bin.resolve("getconf"), s"#!/bin/sh\n$answer\n", executable = true)
+      machine.write(
+        machine.bin.resolve("getconf"),
+        s"#!/bin/sh\n[ \"$$*\" = GNU_LIBC_VERSION ] || exit 1\n$answer\n",
+        executable = true
+      )
 
+    /** A docker whose `info` exits `info`, and whose compose prints `port`, when there is one,
+      * only when asked where a compose file's postgres publishes 5432.
+      */
     def docker(info: Int, port: String): Path =
       machine.write(
         machine.bin.resolve("docker"),
         s"""#!/bin/sh
            |case "$$1" in
            |  info) exit $info ;;
-           |  compose) [ -n '$port' ] && echo '$port' ;;
+           |  compose)
+           |    [ "$$2" = -f ] && [ "$$4 $$5 $$6" = 'port postgres 5432' ] || exit 1
+           |    [ -n '$port' ] && echo '$port' ;;
            |esac
            |""".stripMargin,
         executable = true
@@ -144,7 +154,7 @@ object CoderNeedsTests extends TestSuite {
       needs { n =>
         val _ = n.docker(1, "0.0.0.0:5432")
         val down = n.run()
-        val _ = n.docker(0, "")
+        val _ = n.docker(0, "0.0.0.0:5433")
         val unpublished = n.run()
         val absent = n.run(Map("PATH" -> without(n, "docker")))
         (
@@ -176,7 +186,11 @@ object CoderNeedsTests extends TestSuite {
         val _ =
           n.machine.write(n.machine.bin.resolve("ssh"), "#!/bin/sh\nexit 255\n", executable = true)
         val ssh = n.run()
-        val _ = n.machine.sh(n.f.proj, "git remote set-url origin https://example.invalid/r.git")
+        // Fetched from the bare origin, which answers; pushed to https, which no helper gives
+        // a credential for.
+        val _ = n.machine.sh(n.f.proj, s"git remote set-url origin '${n.origin}'")
+        val _ =
+          n.machine.sh(n.f.proj, "git remote set-url --push origin https://example.invalid/r.git")
         val https = n.run()
         def refused(url: String) =
           s"coder-needs: lacks a git credential that can push to origin ($url), for pushing built branches"
@@ -216,6 +230,64 @@ object CoderNeedsTests extends TestSuite {
       }
     }
 
+    test("glibc 2.38 lacks, and 2.39, 2.40 and 3.0 lack nothing") {
+      needs { n =>
+        def lacking(version: String): Vector[String] = {
+          val _ = n.getconf(s"echo 'glibc $version'")
+          n.run().out.filter(_.contains("glibc"))
+        }
+        Vector("2.38", "2.39", "2.40", "3.0").map(lacking) ==> Vector(
+          Vector(
+            "coder-needs: lacks glibc 2.39 or later (this has glibc 2.38), " +
+              "for Mill's native launcher, which ./mill runs"
+          ),
+          Vector(),
+          Vector(),
+          Vector()
+        )
+      }
+    }
+    test("an https push URL a credential helper answers for lacks nothing") {
+      needs { n =>
+        val _ =
+          n.machine.sh(n.f.proj, "git remote set-url --push origin https://example.invalid/r.git")
+        val _ = n.machine.sh(
+          n.f.proj,
+          "git config credential.helper '!f() { echo username=u; echo password=p; }; f'"
+        )
+        val done = n.run()
+        (done.exit, done.out) ==> ((
+          0,
+          Vector(
+            s"coder-needs: nothing lacking; the edge names this machine ${MachineName.value(Machine)}"
+          )
+        ))
+      }
+    }
+    test("outside a git checkout it says to run it in one, and exits 2") {
+      needs { n =>
+        val outside = Files.createDirectories(n.machine.root.resolve("outside"))
+        val done = n.run(in = outside)
+        (done.exit, done.out, done.err.trim) ==>
+          ((2, Vector(), "coder-needs: not inside a git checkout; run it in one"))
+      }
+    }
+    test("a hook that answers with no holder is named as the edge's lack") {
+      needs { n =>
+        val quiet = n.machine.checkout("quiet")
+        val _ = n.machine.sh(quiet, s"git remote add origin '${n.origin}'")
+        n.scoutScript(quiet)
+        val _ = n.machine.write(n.machine.hook(quiet), "#!/bin/sh\nexit 0\n", executable = true)
+        val done = n.run(in = quiet)
+        (done.exit, done.out) ==> ((
+          1,
+          Vector(
+            "coder-needs: lacks the edge's answer for this checkout's claim holder (it printed none), " +
+              "for claims and briefs"
+          )
+        ))
+      }
+    }
     test("every lack at once is one line each, in a fixed order") {
       needs { n =>
         val _ = n.getconf("exit 1")
