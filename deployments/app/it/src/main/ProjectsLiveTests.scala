@@ -1085,8 +1085,7 @@ object ProjectsLiveTests extends TestSuite {
             val _ = Await.result(other, 30.seconds)
             val claimed = Vector(Await.result(first, 30.seconds), Await.result(second, 30.seconds))
             val named = claimed.map(_.map(s => (s.contains("p/1 a"), s.contains("p/2 b"))))
-            (waited, named.size, named.toSet) ==>
-              (true, 2, Set(Right((true, false)), Right((false, true))))
+            (waited, named.toSet) ==> (true, Set(Right((true, false)), Right((false, true))))
           } finally pool.shutdownNow()
       }
     }
