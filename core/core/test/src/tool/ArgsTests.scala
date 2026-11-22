@@ -321,10 +321,36 @@ object ArgsTests extends TestSuite {
       assert(admits(options.schema(strict = false), ujson.Obj("options" -> ujson.Arr("a"))))
     }
     test("one object: its schema, and a failure inside it at its path") {
-      val which = Args.of((kind = Field.text("K."), state = Field.text("S.")))
+      val which =
+        Args.of((kind = Field.text("K."), state = Field.text("S."), at = Field.text("A.").optional))
       val args = Args.of((oldest = Field.one("Which.", which).optional))
-      args.schema(strict = false)("properties")("oldest") ==>
-        ujson.Obj.from(which.schema(strict = false).value.toSeq :+ ("description" -> "Which."))
+      def text(meaning: String, types: ujson.Value = "string") =
+        ujson.Obj("type" -> types, "description" -> meaning)
+      // Strict, its optional field is required and nullable, and so is the object itself.
+      (
+        args.schema(strict = false)("properties")("oldest"),
+        args.schema(strict = true)("properties")("oldest")
+      ) ==> (
+        ujson.Obj(
+          "type" -> "object",
+          "properties" -> ujson
+            .Obj("kind" -> text("K."), "state" -> text("S."), "at" -> text("A.")),
+          "required" -> ujson.Arr("kind", "state"),
+          "additionalProperties" -> false,
+          "description" -> "Which."
+        ),
+        ujson.Obj(
+          "type" -> ujson.Arr("object", "null"),
+          "properties" -> ujson.Obj(
+            "kind" -> text("K."),
+            "state" -> text("S."),
+            "at" -> text("A.", ujson.Arr("string", "null"))
+          ),
+          "required" -> ujson.Arr("kind", "state", "at"),
+          "additionalProperties" -> false,
+          "description" -> "Which."
+        )
+      )
       args
         .read(ujson.Obj("oldest" -> ujson.Obj("kind" -> "k", "state" -> "s")))
         .map(_.oldest.map(o => (o.kind, o.state))) ==> Right(Some(("k", "s")))
