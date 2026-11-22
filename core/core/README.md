@@ -19,7 +19,8 @@ In dependency order, each with the core packages it imports:
   variable named like one (`Named`, the one rule for names), its value leaving only through
   `Reveal`, which the law confines to the quarantines. Imports nothing in core.
 - **`id`**: the opaque ids, a web link as grit keeps it (`Href`), the one short content hash
-  every content-addressed id uses, and the full digest bytes are kept by (`Sha256`). A
+  every content-addressed id uses, and the full digest bytes are kept by (`Sha256`); a claim's
+  holder, with the two forms a session's and an agent's take, read back by `ClaimHolder.form`. A
   `PrincipalId` is made from text only by `grit.dbos`, through `PrincipalIds`
   (enola-intent.yaml). Imports nothing in core.
 - **`place`**: where conversations happen (ADR 0013): one containment tree, one namespace per

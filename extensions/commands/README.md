@@ -10,7 +10,9 @@ In dependency order, each package importing only those before it:
 
 - **`machine`**: a machine's name, and where its work is placed: a directory on a machine is the
   place `machine:<name>/<dir>`; and the claim holder a session there, or an agent it starts,
-  works as (`ClaimHolders`), readable in a claims listing and the same whoever computes it.
+  works as (`ClaimHolders`), readable in a claims listing and the same whoever computes it,
+  joined through core's `ClaimHolder.session` and `ClaimHolder.agent` so a method's role can
+  read whose it is.
 - **`caller`**: who a request is from (`Caller`: an account, the integrity its words are
   believed at, and the machine it is on), and the deployment's rule for it (`Callers`): every
   request the owner's while none bears a credential (`Callers.owner`), or each the caller of the
