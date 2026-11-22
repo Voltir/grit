@@ -1,7 +1,7 @@
 package grit.commands.machine
 
 import grit.core.either.Got.got
-import grit.core.id.{ClaimHolder, Harness, SessionId}
+import grit.core.id.{AgentType, ClaimHolder, Harness, HolderForm, SessionId}
 import grit.core.place.Directory
 
 import utest.*
@@ -34,6 +34,18 @@ object ClaimHoldersTests extends TestSuite {
       )
     }
 
+    test(
+      "a holder reads back as a session's, or as the agent type it was given, none when hashed"
+    ) {
+      Vector(None, Some("coder-opus"), Some("Plan Mode"), Some("coder-")).map(t =>
+        ClaimHolder.form(ClaimHolders.of(Desktop, Grit, t.map(ClaimHolders.Agent(_, Session))))
+      ) ==> Vector(
+        HolderForm.Session,
+        HolderForm.Agent(Some(got(AgentType.of("coder-opus")))),
+        HolderForm.Agent(None),
+        HolderForm.Agent(None)
+      )
+    }
     test(
       "an agent's holder adds its type, by its own hash when slugging changed it, and its starting session's hash"
     ) {

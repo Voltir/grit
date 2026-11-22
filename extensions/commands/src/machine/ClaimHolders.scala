@@ -1,6 +1,6 @@
 package grit.commands.machine
 
-import grit.core.id.{ClaimHolder, Harness, SessionId, ShortHash, Slug}
+import grit.core.id.{AgentType, ClaimHolder, Harness, SessionId, ShortHash, Slug}
 import grit.core.place.Directory
 import grit.std.either.Proven
 
@@ -9,8 +9,8 @@ import grit.std.either.Proven
   */
 object ClaimHolders {
 
-  /** 40: the most characters of a directory's last segment, or of an agent's type, a holder
-    * keeps, slugged.
+  /** 40: the most characters of a directory's last segment a holder keeps, slugged, and of the
+    * slug before a hashed agent type's hash.
     */
   val Slugged: Int = 40
 
@@ -65,25 +65,35 @@ object ClaimHolders {
   /** The holder a session in `dir` on `machine` works as, or, given `agent`, the one that agent
     * works as, `dir` then being the starting session's directory, not the agent's own:
     * `<machine>/<segment>-<dir's hash>[/<type>/<session's hash>]`, `segment` being `dir`'s last
-    * segment and `type` the agent's, each slugged ([[Slug.slugged]]) to at most [[Slugged]]
-    * characters. Equal inputs give equal holders; one directory on two machines, two; two types,
-    * two, short of a hash collision.
+    * segment slugged ([[Slug.slugged]]) to at most [[Slugged]] characters, and `type` the agent's
+    * whole when it is an [[AgentType]], else so slugged then `-` and its hash. Equal inputs give
+    * equal holders; one directory on two machines, two; two types, two, short of a hash
+    * collision.
     */
   def of(machine: MachineName, dir: Directory, agent: Option[Agent]): ClaimHolder = {
     val path = Directory.value(dir)
-    val head =
-      s"${MachineName.value(machine)}/${named(path.split('/').lastOption.getOrElse(""), path)}"
-    val text = agent.fold(head) { a =>
-      val kind = if (literal(a.kind)) a.kind else named(a.kind, a.kind)
-      s"$head/$kind/${ShortHash.of(a.session.written, 12)}"
-    }
-    // ClaimHolder.of refuses only text that is empty, over ClaimHolder.Longest (160) characters, or holds a control
-    // character. `text` starts with the machine's name, a slug of 1 to MachineName.Longest (32)
-    // characters; every other part is a slug ([a-z0-9-]), hex digits or `/`, so it holds no
-    // control character; and it is at most 32 + 1 + 49 (a segment: Slugged 40, `-`, 8 hex) + 1
-    // + 49 (a type: kept as sent at most Slugged 40, hashed at most 49) + 1 + 12 (the session's
-    // hash) = 145 characters.
-    Proven.right(ClaimHolder.of(text))
+    // ClaimHolder.session and ClaimHolder.agent refuse a part that is empty or holds `/`, an
+    // agent started by a holder not a session's, and what ClaimHolder.of refuses: text that is
+    // empty, over ClaimHolder.Longest (160) characters, or holds a control character. The
+    // machine's name is a slug of 1 to MachineName.Longest (32) characters; every other part is
+    // a nonempty slug ([a-z0-9-]) or hex digits (`named` gives at least 8), so none is empty or
+    // holds `/` or a control character; the head is `session`'s, so `agent` takes it; and the
+    // whole is at most 32 + 1 + 49 (a segment: Slugged 40, `-`, 8 hex) + 1 + 49 (a type: kept
+    // whole at most AgentType.Longest 40, hashed at most 49) + 1 + 12 (the session's hash) = 145
+    // characters.
+    Proven.right(
+      ClaimHolder
+        .session(MachineName.value(machine), named(path.split('/').lastOption.getOrElse(""), path))
+        .flatMap(head =>
+          agent.fold(Right(head)) { a =>
+            ClaimHolder.agent(
+              head,
+              AgentType.of(a.kind).fold(_ => named(a.kind, a.kind), AgentType.value),
+              ShortHash.of(a.session.written, 12)
+            )
+          }
+        )
+    )
   }
 
   // A segment, and a type that is not kept as sent, is its slug, `-` and the first 8 hex digits of
@@ -104,9 +114,4 @@ object ClaimHolders {
       s"holds '/', which parts an agent's session from the session starting it: $id"
     )
 
-  /** Whether a type is kept as sent: [[named]] never gives it, so no hashed type equals it. */
-  private def literal(kind: String): Boolean =
-    kind.nonEmpty && Slug.slugged(kind, Slugged) == kind && !Hashed.matches(kind)
-
-  private val Hashed = "(?:.*-)?[0-9a-f]{8}".r
 }
