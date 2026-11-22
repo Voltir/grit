@@ -39,6 +39,11 @@ if [ "$?" = 127 ]; then
   lack "the scout binary, for reading Scala: link it at ~/Projects/Spikes/scout-bin/scout or set SCOUT"
 fi
 
+# The gate's fetched tools are per checkout and gitignored, so a worktree lacks them until fetched.
+for tool in enola scalafmt shellcheck; do
+  [ -x "$top/tools/$tool" ] || lack "tools/$tool, for the gate: bash scripts/fetch-$tool.sh"
+done
+
 # The compose project's name is pinned, so its Postgres is found from any worktree.
 databases="for the local databases and the integration suites"
 if ! command -v docker > /dev/null 2>&1; then

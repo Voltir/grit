@@ -52,19 +52,24 @@ object CoderNeedsTests extends TestSuite {
     /** The bare repository every checkout here has as origin. */
     val origin: Path = machine.root.resolve("origin.git")
 
-    /** The real scripts/scout, put into `checkout`. */
-    def scoutScript(checkout: Path): Unit = {
+    /** The real scripts/scout, and a stand-in for each tool the gate fetches, put into
+      * `checkout`.
+      */
+    def ready(checkout: Path): Unit = {
       val _ = machine.write(
         checkout.resolve("scripts/scout"),
         Files.readString(env("GRIT_SCOUT_SCRIPT")),
         executable = true
       )
+      Fetched.foreach { tool =>
+        val _ = machine.write(checkout.resolve(s"tools/$tool"), "#!/bin/sh\n", executable = true)
+      }
     }
 
     locally {
       val _ = getconf("echo 'glibc 2.39'")
       val _ = docker(0, "0.0.0.0:5432")
-      scoutScript(f.proj)
+      ready(f.proj)
       val _ = machine.sh(machine.root, "git init -q --bare origin.git")
       val _ = machine.sh(f.proj, s"git remote add origin '${origin}'")
     }
@@ -105,6 +110,9 @@ object CoderNeedsTests extends TestSuite {
 
   private val Docker = "for the local databases and the integration suites"
 
+  /** The tools under a checkout's `tools/` that the gate needs, each fetched by its own script. */
+  private val Fetched: Vector[String] = Vector("enola", "scalafmt", "shellcheck")
+
   val tests = Tests {
     test(
       "on a machine lacking nothing, one line names the machine the edge knows, and it exits 0"
@@ -143,6 +151,22 @@ object CoderNeedsTests extends TestSuite {
           1,
           Vector(
             "coder-needs: lacks the scout binary, for reading Scala: link it at ~/Projects/Spikes/scout-bin/scout or set SCOUT"
+          )
+        ))
+      }
+    }
+
+    test("each fetched tool the gate needs, missing, is named with the script that fetches it") {
+      needs { n =>
+        Fetched.foreach(tool => Files.delete(n.f.proj.resolve(s"tools/$tool")))
+        val _ = n.machine.write(n.f.proj.resolve("tools/scalafmt"), "not a program\n")
+        val done = n.run()
+        (done.exit, done.out) ==> ((
+          1,
+          Vector(
+            "coder-needs: lacks tools/enola, for the gate: bash scripts/fetch-enola.sh",
+            "coder-needs: lacks tools/scalafmt, for the gate: bash scripts/fetch-scalafmt.sh",
+            "coder-needs: lacks tools/shellcheck, for the gate: bash scripts/fetch-shellcheck.sh"
           )
         ))
       }
@@ -236,7 +260,7 @@ object CoderNeedsTests extends TestSuite {
       needs { n =>
         val alone = n.machine.checkout("alone")
         val _ = n.machine.sh(alone, s"git remote add origin '${n.origin}'")
-        n.scoutScript(alone)
+        n.ready(alone)
         val unjoined = n.run(in = alone)
         val gone = HookFixtures.closedPort
         val down = n.run(Map("GRIT_EDGE" -> s"http://127.0.0.1:$gone"))
@@ -305,7 +329,7 @@ object CoderNeedsTests extends TestSuite {
       needs { n =>
         val quiet = n.machine.checkout("quiet")
         val _ = n.machine.sh(quiet, s"git remote add origin '${n.origin}'")
-        n.scoutScript(quiet)
+        n.ready(quiet)
         val _ = n.machine.write(n.machine.hook(quiet), "#!/bin/sh\nexit 0\n", executable = true)
         val done = n.run(in = quiet)
         (done.exit, done.out) ==> ((
@@ -322,6 +346,7 @@ object CoderNeedsTests extends TestSuite {
         val _ = n.getconf("exit 1")
         val _ = n.docker(1, "")
         val _ = n.machine.sh(n.f.proj, "git remote remove origin")
+        Files.delete(n.f.proj.resolve("tools/enola"))
         val done = n.run(
           Map(
             "SCOUT" -> n.machine.root.resolve("nowhere/scout").toString,
@@ -333,6 +358,7 @@ object CoderNeedsTests extends TestSuite {
           Vector(
             "coder-needs: lacks glibc 2.39",
             "coder-needs: lacks the scout",
+            "coder-needs: lacks tools/enola, for",
             "coder-needs: lacks a running",
             "coder-needs: lacks a remote",
             "coder-needs: lacks the edge's"
