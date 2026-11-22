@@ -263,6 +263,56 @@ abstract class EdgeSessionsContract extends TestSuite {
         )
       )
     }
+    test("an agent's later events keep the claim the session that started it works held by it") {
+      val h = got(ClaimHolder.of("contract/parenting"))
+      val lease = Claims.Lease.toSeconds
+      worked("parenting", h, 1)
+      claimedBrief(
+        h,
+        "Work the parenting thing.",
+        At,
+        got(DocKey.of("contract/parenting-1")),
+        Some(session("parenting"))
+      )
+      val agent = batch(session("parenting/x"), Some(got(ClaimHolder.of("contract/agent"))), lease)
+      val _ = record(Reader, agent.copy(parent = Some(session("parenting"))))
+      opening(h, session("onlooker"), At.plusSeconds(lease + 2)) ==> Right(
+        (
+          Some(
+            s"held by Some(${session("parenting").written}) for contract/parenting, moved by ${Some(Moving)}"
+          ),
+          None
+        )
+      )
+    }
+
+    test("a session started again after its end has its agents keep its claim again") {
+      val h = got(ClaimHolder.of("contract/resuming"))
+      val lease = Claims.Lease.toSeconds
+      worked("resuming", h, 1)
+      claimedBrief(
+        h,
+        "Work the resuming thing.",
+        At,
+        got(DocKey.of("contract/resuming-1")),
+        Some(session("resuming"))
+      )
+      val start =
+        got(Event.of(3, At.plusSeconds(3), Event.Kind.Started, Event.Shape.Empty))
+      val again = batch(session("resuming"), Some(h)).copy(events = Vector(start))
+      val agent = batch(session("resuming/x"), Some(got(ClaimHolder.of("contract/agent"))), lease)
+      val _ = record(Reader, ended(session("resuming"), 2), again)
+      val _ = record(Reader, agent.copy(parent = Some(session("resuming"))))
+      opening(h, session("onlooker"), At.plusSeconds(lease + 4)) ==> Right(
+        (
+          Some(
+            s"held by Some(${session("resuming").written}) for contract/resuming, moved by ${Some(Moving)}"
+          ),
+          None
+        )
+      )
+    }
+
     test("briefed for an account no person is linked to is NotVouched") {
       recording(
         _.briefed(Stranger, Room, got(ClaimHolder.of("contract/briefed")), session("asked"), At)

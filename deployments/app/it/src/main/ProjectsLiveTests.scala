@@ -7,12 +7,15 @@ import scala.concurrent.duration.*
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.Using
 
+import grit.core.claim.Claims
 import grit.core.document.{DocRef, DocText}
+import grit.core.edge.EdgeSessions
 import grit.core.either.Got.got
-import grit.core.id.{AgentType, DocKey, SessionId}
+import grit.core.id.{AgentType, ClaimHolder, DocKey, SessionId}
 import grit.core.identity.Account
-import grit.core.place.Place
+import grit.core.place.{Namespace, Place}
 import grit.core.plugin.CommandOutcome
+import grit.core.session.Event
 import grit.core.store.StoreError
 import grit.core.store.Tx
 import grit.core.tool.ToolName
@@ -187,6 +190,68 @@ object ProjectsLiveTests extends TestSuite {
               if ujson.read(said)("claims").arr.map(c => (c("key").str, c("holder").str)) ==
                 Vector(("p/1", "coder/abc")) =>
         }
+      }
+    }
+
+    test(
+      "project_claims' lapses is a lease after the last event of the claim's session's agent, until that session ends"
+    ) {
+      CommandRooms.commanding("projects_agent_lease", _ => Vector(atInternal)) {
+        (_, engine, commands) =>
+          declared(commands)
+          val holder = got(ClaimHolder.of("desk/grit-1"))
+          val parent = got(SessionId.read("claude-code:s-lead"))
+          val agent = got(SessionId.read("claude-code:s-lead/a1"))
+          val where = Place.under(Namespace.Machine, Vector("desk", "/work/grit"))
+          def event(n: Long, kind: Event.Kind, after: FiniteDuration) =
+            got(Event.of(n, at.plusMillis(after.toMillis), kind, Event.Shape.Empty))
+          val coder = got(ClaimHolder.of("desk/grit-1/coder/a1"))
+          def recorded(id: SessionId, of: Option[SessionId], events: Event*) =
+            engine.sessions.record(
+              ann,
+              desk,
+              Vector(
+                EdgeSessions.Batch(
+                  id,
+                  of,
+                  where,
+                  Some(of.fold(holder)(_ => coder)),
+                  events.toVector
+                )
+              )
+            )
+          def lapses = ran(commands, ann, desk, ToolName("project_claims")).map {
+            case CommandOutcome.Done(said) =>
+              ujson.read(said)("claims").arr.map(_("lapses").str).mkString(", ")
+            case other => other.toString
+          }
+          val lease = Claims.Lease
+          val read = for {
+            _ <- ran(commands, ann, desk, ToolName("project_new"), "project" -> "p")
+            _ <- keep(commands, desk, "a", "Leased.")
+            _ <- ran(
+              commands,
+              ann,
+              desk,
+              ToolName("project_claim"),
+              "key" -> "p/a",
+              "role" -> "builder",
+              "holder" -> "desk/grit-1",
+              "session" -> "claude-code:s-lead"
+            )
+            _ <- recorded(parent, None, event(1, Event.Kind.Edited, 10.minutes))
+            _ <- recorded(agent, Some(parent), event(1, Event.Kind.Edited, 60.minutes))
+            renewed <- lapses
+            _ <- recorded(parent, None, event(2, Event.Kind.Ended, 90.minutes))
+            _ <- recorded(agent, Some(parent), event(2, Event.Kind.Edited, 100.minutes))
+            ended <- lapses
+          } yield (renewed, ended)
+          read ==> Right(
+            (
+              at.plusMillis((60.minutes + lease).toMillis).toString,
+              at.plusMillis((90.minutes + lease).toMillis).toString
+            )
+          )
       }
     }
 
