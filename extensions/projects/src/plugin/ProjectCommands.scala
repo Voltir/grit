@@ -2050,12 +2050,12 @@ private[plugin] final class ProjectCommands(
   }
 
   /** `project_brief`. */
-  object ProjectBrief extends ReadingCommand[Briefing] {
+  object ProjectBrief extends ReadingCommand[RoleBriefing] {
     override def offeredToTurns: Boolean = shipped
-    override def shown(args: Briefing): String =
+    override def shown(args: RoleBriefing): String =
       s"${args.key.value} as ${RoleName.value(args.role)}"
 
-    val spec: ToolSpec[Briefing] = ToolSpec(
+    val spec: ToolSpec[RoleBriefing] = ToolSpec(
       ToolName("project_brief"),
       "Gives the brief for working on an artifact in a role: a header line, its body whole, " +
         "then what the role is shown of what it cites, nearest first, as pointer lines once " +
@@ -2073,10 +2073,10 @@ private[plugin] final class ProjectCommands(
           for {
             key <- parsed("key", a.key, ArtifactRef.read)
             role <- parsed("role", a.role, RoleName.of)
-          } yield Briefing(key, role, a.chars)
+          } yield RoleBriefing(key, role, a.chars)
         )
     )
-    def run(args: Briefing, by: CommandBy, own: PluginReads, at: Instant)(using
+    def run(args: RoleBriefing, by: CommandBy, own: PluginReads, at: Instant)(using
         Tx^
     ): Either[StoreError, CommandOutcome] = answered {
       for {

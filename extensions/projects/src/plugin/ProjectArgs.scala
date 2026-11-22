@@ -555,7 +555,7 @@ private[plugin] object ProjectArgs {
   final case class Surveying(project: Option[ProjectKey]) extends caps.Pure
 
   /** `project_brief`'s arguments. */
-  final case class Briefing(key: ArtifactRef, role: RoleName, chars: Int) extends caps.Pure
+  final case class RoleBriefing(key: ArtifactRef, role: RoleName, chars: Int) extends caps.Pure
 
   /** 100,000: the most characters `project_brief` is asked to give. */
   private[plugin] val BriefMost: Int = 100_000
