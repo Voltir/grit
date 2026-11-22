@@ -196,14 +196,15 @@ object MigrateTests extends TestSuite {
           noteToMemo,
           overriding("p/a" -> "memo", "p/a" -> "note")
         ),
-        migrated(store, noteToMemo, overriding("p/1" -> "note", "p/b" -> "note")),
+        // `p/1` is renamed as `kinds` would rename it, `p/b` kept a note over it.
+        migrated(store, noteToMemo, overriding("p/1" -> "memo", "p/b" -> "note")),
         exported(store)
       ) ==> (
         Some("p/a given twice"),
         CommandOutcome.Done(
-          "Moved project p to method grit version 2; no artifact renamed, none kept again."
+          "Moved project p to method grit version 2; 1 artifact renamed and kept again: p/1."
         ),
-        Right((2, Vector("p/1" -> "note", "p/2" -> "note", "p/3" -> "change")))
+        Right((2, Vector("p/1" -> "memo", "p/2" -> "note", "p/3" -> "change")))
       )
     }
 
