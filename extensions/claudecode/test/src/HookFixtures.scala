@@ -8,6 +8,8 @@ import java.nio.file.{Files, Path}
 import java.time.Instant
 import java.util.concurrent.ConcurrentLinkedQueue
 
+import scala.jdk.CollectionConverters.*
+
 import grit.commands.caller.Callers
 import grit.commands.edge.{CommandsEdge, EdgeFixtures}
 import grit.commands.machine.ClaimHolders
@@ -118,6 +120,32 @@ final class HookFixtures(
   /** Every brief the edge read, first first. */
   def briefed: Vector[ScriptedSessions.Call.Briefed] =
     script.called.collect { case b: ScriptedSessions.Call.Briefed => b }
+
+  /** The names of the files kept for the key `key` (a session's own id, or `<id>+<agent>`) under
+    * the hook's `sessions/.kept`, in order: none when there are none.
+    */
+  def queue(key: String): Vector[String] = {
+    val dir = hook.resolveSibling("sessions").resolve(".kept").resolve(key)
+    if (!Files.isDirectory(dir)) Vector.empty
+    else {
+      val listed = Files.list(dir)
+      try listed.iterator().asScala.map(_.getFileName.toString).toVector.sorted
+      finally listed.close()
+    }
+  }
+
+  /** `text` kept for the key `key` as the hook keeps a line, under the name `n`. */
+  def keep(key: String, n: String, text: String): Path =
+    machine.write(hook.resolveSibling("sessions").resolve(".kept").resolve(key).resolve(n), text)
+
+  /** How many tool calls the edge logged on the session `local`: each line once, however often it
+    * was posted.
+    */
+  def logged(local: String): Option[Long] = script.session(session(local)).map(_.counters.toolCalls)
+
+  /** The environment Claude Code gives a hook in `proj`, aimed at a port nothing listens on. */
+  def down: Map[String, String] =
+    claude + ("GRIT_EDGE" -> s"http://127.0.0.1:${HookFixtures.closedPort}")
 
   /** A GET of `target` from the edge, as the edge answers it: its status line and body. */
   def get(target: String): (String, String) = EdgeFixtures.get(port, s"localhost:$port", target)
@@ -249,5 +277,81 @@ object HookFixtures {
       server.close()
       held.forEach(_.close())
     }
+  }
+
+  /** What [[relaying]]'s proxy does with each request it is sent. */
+  enum Relay {
+
+    /** Forwards the first request to the edge and gives back its answer, then closes every later
+      * connection unanswered: an edge that took one post and then stopped answering.
+      */
+    case First
+
+    /** Forwards every request to the edge and closes each connection once the edge has answered,
+      * its answer dropped: a post the edge took whose answer was lost on the way.
+      */
+    case Lost
+  }
+
+  /** `body` given the port of a proxy on 127.0.0.1 to the edge on `edge`'s port, relaying each
+    * request as `relay` says, one at a time; closed after.
+    */
+  def relaying[A](edge: Int, relay: Relay)(body: Int => A): A = {
+    val server = loopback(50)
+    val relayed = new java.util.concurrent.atomic.AtomicInteger(0)
+    val accepting = new Thread(() =>
+      try
+        while (true) {
+          val client = server.accept()
+          try {
+            val (head, request) = requestOf(client)
+            if (relay == Relay.First && relayed.get() > 0) ()
+            else {
+              val _ = relayed.incrementAndGet()
+              val up = new Socket("127.0.0.1", edge)
+              try {
+                val heads = head.filterNot { l =>
+                  val k = l.toLowerCase(java.util.Locale.ROOT)
+                  k.startsWith("expect:") || k.startsWith("connection:")
+                } :+ "Connection: close"
+                up.getOutputStream.write((heads.mkString("\r\n") + "\r\n\r\n").getBytes(UTF_8))
+                up.getOutputStream.write(request.getBytes(UTF_8))
+                up.getOutputStream.flush()
+                val answer = up.getInputStream.readAllBytes()
+                if (relay == Relay.First) client.getOutputStream.write(answer)
+              } finally up.close()
+            }
+          } catch { case _: IOException => () } // the hook gave up on the connection
+          finally client.close()
+        }
+      catch { case _: IOException => () } // the listener closed
+    )
+    accepting.setDaemon(true)
+    accepting.start()
+    try body(server.getLocalPort)
+    finally server.close()
+  }
+
+  /** The request a client sent on `socket`: its head's lines, request line first, and its body,
+    * as `Content-Length` bounds it; a `100 Continue` given first when it expects one.
+    */
+  private def requestOf(socket: Socket): (Vector[String], String) = {
+    val in = socket.getInputStream
+    val head = new java.io.ByteArrayOutputStream()
+    while (!head.toString(UTF_8).endsWith("\r\n\r\n")) {
+      val b = in.read()
+      if (b < 0) throw new IOException("the request ended in its head")
+      head.write(b)
+    }
+    val lines = head.toString(UTF_8).split("\r\n").toVector
+    def header(name: String): Option[String] =
+      lines.collectFirst {
+        case l if l.toLowerCase(java.util.Locale.ROOT).startsWith(name + ":") =>
+          l.drop(name.length + 1).trim
+      }
+    if (header("expect").exists(_.equalsIgnoreCase("100-continue")))
+      socket.getOutputStream.write("HTTP/1.1 100 Continue\r\n\r\n".getBytes(UTF_8))
+    val length = header("content-length").flatMap(_.toIntOption).getOrElse(0)
+    (lines, new String(in.readNBytes(length), UTF_8))
   }
 }

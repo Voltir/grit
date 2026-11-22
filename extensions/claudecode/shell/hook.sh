@@ -1,7 +1,8 @@
 # grit's hook for Claude Code: one program, a subcommand per role, that the join script installs
 # after a shebang, the lines setting `harness`, `edge` and either `credential`, the file holding
 # the credential every request bears, or no credential and GRIT_EDGE, when set, overriding `edge`,
-# and shared.sh.
+# then the adapter's line setting `unended`, the seconds after its last event a session counts as
+# ended, and shared.sh.
 # Each role is a hook registered in the checkout's .claude/settings.local.json or git's
 # post-commit and post-rewrite, or what a Bash tool or Claude Code's MCP entry asks for:
 #
@@ -37,6 +38,10 @@ if [ -z "${GRIT_HOOK_STARTED-}" ]; then
   case ${1-} in holder | header) failed=1 ;; esac
   if [ -z "${BASH_VERSINFO-}" ] || [ "${BASH_VERSINFO[0]}" -lt 5 ]; then
     say "needs bash 5 or later; it did nothing"
+    exit "$failed"
+  fi
+  if ! [[ ${unended-} =~ ^[0-9]{1,9}$ ]]; then
+    say "names no count of seconds after which a kept event is moot; it did nothing"
     exit "$failed"
   fi
   lacks=$(missing)
@@ -75,8 +80,17 @@ parent=${GRIT_HOOK_PARENT-}
 unset GRIT_HOOK_STARTED GRIT_HOOK_SELF GRIT_HOOK_PARENT
 # Where /proc is read: GRIT_HOOK_PROC, which tests alone set, names a directory standing in for it.
 proc=${GRIT_HOOK_PROC:-/proc}
-# The sessions' files, one a session from its start until its end is recorded, beside the hook.
+# The sessions' files, one a session from its start until its end is recorded or kept, beside the
+# hook. Every entry in it that is no session's file starts with a dot, which `sweep`'s `*` skips.
 lives=${self%/*}/sessions
+# The events the edge did not take, kept to send later: a queue (a directory) for each session,
+# named by its id, and one for each agent of it, `<session>+<agent>`, holding a file a line, named
+# by its `n`.
+kept=$lives/.kept
+# What a queue holds at most, in lines and in bytes: a queue is posted whole, in a post at most a
+# quarter of the edge's 1 MiB bound on a body; a line is moot `unended` seconds after its `n`.
+most_lines=1000
+most_bytes=262144
 export TZ=UTC
 deadline=$((10#$started + bound * 1000000))
 # The session and agent ids the hook sends; one that does not match is never sent. An agent's type
@@ -101,16 +115,16 @@ authorization() {
   [ -z "$token" ] || printf 'Authorization: Bearer %s\n' "$token"
 }
 
-# Says the edge's answer $2, not 200, to the request for $1, its body $3; a 401 says what to do
-# about the credential.
+# Says the edge's answer $2, not 200, to the request for $1, its body $3, and then $4; a 401 says
+# what to do about the credential.
 answered() {
   local first=${3%%$'\n'*}
   if [ "$2" != 401 ]; then
-    say "the edge at $edge answered $2 for $1: $first"
+    say "the edge at $edge answered $2 for $1: $first${4-}"
   elif [ -n "$credential" ]; then
-    say "the edge at $edge refused this machine's credential (401) for $1: $first; ask whoever runs the edge for this credential and put it in $credential"
+    say "the edge at $edge refused this machine's credential (401) for $1: $first; ask whoever runs the edge for this credential and put it in $credential${4-}"
   else
-    say "the edge at $edge needs a credential (401) for $1: $first; ask whoever runs the edge for one, and join again with --credential <file>"
+    say "the edge at $edge needs a credential (401) for $1: $first; ask whoever runs the edge for one, and join again with --credential <file>${4-}"
   fi
 }
 
@@ -210,7 +224,7 @@ brief() {
   esac
   if ! ask /brief "harness=$harness" "session=$session" "dir=$dir" "start=$start" "${more[@]+"${more[@]}"}"; then
     say "the edge at $edge did not answer for the brief"
-    context "$event" "grit: grit's server at $edge did not answer. This $who starts without its brief, and what it does is not recorded until the server answers."
+    context "$event" "grit: grit's server at $edge did not answer. This $who starts without its brief; what it does is kept on this machine and recorded once the server answers."
   elif [ "$status" != 200 ]; then
     answered "the brief" "$status" "$answer"
     context "$event" "grit: grit's server at $edge answered $status when asked for this $who's brief, so it starts without one."
@@ -312,10 +326,57 @@ sweep() {
     stamp
     line=$(jq -nc --arg s "$name" --arg d "${v[5]}" --arg n "$n" --arg at "$at" --arg why "$why" \
       '{session: $s, dir: $d, n: $n, at: $at, event: "ended", shape: {reason: "stopped", found: $why}}') || continue
-    if send "$line" "the end of the stopped session $name" was; then
-      rm -f -- "$f"
-      swept=$((swept + 1))
+    deliver "$name" "the end of the stopped session $name" was "$n" "$line"
+    case $fate in
+      taken)
+        rm -f -- "$f"
+        swept=$((swept + 1))
+        ;;
+      # The end is in the session's queue, which a later start sends.
+      kept) rm -f -- "$f" ;;
+    esac
+  done
+}
+
+# Removes each entry under `kept` whose name holds an `n` past `unended`, or none, kept files'
+# temporary ones among them, and the queues it leaves empty; a line on stderr a queue that lost
+# lines.
+aged() {
+  local d f name cut
+  local -i k
+  moot
+  for d in "$kept"/*; do
+    if ! [ -d "$d" ]; then
+      [ ! -e "$d" ] || rm -f -- "$d"
+      continue
     fi
+    k=0
+    for f in "$d"/* "$d"/.*; do
+      name=${f##*/}
+      [ -e "$f" ] && [ "$name" != . ] && [ "$name" != .. ] || continue
+      [[ $name =~ ^\.?([0-9]{19})(\..*)?$ ]] && ((10#${BASH_REMATCH[1]} >= cut)) && continue
+      rm -f -- "$f"
+      [[ $name == .* ]] || k+=1
+    done
+    rmdir -- "$d" 2> /dev/null
+    ((k == 0)) || dropped "${d##*/}" "$k" "older than $((unended / 3600)) hours"
+  done
+}
+
+# Sends what is kept, at a start once the edge has answered: the session's own queues first, then
+# each other queue, a dead session's with its end (`sweep`), a post each while the edge answers
+# and time is left.
+resend() {
+  local d
+  aged
+  fate=taken
+  family ''
+  [ "$fate" = taken ] || [ "$fate" = refused ] || return 0
+  sweep
+  for d in "$kept"/*; do
+    [ -d "$d" ] || continue
+    case ${d##*/} in "$session" | "$session"+*) continue ;; esac
+    deliver "${d##*/}" '' '' || [ "$fate" = refused ] || return 0
   done
 }
 
@@ -323,7 +384,7 @@ sweep() {
 # starts learns its own, and after a compaction the digest of what it did lately. A session that
 # starts afresh (a clear among them) has none: its brief is the handover.
 opening() {
-  local holder text swept
+  local holder text swept=0
   payload || return 0
   [ "$event" = SessionStart ] || return 0
   alive
@@ -335,7 +396,7 @@ opening() {
     return 0
   fi
   holder=$answer
-  sweep
+  resend
   # TYPE, not <type>: pasted into a shell, `<type>` would be a redirect.
   text="grit: this session's claim holder is $holder, and its session is $harness:$session.
 grit: an agent this session starts has its own claim holder. This prints it, with the agent's type in place of TYPE: $(sq "$self") holder TYPE --dir $(sq "$dir") --session $(sq "$session")"
@@ -420,7 +481,7 @@ header() {
 }
 
 # Sets `n` and `at` from one reading of the clock: `n` its microseconds times 1000 plus this
-# process's id modulo 1000, `at` the instant.
+# process's id modulo 1000, 19 digits, `at` the instant. A kept line's age is read from its `n`.
 stamp() {
   local us=${EPOCHREALTIME//[!0-9]/}
   us=$((10#$us))
@@ -433,34 +494,188 @@ toplevel() {
   [[ $1 == /* ]] && git -C "$1" rev-parse --show-toplevel 2> /dev/null
 }
 
-# Posts the event lines $1 to the edge, each line's fate said on stderr when it was not kept, $2
-# naming them and $3 its verb, `was` or `were`; fails when any was not kept. Nothing is kept to
-# resend.
-send() {
-  local out code answer secs why
+# Who the queue $1 is kept for, as a line on stderr names it.
+whose() {
+  if [[ $1 == *+* ]]; then
+    printf 'the agent %s of the session %s' "${1#*+}" "${1%%+*}"
+  else
+    printf 'the session %s' "$1"
+  fi
+}
+
+# `1 event` or `<k> events`, for the count $1.
+events() {
+  if [ "$1" = 1 ]; then printf '1 event'; else printf '%d events' "$1"; fi
+}
+
+# Says that the $2 oldest lines kept for the queue $1 were dropped, for the reason $3.
+dropped() {
+  if [ "$2" = 1 ]; then
+    say "dropped the oldest event kept for $(whose "$1"): $3"
+  else
+    say "dropped the $2 oldest events kept for $(whose "$1"): $3"
+  fi
+}
+
+# Sets `cut` to the ordinal below which a kept line is past `unended`: a line's `n` is a reading
+# of the clock (`stamp`), so its age is read from its name.
+moot() {
+  local now=${EPOCHREALTIME//[!0-9]/}
+  cut=$(((10#$now - unended * 1000000) * 1000))
+}
+
+# The length of $1 in bytes, in `size`.
+bytesof() {
+  local LC_ALL=C
+  # shellcheck disable=SC2034 # read by the caller
+  size=${#1}
+}
+
+# Keeps the new lines `fresh` (each `<n>` and its line, in turn) in the queue $1, each in a file
+# of its own named by its `n`, written whole before it is named; sets `fate` to `kept`, or, saying
+# so with $2 naming them and $3 its verb, to `dropped` when they could not be kept.
+stash() {
+  local q=$kept/$1 i tmp
+  for ((i = 0; i < ${#fresh[@]}; i += 2)); do
+    tmp=''
+    # A start removes the queues it leaves empty: one removed after mkdir is made again.
+    if ! [[ ${fresh[i]} =~ ^[0-9]{19}$ ]] ||
+      ! { { mkdir -p -- "$q" && tmp=$(mktemp -- "$q/.${fresh[i]}.XXXXXX"); } 2> /dev/null ||
+        { mkdir -p -- "$q" && tmp=$(mktemp -- "$q/.${fresh[i]}.XXXXXX"); }; } ||
+      ! printf '%s' "${fresh[i + 1]}" > "$tmp" || ! mv -f -- "$tmp" "$q/${fresh[i]}"; then
+      [ -z "$tmp" ] || rm -f -- "$tmp"
+      say "$2 $3 dropped: it could not be kept in $q"
+      fate=dropped
+      return 0
+    fi
+  done
+  fate=kept
+}
+
+# Posts, as one post, the lines kept for the queue $1 in their ordinals' order, then the new lines
+# $4… (each `<n>` and its line, in turn), $2 naming the new lines and $3 its verb, `was` or
+# `were`. Every post of an event goes through it. A line is posted after every line its queue held
+# when this read it, so it never reaches the edge ahead of them. Before the post, the queue's
+# lines past `unended`, then its oldest past `most_lines` lines or `most_bytes` bytes with the new lines, are
+# dropped, a line on stderr a reason. Sets `fate`: `taken` when the edge kept every line, `refused`
+# when it kept all but those it named (refused again as they are, so never kept), `kept` when the
+# new lines were kept to send later (no answer, no time left, a 401, 403 or 5xx), `dropped` when
+# they were not; and `took` to the edge's 200 body, empty for any other answer. A kept line leaves
+# its queue when the edge answered 200 or refused the post whole (400, 413) for a post holding it,
+# or for a bound. Fails unless `fate` is `taken`.
+deliver() {
+  local key=$1 what=$2 verb=$3 q=$kept/$1 f name line body='' out code answer secs why size cut i
+  local -a files=() lines=() fresh=()
+  local -i count total=0 old=0 over=0 big=0 from=0 k
+  shift 3
+  fresh=("$@")
+  # shellcheck disable=SC2034 # the edge's 200 body, for a caller to read
+  took='' fate=taken
+  moot
+  for f in "$q"/*; do
+    name=${f##*/}
+    [[ -f $f && $name =~ ^[0-9]{19}$ ]] || continue
+    if ((10#$name < cut)); then
+      rm -f -- "$f"
+      old+=1
+      continue
+    fi
+    line=''
+    IFS= read -r -d '' line < "$f"
+    files+=("$f") lines+=("$line")
+    bytesof "$line"
+    total=$((total + size + 1))
+  done
+  for ((i = 1; i < ${#fresh[@]}; i += 2)); do
+    bytesof "${fresh[i]}"
+    total=$((total + size + 1))
+  done
+  count=$((${#files[@]} + ${#fresh[@]} / 2))
+  while ((from < ${#files[@]})) && ((count > most_lines || total > most_bytes)); do
+    if ((count > most_lines)); then over+=1; else big+=1; fi
+    bytesof "${lines[from]}"
+    total=$((total - size - 1)) count=$((count - 1))
+    rm -f -- "${files[from]}"
+    from+=1
+  done
+  ((old == 0)) || dropped "$key" "$old" "older than $((unended / 3600)) hours"
+  ((over == 0)) || dropped "$key" "$over" "more than $most_lines were kept"
+  ((big == 0)) || dropped "$key" "$big" "more than $((most_bytes / 1024)) KiB were kept"
+  k=$((${#files[@]} - from))
+  for ((i = from; i < ${#files[@]}; i++)); do body+=${lines[i]}$'\n'; done
+  for ((i = 1; i < ${#fresh[@]}; i += 2)); do body+=${fresh[i]}$'\n'; done
+  [ -n "$body" ] || return 0
+  if [ "${#fresh[@]}" = 0 ]; then
+    what="the $(events "$k") kept earlier for $(whose "$key")"
+    verb=were
+    [ "$k" != 1 ] || verb=was
+  fi
   if ! left; then
-    say "$2 $3 dropped: no time was left for its post"
+    fate=kept
+    [ "${#fresh[@]}" = 0 ] || {
+      stash "$key" "$what" "$verb"
+      [ "$fate" != kept ] || say "$what $verb kept to send later: no time was left for its post"
+    }
     return 1
   fi
   out=$(curl -q -s "${direct[@]+"${direct[@]}"}" --connect-timeout 0.3 --max-time "$secs" -H @<(authorization) -H 'Content-Type: application/x-ndjson' \
-    --data-binary @- -w '\n%{http_code}' -- "$edge/events?harness=$harness" <<< "$1") || {
-    say "$2 $3 dropped: the edge at $edge did not answer"
+    --data-binary @- -w '\n%{http_code}' -- "$edge/events?harness=$harness" <<< "${body%$'\n'}") || {
+    fate=kept
+    [ "${#fresh[@]}" = 0 ] || {
+      stash "$key" "$what" "$verb"
+      [ "$fate" != kept ] || say "$what $verb kept to send later: the edge at $edge did not answer"
+    }
     return 1
   }
   code=${out##*$'\n'} answer=${out%$'\n'*}
   case $code in
+    200 | 400 | 413)
+      for ((i = from; i < ${#files[@]}; i++)); do rm -f -- "${files[i]}"; done
+      ;;
+  esac
+  case $code in
     200)
+      # shellcheck disable=SC2034 # the edge's 200 body, for a caller to read
+      took=$answer
+      ((k == 0)) || say "sent $(events "$k") kept earlier for $(whose "$key")"
       why=$(jq -r '.refused[]? | "line \(.line) refused: \(.why)"' <<< "$answer" 2> /dev/null) || why=''
       [ -z "$why" ] || {
-        while IFS= read -r out; do say "$2: $out"; done <<< "$why"
+        while IFS= read -r out; do say "$what: $out"; done <<< "$why"
+        fate=refused
         return 1
       }
+      return 0
       ;;
-    413) say "$2 $3 dropped: the edge at $edge took its post as too long (413)" ;;
-    401) answered "$2" 401 "$answer" ;;
-    *) say "the edge at $edge answered $code to $2, keeping nothing: ${answer%%$'\n'*}" ;;
+    400 | 413)
+      if [ "${#fresh[@]}" != 0 ] && ((k > 0)); then
+        what="$what and the $(events "$k") kept before it" verb=were
+      fi
+      if [ "$verb" = was ]; then out=it; else out=they; fi
+      say "the edge at $edge refused $what whole ($code), so $out $verb dropped: ${answer%%$'\n'*}"
+      fate=dropped
+      return 1
+      ;;
   esac
-  [ "$code" = 200 ]
+  fate=kept
+  [ "${#fresh[@]}" = 0 ] || stash "$key" "$what" "$verb"
+  if [ "$fate" != kept ]; then
+    :
+  elif [ "$code" = 401 ]; then
+    answered "$what" 401 "$answer" "; $what $verb kept to send later"
+  else
+    say "the edge at $edge answered $code to $what, which $verb kept to send later: ${answer%%$'\n'*}"
+  fi
+  return 1
+}
+
+# Posts each queue of the session `session`, its own and its agents', but the queue $1, a post
+# each, while the edge answers and time is left.
+family() {
+  local d
+  for d in "$kept/$session" "$kept/$session"+*; do
+    [ -d "$d" ] && [ "${d##*/}" != "$1" ] || continue
+    deliver "${d##*/}" '' '' || [ "$fate" = refused ] || return 0
+  done
 }
 
 # The event line of a Claude Code hook, in grit's words, from the payload `input` and the shell's
@@ -542,7 +757,7 @@ lined() {
 
 # A Claude Code hook's event, posted as one line.
 event() {
-  local w fw='' line d
+  local w fw='' line d key
   payload || return 0
   [ "$event" != SessionEnd ] || deadline=$((10#$started + ended))
   # An agent no type names is none this session started: a compaction's (recorded).
@@ -558,10 +773,17 @@ event() {
     say "could not read $event as an event; it was dropped"
     return 0
   }
-  # A session whose end is recorded needs its file no more.
-  if [ -n "$line" ] && send "$line" "$event" was && [ "$event" = SessionEnd ]; then
-    rm -f -- "$lives/$session"
-  fi
+  [ -n "$line" ] || return 0
+  key=$session${agent:++$agent}
+  deliver "$key" "$event" was "$n" "$line"
+  # A session whose end is recorded, or kept to send later, needs its file no more: a later start
+  # sends what is kept, the end among it.
+  case $event:$fate in
+    SessionEnd:taken | SessionEnd:kept) rm -f -- "$lives/$session" ;;
+  esac
+  case $fate in
+    taken | refused) family "$key" ;;
+  esac
 }
 
 # Whether a rebase is in progress in this worktree.
@@ -573,12 +795,12 @@ rebasing() {
 }
 
 # Posts, for the session `session` in this checkout, the commits $@ in order, each
-# `<sha>[ <replaced sha>…]`, with ordinals one apart, in posts of at most 256 KiB, a quarter of
-# the edge's 1 MiB bound on a body. One line is far smaller: its strings are cut but `dir` and
+# `<sha>[ <replaced sha>…]`, with ordinals one apart, in posts of at most 256 KiB of commits (and
+# the session's queue ahead of them), a quarter of the edge's 1 MiB bound on a body. One line is far smaller: its strings are cut but `dir` and
 # `worktree`, an environment variable (128 KiB at most, as Linux passes one) and a path.
 commits() {
-  local top subjects lines line post='' i k=0 what were
-  local -a shas=() subject=() args=()
+  local top subjects lines line i j=0 what were sent='' down=''
+  local -a shas=() subject=() args=() post=()
   deadline=$((10#$started + committed))
   top=$(git rev-parse --show-toplevel 2> /dev/null) || return 0
   dir=${CLAUDE_PROJECT_DIR:-$top}
@@ -611,16 +833,34 @@ commits() {
   }
   while IFS= read -r line; do
     if [ -n "$line" ]; then
-      post+=$line$'\n'
-      k=$((k + 1))
-    elif [ -n "$post" ]; then
-      counted "$k" "$#"
-      send "$post" "$what" "$were"
-      post='' k=0
+      post+=("$((n + j))" "$line")
+      j=$((j + 1))
+    elif [ "${#post[@]}" -gt 0 ]; then
+      posted "$#"
+      post=()
     fi
   done <<< "$lines"
   # The command substitution dropped the last post's empty line.
-  [ -z "$post" ] || { counted "$k" "$#" && send "$post" "$what" "$were"; }
+  [ "${#post[@]}" = 0 ] || posted "$#"
+  [ -z "$sent" ] || family "$session"
+}
+
+# Posts `post`'s commits, of the $1 made, to the session's queue; once a post was not answered,
+# keeps the rest without asking. Sets `sent` when one was taken.
+posted() {
+  local -a fresh=()
+  counted "$((${#post[@]} / 2))" "$1"
+  if [ -n "$down" ]; then
+    fresh=("${post[@]}")
+    stash "$session" "$what" "$were"
+    [ "$fate" != kept ] || say "$what $were kept to send later, as the post before it was"
+    return 0
+  fi
+  deliver "$session" "$what" "$were" "${post[@]}"
+  case $fate in
+    taken | refused) sent=1 ;;
+    kept) down=1 ;;
+  esac
 }
 
 # Sets `what` to the $1 of the $2 commits made, as a line on stderr names them, and `were` to its

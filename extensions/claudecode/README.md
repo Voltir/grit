@@ -288,13 +288,11 @@ pasted into would read as a redirect.
 
 **The edge down.** Every role but `holder` exits 0 whatever happens, and says on stderr, in one
 line, what it could not do. When the edge does not answer a start, `brief` alone gives one line of
-context, `grit: grit's server at <edge> did not answer. This session starts without its brief,
-and what it does is not recorded until the server answers.` (`This agent` at an agent's), and
-`opening` prints nothing; an answer other than 200 gives `grit: grit's server at <edge> answered
-<status> when asked for this session's brief, so it starts without one.` Each post is sent once: one the edge did
-not answer, or answered other than 200 (a 413, a 503, any other), is dropped, and a line it
-refused is named with its reason. Nothing is kept to resend, so while the edge is down a
-session's events, closings and commits are lost.
+context, `grit: grit's server at <edge> did not answer. This session starts without its brief;
+what it does is kept on this machine and recorded once the server answers.` (`This agent` at an
+agent's), and `opening` prints nothing; an answer other than 200 gives `grit: grit's server at
+<edge> answered <status> when asked for this session's brief, so it starts without one.` An event
+the edge did not take is kept and sent later ([Kept events](#kept-events)).
 
 **Bounds.** A whole run of the hook is stopped 3 s after it starts, by `timeout`, which stops what
 it started too; each request is given what is left of that, less a quarter second, and connects
@@ -331,15 +329,15 @@ decide.
   `start` (field 22 of that process's `/proc/<pid>/stat`, read after the last `)`, its start in
   clock ticks since boot) and `dir`. The harness is the nearest process above the hook that is
   no `sh`, `dash`, `bash` or `timeout`: Claude Code runs a hook as `/bin/sh -c '<hook> <role>'`,
-  and the hook reruns itself under its watchdog ([observed](#claude-codes-hook-contract)). A SessionEnd the edge keeps removes
-  the file; one it did not keep leaves it. A file that cannot be written is said on stderr, and
+  and the hook reruns itself under its watchdog ([observed](#claude-codes-hook-contract)). A SessionEnd the edge takes, or that is
+  kept to send later, removes the file; one the edge refused leaves it. A file that cannot be written is said on stderr, and
   the session goes on.
 - **Dead**, read by the next start once the edge has answered for its holder: a file of this
   machine's name whose `boot` is not this boot's, or, in this pid namespace, whose process is
   gone or started at another tick. For each, an `ended` line, `{reason: "stopped", found:
-  "rebooted" | "gone" | "reused"}`, `n` and `at` as any line's, posted on its own, since a post
-  is one session's lines; its file is removed once the edge keeps it, and left for the next start
-  when not. A file of another machine's name (a home two machines share) or of another pid
+  "rebooted" | "gone" | "reused"}`, `n` and `at` as any line's, posted with that session's kept lines ahead
+  of it, since a post is one session's lines; its file is removed once the edge takes it or it is
+  kept to send later. A file of another machine's name (a home two machines share) or of another pid
   namespace on this boot is left as it is. A file it cannot read is removed, saying so on stderr,
   and decides nothing. The edge records an `ended` on any session of the caller's person, so
   ending a session wrongly ends it until its next `started`.
@@ -348,6 +346,40 @@ decide.
   session`, `2 sessions`).
 
 Tests read `/proc` from the directory `GRIT_HOOK_PROC` names, which nothing else sets.
+
+### Kept events
+
+An event line the edge did not take (no answer, no time left, a 401, a 403 or a 5xx) is kept
+beside the hook and posted ahead of the next line of its session, so a dropped forward, a closed
+lid or a deploy's seconds lose nothing. A line the edge refused whole (400, 413) is dropped, and a
+line a 200 names as refused is dropped too, as either would be refused again; each is said on
+stderr.
+
+- **Where:** `sessions/.kept/<key>/<n>`, a file a line, written whole and then named by its `n`;
+  `<key>` is the session's id, or `<session>+<agent>` for an agent's lines, as the edge takes one
+  session's lines a post. Every entry of `sessions/` that is no session's file starts with a dot,
+  which the start's sweep skips. `--undo` removes them with `sessions/`.
+- **Order:** a post holds its queue's lines in `n` order, then its own. A line never reaches the
+  edge ahead of a line its queue held when its hook read the queue, and the edge logs each line
+  once however often it was posted (its ordinal). Lines of hooks running at once (PostToolUse's
+  are async) are not ordered beyond that: a hook that keeps its line just after another read an
+  empty queue and posted has its line arrive after that post's.
+- **When:** a line's own post carries its queue; once a post is taken, each other queue of the
+  session and its agents is posted. A start, once the edge has answered its holder, posts its own
+  queues, then every other queue of the checkout, a dead session's with its `ended` appended, one
+  post a queue while the edge answers. A SessionEnd kept, rather than taken, removes the session's
+  file: its end is in the queue. A queue's lines leave it only when the edge answered for a post
+  holding them, or for a bound.
+- **Bounds:** a queue holds at most 1,000 lines and 256 KiB, the oldest dropped first, and a line
+  is dropped once its `n`, a reading of the clock, is older than `Session.Unended` (which the
+  adapter writes into the hook as `unended`); each drop is one stderr line, `dropped the <k>
+  oldest events kept for the session <id>: <why>`. A start removes every line and temporary file
+  past that age, and the queues left empty. So a key lives until its lines are taken or are
+  `unended` old at the next start in the checkout.
+- **What is said:** `<what> was kept to send later: the edge at <edge> did not answer` (or `no
+  time was left for its post`, or `the edge at <edge> answered <code> to <what>, which was kept
+  to send later: <first line>`), and, when kept lines went with a post, `sent <k> events kept
+  earlier for the session <id>`.
 
 ## Smoke run
 

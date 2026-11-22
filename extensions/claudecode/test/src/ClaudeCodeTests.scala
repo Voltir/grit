@@ -3,6 +3,7 @@ package grit.claudecode
 import java.nio.file.{Files, Path}
 
 import grit.core.id.Harness
+import grit.core.session.Session
 
 import utest.*
 
@@ -25,7 +26,7 @@ object ClaudeCodeTests extends TestSuite {
       Harness.value(ClaudeCode.adapter.harness) ==> "claude-code"
     }
     test(
-      "the join is bash's shebang, then one group: the harness's name, the hook as bash reads it, the body"
+      "the join is bash's shebang, then one group: the harness's name, the hook as bash reads it, led by the session record's unended seconds, the body"
     ) {
       Bash.inTemp { dir =>
         val join = ClaudeCode.adapter.join
@@ -41,7 +42,7 @@ object ClaudeCodeTests extends TestSuite {
           Vector("#!/usr/bin/env bash", "{", "harness=claude-code"),
           true,
           0,
-          "claude-code|" + Scripts.Shared + Scripts.Hook + "|"
+          s"claude-code|unended=${Session.Unended.toSeconds}\n" + Scripts.Shared + Scripts.Hook + "|"
         )
       }
     }

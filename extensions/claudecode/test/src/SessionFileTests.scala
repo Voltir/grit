@@ -170,12 +170,22 @@ object SessionFileTests extends TestSuite {
         )
       }
     }
-    test("a session's end the edge did not keep leaves its file, for a later start to end it") {
+    test(
+      "a session's end the edge did not take is kept in its queue, its file removed, and a later start in the checkout sends it"
+    ) {
       HookFixtures { f =>
         val _ = f.run("opening", f.payload("session-start-startup.json"))
         f.script.failing(Some("the database is down"))
         val _ = f.run("event", f.payload("session-end-other.json"))
-        kept(f, First) ==> Some(thisMachine(f))
+        f.script.failing(None)
+        val atEnd = (kept(f, First), f.queue(First).size)
+        val before = f.recorded.size
+        val _ = f.run("opening", f.payload("session-start-fork.json"))
+        (
+          atEnd,
+          f.recorded.drop(before).map(b => (b.id, b.events.map(_.kind.name))),
+          f.queue(First)
+        ) ==> ((None, 1), Vector(f.session(First) -> Vector("ended")), Vector.empty)
       }
     }
     test(
@@ -224,7 +234,9 @@ object SessionFileTests extends TestSuite {
         )
       }
     }
-    test("a dead session's end the edge does not keep leaves its file for the next start") {
+    test(
+      "a dead session's end the edge does not take is kept in its queue, its file removed, and the next start sends it"
+    ) {
       HookFixtures { f =>
         val proc = faked(f)
         started(f, "gone")
@@ -232,7 +244,39 @@ object SessionFileTests extends TestSuite {
         f.script.failing(Some("the database is down"))
         val run = f.run("opening", f.payload("session-start-startup.json"), withProc(f, proc))
         f.script.failing(None)
-        (run.exit, files(f).contains("gone")) ==> (0, true)
+        val atFirst = (files(f).contains("gone"), f.queue("gone").size)
+        val before = f.recorded.size
+        val _ = f.run("opening", f.payload("session-start-startup.json"), withProc(f, proc))
+        (
+          run.exit,
+          atFirst,
+          f.recorded.drop(before).map(b => (b.id, b.events.map(e => (e.kind.name, shape(e))))),
+          f.queue("gone")
+        ) ==> (
+          0,
+          (false, 1),
+          Vector(
+            f.session("gone") ->
+              Vector(("ended", ujson.Obj("reason" -> "stopped", "found" -> "gone")))
+          ),
+          Vector.empty
+        )
+      }
+    }
+    test("a dead session's kept lines go to the edge ahead of its end, in one post") {
+      HookFixtures { f =>
+        val proc = faked(f)
+        val down =
+          withProc(f, proc) + ("GRIT_EDGE" -> s"http://127.0.0.1:${HookFixtures.closedPort}")
+        val _ = f.run("event", f.payload("post-tool-use-read.json").replace(First, "gone"), down)
+        planted(f, "gone", pid = 4002)
+        val before = f.recorded.size
+        val _ = f.run("opening", f.payload("session-start-startup.json"), withProc(f, proc))
+        (
+          f.recorded.drop(before).map(b => (b.id, b.events.map(_.kind.name))),
+          files(f).contains("gone"),
+          f.queue("gone")
+        ) ==> (Vector(f.session("gone") -> Vector("read", "ended")), false, Vector.empty)
       }
     }
     test(

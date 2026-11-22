@@ -408,7 +408,7 @@ object EventHookTests extends TestSuite {
       }
     }
     test(
-      "a post the edge cannot write is dropped once, saying its status, and the tool's use goes on"
+      "a post the edge cannot write is kept to send later, saying its status, and the tool's use goes on"
     ) {
       HookFixtures { f =>
         f.script.failing(Some("the database is down"))
@@ -416,14 +416,21 @@ object EventHookTests extends TestSuite {
         (
           run.exit,
           run.out,
-          run.err.linesIterator.size,
-          run.err.contains("503"),
-          f.recorded.size
-        ) ==> (0, Vector.empty, 1, true, 1)
+          run.err,
+          f.recorded.size,
+          f.queue(First).size
+        ) ==> (
+          0,
+          Vector.empty,
+          "grit claude-code hook: the edge at " + f.edge +
+            " answered 503 to PostToolUse, which was kept to send later: nothing was recorded, and resending is safe: the database is down\n",
+          1,
+          1
+        )
       }
     }
     test(
-      "with the edge's port closed, an event ends at once; it, a commit and a rewrite each say in one line what they dropped"
+      "with the edge's port closed, an event ends at once; it, a commit and a rewrite each say in one line what they kept"
     ) {
       HookFixtures { f =>
         val edge = s"http://127.0.0.1:${HookFixtures.closedPort}"
@@ -443,7 +450,7 @@ object EventHookTests extends TestSuite {
           Map("CLAUDE_CODE_SESSION_ID" -> First, "GRIT_EDGE" -> edge),
           args = Seq("rebase")
         )
-        val down = s"dropped: the edge at $edge did not answer\n"
+        val down = s"kept to send later: the edge at $edge did not answer\n"
         (
           (run.exit, run.out, run.err.linesIterator.size),
           (made.exit, made.err),

@@ -17,8 +17,8 @@ object DownTests extends TestSuite {
   private def unanswered(edge: String): ujson.Value =
     context(
       "SessionStart",
-      s"grit: grit's server at $edge did not answer. This session starts without its brief, " +
-        "and what it does is not recorded until the server answers."
+      s"grit: grit's server at $edge did not answer. This session starts without its brief; " +
+        "what it does is kept on this machine and recorded once the server answers."
     )
 
   val tests = Tests {

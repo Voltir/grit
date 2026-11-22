@@ -3,6 +3,7 @@ package grit.claudecode
 import grit.core.edge.Adapter
 import grit.core.host.Argv
 import grit.core.id.Harness
+import grit.core.session.Session
 
 /** Claude Code's adapter for the commands edge (ADR 0062). */
 object ClaudeCode {
@@ -17,6 +18,6 @@ object ClaudeCode {
     Named,
     s"#!/usr/bin/env bash\n{\nharness=${Argv.quote(Harness.value(Named))}\n" +
       "# shellcheck disable=SC1003,SC2016 # the hook's text, linted as the join installs it\n" +
-      s"hook=${Argv.quote(Scripts.Shared + Scripts.Hook)}\n" + Scripts.Shared + Scripts.Join + "}\n"
+      s"hook=${Argv.quote(s"unended=${Session.Unended.toSeconds}\n" + Scripts.Shared + Scripts.Hook)}\n" + Scripts.Shared + Scripts.Join + "}\n"
   )
 }
