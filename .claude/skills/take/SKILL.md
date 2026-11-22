@@ -15,16 +15,6 @@ The join to the edge is run by a person, in their own shell, before the session 
 session's permission check refuses a script that rewrites hooks and MCP configuration. If this
 session's opening names no claim holder, say that the checkout is not joined, and stop.
 
-1. Run `scripts/coder-needs`. If it exits non-zero, show its lines and stop: each names what a
-   coder on this machine lacks, and what for. Its `tools/` lines are the exception: they name
-   this checkout's fetched tools, and the gate runs in the fixer, which gets its own at each
-   take's step 1; show them and go on.
-2. Print the coder's claim holder with the command this session's opening gives, `coder-opus` in
-   place of `TYPE`: `'<hook>' holder coder-opus --dir '<dir>' --session '<session>'`. It is this
-   session's coder's alone; every claim below is for it.
-
-## Each take
-
 1. **The worktree.** If the fixer worktree exists, `git -C <fixer> status --porcelain` must print
    nothing and `git -C <fixer> symbolic-ref -q HEAD` must fail (it is detached). If either does
    not hold, say which and stop: what is there is someone's work. If it does not exist, make it:
@@ -32,6 +22,24 @@ session's opening names no claim holder, say that the checkout is not joined, an
    Either way, each of `tools/enola`, `tools/scalafmt` and `tools/shellcheck` the fixer lacks is
    fetched into it, `bash <fixer>/scripts/fetch-<tool>.sh`: they are per checkout, and the gate in
    step 5.3 runs there. A fetch that fails stops the take, in its own words.
+2. Run `scripts/coder-needs` from inside the fixer: `cd <fixer> && scripts/coder-needs`. If it
+   exits non-zero, show its lines and stop: each names what a coder on this machine lacks, and
+   what for.
+3. Print the coder's claim holder with the command this session's opening gives, `coder-opus` in
+   place of `TYPE`: `'<hook>' holder coder-opus --dir '<dir>' --session '<session>'`. It is this
+   session's coder's alone; every claim below is for it.
+
+## Each take
+
+1. **The worktree.** `git -C <fixer> status --porcelain` must print nothing and
+   `git -C <fixer> symbolic-ref -q HEAD` must fail (it is detached). If either does not hold, say
+   which and stop: what is there is someone's work. Then note its commit, `<was>` (`git -C <fixer>
+   rev-parse HEAD`), `git -C <top> fetch origin` and `git -C <fixer> checkout --detach
+   origin/main`. A tool whose pin that moved past is fetched again: `bash
+   <fixer>/scripts/fetch-<tool>.sh` for each `<tool>` of `enola`, `scalafmt` and `shellcheck` for
+   which `git -C <fixer> diff --quiet <was> HEAD -- scripts/fetch-<tool>.sh` fails, and for
+   `scalafmt` when the same is true of `.scalafmt.conf`. A fetch that fails stops the take, in its
+   own words.
 2. **Go on, or claim.** `project_claims` with `project` `grit`: a claim in role `coder` whose
    `holder` is the coder's is one this session's coder already holds; take its key. Otherwise
    `project_claim` with `oldest` `{"project": "grit", "kind": "checkpoint", "state": "ready"}`,
