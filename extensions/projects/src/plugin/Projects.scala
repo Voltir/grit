@@ -70,9 +70,9 @@ object Projects {
       "so nothing was kept"
 
   /** The plugin over these compiled checks; its methods are those declared through
-    * `project_declare`, new projects under the latest version of `default`. Each method version
-    * is kept and read at `methodsAt` alone, so it has one digest whoever reads it: give a label
-    * every caller of its commands reads. A declaration from a room that writes at another label
+    * `project_declare`, new projects under the latest version of `default`. Method versions are
+    * kept and read at `methodsAt` alone: give a label every caller of its commands reads. A
+    * declaration from a room that writes at another label
     * is refused; a caller who cannot read `methodsAt` finds no method declared. `commandLine` is
     * how a person runs one of its commands themselves, the command's name and its JSON arguments
     * following (`bin/kalandra`); a claim's brief names it where it tells how to move the claim to

@@ -52,7 +52,7 @@ enum Claimed {
   case Holding(other: Option[Claim])
 
   /** Refused, making nothing: the holder's own claim on the subject, which another session than
-    * the one given works; it.
+    * the one given works.
     */
   case HeldBy(claim: Claim)
 
@@ -115,12 +115,12 @@ trait Claims extends caps.Pure {
   def release(subject: DocKey, label: Label)(using Tx^): Either[StoreError, Option[Claim]]
 
   /** `claim`, as [[live]] answered it, moved to `holder`'s session `session` as `role`, made anew
-    * at `at`, keeping `by` and its label: [[ClaimMoved.Made]] with it moved. [[ClaimMoved.Holding]] when
+    * at `at`, keeping `by` and its label: [[ClaimMoved.Made]]. [[ClaimMoved.Holding]] when
     * `holder` has another live claim at that label, [[ClaimMoved.Elsewhere]] when this transaction
-    * reads `session` working as another holder, each moving nothing; [[ClaimMoved.Gone]] when it is
-    * gone, as [[held]] finds it, though `holder` has another. A claim of `holder`'s on another subject, lapsed at `at`, is
-    * deleted first. Who may
-    * move it is the caller's rule.
+    * reads `session` working as another holder; [[ClaimMoved.Gone]] when it is gone, as [[held]]
+    * finds it, though `holder` has another. A claim of `holder`'s on another subject that has
+    * lapsed by `at` refuses nothing, and is gone once the move is made. Who may move it is the
+    * caller's rule.
     */
   def moved(claim: Claim, holder: ClaimHolder, session: SessionId, role: ClaimRole, at: Instant)(
       using Tx^

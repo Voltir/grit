@@ -427,9 +427,8 @@ private[dbos] object SqlClaims {
 
   /** What the recording of the session whose row id is `session`, once its row holds the events,
     * does to claims: once `ended`, every claim it works is worked by none; otherwise, when
-    * `starting`, every claim of its holder that no session works is worked by it, lapsed or not,
-    * since the session's own event renews such a claim's lease ([[Active]]). Either way only
-    * claims kept at the session's own label and in its own room.
+    * `starting`, every claim of its holder that no session works is worked by it, lapsed or not.
+    * Either way only claims kept at the session's own label and in its own room.
     */
   def recorded(session: Long, ended: Boolean, starting: Boolean)(using
       Tx^

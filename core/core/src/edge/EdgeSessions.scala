@@ -105,9 +105,7 @@ object EdgeSessions {
   }
 
   /** A session's opening as data: `brief`, what it is shown of its holder's brief, and `lately`,
-    * what the session itself did lately. An edge shows them as a turn's opening does
-    * ([[grit.core.context.Shown.brief]], and [[grit.core.session.SessionDigest.of]] at
-    * [[grit.core.session.SessionDigest.Chars]]).
+    * what the session itself did lately.
     */
   final case class Briefed(brief: Briefed.Brief, lately: Option[Session.Lately]) extends caps.Pure
 

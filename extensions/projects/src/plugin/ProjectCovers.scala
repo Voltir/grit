@@ -145,11 +145,10 @@ private[plugin] object ProjectCovers {
       .map(_._1)
   }
 
-  /** When an artifact whose kept versions are `kept`, newest first, each read by `read`, entered
-    * `state`: when the oldest of the unbroken run of newest versions in `state` was written, the
-    * version that moved it there or, when that is no longer among `kept`, the earliest kept in
-    * it. A withdrawal or a version that does not read ends the run; `None` when the newest is not
-    * in `state`.
+  /** When an artifact whose kept versions are `kept`, newest first, each read by `read`, last
+    * entered `state`: when the version that moved it there was written, or, when `kept` no
+    * longer holds that version, the earliest it holds in `state`. A withdrawal, or a version
+    * `read` refuses, counts as leaving `state`; `None` when the newest is not in it.
     */
   private[plugin] def entered(
       kept: Vector[DocumentVersion],
