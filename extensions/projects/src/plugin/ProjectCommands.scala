@@ -1401,7 +1401,7 @@ private[plugin] final class ProjectCommands(
             moving <- (target, takeover) match {
               case (_, None) => Right(target)
               case (Claiming.Target.Key(ref, None), Some(to)) =>
-                Right(Claiming.Target.MoveTo(ref, to))
+                Right(Claiming.Target.TakeoverTo(ref, to))
               case (Claiming.Target.Key(_, Some(_)), Some(_)) =>
                 Left(
                   ArgsError.Refused(
@@ -1410,7 +1410,10 @@ private[plugin] final class ProjectCommands(
                       "own session, or `takeover` to move a claim to the session it names"
                   )
                 )
-              case (Claiming.Target.Oldest(_, _, _, _) | Claiming.Target.MoveTo(_, _), Some(_)) =>
+              case (
+                    Claiming.Target.Oldest(_, _, _, _) | Claiming.Target.TakeoverTo(_, _),
+                    Some(_)
+                  ) =>
                 Left(
                   ArgsError.Refused(
                     "takeover",
@@ -1439,14 +1442,14 @@ private[plugin] final class ProjectCommands(
           _ <- viewOf(method, args.role)
           whole <- refuse(Project.of(args.target.project, project.pin, project.artifacts))
           _ <- args.target match {
-            case Claiming.Target.MoveTo(_, _) if moverOf(by) != Mover.Person =>
+            case Claiming.Target.TakeoverTo(_, _) if moverOf(by) != Mover.Person =>
               Left(Stop.Refused(s"takeover is given only by $PersonOnlyBy."))
             case _ => Right(())
           }
           live <- stored(claims.live(at))
           key <- args.target match {
             case Claiming.Target.Key(ref, _) => resolved(project, ref)
-            case Claiming.Target.MoveTo(ref, _) => resolved(project, ref)
+            case Claiming.Target.TakeoverTo(ref, _) => resolved(project, ref)
             case Claiming.Target.Oldest(p, kind, state, _) =>
               for {
                 _ <- stateOf(method, kind, state)
@@ -1479,7 +1482,7 @@ private[plugin] final class ProjectCommands(
           (document, a) = found
           // A takeover's claim, live on the artifact, and the session it moves to.
           moving = args.target match {
-            case Claiming.Target.MoveTo(_, to) =>
+            case Claiming.Target.TakeoverTo(_, to) =>
               live.find(_.subject == document.key).map((_, to))
             case Claiming.Target.Key(_, _) | Claiming.Target.Oldest(_, _, _, _) => None
           }
@@ -1506,7 +1509,7 @@ private[plugin] final class ProjectCommands(
           asked = args.target match {
             case Claiming.Target.Key(_, s) => s
             case Claiming.Target.Oldest(_, _, _, s) => s
-            case Claiming.Target.MoveTo(_, to) => Some(to)
+            case Claiming.Target.TakeoverTo(_, to) => Some(to)
           }
           made <- moving match {
             case Some((c, to)) =>

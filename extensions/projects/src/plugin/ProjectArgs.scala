@@ -461,13 +461,13 @@ private[plugin] object ProjectArgs {
       /** `key`'s claim moved to `to` and to the claim's holder, whoever works it, by the person
         * who made it; claimed for them when none holds it.
         */
-      case MoveTo(key: ArtifactRef, to: SessionId)
+      case TakeoverTo(key: ArtifactRef, to: SessionId)
 
       /** The project the claim is made in. */
       def project: ProjectKey = this match {
         case Key(key, _) => key.project
         case Oldest(project, _, _, _) => project
-        case MoveTo(key, _) => key.project
+        case TakeoverTo(key, _) => key.project
       }
     }
   }
