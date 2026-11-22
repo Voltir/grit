@@ -85,6 +85,13 @@ any jq call that fails, or a rewrite of the settings that is not one JSON object
 everything that can fail is worked out before the first file is written (an undo, too, reads
 every other worktree's settings and `~/.claude.json` first).
 
+**From another machine**, an edge listening on loopback is reached through an SSH forward of its
+port (`ssh -N -L <port>:127.0.0.1:<port>`, which runs no command), and joined there at
+`http://127.0.0.1:<port>`. The key that opens the forward is restricted, in the edge machine's
+`authorized_keys`, with `restrict,port-forwarding,permitopen="127.0.0.1:<port>",command="/bin/false"`:
+`restrict` takes away every right, `port-forwarding` and `permitopen` give back that one forward,
+and the forced command is what stops the key running commands, which `restrict` alone does not.
+
 **Writes**, each file through a temporary one moved into place:
 
 - **The hook**, `<git common dir>/grit/claude-code/hook` (absolute, by `git rev-parse
