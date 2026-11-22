@@ -1,6 +1,6 @@
 # 0050. A working session is recorded in grit's words as one row and a log capped at a fixed length, a repeat known by its source's ordinal
 
-Status: accepted (2026-10-28); revised (2026-11-01, 2026-11-13)
+Status: accepted (2026-10-28); revised (2026-11-01, 2026-11-13, 2026-11-22)
 
 Context: grit keeps a record of each working session, a grit turn's or a harness's beside it,
 so that later work (compacting a session's context from the store, coordinating sessions) can
@@ -22,10 +22,13 @@ Decision:
   a place with no label meaning, so that who is working where is one equality read), when it
   started, last did something and ended, its closing summary, and counters of its tool calls, edits,
   commits and bytes read, and the claim holder it works as, from the first recording that names
-  one and never changed after. A claim names the session working it, whose last event keeps it
-  from lapsing; one no session works yet is kept by its holder's sessions until a session of the
-  holder starts or resumes, which takes it, and a recorded end frees it again (ADR 0049). A
-  session that never says it ended counts as ended a fixed time after its last event.
+  one and never changed after. A claim names the session working it, whose work, and that
+  session's agents' (`Claim.active`), keeps it from lapsing: a parent silent past the time a
+  session counts as ended, whose agents still record, keeps its claims, since the rule reads a
+  recorded end, not that count. One no session works yet is kept by its holder's sessions until
+  a session of the holder starts or resumes, which takes it, and a recorded end frees it again
+  (ADR 0049). A session that never says it ended counts as ended a fixed time after its last
+  event.
 - **Its log is lines in grit's words** (`grit.session_events`): `started`, `read`, `edited`,
   `ran`, `commit`, `closing`, `ended`, each with a small shape of what it was and never its
   content. Up to a fixed number of lines, the last an `overflow` standing for every event after
