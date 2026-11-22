@@ -193,8 +193,9 @@ private[plugin] final class ProjectCommands(
         "state that role is claimed in. Refused, keeping nothing: for a key, parent or cite the " +
         "project lacks, naming the nearest it has; for a version that is not the artifact's " +
         "current one; for a handle another artifact holds, or a change of one a role's brief " +
-        f"carries by name; and when the brief of an artifact claimed in the project would pass ${DocRef.BriefChars}%,d " +
-        "characters, naming the characters to cut.",
+        f"carries by name; and when the brief of an artifact claimed in the project, or in a " +
+        f"state a role is claimed in, would pass ${DocRef.BriefChars}%,d characters, naming the " +
+        "characters to cut.",
       Args
         .of(
           (
@@ -409,7 +410,8 @@ private[plugin] final class ProjectCommands(
       ToolName("project_move"),
       "Moves an artifact to another state, as its project's method allows, when every check " +
         "that move names holds. Refused naming each check that failed, or the states it may " +
-        "move to.",
+        "move to; and, naming the characters to cut, when it moves to a state a role is " +
+        f"claimed in and that role's brief of it would pass ${DocRef.BriefChars}%,d characters.",
       Args
         .of(
           (
@@ -507,8 +509,9 @@ private[plugin] final class ProjectCommands(
         "is checked against the artifact as it was before the batch, an edit changes the body " +
         "the steps before it left, and each artifact changed is kept once, as the " +
         "last step left it. With dry, keeps nothing and answers what each step would do. " +
-        "Refused, naming the step and why, as its command would refuse it; and when a claimed " +
-        f"artifact's brief would pass ${DocRef.BriefChars}%,d characters once every step is done.",
+        "Refused, naming the step and why, as its command would refuse it; and when the brief " +
+        "of an artifact claimed, or in a state a role is claimed in, would pass " +
+        f"${DocRef.BriefChars}%,d characters once every step is done.",
       Args
         .of(
           (
@@ -2606,6 +2609,7 @@ private[plugin] object ProjectCommands {
       _ <- within(
         method,
         before,
+        after,
         ids(project),
         rendered(method, after, ids(project), live),
         steps.changed.flatMap(k => steps.artifacts.find(_.head.key == k)).map(_.head)

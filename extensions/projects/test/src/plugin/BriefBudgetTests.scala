@@ -2,6 +2,7 @@ package grit.projects.plugin
 
 import grit.core.plugin.CommandOutcome
 import grit.projects.method.{MethodFixtures, RoleView}
+import grit.projects.name.Handle
 
 import utest.*
 
@@ -12,7 +13,7 @@ import utest.*
   */
 object BriefBudgetTests extends TestSuite {
   import CommandFixtures.*
-  import MethodFixtures.{change, kind, note, right, role, state}
+  import MethodFixtures.{change, note, right, role, state}
 
   /** A builder claimed in changes that are building, and a reviewer of changes claimed in none. */
   private val claimedIn = method(roles =
@@ -104,5 +105,91 @@ object BriefBudgetTests extends TestSuite {
         ""
       ))
     }
+    test(
+      "a move into a state a role is claimed in is refused when its brief would pass 9,500 characters, naming what to cut"
+    ) {
+      val (projects, store) = proposed(9435)
+      val (within, atLimit) = proposed(9434)
+      (
+        moved(projects, store, "building"),
+        moved(within, atLimit, "building").isInstanceOf[CommandOutcome.Done]
+      ) ==> ((CommandOutcome.Refused(overAsBuilder(9501, "p/1")), true))
+    }
+    test(
+      "a keep that grows a brief past 9,500 characters in a state its role is claimed in is refused, keeping nothing"
+    ) {
+      val (projects, store) = proposed(10)
+      done(moved(projects, store, "building"))
+      val version = versionOf(projects, store, "p/a")
+      (
+        keeping(projects, store, "a", "change", "x" * 9435),
+        versionOf(projects, store, "p/a")
+      ) ==> ((CommandOutcome.Refused(overAsBuilder(9501, "p/1")), version))
+    }
+    test(
+      "a keep of what a claimed-in role carries is refused when it puts a brief in that state past 9,500 characters"
+    ) {
+      val projects = plugin()
+      val store = Store(declared = Vector(carrying))
+      started(projects, store)
+      kept(projects, store, "a", "change", "x" * 9000)
+      kept(projects, store, "rules", "note", "Rules.")
+      done(moved(projects, store, "building"))
+      keeping(projects, store, "rules", "note", "x" * 1000) ==>
+        CommandOutcome.Refused(
+          // 9,066 of the change while building, 14 of `## Carried`, 29 of the note's heading line
+          // and 1,000 of its body.
+          "the brief of p/1 as builder would be 10,109 characters, 609 over the 9,500 a brief " +
+            "holds (the artifact with what its role always carries): cut at least 609 " +
+            "characters from p/2"
+        )
+    }
+    test("a keep a live claim's brief refuses is refused once, for the claim") {
+      val (projects, store) = proposed(10)
+      done(moved(projects, store, "building"))
+      done(
+        ask(
+          projects,
+          store,
+          "project_claim",
+          "key" -> "p/a",
+          "role" -> "builder",
+          "holder" -> holder
+        )
+      )
+      keeping(projects, store, "a", "change", "x" * 9435) ==> CommandOutcome.Refused(
+        s"the brief of p/1, claimed as builder for $holder, would be 9,501 characters, 1 over " +
+          "the 9,500 a brief holds (the artifact with what its role always carries): cut at " +
+          "least 1 character from p/1"
+      )
+    }
   }
+
+  private val holder: String = "coder-opus/abc"
+
+  private def moved(projects: Projects, store: Store, to: String): CommandOutcome =
+    ask(projects, store, "project_move", "key" -> "p/a", "state" -> to)
+
+  /** The refusal of a brief of `size` characters for the builder, cut from `from`. */
+  private def overAsBuilder(size: Int, from: String): String = {
+    val cut = size - 9500
+    f"the brief of p/1 as builder would be $size%,d characters, $cut%,d over the 9,500 a brief " +
+      "holds (the artifact with what its role always carries): cut at least " +
+      f"$cut%,d character${if (cut == 1) "" else "s"} from $from"
+  }
+
+  /** [[claimedIn]]'s builder, carrying the note handled `rules`. */
+  private val carrying = method(roles =
+    Vector(
+      right(
+        RoleView.of(
+          role("builder"),
+          Set(change.name, note.name),
+          1,
+          carried = Set(right(Handle.of("rules"))),
+          claimedIn = Map(change.name -> Set(state("building")))
+        )
+      )
+    )
+  )
 }

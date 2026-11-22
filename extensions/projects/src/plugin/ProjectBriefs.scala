@@ -52,33 +52,64 @@ private[plugin] object ProjectBriefs {
       } yield Rendered(c, key, view, brief)
     }
 
-  /** Nothing, or a refusal naming each brief of `after` over its budget that was not over it, or
-    * was shorter, rendered over `before` (none: as if it was not), each claim's artifact the one
-    * `keys` gives its subject; and the characters to cut from those of `changed` the brief holds
-    * whole (the claimed artifact, or one its role carries).
+  /** Nothing, or a refusal naming each brief over its budget that `changed` made so: of `claimed`,
+    * the live claims on `after`'s artifacts as rendered ([[rendered]]), each that was not over it,
+    * or was shorter, rendered over `before` (none: as if it was not), each claim's artifact the
+    * one `keys` gives its subject; and, of each artifact of `after` in a state a view of `method`
+    * is claimed in ([[RoleView.claimedIn]]) whose brief for that view `changed` reaches (the
+    * artifact, or one the view carries), each that entered that state or grew, unless a claim of
+    * that view's role on it is named already. Each names the characters to cut from those of
+    * `changed` the brief holds whole.
     */
   private[plugin] def within(
       method: Method,
       before: Option[Project],
+      after: Project,
       keys: Map[DocKey, ArtifactKey],
-      after: Vector[Rendered],
+      claimed: Vector[Rendered],
       changed: Vector[ArtifactHead]
   ): Either[Stop, Unit] = {
+    def from(key: ArtifactKey, view: RoleView): String = {
+      val held = changed.filter(h => h.key == key || h.handle.exists(view.carried.contains))
+      (if (held.isEmpty) changed else held).map(_.key.value).mkString(", ")
+    }
+    def clause(key: ArtifactKey, as: String, size: Int, view: RoleView): String =
+      s"the brief of ${key.value}$as ${overBy(size)} (the artifact with what its role always " +
+        s"carries): ${cutting(size)} from ${from(key, view)}"
     lazy val was =
-      before.fold(Vector.empty[Rendered])(rendered(method, _, keys, after.map(_.claim)))
-    after.flatMap { r =>
+      before.fold(Vector.empty[Rendered])(rendered(method, _, keys, claimed.map(_.claim)))
+    val ofClaims = claimed.flatMap { r =>
       for {
         size <- r.brief.left.toOption.map(_.size)
         if was.find(_.claim == r.claim).flatMap(_.brief.left.toOption).forall(_.size < size)
-      } yield {
-        val (c, key, view) = (r.claim, r.key, r.view)
-        val held = changed.filter(h => h.key == key || h.handle.exists(view.carried.contains))
-        f"the brief of ${key.value}, claimed as ${ClaimRole.value(c.role)} for " +
-          f"${ClaimHolder.value(c.holder)}, ${overBy(size)} (the artifact with what its role " +
-          f"always carries): ${cutting(size)} from " +
-          (if (held.isEmpty) changed else held).map(_.key.value).mkString(", ")
-      }
-    } match {
+      } yield (
+        key = r.key,
+        role = r.view.role,
+        said = clause(
+          r.key,
+          s", claimed as ${ClaimRole.value(r.claim.role)} for ${ClaimHolder.value(r.claim.holder)},",
+          size,
+          r.view
+        )
+      )
+    }
+    def claimedIn(view: RoleView, head: ArtifactHead): Boolean =
+      view.claimedIn.get(head.kind).exists(_.contains(head.state))
+    val unclaimed = for {
+      view <- method.views.filter(_.claimedIn.nonEmpty).sortBy(v => RoleName.value(v.role))
+      reached = changed.exists(_.handle.exists(view.carried.contains))
+      a <- after.artifacts
+      if claimedIn(view, a.head) && (reached || changed.exists(_.key == a.head.key))
+      if !ofClaims.exists(c => c.key == a.head.key && c.role == view.role)
+      size <- Brief.size(after, a.head.key, view).toOption
+      if size > DocRef.BriefChars
+      prior = before.flatMap(_.artifacts.find(_.head.key == a.head.key))
+      if prior.forall(p =>
+        !claimedIn(view, p.head) ||
+          before.flatMap(Brief.size(_, a.head.key, view).toOption).forall(_ < size)
+      )
+    } yield clause(a.head.key, s" as ${RoleName.value(view.role)}", size, view)
+    ofClaims.map(_.said) ++ unclaimed match {
       case Vector() => Right(())
       case refusals => Left(Stop.Refused(refusals.mkString("; ")))
     }
