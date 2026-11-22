@@ -206,7 +206,7 @@ object SqlEdgeSessionsTests extends TestSuite {
       .map { b =>
         val key = b.brief match {
           case EdgeSessions.Briefed.Brief.Kept(d) => Some(DocKey.value(d.key))
-          case EdgeSessions.Briefed.Brief.Absent | EdgeSessions.Briefed.Brief.Held(_, _) => None
+          case EdgeSessions.Briefed.Brief.Absent | EdgeSessions.Briefed.Brief.Worked(_, _) => None
         }
         (key, b.lately.map(_.session.id))
       }

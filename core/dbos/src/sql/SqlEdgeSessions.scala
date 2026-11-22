@@ -120,7 +120,7 @@ private[dbos] object SqlEdgeSessions {
             _.find(c => c.subject == about.subject && c.holder == holder)
               .filter(_.session.exists(_ != own))
               .fold(EdgeSessions.Briefed.Brief.Kept(brief))(
-                EdgeSessions.Briefed.Brief.Held(_, about.takeover)
+                EdgeSessions.Briefed.Brief.Worked(_, about.takeover)
               )
           )
     }

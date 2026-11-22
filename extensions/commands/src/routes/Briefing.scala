@@ -130,7 +130,7 @@ private[commands] object Briefing {
           b.brief match {
             case EdgeSessions.Briefed.Brief.Absent => (Status.Ok, "")
             case EdgeSessions.Briefed.Brief.Kept(d) => (Status.Ok, Shown.briefText(d))
-            case EdgeSessions.Briefed.Brief.Held(c, t) => (Status.Ok, held(c, t, asked))
+            case EdgeSessions.Briefed.Brief.Worked(c, t) => (Status.Ok, held(c, t, asked))
           }
         case Part.Digest =>
           val since = now.minusMillis(Recent.toMillis)

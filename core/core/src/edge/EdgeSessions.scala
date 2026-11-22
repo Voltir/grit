@@ -125,7 +125,7 @@ object EdgeSessions {
       /** No brief: another session works `claim`, the claim it is for; `takeover`, how a person
         * moves it, when the brief names a way.
         */
-      case Held(claim: Claim, takeover: Option[Takeover])
+      case Worked(claim: Claim, takeover: Option[Takeover])
     }
   }
 

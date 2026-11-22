@@ -64,7 +64,7 @@ abstract class EdgeSessionsContract extends TestSuite {
   private def shown(brief: EdgeSessions.Briefed.Brief): Option[String] = brief match {
     case EdgeSessions.Briefed.Brief.Absent => None
     case EdgeSessions.Briefed.Brief.Kept(d) => Some(DocText.value(d.text))
-    case EdgeSessions.Briefed.Brief.Held(c, t) =>
+    case EdgeSessions.Briefed.Brief.Worked(c, t) =>
       Some(s"held by ${c.session.map(_.written)} for ${ClaimHolder.value(c.holder)}, moved by $t")
   }
 

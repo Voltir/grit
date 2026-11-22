@@ -75,7 +75,7 @@ final class ScriptedSessions(vouched: Set[Account], script: ScriptedSessions.Scr
                 .flatMap(b => script.claimOn(b.subject, holder, at))
                 .filter(_.session.exists(_ != own))
                 .fold(EdgeSessions.Briefed.Brief.Kept(d))(
-                  EdgeSessions.Briefed.Brief.Held(_, about.flatMap(_.takeover))
+                  EdgeSessions.Briefed.Brief.Worked(_, about.flatMap(_.takeover))
                 )
             },
             script.session(own).map(ScriptedSessions.lately)
