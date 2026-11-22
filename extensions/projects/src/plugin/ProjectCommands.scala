@@ -2,7 +2,7 @@ package grit.projects.plugin
 
 import java.time.{Instant, ZoneOffset}
 
-import grit.core.claim.{Claim, ClaimRole, Claimed, Claims, Moved}
+import grit.core.claim.{Claim, ClaimMoved, ClaimRole, Claimed, Claims}
 import grit.core.document.{
   DocRef,
   DocText,
@@ -1511,10 +1511,10 @@ private[plugin] final class ProjectCommands(
           made <- moving match {
             case Some((c, to)) =>
               stored(claims.moved(c, args.holder, to, args.role, at)).flatMap {
-                case Moved.Made(m) => Right(m)
-                case Moved.Holding(other) => Left(holdingRefused(project, holder, other))
-                case Moved.Elsewhere(s, other) => Left(elsewhereRefused(s, other, holder))
-                case Moved.Gone =>
+                case ClaimMoved.Made(m) => Right(m)
+                case ClaimMoved.Holding(other) => Left(holdingRefused(project, holder, other))
+                case ClaimMoved.Elsewhere(s, other) => Left(elsewhereRefused(s, other, holder))
+                case ClaimMoved.Gone =>
                   Left(Stop.Refused(s"${a.head.called}'s claim is gone; nothing was moved"))
               }
             case None =>

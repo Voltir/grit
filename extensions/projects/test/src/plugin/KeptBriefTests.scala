@@ -2,7 +2,7 @@ package grit.projects.plugin
 
 import java.time.Instant
 
-import grit.core.claim.{Claim, ClaimRole, Claimed, Claims, Moved}
+import grit.core.claim.{Claim, ClaimMoved, ClaimRole, Claimed, Claims}
 import grit.core.document.{DocRef, DocText, Document, DocumentKeeper}
 import grit.core.id.{ClaimHolder, DocKey, SessionId}
 import grit.core.identity.Principal
@@ -104,7 +104,7 @@ object KeptBriefTests extends TestSuite {
           session: SessionId,
           role: ClaimRole,
           at: Instant
-      )(using Tx^): Either[StoreError, Moved] =
+      )(using Tx^): Either[StoreError, ClaimMoved] =
         store.claims.moved(claim, holder, session, role, at)
       def live(at: Instant)(using Tx^): Either[StoreError, Vector[Claim]] = Right(read)
       def held(claim: Claim)(using Tx^): Either[StoreError, Option[Claim]] =
@@ -518,7 +518,7 @@ object KeptBriefTests extends TestSuite {
             session: SessionId,
             role: ClaimRole,
             at: Instant
-        )(using Tx^): Either[StoreError, Moved] =
+        )(using Tx^): Either[StoreError, ClaimMoved] =
           store.claims.moved(claim, holder, session, role, at)
         def live(at: Instant)(using Tx^): Either[StoreError, Vector[Claim]] = store.claims.live(at)
         def held(claim: Claim)(using Tx^): Either[StoreError, Option[Claim]] =

@@ -61,7 +61,7 @@ enum Claimed {
 }
 
 /** What [[Claims.moved]] came to. */
-enum Moved {
+enum ClaimMoved {
 
   /** Moved, and now live. */
   case Made(claim: Claim)
@@ -115,16 +115,16 @@ trait Claims extends caps.Pure {
   def release(subject: DocKey, label: Label)(using Tx^): Either[StoreError, Option[Claim]]
 
   /** `claim`, as [[live]] answered it, moved to `holder`'s session `session` as `role`, made anew
-    * at `at`, keeping `by` and its label: [[Moved.Made]] with it moved. [[Moved.Holding]] when
-    * `holder` has another live claim at that label, [[Moved.Elsewhere]] when this transaction
-    * reads `session` working as another holder, each moving nothing; [[Moved.Gone]] when it is
+    * at `at`, keeping `by` and its label: [[ClaimMoved.Made]] with it moved. [[ClaimMoved.Holding]] when
+    * `holder` has another live claim at that label, [[ClaimMoved.Elsewhere]] when this transaction
+    * reads `session` working as another holder, each moving nothing; [[ClaimMoved.Gone]] when it is
     * gone, as [[held]] finds it, though `holder` has another. A claim of `holder`'s on another subject, lapsed at `at`, is
     * deleted first. Who may
     * move it is the caller's rule.
     */
   def moved(claim: Claim, holder: ClaimHolder, session: SessionId, role: ClaimRole, at: Instant)(
       using Tx^
-  ): Either[StoreError, Moved]
+  ): Either[StoreError, ClaimMoved]
 
   /** This plugin's claims at every label this transaction reads that have not lapsed at `at`,
     * by subject, then by when they were made. A session this transaction does not read keeps no

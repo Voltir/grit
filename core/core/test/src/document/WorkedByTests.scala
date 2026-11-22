@@ -4,7 +4,7 @@ import java.time.Instant
 
 import scala.concurrent.duration.*
 
-import grit.core.claim.{ClaimRole, Claimed, Claims, InMemoryClaims, Moved}
+import grit.core.claim.{ClaimMoved, ClaimRole, Claimed, Claims, InMemoryClaims}
 import grit.core.either.Got.got
 import grit.core.id.{ClaimHolder, DocKey, PluginName, SessionId}
 import grit.core.identity.{Principal, TestAccounts}
@@ -165,7 +165,7 @@ object WorkedByTests extends TestSuite {
         val live = ok(claims.live(at.plusSeconds(1)))
         live.map(c => ok(claims.moved(c, holder("h2"), session("b"), builder, at.plusSeconds(1))))
       }
-      assert(moved.collect { case Moved.Made(_) => () } == Vector(()))
+      assert(moved.collect { case ClaimMoved.Made(_) => () } == Vector(()))
       val old = DocumentKeeper.workedBy(keeper, claims, session("a"))
       val taker = DocumentKeeper.workedBy(keeper, claims, session("b"))
       assert(

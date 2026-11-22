@@ -5,7 +5,7 @@ import java.util.concurrent.{Callable, CountDownLatch, Executors, TimeUnit}
 
 import scala.util.Using
 
-import grit.core.claim.{ClaimRole, Claimed, Claims, Moved}
+import grit.core.claim.{ClaimMoved, ClaimRole, Claimed, Claims}
 import grit.core.id.{ClaimHolder, DocKey, PluginName, PrincipalIds, SessionId}
 import grit.core.identity.Principal
 import grit.core.session.Session
@@ -311,8 +311,8 @@ object ClaimsLiveTests extends TestSuite {
           }
         })
         assert(made.await(10, TimeUnit.SECONDS))
-        val moving = pool.submit(new Callable[Either[StoreError, Moved]] {
-          def call(): Either[StoreError, Moved] =
+        val moving = pool.submit(new Callable[Either[StoreError, ClaimMoved]] {
+          def call(): Either[StoreError, ClaimMoved] =
             LiveDb.transaction(config, Clearance.of(Label.Public))(
               c.moved(first, target, ok(SessionId.read("claude-code:move-race")), builder, at)
             )
@@ -322,7 +322,7 @@ object ClaimsLiveTests extends TestSuite {
         val held = holding.get(10, TimeUnit.SECONDS)
         // The claim read back names its person's accounts; the one made, as it was given.
         val moved = moving.get(10, TimeUnit.SECONDS).map {
-          case Moved.Holding(Some(h)) => Moved.Holding(Some(h.copy(by = by)))
+          case ClaimMoved.Holding(Some(h)) => ClaimMoved.Holding(Some(h.copy(by = by)))
           case other => other
         }
         val left = ok(LiveDb.transaction(config)(c.live(at))).map(m =>
@@ -331,7 +331,7 @@ object ClaimsLiveTests extends TestSuite {
         (waited, moved, left) ==> ((
           true,
           held match {
-            case Claimed.Made(h) => Right(Moved.Holding(Some(h)))
+            case Claimed.Made(h) => Right(ClaimMoved.Holding(Some(h)))
             case other => Right(other)
           },
           Vector("p/held" -> "move-race-2", "p/moving" -> "move-race-1")

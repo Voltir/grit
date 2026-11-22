@@ -173,8 +173,8 @@ object PluginCaptureTests extends TestSuite {
       |    db.read(Subject.Public)(Right(Claimed.Taken(None)))
       |  def release(subject: DocKey, label: Label)(using Tx^): Either[StoreError, Option[Claim]] =
       |    db.read(Subject.Public)(Right(None))
-      |  def moved(claim: Claim, holder: ClaimHolder, session: SessionId, role: ClaimRole, at: java.time.Instant)(using Tx^): Either[StoreError, Moved] =
-      |    Right(Moved.Gone)
+      |  def moved(claim: Claim, holder: ClaimHolder, session: SessionId, role: ClaimRole, at: java.time.Instant)(using Tx^): Either[StoreError, ClaimMoved] =
+      |    Right(ClaimMoved.Gone)
       |  def live(at: java.time.Instant)(using Tx^): Either[StoreError, Vector[Claim]] =
       |    Right(Vector.empty)
       |  def held(claim: Claim)(using Tx^): Either[StoreError, Option[Claim]] =

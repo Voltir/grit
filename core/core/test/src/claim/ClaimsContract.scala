@@ -372,7 +372,7 @@ abstract class ClaimsContract extends TestSuite {
       val now = made("p/a", "move-2", when = hour, working = Some(session("move-b")))
         .copy(role = reviewer)
       assert(
-        moved == Moved.Made(now),
+        moved == ClaimMoved.Made(now),
         live(c, hour) == Vector(now),
         claim(c, "p/b", "move-1", when = hour) == Claimed.Made(made("p/b", "move-1", when = hour))
       )
@@ -386,7 +386,7 @@ abstract class ClaimsContract extends TestSuite {
         ok(c.moved(made("p/a", "mh-1"), holder("mh-2"), session("mh-b"), builder, at))
       )
       assert(
-        moved == Moved.Holding(Some(made("p/b", "mh-2"))),
+        moved == ClaimMoved.Holding(Some(made("p/b", "mh-2"))),
         live(c, at) == Vector(made("p/a", "mh-1"), made("p/b", "mh-2"))
       )
     }
@@ -398,7 +398,7 @@ abstract class ClaimsContract extends TestSuite {
       val moved = opened(Low)(
         ok(c.moved(made("p/a", "mg-1"), holder("mg-2"), session("mg-b"), builder, at))
       )
-      assert(moved == Moved.Gone, live(c, at) == Vector.empty)
+      assert(moved == ClaimMoved.Gone, live(c, at) == Vector.empty)
     }
 
     test("a move of a claim released since is Gone, though its target holder holds another") {
@@ -409,7 +409,7 @@ abstract class ClaimsContract extends TestSuite {
       val moved = opened(Low)(
         ok(c.moved(made("p/a", "mgh-1"), holder("mgh-2"), session("mgh-b"), builder, at))
       )
-      assert(moved == Moved.Gone, live(c, at) == Vector(made("p/b", "mgh-2")))
+      assert(moved == ClaimMoved.Gone, live(c, at) == Vector(made("p/b", "mgh-2")))
     }
 
     test(
@@ -441,8 +441,8 @@ abstract class ClaimsContract extends TestSuite {
         )
       )
       assert(
-        away == Moved.Made(made("p/a", "ml-2", when = lapse, working = Some(session("ml-b")))),
-        own == Moved.Made(made("p/b", "ml-3", when = lapse, working = Some(session("ml-d"))))
+        away == ClaimMoved.Made(made("p/a", "ml-2", when = lapse, working = Some(session("ml-b")))),
+        own == ClaimMoved.Made(made("p/b", "ml-3", when = lapse, working = Some(session("ml-d"))))
       )
     }
 
@@ -456,7 +456,7 @@ abstract class ClaimsContract extends TestSuite {
         )
       )
       val now = made("p/a", "mp-2", when = lapse, working = Some(session("mp-b")))
-      assert(moved == Moved.Made(now), live(c, at) == Vector(now))
+      assert(moved == ClaimMoved.Made(now), live(c, at) == Vector(now))
     }
 
     test("a move to a session working as another holder is Elsewhere, moving nothing") {
@@ -470,7 +470,7 @@ abstract class ClaimsContract extends TestSuite {
         ok(c.moved(made("p/a", "me-1"), holder("me-2"), session("me-b"), builder, at))
       )
       assert(
-        moved == Moved.Elsewhere(session("me-b"), holder("me-3")),
+        moved == ClaimMoved.Elsewhere(session("me-b"), holder("me-3")),
         live(c, at) == Vector(made("p/a", "me-1"))
       )
     }

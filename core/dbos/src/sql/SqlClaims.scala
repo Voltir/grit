@@ -3,7 +3,7 @@ package grit.dbos.sql
 import java.sql.ResultSet
 import java.time.Instant
 
-import grit.core.claim.{Claim, ClaimRole, Claimed, Claims, Moved}
+import grit.core.claim.{Claim, ClaimMoved, ClaimRole, Claimed, Claims}
 import grit.core.id.{ClaimHolder, DocKey, Harness, PluginName, SessionId}
 import grit.core.identity.Principal
 import grit.core.session.Session
@@ -219,9 +219,9 @@ private[dbos] final class SqlClaims(plugin: PluginName) extends Claims {
 
   def moved(claim: Claim, holder: ClaimHolder, session: SessionId, role: ClaimRole, at: Instant)(
       using Tx^
-  ): Either[StoreError, Moved] =
+  ): Either[StoreError, ClaimMoved] =
     SqlClaims.elsewhere(Some(session), holder).flatMap {
-      case Some((s, away)) => Right(Moved.Elsewhere(s, away))
+      case Some((s, away)) => Right(ClaimMoved.Elsewhere(s, away))
       case None =>
         for {
           id <- SqlLabels.intern(claim.label)
@@ -234,13 +234,15 @@ private[dbos] final class SqlClaims(plugin: PluginName) extends Claims {
             case Left(failed) =>
               holding(claim.subject, holder, id)
                 .flatMap(
-                  _.fold[Either[StoreError, Moved]](Left(failed))(h => Right(Moved.Holding(h)))
+                  _.fold[Either[StoreError, ClaimMoved]](Left(failed))(h =>
+                    Right(ClaimMoved.Holding(h))
+                  )
                 )
           }
         } yield answer
     }
 
-  /** `claim` moved as [[moved]] moves it, at the label whose id is `label`: [[Moved.Gone]] when no
+  /** `claim` moved as [[moved]] moves it, at the label whose id is `label`: [[ClaimMoved.Gone]] when no
     * row this transaction reads is it. Fails as the database does when the move breaks
     * `claims_holder`.
     */
@@ -251,7 +253,7 @@ private[dbos] final class SqlClaims(plugin: PluginName) extends Claims {
       role: ClaimRole,
       at: Instant,
       label: Int
-  )(using Tx^): Either[StoreError, Moved] =
+  )(using Tx^): Either[StoreError, ClaimMoved] =
     SqlStatements
       .cleared(
         s"""WITH ${SqlClearance.With},
@@ -275,8 +277,8 @@ private[dbos] final class SqlClaims(plugin: PluginName) extends Claims {
         ps.setInt(P + 10, label)
       }(SqlDocuments.instant(_, "active"))
       .map(
-        _.headOption.fold(Moved.Gone)(active =>
-          Moved.Made(
+        _.headOption.fold(ClaimMoved.Gone)(active =>
+          ClaimMoved.Made(
             claim.copy(
               holder = holder,
               role = role,
