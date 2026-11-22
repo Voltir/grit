@@ -244,12 +244,12 @@ subagents write code beside developer-driven harnesses like Claude Code.
 - **Commit points.** Commit when a planned item, or a self-contained step inside one, has
   its tests passing with no warnings and the law green. Don't ask first; report the hash.
   One item per commit, never two mixed.
-- **Landing.** `main` moves only by fast-forward to a pull request's head that the gate passed
-  and stamped ([`/land`](.claude/skills/land/SKILL.md)), and is never rewritten. A branch a
+- **Landing.** `main` moves only by fast-forward to a pull request's head that the gate passed and
+  stamped ([`/land-prs`](.claude/skills/land-prs/SKILL.md)), and is never rewritten. A branch a
   session built is pushed; after a rebase it is force-pushed with `--force-with-lease`, as a
   feature branch only, never `main`. An internal change (a refactor, a doc fix, tests, storage
-  nothing a person sees) lands on its lander's own review; a change a person sees, and any
-  schema `ALTER` reaching an existing database, waits for Nick.
+  nothing a person sees) lands on its lander's own review; a change a person sees, and any schema
+  `ALTER` reaching an existing database, waits for Nick.
 - **One home per fact.** State a fact in one place and link to it from the others. No
   counts in docs: test totals, check counts and rule counts go in commit messages, where
   they are true as of that commit.

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # gate-stamp: posts the commit status grit/gate, success, on a commit the gate passed in this
-# worktree, so that main may move to it (the /land skill). The stamp means gated, never reviewed.
+# worktree, so that main may move to it (the /land-prs skill). The stamp means gated, never
+# reviewed.
 #
 #   scripts/gate-stamp [<sha>]         # stamps <sha>, or HEAD
 #   scripts/gate-stamp --check <sha>   # whether <sha> carries the stamp

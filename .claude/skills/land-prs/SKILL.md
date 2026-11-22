@@ -1,5 +1,5 @@
 ---
-name: land
+name: land-prs
 description: Land pull requests on main by fast-forward: stack them, gate and stamp the stack's head in the fixer worktree, and move main to it.
 ---
 
