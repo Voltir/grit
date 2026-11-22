@@ -1,5 +1,6 @@
 package grit.projects.method
 
+import grit.core.id.AgentType
 import grit.projects.artifact.{Artifact, ArtifactHead}
 import grit.projects.method.MethodFixtures.*
 import grit.projects.method.MethodRefusal.*
@@ -186,6 +187,28 @@ object MethodTests extends TestSuite {
         digest(Cover.Alone) != digest(Cover.Under)
       ) ==>
         ((Right("6f1ee98a92f56ab472012348f7a1f321f0f30f2e2a6a2b245c45739eb9f1b2cf"), true, true))
+    }
+    test("a role view's holders change the digest, and a role anyone may hold adds nothing") {
+      def digest(holders: Holders) =
+        Method
+          .of(
+            method,
+            1,
+            kinds,
+            transitions,
+            Vector(right(RoleView.of(role("manager"), Set(note.name), 1, holders = holders))),
+            TransitionChecks.all
+          )
+          .map(_.digest.hex)
+      // Pinned: a role anyone may hold digests as every view did before a role named its holders.
+      val anyone = "6e70d418a27bf815302f1dc7e990b9ce25ce91b79a47e32c0e6bfb1178cf313c"
+      (Vector(Holders.Anyone, Holders.Session) ++
+        Holders.Agents.of(Set(right(AgentType.of("coder-opus"))))).map(digest) ==>
+        Vector(
+          Right(anyone),
+          Right("a6926929d72280481c807490ab2773418d9f0914267b97375efe8e7e7ac6f025"),
+          Right("69f555db87789b8b52f0c2faaee6a83e7ecb4ac2737d8c5da73c3bd5b1ad21c5")
+        )
     }
     test("a transition only people make changes the digest") {
       // That one anyone makes adds nothing is pinned by "a method's digest is pinned".

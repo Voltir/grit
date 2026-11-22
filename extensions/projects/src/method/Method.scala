@@ -2,7 +2,7 @@ package grit.projects.method
 
 import scala.annotation.tailrec
 
-import grit.core.id.Sha256
+import grit.core.id.{AgentType, Sha256}
 import grit.projects.artifact.Pin
 import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
 import grit.projects.name.{
@@ -187,8 +187,8 @@ final case class Method private (
 
   /** The digest of its data and of each check's name and version: equal for equal methods,
     * whatever order their kinds, transitions, role views, states and checks are declared in. A
-    * view carrying nothing or covering nothing, a transition anyone makes, or a kind that may sit
-    * anywhere, adds nothing to the digest.
+    * view carrying nothing or covering nothing, a role anyone may hold, a transition anyone makes,
+    * or a kind that may sit anywhere, adds nothing to the digest.
     */
   def digest: Sha256 = {
     def field(s: String): String = s"${s.length}:$s"
@@ -221,7 +221,11 @@ final case class Method private (
         "view " + field(RoleName.value(v.role)) + names(v.kinds.map(KindName.value)) + field(
           v.depth.toString
         ) + (if (v.carried.isEmpty) "" else names(v.carried.map(Handle.value))) +
-          (if (v.covers == Cover.Under) field("covers") else "")
+          (if (v.covers == Cover.Under) field("covers") else "") + (v.holders match {
+            case Holders.Anyone => ""
+            case Holders.Session => field("session")
+            case Holders.Agents(types) => field("agents") + names(types.map(AgentType.value))
+          })
       } ++ checks.map(c => "check " + field(CheckName.value(c.name)) + field(c.version.toString))
     Sha256.text(
       (Vector(field(MethodName.value(name)), field(version.toString)) ++ lines.sorted)

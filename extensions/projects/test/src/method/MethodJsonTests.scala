@@ -1,5 +1,6 @@
 package grit.projects.method
 
+import grit.core.id.AgentType
 import grit.projects.artifact.{Artifact, ArtifactHead}
 import grit.projects.method.MethodFixtures.*
 import grit.projects.name.{CheckName, KindName}
@@ -238,6 +239,69 @@ object MethodJsonTests extends TestSuite {
         (json("views")(0).obj.get("covers"), back == Right(method.digest))
       }
       (round(m), round(covering)) ==> ((None, true), (Some(ujson.True), true))
+    }
+    test("a view's holders are written only when not anyone, and read back under an equal digest") {
+      val m = right(
+        MethodJson.read(declared(), TransitionChecks.all).left.map(_.mkString("; "))
+      ).method
+      val coders = Holders.Agents
+        .of(Set("coder-opus", "coder-haiku").map(t => right(AgentType.of(t))))
+        .getOrElse(Holders.Anyone)
+      def held(holders: Holders) = right(
+        Method
+          .of(
+            m.name,
+            m.version,
+            m.kinds,
+            m.transitions,
+            m.views.map(v =>
+              right(RoleView.of(v.role, v.kinds, v.depth, v.carried, v.covers, holders))
+            ),
+            TransitionChecks.all
+          )
+          .left
+          .map(_.mkString("; "))
+      )
+      def round(method: Method) = {
+        val json = MethodJson.written(method, Vector.empty)
+        val back = MethodJson.read(json, TransitionChecks.all).map(_.method)
+        (
+          json("views")(0).obj.get("holders"),
+          back.map(_.views.map(_.holders)),
+          back.map(_.digest) == Right(method.digest)
+        )
+      }
+      // Pinned: the stored form a method's file holds.
+      Vector(Holders.Anyone, Holders.Session, coders).map(h => round(held(h))) ==> Vector(
+        (None, Right(Vector(Holders.Anyone)), true),
+        (Some(ujson.Str("session")), Right(Vector(Holders.Session)), true),
+        (
+          Some(ujson.Obj("agents" -> ujson.Arr("coder-haiku", "coder-opus"))),
+          Right(Vector(coders)),
+          true
+        )
+      )
+    }
+    test("holders neither a session nor agents of types kept whole are refused, naming the view") {
+      def read(holders: ujson.Value) = {
+        val json = declared()
+        json("views")(0)("holders") = holders
+        MethodJson.read(json, TransitionChecks.all).map(_ => ())
+      }
+      (
+        read(ujson.Str("people")),
+        read(ujson.Obj("agents" -> ujson.Arr())),
+        read(ujson.Obj("agents" -> ujson.Arr("Explore")))
+      ) ==> ((
+        Left(Vector("""view 1's holders is neither session nor {"agents": [agent types]}""")),
+        Left(Vector("view 1's agents names no agent type")),
+        Left(
+          Vector(
+            "view 1's agents: an agent's type is kept whole only as a slug of at most 40 " +
+              "characters that is not eight hex digits, alone or after a '-': Explore"
+          )
+        )
+      ))
     }
     test("a nesting neither anywhere, root nor under kinds is refused, naming the kind") {
       val json = declared()

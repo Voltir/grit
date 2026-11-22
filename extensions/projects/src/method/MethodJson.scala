@@ -1,5 +1,6 @@
 package grit.projects.method
 
+import grit.core.id.AgentType
 import grit.core.json.Fields
 import grit.projects.artifact.{ArtifactJson, Project}
 import grit.projects.name.{
@@ -71,6 +72,13 @@ object MethodJson {
           "carried" -> strings(v.carried.toVector.map(Handle.value).sorted)
         )
         if (v.covers == Cover.Under) o("covers") = true
+        v.holders match {
+          case Holders.Anyone => ()
+          case Holders.Session => o("holders") = SessionHolders
+          case Holders.Agents(types) =>
+            o("holders") =
+              ujson.Obj(AgentHolders -> strings(types.toVector.map(AgentType.value).sorted))
+        }
         o
       }),
       "checks" -> ujson.Arr.from(method.checks.sortBy(c => CheckName.value(c.name)).map { c =>
@@ -144,7 +152,9 @@ object MethodJson {
   private val AnywhereNesting = "anywhere"
   private val RootNesting = "root"
   private val UnderNesting = "under"
-  private val AnyoneMoves = "anyone"
+  private val Anyone = "anyone"
+  private val SessionHolders = "session"
+  private val AgentHolders = "agents"
   private val PersonMover = "person"
   private val AgentMover = "agent"
 
@@ -231,10 +241,10 @@ object MethodJson {
       )
       named <- f.addedStr("movers")
       movers <- named match {
-        case None | Some(AnyoneMoves) => Right(Movers.Anyone)
+        case None | Some(Anyone) => Right(Movers.Anyone)
         case Some(PeopleMove) => Right(Movers.Person)
         case Some(other) =>
-          Left(s"${f.what}'s movers $other is neither $AnyoneMoves nor $PeopleMove")
+          Left(s"${f.what}'s movers $other is neither $Anyone nor $PeopleMove")
       }
     } yield Transition(kind, from, to, checks, action, movers)
 
@@ -257,8 +267,22 @@ object MethodJson {
         case Some(ujson.Bool(true)) => Right(Cover.Under)
         case Some(_) => Left(s"${f.what}'s covers is neither true nor false")
       }
+      held <- f.added("holders")
+      holders <- held match {
+        case None | Some(ujson.Str(Anyone)) => Right(Holders.Anyone)
+        case Some(ujson.Str(SessionHolders)) => Right(Holders.Session)
+        case Some(o: ujson.Obj) if o.value.keySet == Set(AgentHolders) =>
+          names(Fields(f.what, o), AgentHolders)(AgentType.of).flatMap(ts =>
+            Holders.Agents.of(ts.toSet).toRight(s"${f.what}'s $AgentHolders names no agent type")
+          )
+        case Some(_) =>
+          Left(
+            s"${f.what}'s holders is neither $SessionHolders nor " +
+              s"""{"$AgentHolders": [agent types]}"""
+          )
+      }
       view <- RoleView
-        .of(role, kinds.toSet, depth, carried.toSet, covers)
+        .of(role, kinds.toSet, depth, carried.toSet, covers, holders)
         .left
         .map(w => s"${f.what}: $w")
     } yield view
