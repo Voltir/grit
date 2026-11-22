@@ -62,7 +62,7 @@ object WorkedByTests extends TestSuite {
   /** A fresh store: its documents, the plugin's unfenced keeper, and its claims. */
   private def fresh(): (InMemoryDocuments, DocumentKeeper, Claims) = {
     val documents = new InMemoryDocuments
-    (documents, documents.keeper(plugin, terms), new InMemoryClaims().of(plugin, _ => None))
+    (documents, documents.keeper(plugin, terms), new InMemoryClaims().of(plugin))
   }
 
   private def claimed(

@@ -237,8 +237,8 @@ object SessionClaimTests extends TestSuite {
         claim(projects, store, holder, "session" -> "claude-code:s-b") == CommandOutcome.Refused(
           s"p/1 a is claimed already as builder for $holder, and session claude-code:s-a is " +
             s"working on it (last active $at). The claim frees itself when that session ends, or " +
-            s"at $lapses if it does nothing more. Nothing was changed. To move it to your session " +
-            "now, the person who made the claim runs project_claim themselves, outside any " +
+            s"at $lapses if neither it nor an agent it started does anything more. Nothing was " +
+            "changed. To move it to your session now, the person who made the claim runs project_claim themselves, outside any " +
             "session, with: " +
             s"""{"key":"p/1","role":"builder","holder":"$holder","takeover":"claude-code:s-b"}"""
         ),
@@ -250,7 +250,8 @@ object SessionClaimTests extends TestSuite {
       "a manager's session given with an agent's holder is refused, saying to leave session out, changing nothing"
     ) {
       val projects = plugin()
-      val store = Store(sessions = Map(session("s-m") -> (right(ClaimHolder.of(holder)), at)))
+      val store =
+        Store(sessions = Map(session("s-m") -> working(right(ClaimHolder.of(holder)), at)))
       holding(projects, store)
       assert(
         claim(projects, store, agent, "session" -> "claude-code:s-m") == CommandOutcome.Refused(
@@ -276,7 +277,9 @@ object SessionClaimTests extends TestSuite {
     ) {
       val projects = plugin()
       val store =
-        Store(sessions = Map(session("s-x") -> (right(ClaimHolder.of("elsewhere/grit-3")), at)))
+        Store(sessions =
+          Map(session("s-x") -> working(right(ClaimHolder.of("elsewhere/grit-3")), at))
+        )
       holding(projects, store)
       done(claim(projects, store, holder, "session" -> "claude-code:s-a"))
       done(

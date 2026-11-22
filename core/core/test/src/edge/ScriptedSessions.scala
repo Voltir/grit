@@ -2,7 +2,7 @@ package grit.core.edge
 
 import java.time.Instant
 
-import grit.core.claim.{Claim, ClaimRole}
+import grit.core.claim.{Claim, ClaimRole, ClaimSessions}
 import grit.core.document.{BriefClaim, DocText, Document, Placement, Takeover}
 import grit.core.either.Got.got
 import grit.core.id.{ClaimHolder, DocKey, DocumentVersionId, PluginName, SessionId}
@@ -158,9 +158,8 @@ object ScriptedSessions {
       briefs = briefs :+ (holder -> document)
     }
 
-    /** Keeps `claim`, live a lease after its [[Claim.active]] as this script reads it: the latest
-      * of its `made` and the last event of its session, or while it has none, of every session
-      * working as its holder.
+    /** Keeps `claim`, live a lease after its [[Claim.active]] as this script's sessions answer it
+      * ([[ClaimSessions.active]]).
       */
     private def claim(claim: Claim): Unit = synchronized { claims = claims :+ claim }
 
@@ -206,10 +205,13 @@ object ScriptedSessions {
       claims
         .findLast(c => c.subject == subject && c.holder == holder)
         .map { c =>
-          val worked = c.session.fold(sessions.filter(_.holder.contains(c.holder)))(s =>
-            sessions.filter(_.id == s)
-          )
-          c.copy(active = (c.made +: worked.map(_.lastEvent)).max)
+          val working = sessions
+            .map(s =>
+              s.id -> ClaimSessions
+                .Working(s.holder, s.lastEvent, s.parent, s.ended.isDefined, s.by)
+            )
+            .toMap
+          c.copy(active = ClaimSessions.active(c, working))
         }
         .filter(_.lapses.isAfter(at))
     }

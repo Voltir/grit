@@ -18,22 +18,19 @@ final class InMemoryClaims {
   @caps.unsafe.untrackedCaptures
   private var rows = Vector.empty[Row]
 
-  /** `plugin`'s claims, each holder's sessions last working at `worked` of it, and each session
-    * working as the holder `sessions` gives it, last at its time, as the store's sessions this
-    * transaction reads would say.
+  /** `plugin`'s claims, leased on `sessions` as the store's sessions this transaction reads would
+    * be.
     */
   def of(
       plugin: PluginName,
-      worked: ClaimHolder -> Option[Instant],
-      sessions: SessionId -> Option[(ClaimHolder, Instant)] = _ => None
+      sessions: Map[SessionId, ClaimSessions.Working] = Map.empty
   ): Claims = new Claims {
 
-    /** `r`'s claim, active as its session's last event says, or while it has none, `worked`. */
-    private def read(r: Row): Claim = {
-      val c = r.claim
-      val last = c.session.fold(worked(c.holder))(s => sessions(s).map(_._2))
-      c.copy(active = last.filter(_.isAfter(c.made)).getOrElse(c.made))
-    }
+    private def read(r: Row): Claim =
+      r.claim.copy(active = ClaimSessions.active(r.claim, sessions))
+
+    /** The holder the session `s` works as, when it names one. */
+    private def holderOf(s: SessionId): Option[ClaimHolder] = sessions.get(s).flatMap(_.holder)
 
     private def lapsed(r: Row, at: Instant): Boolean = !at.isBefore(read(r).lapses)
 
@@ -54,7 +51,7 @@ final class InMemoryClaims {
       )
       val atLabel = rows.filter(here)
       def shown(r: Row): Option[Claim] = Option.when(reads(r))(read(r))
-      val elsewhere = session.flatMap(s => sessions(s).map(_._1).filter(_ != holder).map((s, _)))
+      val elsewhere = session.flatMap(s => holderOf(s).filter(_ != holder).map((s, _)))
       (
         elsewhere,
         atLabel.find(_.claim.subject == subject),
@@ -113,7 +110,7 @@ final class InMemoryClaims {
       )
       val other =
         rows.find(r => here(r) && r.claim.holder == holder && r.claim.subject != claim.subject)
-      (sessions(session).map(_._1).filter(_ != holder), mine, other) match {
+      (holderOf(session).filter(_ != holder), mine, other) match {
         case (Some(away), _, _) => Right(ClaimMoved.Elsewhere(session, away))
         case (None, None, _) => Right(ClaimMoved.Gone)
         case (None, Some(_), Some(o)) => Right(ClaimMoved.Holding(Option.when(reads(o))(read(o))))

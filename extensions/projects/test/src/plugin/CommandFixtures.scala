@@ -2,7 +2,7 @@ package grit.projects.plugin
 
 import java.time.Instant
 
-import grit.core.claim.{Claims, InMemoryClaims}
+import grit.core.claim.{ClaimSessions, Claims, InMemoryClaims}
 import grit.core.document.{Document, DocumentKeeper, DocumentTerms, InMemoryDocuments}
 import grit.core.id.{ClaimHolder, DocKey, SessionId}
 import grit.core.identity.{Principal, TestAccounts}
@@ -48,6 +48,16 @@ object CommandFixtures {
 
   /** A second person, for a test telling who wrote what. */
   val other: Principal.Person = personOf("slack:T1/U2")
+
+  /** A session [[person]] began, working as `holder`, its last event at `last`, a child of
+    * `parent` when an agent's.
+    */
+  def working(
+      holder: ClaimHolder,
+      last: Instant,
+      parent: Option[SessionId] = None
+  ): ClaimSessions.Working =
+    ClaimSessions.Working(Some(holder), last, parent, false, person)
 
   /** What every write by [[other]] records as its author. */
   val otherBy: String = "slack:T1/U2"
@@ -124,11 +134,11 @@ object CommandFixtures {
   final class Store(
       terms: DocumentTerms = Projects.Terms,
       declared: Vector[Method] = Vector(method()),
-      sessions: Map[SessionId, (ClaimHolder, Instant)] = Map.empty
+      sessions: Map[SessionId, ClaimSessions.Working] = Map.empty
   ) {
     val documents = new InMemoryDocuments
     val keeper: DocumentKeeper = documents.keeper(Projects.Name, terms)
-    val claims: Claims = new InMemoryClaims().of(Projects.Name, _ => None, sessions.get)
+    val claims: Claims = new InMemoryClaims().of(Projects.Name, sessions)
     declared.foreach(m => done(ask(plugin(), this, "project_declare", declaring(m))))
     def reads: PluginReads = PluginReads(new InMemoryPlugins().docs(Projects.Name), keeper)
     def count: Int =

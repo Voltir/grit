@@ -413,15 +413,20 @@ private[dbos] object SqlClaims {
   /** The latest a claim's [[Claim.active]] may be and have lapsed at `at`. */
   private def leased(at: Instant): Instant = at.minusMillis(Claims.Lease.toMillis)
 
-  /** [[Claim.active]] of the claim row `c`: the latest of its making and the last event of its
-    * session, or while it has none, of the sessions working as its holder, that
-    * [[SqlClearance.With]]'s clearance reads.
+  /** The `active` of the claim row `c`: its session's work, and that session's agents'
+    * ([[Claim.active]]), as [[SqlClearance.With]]'s clearance reads them. GREATEST skips a NULL,
+    * so a session with no agents, or ended, is its own last event.
     */
   private val Active: String =
     s"""GREATEST(c.made_at, CASE WHEN c.session_local IS NULL
        |  THEN (SELECT max(s.last_event_at) FROM grit.sessions s
        |         WHERE s.holder = c.holder AND ${SqlClearance.kept("s")})
-       |  ELSE (SELECT s.last_event_at FROM grit.sessions s
+       |  ELSE (SELECT GREATEST(s.last_event_at, CASE WHEN s.ended_at IS NULL THEN
+       |                 (SELECT max(k.last_event_at) FROM grit.sessions k
+       |                   WHERE k.parent_harness = s.harness AND k.parent_local = s.local
+       |                     AND k.principal_id = s.principal_id
+       |                     AND ${SqlClearance.kept("k")}) END)
+       |          FROM grit.sessions s
        |         WHERE s.harness = c.session_harness AND s.local = c.session_local
        |           AND ${SqlClearance.kept("s")}) END)""".stripMargin
 

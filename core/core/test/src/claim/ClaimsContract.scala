@@ -16,16 +16,26 @@ import utest.*
 abstract class ClaimsContract extends TestSuite {
 
   /** `plugin`'s claims in the store under test, each holder in `worked` having worked a session
-    * whose last event is at its time, and each session in `sessions` working as its holder, its
-    * last event at its time, all kept where every transaction here reads them.
+    * whose last event is at its time, and each session in `sessions` recorded as it says, all kept
+    * where every transaction here reads them.
     */
   protected def claims(
       plugin: PluginName,
       worked: Map[ClaimHolder, Instant],
-      sessions: Map[SessionId, (ClaimHolder, Instant)] = Map.empty
+      sessions: Map[SessionId, ClaimSessions.Working] = Map.empty
   ): Claims
 
   private def claims(plugin: PluginName): Claims = claims(plugin, Map.empty)
+
+  /** A session begun by `by`, working as `as`, its last event at `last`. */
+  private def working(
+      as: String,
+      last: Instant,
+      parent: Option[String] = None,
+      ended: Boolean = false,
+      by: Principal.Person = ann
+  ): ClaimSessions.Working =
+    ClaimSessions.Working(Some(holder(as)), last, parent.map(session), ended, by)
 
   /** The person `account` is linked to, seen by the store under test. */
   protected def person(account: Account): Principal.Person
@@ -58,6 +68,8 @@ abstract class ClaimsContract extends TestSuite {
   private val hour: Instant = at.plusSeconds(3600)
 
   private lazy val ann: Principal.Person = person(TestAccounts.account("slack:T1/U-ann"))
+
+  private lazy val bob: Principal.Person = person(TestAccounts.account("slack:T1/U-bob"))
 
   private def claim(
       c: Claims,
@@ -314,18 +326,109 @@ abstract class ClaimsContract extends TestSuite {
       val c = claims(
         plugin("claims-own-lease"),
         Map(holder("own-1") -> hour),
-        Map(session("own-a") -> (holder("own-1"), at))
+        Map(session("own-a") -> working("own-1", at))
       )
       claim(c, "p/a", "own-1", working = Some(session("own-a")))
       val taken = claim(c, "p/a", "own-2", when = lapse)
       assert(taken == Claimed.Made(made("p/a", "own-2", when = lapse)))
     }
 
+    test("an agent's event keeps the claim its parent session works live a lease after it") {
+      val c = claims(
+        plugin("claims-agent-renews"),
+        Map.empty,
+        Map(
+          session("parent-a") -> working("agent-1", at),
+          session("parent-a/x") -> working("agent-2", hour, parent = Some("parent-a"))
+        )
+      )
+      claim(c, "p/a", "agent-1", working = Some(session("parent-a")))
+      val taken = claim(c, "p/a", "agent-3", when = lapse)
+      assert(
+        taken == Claimed.Taken(
+          Some(made("p/a", "agent-1", active = Some(hour), working = Some(session("parent-a"))))
+        )
+      )
+    }
+
+    test("an agent's event keeps its parent session's claim no longer than a lease after it") {
+      val c = claims(
+        plugin("claims-agent-lapses"),
+        Map.empty,
+        Map(
+          session("lapsing-a") -> working("lapsing-1", at),
+          session("lapsing-a/x") -> working("lapsing-2", hour, parent = Some("lapsing-a"))
+        )
+      )
+      claim(c, "p/a", "lapsing-1", working = Some(session("lapsing-a")))
+      val after = hour.plusMillis(Claims.Lease.toMillis)
+      val taken = claim(c, "p/a", "lapsing-3", when = after)
+      assert(taken == Claimed.Made(made("p/a", "lapsing-3", when = after)))
+    }
+
+    test("an ended session's agents keep the claim it works from lapsing no longer") {
+      val c = claims(
+        plugin("claims-agent-ended"),
+        Map.empty,
+        Map(
+          session("ended-a") -> working("ended-1", at, ended = true),
+          session("ended-a/x") -> working("ended-2", hour, parent = Some("ended-a"))
+        )
+      )
+      claim(c, "p/a", "ended-1", working = Some(session("ended-a")))
+      val taken = claim(c, "p/a", "ended-3", when = lapse)
+      assert(taken == Claimed.Made(made("p/a", "ended-3", when = lapse)))
+    }
+
+    test("an agent another person began keeps no claim its parent session works from lapsing") {
+      val c = claims(
+        plugin("claims-agent-stranger"),
+        Map.empty,
+        Map(
+          session("strange-a") -> working("strange-1", at),
+          session("strange-a/x") ->
+            working("strange-2", hour, parent = Some("strange-a"), by = bob)
+        )
+      )
+      claim(c, "p/a", "strange-1", working = Some(session("strange-a")))
+      val taken = claim(c, "p/a", "strange-3", when = lapse)
+      assert(taken == Claimed.Made(made("p/a", "strange-3", when = lapse)))
+    }
+
+    test("an agent's own agent keeps no claim of the session above its parent from lapsing") {
+      val c = claims(
+        plugin("claims-agent-nested"),
+        Map.empty,
+        Map(
+          session("nested-a") -> working("nested-1", at),
+          session("nested-a/x") -> working("nested-2", at, parent = Some("nested-a")),
+          session("nested-a/x/y") -> working("nested-3", hour, parent = Some("nested-a/x"))
+        )
+      )
+      claim(c, "p/a", "nested-1", working = Some(session("nested-a")))
+      val taken = claim(c, "p/a", "nested-4", when = lapse)
+      assert(taken == Claimed.Made(made("p/a", "nested-4", when = lapse)))
+    }
+
+    test("a claim no session works is kept by no agent of its holder's sessions") {
+      val c = claims(
+        plugin("claims-agent-unworked"),
+        Map.empty,
+        Map(
+          session("unworked-a") -> working("unworked-1", at),
+          session("unworked-a/x") -> working("unworked-2", hour, parent = Some("unworked-a"))
+        )
+      )
+      claim(c, "p/a", "unworked-1")
+      val taken = claim(c, "p/a", "unworked-3", when = lapse)
+      assert(taken == Claimed.Made(made("p/a", "unworked-3", when = lapse)))
+    }
+
     test("a claim made with a session is worked by it, and its lease is that session's") {
       val c = claims(
         plugin("claims-sessioned"),
         Map.empty,
-        Map(session("worked-a") -> (holder("sessioned-1"), hour))
+        Map(session("worked-a") -> working("sessioned-1", hour))
       )
       val made1 = claim(c, "p/a", "sessioned-1", working = Some(session("worked-a")))
       assert(
@@ -463,7 +566,7 @@ abstract class ClaimsContract extends TestSuite {
       val c = claims(
         plugin("claims-move-elsewhere"),
         Map.empty,
-        Map(session("me-b") -> (holder("me-3"), at))
+        Map(session("me-b") -> working("me-3", at))
       )
       claim(c, "p/a", "me-1")
       val moved = opened(Low)(
@@ -479,7 +582,7 @@ abstract class ClaimsContract extends TestSuite {
       val c = claims(
         plugin("claims-elsewhere"),
         Map.empty,
-        Map(session("away-a") -> (holder("away-2"), at))
+        Map(session("away-a") -> working("away-2", at))
       )
       val refused = claim(c, "p/a", "away-1", working = Some(session("away-a")))
       assert(

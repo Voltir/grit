@@ -1107,10 +1107,9 @@ CREATE INDEX IF NOT EXISTS idx_document_refs_ref ON grit.document_refs (kind, md
 -- (grit.core.visibility.Item.Kept), NULL for none. `session_harness` and `session_local` name
 -- the session working it (grit.sessions' harness and local), NULL until a session of its holder
 -- starts and takes it, and again once that session's end frees it; never a foreign key, since
--- either may be deleted first. Its lease is computed when read, never written: the latest of
--- `made_at` and its session's `last_event_at`, or while it has none, its holder's sessions'
--- (grit.sessions.holder), plus grit.core.claim.Claims.Lease. A claim whose session's row is
--- gone reads `made_at` alone, lapses and is swept. Never versioned: a release deletes its row.
+-- either may be deleted first. Its lease is computed when read, never written
+-- (grit.core.claim.Claim.active, plus grit.core.claim.Claims.Lease). A claim whose session's
+-- row is gone reads `made_at` alone, lapses and is swept. Never versioned: a release deletes its row.
 -- Retention: expiring: deleted by its release, by a claim taking it over once lapsed, by the
 -- sweep once lapsed longer than grit.core.session.Session.Unended, and with a plugin no longer
 -- enabled (Target.Disabled). Steady state: one row of about 250 bytes per live claim, tens of
@@ -1178,6 +1177,13 @@ CREATE INDEX IF NOT EXISTS idx_sessions_place ON grit.sessions (place);
 
 -- The sessions working as a claim holder, whose last events are a claim's lease.
 CREATE INDEX IF NOT EXISTS idx_sessions_holder ON grit.sessions (holder) WHERE holder IS NOT NULL;
+
+-- The agents' sessions by the session that started them, whose last events renew the claims that
+-- session works (grit.core.claim.Claim.active). Its columns are written once, at insert, so a
+-- recording's update stays HOT. Deleted with its session's row, by the collector after the
+-- session sweep; one entry of about 100 bytes per agent's session kept.
+CREATE INDEX IF NOT EXISTS idx_sessions_parent ON grit.sessions (parent_harness, parent_local)
+    WHERE parent_local IS NOT NULL;
 
 -- Each working session's log (grit.core.session.Log): a line at each `seq` from 1, the source's
 -- own ordinal `n` for its event (unique in the session, so an event recorded again is known),

@@ -183,7 +183,7 @@ object TurnGateTurnTests extends TestSuite {
         Commanded.Keeping(notes, noteTerms, Noting),
         p => PluginReads(new InMemoryPlugins().docs(p), docs.keeper(p, noteTerms)),
         docs.keeper,
-        p => new InMemoryClaims().of(p, _ => None),
+        p => new InMemoryClaims().of(p),
         new Askers {
           def of(turn: TurnRef)(using Tx^): Either[StoreError, Option[Principal]] =
             Right(Some(asker))

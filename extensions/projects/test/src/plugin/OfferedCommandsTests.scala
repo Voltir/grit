@@ -35,7 +35,7 @@ object OfferedCommandsTests extends TestSuite {
             _,
             p => PluginReads(new InMemoryPlugins().docs(p), docs.keeper(p, Projects.Terms)),
             docs.keeper,
-            p => new InMemoryClaims().of(p, _ => None),
+            p => new InMemoryClaims().of(p),
             nobody,
             clock
           )

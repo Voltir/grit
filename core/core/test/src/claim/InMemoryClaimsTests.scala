@@ -16,9 +16,19 @@ object InMemoryClaimsTests extends ClaimsContract {
   protected def claims(
       plugin: PluginName,
       worked: Map[ClaimHolder, Instant],
-      sessions: Map[SessionId, (ClaimHolder, Instant)]
-  ): Claims =
-    store.of(plugin, worked.get, sessions.get)
+      sessions: Map[SessionId, ClaimSessions.Working]
+  ): Claims = {
+    val ann = person(TestAccounts.account("slack:T1/U-ann"))
+    val own = worked.map((holder, at) =>
+      SessionId
+        .read(s"claude-code:works-${ClaimHolder.value(holder)}")
+        .fold(
+          e => throw new java.lang.AssertionError(e),
+          _ -> ClaimSessions.Working(Some(holder), at, None, false, ann)
+        )
+    )
+    store.of(plugin, own ++ sessions)
+  }
 
   protected def person(account: Account): Principal.Person =
     TestAccounts.principal(account) match {

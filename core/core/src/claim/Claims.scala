@@ -13,8 +13,9 @@ import grit.core.visibility.Label
   * accounts linked to them when it is read), kept at `label`, worked by `session`. It has no
   * `session` until a session of its holder starts or resumes, which takes it
   * ([[grit.core.session.Sessions.record]]), and none again once that session's recorded end
-  * frees it. `active` is the latest of `made` and the last event the reading transaction reads of
-  * `session`, or, while it has none, of any session working as `holder`.
+  * frees it. `active` is the latest of `made` and, as the reading transaction reads them, the last
+  * event of `session` and, until `session` ends, of each session whose `parent` it is that the
+  * same person began; or, while it has no `session`, of any session working as `holder`.
   */
 final case class Claim(
     subject: DocKey,
@@ -79,8 +80,8 @@ enum ClaimMoved {
 }
 
 /** One plugin's claims, as its transaction reads them: at each label, one live claim per subject
-  * and one per holder. A claim's lease is its session's: that session's last event keeps it from
-  * lapsing, and while it has none, any session working as its holder does ([[Claim.lapses]]). A
+  * and one per holder. A claim's lease is its session's work, and that session's agents'
+  * ([[Claim.active]]). A
   * release deletes it, and so does a claim taking it over once lapsed; the
   * session sweep deletes a claim lapsed longer than [[grit.core.session.Session.Unended]]. Nothing
   * is versioned.
@@ -157,9 +158,7 @@ trait Claims extends caps.Pure {
 
 object Claims {
 
-  /** 2 hours: how long after its session, or its holder, last worked a claim lapses
-    * ([[Claim.lapses]]).
-    */
+  /** 2 hours: how long after it was last worked ([[Claim.active]]) a claim lapses. */
   val Lease: FiniteDuration = 2.hours
 
   /** What a person is told of `claim` while `session` works it, after the words naming it: that
@@ -167,5 +166,6 @@ object Claims {
     */
   def working(claim: Claim, session: SessionId): String =
     s"and session ${session.written} is working on it (last active ${claim.active}). The claim " +
-      s"frees itself when that session ends, or at ${claim.lapses} if it does nothing more"
+      s"frees itself when that session ends, or at ${claim.lapses} if neither it nor an agent it started " +
+      "does anything more"
 }

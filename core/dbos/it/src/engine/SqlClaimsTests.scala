@@ -2,7 +2,7 @@ package grit.dbos.engine
 
 import java.time.Instant
 
-import grit.core.claim.{Claims, ClaimsContract}
+import grit.core.claim.{ClaimSessions, Claims, ClaimsContract}
 import grit.core.id.{ClaimHolder, PluginName, SessionId}
 import grit.core.identity.{Account, Principal, TestAccounts}
 import grit.core.store.Tx
@@ -22,12 +22,22 @@ object SqlClaimsTests extends ClaimsContract {
   protected def claims(
       plugin: PluginName,
       worked: Map[ClaimHolder, Instant],
-      sessions: Map[SessionId, (ClaimHolder, Instant)]
+      sessions: Map[SessionId, ClaimSessions.Working]
   ): Claims = {
     val ann = person(TestAccounts.account("slack:T1/U-ann"))
     worked.foreach((holder, at) => HolderSessions.work(config, ann, holder, at))
-    sessions.foreach { case (s, (holder, at)) =>
-      HolderSessions.work(config, ann, holder, at, session = Some(s))
+    sessions.foreach { (s, w) =>
+      w.holder.foreach(holder =>
+        HolderSessions.work(
+          config,
+          w.by,
+          holder,
+          w.last,
+          session = Some(s),
+          parent = w.parent,
+          ended = w.ended
+        )
+      )
     }
     new SqlClaims(plugin)
   }

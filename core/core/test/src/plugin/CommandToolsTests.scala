@@ -141,7 +141,7 @@ object CommandToolsTests extends TestSuite {
       commanded,
       p => PluginReads(new InMemoryPlugins().docs(p), docs.keeper(p, terms)),
       docs.keeper,
-      p => new InMemoryClaims().of(p, _ => None),
+      p => new InMemoryClaims().of(p),
       asking(who),
       clock
     )

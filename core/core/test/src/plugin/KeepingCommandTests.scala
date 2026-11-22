@@ -74,7 +74,7 @@ object KeepingCommandTests extends TestSuite {
   private def noted(by: CommandBy, text: String): Either[StoreError, CommandOutcome] = {
     given Tx = TestTx.fake(Clearance.of(Label.Public))
     val documents = new InMemoryDocuments
-    val claims = new InMemoryClaims().of(plugin, _ => None)
+    val claims = new InMemoryClaims().of(plugin)
     val made = claims.claim(
       key,
       got(ClaimHolder.of("h1")),

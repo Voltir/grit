@@ -157,6 +157,32 @@ object ClaimsLiveTests extends TestSuite {
       assert(first == Some(("hidden-3", Some(own), hour)), made(taken))
     }
 
+    test(
+      "an agent's session keeps its parent session's claim from lapsing only for a claimer who reads the agent's"
+    ) {
+      val c = new SqlClaims(ok(PluginName.of("claims-hidden-agent")))
+      val hour = at.plusSeconds(3600)
+      val parent = ok(SessionId.read("claude-code:hidden-parent"))
+      val agent = ok(SessionId.read("claude-code:hidden-parent/x"))
+      val trial = TestLabels.Trial
+      val high = Clearance.of(trial)
+      HolderSessions.work(config, by, ok(ClaimHolder.of("hidden-5")), at, session = Some(parent))
+      HolderSessions.work(
+        config,
+        by,
+        ok(ClaimHolder.of("hidden-6")),
+        hour,
+        trial,
+        Some(agent),
+        Some(parent)
+      )
+      claim(c, "p/a", "hidden-5", at, session = Some(parent))
+      val lapse = at.plusMillis(Claims.Lease.toMillis)
+      def live(clearance: Clearance) =
+        ok(LiveDb.transaction(config, clearance)(c.live(lapse))).map(_.active)
+      assert(live(high) == Vector(hour), live(Clearance.of(Label.Public)) == Vector.empty)
+    }
+
     test("the sweep deletes a claim once lapsed longer than a session counts as unended") {
       val c = new SqlClaims(ok(PluginName.of("claims-forgotten")))
       claim(c, "p/a", "forgotten-1", at)
