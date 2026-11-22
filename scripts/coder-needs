@@ -62,13 +62,19 @@ if ! url=$(git remote get-url --push origin 2> /dev/null); then
   lack "a remote origin, for pushing built branches"
 else
   pushes=1
+  # The ssh git itself would run, in git's order (connect.c): GIT_SSH_COMMAND, core.sshCommand,
+  # GIT_SSH, ssh. Setting GIT_SSH_COMMAND to add BatchMode would otherwise hide the other two.
+  ssh=${GIT_SSH_COMMAND:-$(git config core.sshCommand 2> /dev/null)}
+  if [ -z "$ssh" ]; then
+    if [ -n "${GIT_SSH:-}" ]; then ssh=$(printf '%q' "$GIT_SSH"); else ssh=ssh; fi
+  fi
   if [[ $url == http://* || $url == https://* ]]; then
     printf 'url=%s\n\n' "$url" |
       GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=false SSH_ASKPASS=false git credential fill 2> /dev/null |
       grep -q '^password=' || pushes=0
   fi
   if [ "$pushes" = 1 ]; then
-    GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=false GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh} -o BatchMode=yes" \
+    GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=false GIT_SSH_COMMAND="$ssh -o BatchMode=yes" \
       timeout 20 git ls-remote origin HEAD > /dev/null 2>&1 < /dev/null || pushes=0
   fi
   if [ "$pushes" = 0 ]; then
@@ -77,7 +83,7 @@ else
     # A dry run opens origin's receive-pack, where a forge refuses a credential that may only
     # read, and creates nothing there. git's first line names the refusal; its last is advice.
     said=$(mktemp)
-    if ! GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=false GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh} -o BatchMode=yes" \
+    if ! GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=false GIT_SSH_COMMAND="$ssh -o BatchMode=yes" \
       timeout 20 git push --dry-run origin HEAD:refs/heads/coder-needs-probe > /dev/null 2> "$said" < /dev/null; then
       why=$(grep -m 1 . "$said")
       lack "write access to origin as git authenticates here (${why:-git printed nothing}), for pushing built branches"

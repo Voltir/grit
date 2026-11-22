@@ -230,6 +230,32 @@ object CoderNeedsTests extends TestSuite {
     }
 
     test(
+      "an ssh origin only the checkout's core.sshCommand reaches is reached by both probes, as git reaches it"
+    ) {
+      needs { n =>
+        // The ssh on PATH reaches nothing; the configured one runs git's remote command against
+        // the bare origin beside the checkout, as a forge's server would.
+        val _ =
+          n.machine.write(n.machine.bin.resolve("ssh"), "#!/bin/sh\nexit 255\n", executable = true)
+        val configured = n.machine.write(
+          n.machine.root.resolve("configured-ssh"),
+          s"#!/bin/sh\nfor a; do last=$$a; done\ncd '${n.machine.root}' && exec sh -c \"$$last\"\n",
+          executable = true
+        )
+        val _ = n.machine.sh(n.f.proj, "git remote set-url origin git@example.invalid:origin.git")
+        val _ =
+          n.machine.sh(n.f.proj, s"git config core.sshCommand '$configured -o IdentitiesOnly=yes'")
+        val done = n.run()
+        (done.exit, done.out) ==> ((
+          0,
+          Vector(
+            s"coder-needs: nothing lacking; the edge names this machine ${MachineName.value(Machine)}"
+          )
+        ))
+      }
+    }
+
+    test(
       "an origin that lists its refs but refuses a push is named as lacking write access, with git's first error line"
     ) {
       needs { n =>
