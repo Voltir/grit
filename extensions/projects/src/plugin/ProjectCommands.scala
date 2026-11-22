@@ -14,10 +14,12 @@ import grit.core.document.{
   Written
 }
 import grit.core.id.{
+  AgentType,
   ClaimHolder,
   ConversationId,
   DocKey,
   DocumentVersionId,
+  HolderForm,
   PrincipalId,
   SessionId,
   TurnSeq
@@ -32,6 +34,7 @@ import grit.core.visibility.{Integrity, Label}
 import grit.projects.artifact.{Artifact, ArtifactHead, ArtifactJson, Body, Pin, Project}
 import grit.projects.method.{
   ArtifactKind,
+  Holders,
   Method,
   MoveRefusal,
   Mover,
@@ -1333,6 +1336,8 @@ private[plugin] final class ProjectCommands(
         "`none`; and with `none`, `note`, saying why. Refused, naming who holds it, when it " +
         "is claimed already; refused, naming the artifact, when what it is claimed for works " +
         "another; refused for a role, a kind or a state the project's method lacks; refused " +
+        "for a holder the role does not admit, naming the roles that do (a method may keep a " +
+        "role for sessions, or for agents of named types); refused " +
         "for both or neither of `key` and `oldest`; refused, saying there is nothing to take, " +
         "when `oldest` finds none; refused for a claim another session of `holder` works, " +
         "naming it and how to move it; and refused for `takeover` of a claim someone else made, " +
@@ -1439,7 +1444,8 @@ private[plugin] final class ProjectCommands(
         for {
           project <- loaded(own, args.target.project)
           method <- declared(own, project.pin)
-          _ <- viewOf(method, args.role)
+          view <- viewOf(method, args.role)
+          _ <- admitted(method, view, args.holder)
           whole <- refuse(Project.of(args.target.project, project.pin, project.artifacts))
           _ <- args.target match {
             case Claiming.Target.TakeoverTo(_, _) if moverOf(by) != Mover.Person =>
@@ -2374,10 +2380,49 @@ private[plugin] object ProjectCommands {
       .toRight(
         Stop.Refused(
           s"method ${MethodName.value(method.name)} version ${method.version} shows no role " +
-            s"${RoleName.value(role)}; its roles: " +
-            method.views.map(v => RoleName.value(v.role)).sorted.mkString(", ")
+            s"${RoleName.value(role)}; its roles: " + rolesSaid(method.views).mkString(", ")
         )
       )
+
+  /** Nothing when `view` admits `holder`; else a refusal saying what `holder` is the holder of,
+    * who may hold `view`'s role, and the roles of `method` it may claim in.
+    */
+  private[plugin] def admitted(
+      method: Method,
+      view: RoleView,
+      holder: ClaimHolder
+  ): Either[Stop, Unit] =
+    if (view.holders.admits(holder)) Right(())
+    else {
+      val h = ClaimHolder.value(holder)
+      val is = ClaimHolder.form(holder) match {
+        case HolderForm.Session => s"$h is a session's holder"
+        case HolderForm.Agent(Some(t)) => s"$h is a ${AgentType.value(t)} agent's holder"
+        case HolderForm.Agent(None) => s"$h is an agent's holder"
+        case HolderForm.Other => s"$h is neither a session's holder nor an agent's"
+      }
+      val heldBy = view.holders match {
+        case Holders.Anyone => "anyone" // admits every holder, so never said
+        case Holders.Session => "a session, never by an agent"
+        case Holders.Agents(types) =>
+          "agents of type " + Words.alternatives(types.toVector.map(AgentType.value).sorted)
+      }
+      val may = rolesSaid(method.views.filter(_.holders.admits(holder))) match {
+        case Vector() =>
+          s"No role of method ${MethodName.value(method.name)} version ${method.version} admits it."
+        case roles => s"It may claim as ${Words.alternatives(roles)}."
+      }
+      Left(
+        Stop.Refused(
+          s"$is, and the role ${RoleName.value(view.role)} is held only by $heldBy. $may " +
+            "Nothing was changed."
+        )
+      )
+    }
+
+  /** The roles `views` show, by name, sorted. */
+  private def rolesSaid(views: Vector[RoleView]): Vector[String] =
+    views.map(v => RoleName.value(v.role)).sorted
 
   /** `document` as an artifact, or why not, naming it. */
   private[plugin] def readable(document: Document): Either[String, Artifact] =

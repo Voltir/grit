@@ -9,7 +9,7 @@ import scala.util.Using
 
 import grit.core.document.{DocRef, DocText}
 import grit.core.either.Got.got
-import grit.core.id.{DocKey, SessionId}
+import grit.core.id.{AgentType, DocKey, SessionId}
 import grit.core.identity.Account
 import grit.core.place.Place
 import grit.core.plugin.CommandOutcome
@@ -20,7 +20,14 @@ import grit.core.visibility.Integrity
 import grit.core.visibility.{Clearance, Label, Level}
 import grit.dbos.sql.LiveDb
 import grit.projects.artifact.{Artifact, ArtifactJson, OldFormFixtures}
-import grit.projects.method.{ArtifactKind, Method, MethodFixtures, TransitionChecks}
+import grit.projects.method.{
+  ArtifactKind,
+  Holders,
+  Method,
+  MethodFixtures,
+  RoleView,
+  TransitionChecks
+}
 import grit.projects.plugin.{CommandFixtures, Projects}
 
 import utest.*
@@ -1143,6 +1150,57 @@ object ProjectsLiveTests extends TestSuite {
             Vector(("p/a", "internal", "authority"), ("p/b", "internal", "member")),
             Right("Kept p/3 (note, open).")
           )
+      }
+    }
+    test(
+      "a claim through the edge for a holder its role does not admit is refused, claiming nothing"
+    ) {
+      CommandRooms.commanding("projects_admitted", _ => Vector(atInternal)) { (_, _, commands) =>
+        val coders = Holders.Agents
+          .of(Set(got(AgentType.of("coder-opus"))))
+          .getOrElse(throw new java.lang.AssertionError("one type is some"))
+        declared(
+          commands,
+          CommandFixtures.method(roles =
+            MethodFixtures.views :+ got(
+              RoleView.of(
+                MethodFixtures.role("coder"),
+                Set(MethodFixtures.note.name),
+                1,
+                holders = coders
+              )
+            )
+          )
+        )
+        val asked = for {
+          _ <- ran(commands, ann, desk, ToolName("project_new"), "project" -> "p")
+          _ <- keep(commands, desk, "a", "Unclaimed.")
+          refused <- ran(
+            commands,
+            ann,
+            desk,
+            ToolName("project_claim"),
+            "key" -> "p/a",
+            "role" -> "coder",
+            "holder" -> "desk/grit-0a1b2c3d"
+          )
+          listed <- ran(commands, ann, desk, ToolName("project_claims"))
+        } yield (
+          refused,
+          listed match {
+            case CommandOutcome.Done(said) => ujson.read(said)("claims").arr.size
+            case _ => -1
+          }
+        )
+        asked ==> Right(
+          (
+            CommandOutcome.Refused(
+              "desk/grit-0a1b2c3d is a session's holder, and the role coder is held only by " +
+                "agents of type coder-opus. It may claim as builder. Nothing was changed."
+            ),
+            0
+          )
+        )
       }
     }
   }
