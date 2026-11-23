@@ -19,11 +19,11 @@ import grit.core.recipe.TurnRecipe
 import grit.core.store.Origin
 import grit.dbos.engine.{Engine, Link, NotTaken, Unopened}
 import grit.host.checkout.{LocalProcesses, Redaction}
-import grit.host.git.WorkingCopies
+import grit.host.git.{PushTarget, WorkingCopies}
 import grit.host.machine.LocalMachine
 import grit.kit.deployment.{Assembly, Deployment}
 import grit.kit.environment.{DotEnv, Exit, Secrets}
-import grit.kit.run.{Kit, Launch}
+import grit.kit.run.{Kit, Launch, Pushing}
 import grit.kit.work.Work
 import grit.mcp.client.KeyFiles
 import grit.models.{OpenRouterConfig, StubProvider}
@@ -186,7 +186,11 @@ import Backfills.*
   *     not `read`: the run is there to change its copy and commit, and nobody can approve a
   *     call. It runs only on an engine this process starts, whose deployment believes the
   *     repository's files at member ([[Clearances.caps]]). A repository not declared, or a
-  *     clone that is no directory, is refused before anything runs.
+  *     clone that is no directory, is refused before anything runs. When
+  *     `GRIT_REMOTE_REPOSITORIES` names a GitHub repository for it (`name=owner/repo`), the run
+  *     may offer its branch there as a pull request, pushed and opened with the token
+  *     `GRIT_REMOTE_REPOSITORY_TOKEN` holds, and a new branch is cut only when the clone's
+  *     origin is that repository ([[RemoteRepositories]]).
   *   - **Other arguments: each is a message**, answered by one turn and printed. Repeat a
   *     message to watch a redelivery come back as the same turn; run again to watch
   *     finished turns replay without calling the model. Nothing here answers a gated call,
@@ -413,18 +417,31 @@ object Main {
                   }
               ).swap.toOption
             case Some(in) =>
+              val declared = exitOnLeft(RepositoriesEnv.declared(env))
               val clone = exitOnLeft(
-                RepositoriesEnv
-                  .declared(env)
-                  .flatMap(RepositoriesEnv.cloneOf(_, in.repository))
-                  .flatMap(RepositoriesEnv.existing)
+                RepositoriesEnv.cloneOf(declared, in.repository).flatMap(RepositoriesEnv.existing)
               )
+              val remote = exitOnLeft(RepositoriesEnv.remotes(env, declared)).get(in.repository)
+              val target: Option[PushTarget^] = remote match {
+                case Some(full) => Some(exitOnLeft(RemoteRepositories.target(env, full, clock)))
+                case None => None
+              }
+              val pushing: Option[Pushing^] = (remote, target) match {
+                case (Some(full), Some(t)) =>
+                  Some(
+                    exitOnLeft(
+                      RemoteRepositories.pushing(env, sys.env, full, clone, t, redaction)
+                    )
+                  )
+                case _ => None
+              }
               val copies: WorkingCopies^ = new WorkingCopies(
                 in.repository,
                 clone,
                 exitOnLeft(RepositoriesEnv.copies(env)),
                 new LocalProcesses(clone, sys.env, redaction),
-                clock
+                clock,
+                target
               )
               val work = in.run.getOrElse(Work.named(text))
               exitOnLeft(
@@ -437,7 +454,8 @@ object Main {
                     redaction,
                     clock,
                     fresh,
-                    Some(copies)
+                    Some(copies),
+                    pushing
                   ) { here =>
                     // Built here, where its copies are: a run in a copy is one of this engine's.
                     Work.run(

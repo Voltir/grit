@@ -7,7 +7,7 @@ import grit.core.place.{Directory, Namespace, Place, Reaches, Service}
 import grit.host.checkout.{LocalProcesses, Redaction}
 import grit.host.git.WorkingCopies
 import grit.kit.deployment.Offered
-import grit.kit.run.LocalEdge
+import grit.kit.run.{LocalEdge, Pushing}
 import grit.mcp.client.{McpServer, McpTransport}
 import grit.mcp.edge.McpEdge
 import grit.mcp.scope.McpScope
@@ -19,7 +19,7 @@ private[main] object ChatEdges {
 
   /** `use` given the edge this process serves for `directory`: the coding tools `offered`
     * names, run in `root` ([[LocalEdge.serving]]) and in each working copy of `copies` for its
-    * run, with the instruction files around `root`, and scout's
+    * run, its branch offered as `pushing` does, with the instruction files around `root`, and scout's
     * tools when `scout` declares its server, its program started now. Both are closed once `use`
     * returns or throws, which ends any command the tools left running. Why not, before `use`
     * runs: the coding tools' edge cannot be made, or scout's program cannot start or lists no
@@ -33,11 +33,12 @@ private[main] object ChatEdges {
       redaction: Redaction,
       clock: Clock^,
       fresh: Fresh^,
-      copies: Option[WorkingCopies^]
+      copies: Option[WorkingCopies^],
+      pushing: Option[Pushing^] = None
   )(use: Console.Edge^ => A): Either[String, A] = {
     val log = org.slf4j.LoggerFactory.getLogger("grit.edge")
     LocalEdge
-      .serving(directory, offered, redaction, clock, fresh, copies, log) { coding =>
+      .serving(directory, offered, redaction, clock, fresh, copies, pushing, log) { coding =>
         scout match {
           case None => Right(use(coding))
           case Some(server) =>

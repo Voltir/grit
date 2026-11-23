@@ -13,8 +13,8 @@ import grit.core.place.{Directory, Namespace, Place, Repository, WorkName}
 import grit.core.secret.{TestSecrets, Variable}
 import grit.core.store.Origin
 import grit.core.tool.{CallError, Outcome, Retry, ToolName}
-import grit.host.checkout.{LocalHanding, LocalProcesses, Redaction}
-import grit.host.git.{GitFixture, Remote, WorkingCopies}
+import grit.host.checkout.Redaction
+import grit.host.git.{GitFixture, WorkingCopies}
 import grit.kit.deployment.Offered
 
 import utest.*
@@ -126,14 +126,13 @@ object LocalToolsTests extends TestSuite {
       repo: GitFixture.Repo^,
       remoteRepository: GitFixture.FakeRemoteRepository
   ): Pushing^ = {
-    val quiet = Redaction.of(Map.empty)
     Pushing
       .of(
-        Remote.of(repo.origin.toString).fold(sys.error, identity),
-        new LocalProcesses(repo.source, repo.environment, quiet),
-        new LocalHanding(repo.source, repo.environment, quiet),
+        repo.source,
+        GitFixture.targetOf(remoteRepository),
         TestSecrets.of(Variable("GRIT_REMOTE_REPOSITORY_TOKEN"), "ghs_plantedRemoteToken123"),
-        remoteRepository,
+        repo.environment,
+        Redaction.of(Map.empty),
         remotePlace,
         "acme/app"
       ) match {
@@ -188,7 +187,7 @@ object LocalToolsTests extends TestSuite {
       "a run's offer_pull_request pushes its branch to the declared repository and answers its pull request"
     ) {
       GitFixture.inRepository { repo =>
-        val remoteRepository = new GitFixture.FakeRemoteRepository
+        val remoteRepository = new GitFixture.FakeRemoteRepository(repo.origin.toString)
         val w1 = GitFixture.work("w1")
         val said = pushingIn(repo, remoteRepository) { (tools, copies) =>
           copies
@@ -222,7 +221,7 @@ object LocalToolsTests extends TestSuite {
       "offer_pull_request told no destination, or its workspace, is misdirected and pushes nothing"
     ) {
       GitFixture.inRepository { repo =>
-        val remoteRepository = new GitFixture.FakeRemoteRepository
+        val remoteRepository = new GitFixture.FakeRemoteRepository(repo.origin.toString)
         val w1 = GitFixture.work("w1")
         val said = pushingIn(repo, remoteRepository) { (tools, copies) =>
           copies
@@ -258,10 +257,10 @@ object LocalToolsTests extends TestSuite {
       GitFixture.inRepository { repo =>
         def names(set: Either[grit.core.tool.SetRefusal, grit.core.tool.ToolSet]) =
           set.toOption.toVector.flatMap(_.named(grit.tools.Versioning.Name)).map(_.name)
-        val (atDirectory, atRepository) = pushingIn(repo, new GitFixture.FakeRemoteRepository) {
-          (tools, _) =>
+        val (atDirectory, atRepository) =
+          pushingIn(repo, new GitFixture.FakeRemoteRepository(repo.origin.toString)) { (tools, _) =>
             (names(tools.hosted), names(tools.hostedInRepository))
-        }
+          }
         val unpushed = offering(writing) { tools => names(tools.hostedInRepository) }
         (atDirectory, atRepository, unpushed) ==> (
           Vector(),

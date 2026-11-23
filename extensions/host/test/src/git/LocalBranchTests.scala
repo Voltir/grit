@@ -22,9 +22,6 @@ object LocalBranchTests extends TestSuite {
 
   private val secret: Secret = TestSecrets.of(Variable("GRIT_REMOTE_REPOSITORY_TOKEN"), token)
 
-  private def remote(at: Path): Remote =
-    Remote.of(at.toString).fold(why => throw new java.lang.AssertionError(why), identity)
-
   /** A [[Handing]] that keeps each argv it builds, and the variables it is given. */
   private final class Recording(inner: Handing^) extends Handing {
     val argvs = new java.util.concurrent.CopyOnWriteArrayList[Argv]()
@@ -54,7 +51,10 @@ object LocalBranchTests extends TestSuite {
       by: Handing^
   ): LocalBranch^ = {
     val inClone = new LocalProcesses(repo.source, repo.environment, Redaction.of(Map.empty))
-    new LocalBranch(remote(repo.origin), work("w1"), inClone, by, secret, remoteRepository)
+    PushTarget.of(remoteRepository) match {
+      case Right(target) => new LocalBranch(target, work("w1"), inClone, by, secret)
+      case Left(why) => throw new java.lang.AssertionError(why)
+    }
   }
 
   private val commit = Seq("-c", "user.name=g", "-c", "user.email=g@example.invalid")
@@ -82,7 +82,7 @@ object LocalBranchTests extends TestSuite {
         val _ = git(repo, repo.source, "branch", "other")
         val _ = git(repo, repo.source, "tag", "v1")
         val _ = git(repo, repo.source, "config", "push.followTags", "true")
-        val remoteRepository = new FakeRemoteRepository
+        val remoteRepository = new FakeRemoteRepository(repo.origin.toString)
         val offered = branch(repo, remoteRepository).offer("Fix it", "Fixed.")
         (
           offered,
@@ -106,7 +106,7 @@ object LocalBranchTests extends TestSuite {
         val held = at(repo, repo.origin, "refs/heads/grit/w1")
         val _ = git(repo, repo.source, "branch", "-f", "grit/w1", "main")
         onBranch(repo, "rewritten")
-        val remoteRepository = new FakeRemoteRepository
+        val remoteRepository = new FakeRemoteRepository(repo.origin.toString)
         val offered = branch(repo, remoteRepository).offer("Fix it", "Fixed.")
         (
           offered.left.map(_.message).left.exists(_.contains("Pushing grit/w1")),
@@ -118,7 +118,7 @@ object LocalBranchTests extends TestSuite {
     test("offered again while open, it pushes what was committed since and opens none") {
       inRepository { repo =>
         onBranch(repo, "first")
-        val remoteRepository = new FakeRemoteRepository
+        val remoteRepository = new FakeRemoteRepository(repo.origin.toString)
         val first = branch(repo, remoteRepository).offer("Fix it", "Fixed.")
         val _ = git(repo, repo.source, "checkout", "--quiet", "grit/w1")
         val _ = git(repo, repo.source, (commit ++ Seq("commit", "--allow-empty", "-qm", "more"))*)
@@ -133,7 +133,7 @@ object LocalBranchTests extends TestSuite {
     test("offered after its pull request closed, it is refused, pushes nothing and opens none") {
       inRepository { repo =>
         onBranch(repo, "first")
-        val remoteRepository = new FakeRemoteRepository
+        val remoteRepository = new FakeRemoteRepository(repo.origin.toString)
         val b = branch(repo, remoteRepository)
         val _ = right(b.offer("Fix it", "Fixed."))
         val pushed = at(repo, repo.origin, "refs/heads/grit/w1")
@@ -161,7 +161,7 @@ object LocalBranchTests extends TestSuite {
     ) {
       inRepository { repo =>
         onBranch(repo, "first")
-        val remoteRepository = new FakeRemoteRepository
+        val remoteRepository = new FakeRemoteRepository(repo.origin.toString)
         val b = branch(repo, remoteRepository)
         val before = b.stands
         val _ = git(repo, repo.source, "push", "--quiet", repo.origin.toString, "grit/w1")
@@ -175,7 +175,7 @@ object LocalBranchTests extends TestSuite {
         val unpushed = b.stands
         remoteRepository.close("grit/w1", head)
         val closed = b.stands
-        val merging = new FakeRemoteRepository
+        val merging = new FakeRemoteRepository(repo.origin.toString)
         val m = branch(repo, merging)
         val merged = right(m.offer("Fix it", "Fixed."))
         merging.merge("grit/w1", at(repo, repo.origin, "refs/heads/grit/w1"))
@@ -195,7 +195,10 @@ object LocalBranchTests extends TestSuite {
       inRepository { repo =>
         onBranch(repo, "first")
         val recording = new Recording(handing(repo))
-        val _ = right(handedBy(repo, new FakeRemoteRepository, recording).offer("Fix it", "Fixed."))
+        val _ = right(
+          handedBy(repo, new FakeRemoteRepository(repo.origin.toString), recording)
+            .offer("Fix it", "Fixed.")
+        )
         val pushed = recording.argvs.asScala.toVector.headOption.map(_.args).getOrElse(Nil)
         val declared = repo.origin.toString
         (
@@ -256,6 +259,48 @@ object LocalBranchTests extends TestSuite {
       ).map(Remote.of(_).isRight) ==> Vector(true, true, false, false, false, false, false)
     }
     test(
+      "git fetches from a remote only at its own host and path, by https, or ssh as git on port 22"
+    ) {
+      val github = Remote.of("https://github.com/acme/app.git").fold(sys.error, identity)
+      val path = Remote.of("/srv/app.git").fold(sys.error, identity)
+      Vector(
+        github -> "https://github.com/acme/app.git",
+        github -> "https://GitHub.com/acme/app",
+        github -> "https://github.com/acme/app/",
+        github -> "git@github.com:acme/app.git",
+        github -> "ssh://git@github.com/acme/app.git",
+        github -> "ssh://git@github.com:22/acme/app",
+        path -> "/srv/app.git",
+        github -> "https://github.com/acme/App.git",
+        github -> "https://github.com/acme/app.git.git",
+        github -> "https://www.github.com/acme/app.git",
+        github -> "http://github.com/acme/app.git",
+        github -> "git://github.com/acme/app.git",
+        github -> "https://x:ghs_t@github.com/acme/app.git",
+        github -> "https://github.com:443/acme/app.git",
+        github -> "me@github.com:acme/app.git",
+        github -> "ssh://git@github.com:2222/acme/app.git",
+        github -> "ssh://me@github.com/acme/app.git",
+        github -> "https://github.com/acme/app.git/x",
+        path -> "/srv/other.git",
+        path -> "file:///srv/app.git"
+      ).map((remote, url) => remote.fetchedBy(url)) ==>
+        Vector.fill(7)(true) ++ Vector.fill(13)(false)
+    }
+    test("a remote's address is shown without the user and password in it") {
+      Vector(
+        "https://x:ghs_secret@github.com/acme/app.git",
+        "https://ghs_secret@github.com/acme/app.git",
+        "git@github.com:acme/app.git",
+        "/srv/app.git"
+      ).map(Remote.shown) ==> Vector(
+        "https://github.com/acme/app.git",
+        "https://github.com/acme/app.git",
+        "git@github.com:acme/app.git",
+        "/srv/app.git"
+      )
+    }
+    test(
       "a copy whose .git a run rewrote still pushes the clone's branch to the declared repository"
     ) {
       inRepository { repo =>
@@ -270,7 +315,9 @@ object LocalBranchTests extends TestSuite {
         val _ = git(repo, copy, (commit ++ Seq("commit", "--allow-empty", "-qm", "in copy"))*)
         val elsewhere = Files.createDirectories(repo.root.resolveSibling("planted"))
         Files.writeString(copy.resolve(".git"), s"gitdir: $elsewhere\n")
-        val _ = right(branch(repo, new FakeRemoteRepository).offer("Fix it", "Fixed."))
+        val _ = right(
+          branch(repo, new FakeRemoteRepository(repo.origin.toString)).offer("Fix it", "Fixed.")
+        )
         at(repo, repo.origin, "refs/heads/grit/w1") ==> at(repo, repo.source, "grit/w1")
       }
     }
@@ -282,7 +329,8 @@ object LocalBranchTests extends TestSuite {
         Files.createDirectories(hook.getParent)
         Files.writeString(hook, s"#!/bin/sh\ntouch $ran\n")
         hook.toFile.setExecutable(true)
-        val offered = branch(repo, new FakeRemoteRepository).offer("Fix it", "Fixed.")
+        val offered =
+          branch(repo, new FakeRemoteRepository(repo.origin.toString)).offer("Fix it", "Fixed.")
         (offered.isRight, Files.exists(ran)) ==> (true, false)
       }
     }

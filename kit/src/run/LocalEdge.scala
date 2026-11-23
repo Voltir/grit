@@ -59,7 +59,8 @@ object LocalEdge {
 
   /** `use` given the edge this process serves for `directory` ([[over]]): the coding tools
     * `offered` names, run there ([[LocalTools]]), and for each run of `copies`' repository in
-    * its working copy, with what they show cleared by `redaction`, and the instruction files
+    * its working copy, offering its branch as `pushing` does when given, with what they show
+    * cleared by `redaction`, and the instruction files
     * around the directory as this machine reads them; the tools closed once `use` returns or
     * throws, which ends any command they left running. Why not, before `use` runs: a tool
     * `offered` names cannot be offered with the others.
@@ -71,9 +72,10 @@ object LocalEdge {
       clock: Clock^,
       fresh: Fresh^,
       copies: Option[WorkingCopies^],
+      pushing: Option[Pushing^],
       log: org.slf4j.Logger
   )(use: Console.Edge^ => A): Either[String, A] = {
-    val tools = new LocalTools(offered, redaction, clock, fresh, copies)
+    val tools = new LocalTools(offered, redaction, clock, fresh, copies, pushing)
     try
       over(directory, tools, new LocalInstructions(), log) match {
         case Left(refused) => Left(refused.refusing("the coding tools"))

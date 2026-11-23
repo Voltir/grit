@@ -12,8 +12,8 @@ import grit.core.store.{Entry, Payload, WentOn}
 import grit.core.visibility.{Subject, Visibility}
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.TestPostgres
-import grit.host.checkout.{LocalHanding, LocalProcesses, LocalRuns, Redaction}
-import grit.host.git.{GitFixture, Remote, WorkingCopies}
+import grit.host.checkout.{LocalRuns, Redaction}
+import grit.host.git.{GitFixture, WorkingCopies}
 import grit.kit.deployment.Offered
 import grit.kit.run.Pushing
 import grit.kit.work.Work
@@ -239,14 +239,13 @@ object RepositoryLiveTests extends TestSuite {
         GitFixture.git(repo, clone, "push", "--quiet", "origin", "main")
         val copies =
           new WorkingCopies(GitFixture.repository, clone, repo.root, repo.processes, Clock.system())
-        val remoteRepository = new GitFixture.FakeRemoteRepository
-        val quiet = Redaction.of(Map.empty)
+        val remoteRepository = new GitFixture.FakeRemoteRepository(repo.origin.toString)
         val pushing = Pushing.of(
-          right(Remote.of(repo.origin.toString)),
-          new LocalProcesses(clone, repo.environment, quiet),
-          new LocalHanding(clone, repo.environment, quiet),
+          clone,
+          GitFixture.targetOf(remoteRepository),
           TestSecrets.of(Variable("GRIT_REMOTE_REPOSITORY_TOKEN"), "ghs_plantedRemoteToken123"),
-          remoteRepository,
+          repo.environment,
+          Redaction.of(Map.empty),
           Place.under(Namespace.Service, Vector("github", "acme", "app")),
           "acme/app"
         ) match {

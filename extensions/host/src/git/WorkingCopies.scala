@@ -18,14 +18,17 @@ import grit.host.checkout.LocalTree
 /** Working copies of `repository`'s clone at `clone`, each at `root/{repository}/{work}` on the
   * branch `grit/{work}`, git run through `processes`. Its first call sweeps: every copy unused
   * for [[Kept]] that is neither held nor holding changes never committed is removed, its branch
-  * kept, and so is every directory there without its lock.
+  * kept, and so is every directory there without its lock. With `target`, a new branch is cut
+  * only when the clone's origin is `target`'s remote ([[Remote.fetchedBy]]); `Failed` otherwise,
+  * naming both, no copy or branch made.
   */
 final class WorkingCopies(
     val repository: Repository,
     clone: Path,
     root: Path,
     processes: Processes^,
-    clock: Clock^
+    clock: Clock^,
+    target: Option[PushTarget^] = None
 ) extends caps.SharedCapability {
   import WorkingCopies.*
 
@@ -202,9 +205,10 @@ final class WorkingCopies(
     def head: Either[HostError, (Argv, Ran)] =
       ran(home, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
     for {
-      _ <- git(home, "remote", "get-url", "origin").left.map(_ =>
+      origin <- git(home, "remote", "get-url", "origin").left.map(_ =>
         HostError.Failed(s"The clone at $home has no remote origin to cut a run's branch from.")
       )
+      _ <- declared(origin.output.text.linesIterator.nextOption().getOrElse("").trim)
       _ <- git(home, "fetch", "--quiet", "--no-tags", "origin")
       named <- head.flatMap {
         case (_, r) if r.exit == 0 => Right(r)
@@ -228,6 +232,22 @@ final class WorkingCopies(
       .left
       .map(HostError.Failed(_))
       .flatMap(argv => processes.run(argv, RelPath.Root, GitLongest).map((argv, _)))
+
+  /** Whether the clone's origin, fetched from at `url`, is `target`'s remote; always, with no
+    * `target`. The refusal shows `url` without its user or password.
+    */
+  private def declared(url: String): Either[HostError, Unit] = target match {
+    case Some(t) if !t.remote.fetchedBy(url) =>
+      Left(
+        HostError.Failed(
+          s"The clone at $home fetches from ${Remote.shown(url)}, not from the declared " +
+            s"${t.remote.written}, and a run's branch is cut only from the declared repository. " +
+            s"Point the clone's origin there (git -C $home remote set-url origin " +
+            s"${t.remote.written}), or declare the repository it fetches from."
+        )
+      )
+    case _ => Right(())
+  }
 
   /** As [[ran]], a non-zero exit a `Left` carrying git's output. */
   private def git(in: Path, args: String*): Either[HostError, Ran] =

@@ -15,6 +15,45 @@ object RepositoriesEnv {
     */
   val RepositoriesVar = "GRIT_REPOSITORIES"
 
+  /** The variable declaring where declared repositories' runs are pushed and offered:
+    * `name=owner/repo` each, comma-separated, `name` one [[RepositoriesVar]] declares and
+    * `owner/repo` a GitHub repository. A repository it does not name offers nothing.
+    */
+  val RemoteRepositoriesVar = "GRIT_REMOTE_REPOSITORIES"
+
+  /** The variable whose token pushes a run's branch and opens its pull request. */
+  val RemoteTokenVar = "GRIT_REMOTE_REPOSITORY_TOKEN"
+
+  /** The GitHub repository, `owner/repo` as written, that `env` declares for each repository
+    * `declared` names ([[RemoteRepositoriesVar]]); none when unset. Why not, naming the
+    * variable: an item that is not `name=owner/repo`, a name `declared` lacks, or a name
+    * declared twice.
+    */
+  def remotes(
+      env: Map[String, String],
+      declared: Vector[(Repository, Path)]
+  ): Either[String, Map[Repository, String]] =
+    Listed
+      .csv(env, RemoteRepositoriesVar)
+      .foldLeft[Either[String, Map[Repository, String]]](Right(Map.empty)) { (kept, item) =>
+        kept.flatMap { named =>
+          item.split('=') match {
+            case Array(name, full) if name.trim.nonEmpty && full.trim.nonEmpty =>
+              declared.collectFirst { case (r, _) if r.name == name.trim => r } match {
+                case None =>
+                  Left(
+                    s"$RemoteRepositoriesVar names ${name.trim}, which $RepositoriesVar does not " +
+                      "declare"
+                  )
+                case Some(r) if named.contains(r) =>
+                  Left(s"$RemoteRepositoriesVar names ${r.name} twice")
+                case Some(r) => Right(named.updated(r, full.trim))
+              }
+            case _ => Left(s"$RemoteRepositoriesVar: '$item' is not name=owner/repo")
+          }
+        }
+      }
+
   /** The variable naming the directory working copies are made under. */
   val CopiesVar = "GRIT_COPIES"
 

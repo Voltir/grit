@@ -167,6 +167,84 @@ object WorkingCopiesTests extends TestSuite {
         (subject, mine.contains("mine")) ==> ("theirs", false)
       }
     }
+    test(
+      "with a target, a copy is cut when origin is its remote; another origin is refused, shown without its user, and nothing is made"
+    ) {
+      inRepository { repo =>
+        val target = PushTarget.of(new FakeRemoteRepository(repo.origin.toString)) match {
+          case Right(t) => t
+          case Left(why) => throw new java.lang.AssertionError(why)
+        }
+        val copies =
+          new WorkingCopies(
+            repository,
+            repo.source,
+            repo.root,
+            repo.processes,
+            new SetClock(start),
+            Some(target)
+          )
+        val cut = copies.opened(work("fix-a")).isRight
+        val _ = git(
+          repo,
+          repo.source,
+          "remote",
+          "set-url",
+          "origin",
+          "https://x:ghs_secret@example.com/other.git"
+        )
+        val refused = copies.opened(work("fix-b")).left.map(_.message)
+        (
+          cut,
+          refused,
+          hasBranch(repo, repo.source, "grit/fix-b"),
+          Files.exists(repo.root.resolve("grit").resolve("fix-b"))
+        ) ==> (
+          true,
+          Left(
+            s"The clone at ${repo.source.toAbsolutePath.normalize} fetches from " +
+              s"https://example.com/other.git, not from the declared ${repo.origin}, and a run's " +
+              "branch is cut only from the declared repository. Point the clone's origin there " +
+              s"(git -C ${repo.source.toAbsolutePath.normalize} remote set-url origin ${repo.origin}), " +
+              "or declare the repository it fetches from."
+          ),
+          false,
+          false
+        )
+      }
+    }
+    test("an origin whose insteadOf sends git elsewhere is not the target's remote") {
+      inRepository { repo =>
+        val target = PushTarget.of(new FakeRemoteRepository(repo.origin.toString)) match {
+          case Right(t) => t
+          case Left(why) => throw new java.lang.AssertionError(why)
+        }
+        val _ = git(
+          repo,
+          repo.source,
+          "config",
+          "url./srv/elsewhere/.insteadOf",
+          s"${repo.origin.getParent}/"
+        )
+        val opened =
+          new WorkingCopies(
+            repository,
+            repo.source,
+            repo.root,
+            repo.processes,
+            new SetClock(start),
+            Some(target)
+          )
+            .opened(work("fix-a"))
+        (
+          opened.left
+            .map(_.message)
+            .left
+            .exists(_.contains("fetches from /srv/elsewhere/origin.git")),
+          hasBranch(repo, repo.source, "grit/fix-a")
+        ) ==> (true, false)
+      }
+    }
     test("when origin cannot be fetched, no copy and no branch are made") {
       inRepository { repo =>
         Files.move(repo.origin, repo.origin.resolveSibling("moved.git"))

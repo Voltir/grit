@@ -72,6 +72,27 @@ object RepositoriesEnvTests extends TestSuite {
       )
     }
 
+    test(
+      "remote repositories are named for declared repositories, each once; any other is refused"
+    ) {
+      val declared =
+        Vector(repository("app") -> Path.of("/src/app"), repository("site") -> Path.of("/src/site"))
+      def of(value: String) =
+        RepositoriesEnv.remotes(Map(RepositoriesEnv.RemoteRepositoriesVar -> value), declared)
+      (
+        RepositoriesEnv.remotes(Map.empty, declared),
+        of(" app = acme/app , site=acme/site"),
+        of("web=acme/web"),
+        of("app=acme/app,app=acme/other"),
+        of("app")
+      ) ==> (
+        Right(Map.empty),
+        Right(Map(repository("app") -> "acme/app", repository("site") -> "acme/site")),
+        Left("GRIT_REMOTE_REPOSITORIES names web, which GRIT_REPOSITORIES does not declare"),
+        Left("GRIT_REMOTE_REPOSITORIES names app twice"),
+        Left("GRIT_REMOTE_REPOSITORIES: 'app' is not name=owner/repo")
+      )
+    }
     test("a run in a working copy goes on only on an engine this process runs") {
       (
         RepositoriesEnv.startedHere(Console.Runner.Here),

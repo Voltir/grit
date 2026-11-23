@@ -20,9 +20,47 @@ import grit.core.secret.Secret
   * password in it, or an absolute path; `written` is made only of ASCII letters, digits and
   * `/._~:-`.
   */
-final case class Remote private (written: String)
+final case class Remote private (written: String) {
+
+  /** Whether git fetching from `url`, as `git remote get-url` gives it, fetches from this
+    * remote. For an `https` remote: `url` an `https` address with no user or port,
+    * `git@{host}:{path}` or `ssh://git@{host}[:22]/{path}`, its host the same lowercased and
+    * its path the same less one trailing `/` or `.git`. For a path: `url` that path. Anything
+    * else is not.
+    */
+  def fetchedBy(url: String): Boolean =
+    if (written.startsWith("/")) url == written
+    else
+      (Remote.site(written), Remote.site(url)) match {
+        case (Some(ours), Some(theirs)) => ours == theirs
+        case _ => false
+      }
+}
 
 object Remote {
+
+  /** The host, lowercased, and the path, less one trailing `/` or `.git`, that `url` fetches
+    * from, when it is one of the forms [[Remote.fetchedBy]] takes; `None` otherwise.
+    */
+  private def site(url: String): Option[(String, String)] = {
+    def trimmed(path: String) =
+      if (path.endsWith("/")) path.dropRight(1)
+      else if (path.endsWith(".git")) path.dropRight(4)
+      else path
+    url match {
+      case Https(host, path) => Some((host.toLowerCase, trimmed(path)))
+      case Ssh(host, path) => Some((host.toLowerCase, trimmed(path)))
+      case Scp(host, path) => Some((host.toLowerCase, trimmed(s"/$path")))
+      case _ => None
+    }
+  }
+
+  private val Https = """https://([A-Za-z0-9.-]+)(/[^?#]*)""".r
+  private val Ssh = """ssh://git@([A-Za-z0-9.-]+)(?::22)?(/[^?#]*)""".r
+  private val Scp = """git@([A-Za-z0-9.-]+):([^/][^?#]*)""".r
+
+  /** `url` with any user and password in it dropped, so it may be shown. */
+  def shown(url: String): String = url.replaceFirst("^([A-Za-z][A-Za-z0-9+.-]*://)[^/]*@", "$1")
 
   /** `written` as a remote, or why not. */
   def of(written: String): Either[String, Remote] =
@@ -36,21 +74,22 @@ object Remote {
   private val Shape = """https://[A-Za-z0-9._~:/-]+|/[A-Za-z0-9._~/-]+""".r
 }
 
-/** The branch `grit/{work}` of the clone that `processes` and `handing` run at, pushed to `to`
-  * with `secret` and offered on `remoteRepository`. git runs in the clone, never the run's copy,
-  * so nothing a run writes in its copy reaches the push; it reads `secret` through a credential helper that
-  * git asks only for `to`, with the clone's own helpers cleared and its hooks not run. Each git
-  * command runs for at most [[WorkingCopies.GitLongest]].
+/** The branch `grit/{work}` of the clone that `processes` and `handing` run at, pushed with
+  * `secret` and offered as `target` says. git runs in the clone, never the run's copy, so nothing
+  * a run writes in its copy reaches the push; it reads `secret` through a credential helper that
+  * git asks only for `target`'s remote, with the clone's own helpers cleared and its hooks not
+  * run. Each git command runs for at most [[WorkingCopies.GitLongest]].
   */
 final class LocalBranch(
-    to: Remote,
+    target: PushTarget^,
     work: WorkName,
     processes: Processes^,
     handing: Handing^,
-    secret: Secret,
-    remoteRepository: RemoteRepository^
+    secret: Secret
 ) extends Branch {
 
+  private val to = target.remote
+  private val remoteRepository = target.repository
   private val branch = s"grit/${WorkName.value(work)}"
   private val ref = s"refs/heads/$branch"
 

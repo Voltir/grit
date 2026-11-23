@@ -82,6 +82,13 @@ object GitFixture {
       }
   }
 
+  /** `remoteRepository` as a push target, pushed to at its own address. */
+  def targetOf(remoteRepository: FakeRemoteRepository): PushTarget^ =
+    PushTarget.of(remoteRepository) match {
+      case Right(t) => t
+      case Left(why) => throw new java.lang.AssertionError(why)
+    }
+
   /** The repository every test's copies are of. */
   val repository: Repository =
     Repository.of("grit").getOrElse(throw new IllegalArgumentException("grit"))

@@ -58,9 +58,10 @@ private[main] object Clearances {
     * one may, with `parties` cleared. Either way what is said at its places is capped as `caps`
     * declare ([[caps]]), and each of `shared`, a service's place it shares only with the people
     * it names, is invited and labelled internal, so each room within it is unmapped until a
-    * person labels it. Every other room, a declared repository's among them, is public: a
-    * deployment whose rooms are otherwise unmapped must label a repository's place, or every
-    * write a run of work makes there is refused. A party named twice is refused.
+    * person labels it. Every other room, a declared repository's and its remote repository's
+    * among them, is public: a deployment whose rooms are otherwise unmapped must label a
+    * repository's place, or every write a run of work makes there is refused, and its remote
+    * repository's place, or `offer_pull_request` is withheld. A party named twice is refused.
     */
   private[main] def visibility(
       admins: Vector[UserId],
