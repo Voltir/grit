@@ -27,27 +27,59 @@ object GitFixture {
     val origin: Path = source.resolveSibling("origin.git")
   }
 
-  /** A remote repository that keeps its pull requests in memory, numbered from 1, each at
-    * `https://remote.invalid/pull/{n}`; one per branch is open until [[close]].
+  /** A remote repository pushed to at `pushedTo`, which keeps its pull requests in memory,
+    * numbered from 1, each at `https://remote.invalid/pull/{n}`: one per branch, open until
+    * [[close]] or [[merge]]; past `answers` calls, every call `Failed`, as an unreachable one's.
     */
-  final class FakeRemoteRepository extends RemoteRepository {
+  final class FakeRemoteRepository(val pushedTo: String = "/remote.invalid")
+      extends RemoteRepository {
 
     /** Every pull request opened, in order: its branch, title and body. */
     val opens = new java.util.concurrent.CopyOnWriteArrayList[(String, String, String)]()
 
-    private val openAt = new java.util.concurrent.ConcurrentHashMap[String, URI]()
+    /** Every branch whose pull request was asked for, in order. */
+    val asked = new java.util.concurrent.CopyOnWriteArrayList[String]()
 
-    def open(branch: String, title: String, body: String): Either[HostError, URI] = {
-      val _ = opens.add((branch, title, body))
-      val at = URI.create(s"https://remote.invalid/pull/${opens.size}")
-      val _ = openAt.put(branch, at)
-      Right(at)
+    /** How many more calls are answered before every call fails. */
+    val answers = new java.util.concurrent.atomic.AtomicInteger(Int.MaxValue)
+
+    private def failing: Boolean = answers.getAndDecrement() <= 0
+
+    private val pulls =
+      new java.util.concurrent.ConcurrentHashMap[String, RemoteRepository.PullRequest]()
+
+    def open(branch: String, title: String, body: String): Either[HostError, URI] =
+      if (failing) Left(HostError.Failed("unreachable"))
+      else
+        Option(pulls.get(branch)) match {
+          case Some(RemoteRepository.PullRequest.Open(at)) => Right(at)
+          case _ =>
+            val _ = opens.add((branch, title, body))
+            val at = URI.create(s"https://remote.invalid/pull/${opens.size}")
+            val _ = pulls.put(branch, RemoteRepository.PullRequest.Open(at))
+            Right(at)
+        }
+
+    def pullRequest(branch: String): Either[HostError, Option[RemoteRepository.PullRequest]] = {
+      val _ = asked.add(branch)
+      if (failing) Left(HostError.Failed("unreachable")) else Right(Option(pulls.get(branch)))
     }
 
-    def opened(branch: String): Either[HostError, Option[URI]] = Right(Option(openAt.get(branch)))
+    /** `branch`'s open pull request closed unmerged with its head at `head`, as a person
+      * closes one.
+      */
+    def close(branch: String, head: String): Unit =
+      ended(branch)(RemoteRepository.PullRequest.Closed(_, head))
 
-    /** `branch`'s pull request closed, as a person closes one. */
-    def close(branch: String): Unit = { val _ = openAt.remove(branch) }
+    /** `branch`'s open pull request merged with its head at `head`. */
+    def merge(branch: String, head: String): Unit =
+      ended(branch)(RemoteRepository.PullRequest.Merged(_, head))
+
+    private def ended(branch: String)(as: URI => RemoteRepository.PullRequest): Unit =
+      Option(pulls.get(branch)) match {
+        case Some(RemoteRepository.PullRequest.Open(at)) => val _ = pulls.put(branch, as(at))
+        case _ => ()
+      }
   }
 
   /** The repository every test's copies are of. */

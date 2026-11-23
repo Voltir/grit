@@ -130,23 +130,62 @@ object LocalBranchTests extends TestSuite {
         ) ==> (true, true, 1)
       }
     }
-    test("a branch stands Unpushed, Open once offered, Pushed when its pull request closed") {
+    test("offered after its pull request closed, it is refused, pushes nothing and opens none") {
+      inRepository { repo =>
+        onBranch(repo, "first")
+        val remoteRepository = new FakeRemoteRepository
+        val b = branch(repo, remoteRepository)
+        val _ = right(b.offer("Fix it", "Fixed."))
+        val pushed = at(repo, repo.origin, "refs/heads/grit/w1")
+        remoteRepository.close("grit/w1", pushed)
+        val _ = git(repo, repo.source, "checkout", "--quiet", "grit/w1")
+        val _ = git(repo, repo.source, (commit ++ Seq("commit", "--allow-empty", "-qm", "more"))*)
+        val again = b.offer("Fix it again", "Again.")
+        (
+          again.left.map(_.message),
+          at(repo, repo.origin, "refs/heads/grit/w1") == pushed,
+          remoteRepository.opens.size
+        ) ==> (
+          Left(
+            "The pull request from grit/w1 at https://remote.invalid/pull/1 was closed; grit " +
+              "does not open another. Nothing was pushed. Run the task under a new --run name " +
+              "to offer the change again."
+          ),
+          true,
+          1
+        )
+      }
+    }
+    test(
+      "a branch stands Unpushed, Pushed with none opened, Open once offered, Closed or Merged whatever was committed since"
+    ) {
       inRepository { repo =>
         onBranch(repo, "first")
         val remoteRepository = new FakeRemoteRepository
         val b = branch(repo, remoteRepository)
         val before = b.stands
+        val _ = git(repo, repo.source, "push", "--quiet", repo.origin.toString, "grit/w1")
+        val pushed = b.stands
         val offered = right(b.offer("Fix it", "Fixed."))
         val open = b.stands
-        remoteRepository.close("grit/w1")
-        val closed = b.stands
+        val head = at(repo, repo.origin, "refs/heads/grit/w1")
         val _ = git(repo, repo.source, "checkout", "--quiet", "grit/w1")
         val _ = git(repo, repo.source, (commit ++ Seq("commit", "--allow-empty", "-qm", "more"))*)
-        (before, open, closed, b.stands) ==> (
+        val _ = git(repo, repo.source, "checkout", "--quiet", "main")
+        val unpushed = b.stands
+        remoteRepository.close("grit/w1", head)
+        val closed = b.stands
+        val merging = new FakeRemoteRepository
+        val m = branch(repo, merging)
+        val merged = right(m.offer("Fix it", "Fixed."))
+        merging.merge("grit/w1", at(repo, repo.origin, "refs/heads/grit/w1"))
+        (before, pushed, open, unpushed, closed, m.stands) ==> (
           Right(Branch.Stands.Unpushed),
-          Right(Branch.Stands.Open(offered)),
           Right(Branch.Stands.Pushed),
-          Right(Branch.Stands.Unpushed)
+          Right(Branch.Stands.Open(offered)),
+          Right(Branch.Stands.Unpushed),
+          Right(Branch.Stands.Closed(offered)),
+          Right(Branch.Stands.Merged(merged))
         )
       }
     }

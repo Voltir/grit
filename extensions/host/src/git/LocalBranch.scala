@@ -37,8 +37,8 @@ object Remote {
 }
 
 /** The branch `grit/{work}` of the clone that `processes` and `handing` run at, pushed to `to`
-  * with `secret` and offered on `remoteRepository`. git runs in the clone, never the run's copy, so nothing
-  * a run writes in its copy reaches the push; it reads `secret` through a credential helper that
+  * with `secret` and offered on `remoteRepository`. git runs in the clone, never the run's copy,
+  * so nothing a run writes in its copy reaches the push; it reads `secret` through a credential helper that
   * git asks only for `to`, with the clone's own helpers cleared and its hooks not run. Each git
   * command runs for at most [[WorkingCopies.GitLongest]].
   */
@@ -55,27 +55,27 @@ final class LocalBranch(
   private val ref = s"refs/heads/$branch"
 
   def offer(title: String, body: String): Either[HostError, URI] =
-    for {
-      _ <- pushed()
-      open <- remoteRepository.opened(branch)
-      at <- open match {
-        case Some(at) => Right(at)
-        case None => remoteRepository.open(branch, title, body)
-      }
-    } yield at
+    remoteRepository.pullRequest(branch).flatMap {
+      case Some(RemoteRepository.PullRequest.Merged(at, _)) =>
+        Left(LocalBranch.ended(branch, at, "merged"))
+      case Some(RemoteRepository.PullRequest.Closed(at, _)) =>
+        Left(LocalBranch.ended(branch, at, "closed"))
+      case Some(RemoteRepository.PullRequest.Open(at)) => pushed().map(_ => at)
+      case None => pushed().flatMap(_ => remoteRepository.open(branch, title, body))
+    }
 
   def stands: Either[HostError, Branch.Stands] =
     for {
       local <- head()
       remote <- remoteHead()
-      stands <-
-        if (!remote.contains(local)) Right(Branch.Stands.Unpushed)
-        else
-          remoteRepository.opened(branch).map {
-            case Some(at) => Branch.Stands.Open(at)
-            case None => Branch.Stands.Pushed
-          }
-    } yield stands
+      pull <- remoteRepository.pullRequest(branch)
+    } yield pull match {
+      case Some(RemoteRepository.PullRequest.Merged(at, _)) => Branch.Stands.Merged(at)
+      case Some(RemoteRepository.PullRequest.Closed(at, _)) => Branch.Stands.Closed(at)
+      case _ if !remote.contains(local) => Branch.Stands.Unpushed
+      case Some(RemoteRepository.PullRequest.Open(at)) => Branch.Stands.Open(at)
+      case None => Branch.Stands.Pushed
+    }
 
   /** The branch's last commit in the clone. */
   private def head(): Either[HostError, String] =
@@ -128,6 +128,13 @@ final class LocalBranch(
 }
 
 object LocalBranch {
+
+  /** Why `branch` is not offered again: its pull request at `at` was `how`, merged or closed. */
+  private def ended(branch: String, at: URI, how: String): HostError =
+    HostError.Failed(
+      s"The pull request from $branch at $at was $how; grit does not open another. Nothing " +
+        "was pushed. Run the task under a new --run name to offer the change again."
+    )
 
   /** git run with `args`, asking the secret's file at `path` for a password only for `to`: every
     * credential helper the clone and its user declare cleared, one reading the file declared for
