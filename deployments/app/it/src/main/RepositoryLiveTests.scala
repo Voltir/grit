@@ -9,7 +9,18 @@ import grit.core.place.{Namespace, Place, Repository}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.secret.{TestSecrets, Variable}
 import grit.core.store.{Entry, Payload, WentOn}
-import grit.core.visibility.{Subject, Visibility}
+import grit.core.visibility.{
+  Cleared,
+  Compartments,
+  DeclaredLabel,
+  Label,
+  Labelled,
+  Level,
+  Party,
+  RoomLabels,
+  Subject,
+  Visibility
+}
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.TestPostgres
 import grit.host.checkout.{LocalRuns, Redaction}
@@ -17,6 +28,7 @@ import grit.host.git.{GitFixture, WorkingCopies}
 import grit.kit.deployment.Offered
 import grit.kit.run.Pushing
 import grit.kit.work.Work
+import grit.models.StubModels
 import grit.turn.Turn
 
 import utest.*
@@ -331,5 +343,112 @@ object RepositoryLiveTests extends TestSuite {
         )
       }
     }
+
+    test(
+      "a run's first offer withholds offer_pull_request when its remote repository is labelled below the repository's room, and holds it at the room's label"
+    ) {
+      (offeredFirst(Label.Public), offeredFirst(internal)) ==> (
+        (Some(false), Some(true), 0),
+        (Some(true), Some(true), 0)
+      )
+    }
   }
+
+  private val internal = Label.at(Level.Internal)
+
+  /** Records the tools its first call was offered, and answers at once. */
+  private final class Offers extends Provider {
+    // Written by the turn's one model call; read only by the test once it ends.
+    @volatile @caps.unsafe.untrackedCaptures
+    var first: Option[Vector[String]] = None
+
+    def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] = {
+      if (first.isEmpty) first = Some(request.tools.map(_.name))
+      val usage = Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, Some(BigDecimal(0)))
+      Right(Message.Assistant(Vector(AssistantBlock.Text("done")), StopReason.EndTurn, usage, "m"))
+    }
+  }
+
+  /** What a run's first model call was offered, its repository's room internal and capped at
+    * member, its remote repository's place labelled `remoteAt`, and its runs pushing there:
+    * whether `offer_pull_request` and `read` were among the tools, and how many pull requests
+    * the remote repository was asked to open.
+    */
+  private def offeredFirst(remoteAt: DeclaredLabel) =
+    GitFixture.inRepository { repo =>
+      val clone = repo.source
+      val remotePlace = Place.under(Namespace.Service, Vector("github", "acme", "app"))
+      val copies =
+        new WorkingCopies(GitFixture.repository, clone, repo.root, repo.processes, Clock.system())
+      val remoteRepository = new GitFixture.FakeRemoteRepository(repo.origin.toString)
+      val pushing = right(
+        Pushing.of(
+          clone,
+          GitFixture.targetOf(remoteRepository),
+          TestSecrets.of(Variable("GRIT_REMOTE_REPOSITORY_TOKEN"), "ghs_plantedRemoteToken123"),
+          repo.environment,
+          Redaction.of(Map.empty),
+          remotePlace,
+          "acme/app"
+        )
+      )
+      val visibility = right(
+        for {
+          caps <- Clearances.caps(Map.empty, Vector(GitFixture.repository))
+          rooms <- RoomLabels
+            .of(
+              Vector(GitFixture.repository.place -> internal, remotePlace -> remoteAt),
+              Labelled.Mapped(Label.Public)
+            )
+            .left
+            .map(_.written)
+          // The stub model is cleared for the room, so the turn calls it.
+          stub <- Party.of(StubModels.Ref).toRight("the stub's party")
+          v <- Visibility
+            .of(
+              Compartments.Shipped,
+              rooms,
+              Vector.empty,
+              Vector.empty,
+              clearances = Vector(Cleared(stub, internal)),
+              caps = caps
+            )
+            .left
+            .map(_.toString)
+        } yield v
+      )
+      val engine = LiveEngine.open(
+        TestPostgres.freshDatabase(
+          if (remoteAt == Label.Public) "repository_withheld" else "repository_offered"
+        ),
+        Turn.Epoch,
+        visibility = visibility
+      )
+      val model = new Offers
+      try {
+        right(
+          copies
+            .held(GitFixture.work("w1")) { _ =>
+              launchIn(
+                engine,
+                engine.entries,
+                model,
+                clone,
+                offered = Offered.Allowlisted(Offered.ReferenceAllowlist),
+                copies = Some(copies),
+                run = Some(GitFixture.work("w1")),
+                pushing = Some(pushing)
+              )
+              val _ = engine.awaitTurn(say(engine, "change the readme"))
+            }
+            .left
+            .map(_.message)
+        )
+        (
+          model.first.map(_.contains("offer_pull_request")),
+          model.first.map(_.contains("read")),
+          remoteRepository.opens.size
+        )
+      } finally engine.close()
+    }
 }
