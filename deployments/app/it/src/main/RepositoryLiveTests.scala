@@ -100,6 +100,8 @@ object RepositoryLiveTests extends TestSuite {
         GitFixture.git(repo, clone, "config", k, v)
       GitFixture.git(repo, clone, "add", "README.md")
       GitFixture.git(repo, clone, "commit", "--quiet", "-m", "readme")
+      // A run's branch is cut from origin's default branch, so the readme is pushed there.
+      GitFixture.git(repo, clone, "push", "--quiet", "origin", "main")
       def standing = (
         out(repo, clone, "rev-parse", "HEAD"),
         out(repo, clone, "rev-parse", "--abbrev-ref", "HEAD"),
@@ -194,7 +196,12 @@ object RepositoryLiveTests extends TestSuite {
           ""
         ),
         true,
-        Vector("refs/heads/grit/w1", "refs/heads/main")
+        Vector(
+          "refs/heads/grit/w1",
+          "refs/heads/main",
+          "refs/remotes/origin/HEAD",
+          "refs/remotes/origin/main"
+        )
       )
     }
   }

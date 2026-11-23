@@ -33,10 +33,12 @@ final class WorkingCopies(
   private val copies = root.toAbsolutePath.normalize.resolve(repository.name)
   private val swept = new AtomicBoolean(false)
 
-  /** `work`'s copy, made on `grit/{work}` when it has none: from the clone's HEAD, or from the
-    * branch where it exists. At [[Most]] copies, the least recently used one that is neither
-    * held nor holding changes never committed is removed first, its branch kept;
-    * [[HostError.NoCopyFree]] when there is none.
+  /** `work`'s copy, made on `grit/{work}` when it has none: the branch as it stands where it
+    * exists, else a new branch cut from origin's default branch, fetched first (with no tags).
+    * At [[Most]] copies, the least recently used one that is neither held nor holding changes
+    * never committed is removed first, its branch kept; [[HostError.NoCopyFree]] when there is
+    * none. `Failed`, no copy or branch made, when a new branch is wanted and the clone has no
+    * origin, it cannot be fetched, or its default branch cannot be read: never cut from HEAD.
     */
   def opened(work: WorkName): Either[HostError, Path] = Made.synchronized {
     sweep()
@@ -175,15 +177,44 @@ final class WorkingCopies(
   /** The clone's records of worktrees whose directory is gone, dropped. */
   private def pruned(): Unit = { val _ = git(home, "worktree", "prune") }
 
-  /** `dir` made a worktree of the clone, on `grit/{work}`. The lock beside it exists first. */
+  /** `dir` made a worktree of the clone, on `grit/{work}`: the branch as it stands when it
+    * exists, else a new one cut from [[base]]. The lock beside it exists first.
+    */
   private def made(work: WorkName, dir: Path): Either[HostError, Unit] = {
     val branch = s"grit/${WorkName.value(work)}"
     for {
       found <- ran(home, "rev-parse", "--verify", "--quiet", s"refs/heads/$branch")
       _ <-
         if (found._2.exit == 0) git(home, "worktree", "add", "--quiet", dir.toString, branch)
-        else git(home, "worktree", "add", "--quiet", "-b", branch, dir.toString)
+        else
+          base().flatMap(from =>
+            git(home, "worktree", "add", "--quiet", "--no-track", "-b", branch, dir.toString, from)
+          )
     } yield ()
+  }
+
+  /** What a new branch is cut from: origin's default branch, fetched now, never the clone's
+    * HEAD, which may hold a person's commits never pushed. `origin/HEAD` names the default; when
+    * the clone has none, origin is asked once. `Failed` when the clone has no origin, it cannot
+    * be fetched, or its default branch cannot be read.
+    */
+  private def base(): Either[HostError, String] = {
+    def head: Either[HostError, (Argv, Ran)] =
+      ran(home, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
+    for {
+      _ <- git(home, "remote", "get-url", "origin").left.map(_ =>
+        HostError.Failed(s"The clone at $home has no remote origin to cut a run's branch from.")
+      )
+      _ <- git(home, "fetch", "--quiet", "--no-tags", "origin")
+      named <- head.flatMap {
+        case (_, r) if r.exit == 0 => Right(r)
+        case _ => git(home, "remote", "set-head", "origin", "--auto").flatMap(_ => head.map(_._2))
+      }
+      default = named.output.text.trim
+      _ <-
+        if (named.exit == 0 && default.startsWith("origin/")) Right(())
+        else Left(HostError.Failed(s"origin's default branch cannot be read: ${named.output.text}"))
+    } yield default
   }
 
   /** `dir`, its last use now. */

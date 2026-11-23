@@ -8,16 +8,18 @@ import grit.core.host.{Argv, Processes, Ran, RelPath}
 import grit.core.place.{Repository, WorkName}
 import grit.host.checkout.{LocalProcesses, LocalTree, Redaction}
 
-/** A real git repository with one commit on `main`, made in a fresh directory beside a root for
-  * working copies, and deleted after. git sees a home of its own in that directory, so no
-  * person's configuration reaches it.
+/** A real git repository with one commit on `main`, its clone's `origin` a bare repository of
+  * that commit, made in a fresh directory beside a root for working copies, and deleted after.
+  * git sees a home of its own in that directory, so no person's configuration reaches it.
   */
 object GitFixture {
 
   /** The repository's clone, the root its copies are made under, and git run with the
-    * fixture's own home.
+    * fixture's own home; `origin`, the bare repository the clone fetches from.
     */
-  final class Repo(val source: Path, val root: Path, val processes: Processes^)
+  final class Repo(val source: Path, val root: Path, val processes: Processes^) {
+    val origin: Path = source.resolveSibling("origin.git")
+  }
 
   /** The repository every test's copies are of. */
   val repository: Repository =
@@ -54,6 +56,10 @@ object GitFixture {
         "-m",
         "first"
       )
+      val _ = git(repo, dir, "clone", "--quiet", "--bare", clone.toString, repo.origin.toString)
+      val _ = git(repo, clone, "remote", "add", "origin", repo.origin.toString)
+      val _ = git(repo, clone, "fetch", "--quiet", "origin")
+      val _ = git(repo, clone, "remote", "set-head", "origin", "main")
       body(repo)
     } finally { val _ = LocalTree.removed(dir) }
   }

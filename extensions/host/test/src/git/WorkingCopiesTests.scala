@@ -150,6 +150,34 @@ object WorkingCopiesTests extends TestSuite {
       }
     }
 
+    test(
+      "a new copy is cut from origin's default branch as fetched, never the clone's unpushed commits"
+    ) {
+      inRepository { repo =>
+        val commit = Seq("-c", "user.name=g", "-c", "user.email=g@example.invalid")
+        // Upstream moved on since the clone last fetched; the clone holds a commit never pushed.
+        val upstream = Files.createDirectories(repo.source.resolveSibling("upstream"))
+        val _ = git(repo, upstream.getParent, "clone", "--quiet", repo.origin.toString, "upstream")
+        val _ = git(repo, upstream, (commit ++ Seq("commit", "--allow-empty", "-qm", "theirs"))*)
+        val _ = git(repo, upstream, "push", "--quiet", "origin", "main")
+        val _ = git(repo, repo.source, (commit ++ Seq("commit", "--allow-empty", "-qm", "mine"))*)
+        val copy = made(over(repo, new SetClock(start)), "fix-a")
+        val subject = git(repo, copy, "log", "-1", "--format=%s").output.text.trim
+        val mine = git(repo, copy, "log", "--format=%s").output.text.linesIterator.toVector
+        (subject, mine.contains("mine")) ==> ("theirs", false)
+      }
+    }
+    test("when origin cannot be fetched, no copy and no branch are made") {
+      inRepository { repo =>
+        Files.move(repo.origin, repo.origin.resolveSibling("moved.git"))
+        val opened = over(repo, new SetClock(start)).opened(work("fix-a"))
+        (
+          opened.left.map(_.message).left.exists(_.contains("fetch")),
+          hasBranch(repo, repo.source, "grit/fix-a"),
+          Files.exists(repo.root.resolve("grit").resolve("fix-a"))
+        ) ==> (true, false, false)
+      }
+    }
     test("a run's copy is made on grit/{work}, and the next opened gives the same copy back") {
       inRepository { repo =>
         val copies = over(repo, new SetClock(start))
