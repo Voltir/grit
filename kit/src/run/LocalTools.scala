@@ -44,6 +44,10 @@ final class LocalTools(offered: Offered, redaction: Redaction, clock: Clock^, fr
       Outcome.Failed(
         s"The coding tools act on a directory, not ${service.place.written}; nothing ran."
       )
+    case Route.Repository(repository, _) =>
+      Outcome.Failed(
+        s"This edge keeps no working copy of ${repository.place.written}; nothing ran."
+      )
   }
 
   private def over(root: Path, request: ToolRequest): Outcome = {

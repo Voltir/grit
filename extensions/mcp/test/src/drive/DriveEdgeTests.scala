@@ -156,7 +156,7 @@ object DriveEdgeTests extends TestSuite {
   ): Outcome = {
     val q = request(tool, arguments, call)
     val route: Route = Edges
-      .authorize(q, Registration(EdgeId("e"), PrincipalId.Grit, Set(q.workspace)))
+      .authorize(q, Registration(EdgeId("e"), PrincipalId.Grit, Set(q.workspace)), None)
       .fold(r => throw new java.lang.AssertionError(r.toString), identity)
     val clock = Clock.system()
     new DriveTools(clock, fake.rest(clock), reading, files).run(route, q, said)

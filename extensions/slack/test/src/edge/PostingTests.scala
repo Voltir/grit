@@ -126,7 +126,7 @@ object PostingTests extends TestSuite {
   /** Where an edge hosting `q`'s place routes it. */
   def route(q: ToolRequest): Route =
     Edges
-      .authorize(q, Registration(EdgeId("e"), PrincipalId.Grit, Set(q.workspace)))
+      .authorize(q, Registration(EdgeId("e"), PrincipalId.Grit, Set(q.workspace)), None)
       .fold(r => throw new java.lang.AssertionError(r.toString), identity)
 
   private def post(text: String): ujson.Obj = ujson.Obj("text" -> text)

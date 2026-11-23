@@ -124,7 +124,7 @@ object DatabaseEdgeLiveTests extends TestSuite {
       None
     )
     val route = Edges
-      .authorize(q, Registration(EdgeId("e"), PrincipalId.Grit, Set(q.workspace)))
+      .authorize(q, Registration(EdgeId("e"), PrincipalId.Grit, Set(q.workspace)), None)
       .fold(r => throw new java.lang.AssertionError(r.toString), identity)
     val open = db.reader(reader, limits = limits)
     try new DatabaseTools(database, described, open).run(route, q, said)

@@ -111,7 +111,7 @@ object McpToolsTests extends TestSuite {
   /** Where [[Edges.authorize]] routes `q` for an edge hosting its workspace. */
   private def route(q: ToolRequest): Route =
     Edges
-      .authorize(q, Registration(EdgeId("e"), PrincipalId.Grit, Set(q.workspace)))
+      .authorize(q, Registration(EdgeId("e"), PrincipalId.Grit, Set(q.workspace)), None)
       .fold(r => throw new java.lang.AssertionError(r.toString), identity)
 
   private val Read = ujson.Obj("owner" -> "o", "repo" -> "r", "path" -> "README.md")

@@ -65,7 +65,7 @@ object LocalToolsTests extends TestSuite {
       destination(workspace)
     )
     val route = Edges
-      .authorize(q, Registration(EdgeId("e"), PrincipalId.Local, Set(q.workspace)))
+      .authorize(q, Registration(EdgeId("e"), PrincipalId.Local, Set(q.workspace)), None)
       .fold(r => throw new java.lang.AssertionError(r.toString), identity)
     tools.run(route, q, _ => ())
   }

@@ -4,8 +4,9 @@ import scala.concurrent.duration.FiniteDuration
 
 import grit.core.edge.{Desk, DeskError, InMemoryEdges, Permit, Registration, Route, ToolRequest}
 import grit.core.id.{CallSlot, ConversationId, EdgeId, PrincipalId, TurnRef, TurnSeq}
-import grit.core.place.{Directory, Place}
+import grit.core.place.{Directory, Place, Repository, WorkName}
 import grit.core.prompt.Fragment
+import grit.core.store.Origin
 import grit.core.tool.{Outcome, Retry, ToolName, ToolSet}
 import grit.dbos.sql.TestTx
 
@@ -47,8 +48,34 @@ object ServerTests extends TestSuite {
       route match {
         case Route.Directory(root) => Outcome.Done(s"ran in ${Directory.value(root)}")
         case Route.Service(service) => Outcome.Done(s"ran at ${service.place.written}")
+        case Route.Repository(repository, work) =>
+          Outcome.Done(s"ran in ${repository.place.written}'s copy for ${WorkName.value(work)}")
       }
     }
+  }
+
+  private val repo = Repository.of("grit").getOrElse(throw new java.lang.AssertionError())
+
+  private val run = WorkName.of("w1").getOrElse(throw new java.lang.AssertionError())
+
+  private val noRoute =
+    "This edge runs nothing at repository:grit for this conversation; nothing ran."
+
+  /** `desk`, but no origin can be read. */
+  private final class Unread(desk: Desk^) extends Desk {
+    def registration: Registration = desk.registration
+    def await(within: FiniteDuration): Boolean = desk.await(within)
+    def open(): Either[DeskError, Vector[ToolRequest]] = desk.open()
+    def claim(q: ToolRequest): Either[DeskError, Boolean] = desk.claim(q)
+    def origin(q: ToolRequest): Either[DeskError, Option[Origin]] = Left(DeskError("gone"))
+    def answer(slot: CallSlot, outcome: Outcome): Either[DeskError, Boolean] =
+      desk.answer(slot, outcome)
+    def orphans(): Either[DeskError, Vector[ToolRequest]] = desk.orphans()
+    def advertise(
+        place: Place,
+        tools: ToolSet,
+        instructions: Vector[Fragment]
+    ): Either[DeskError, Unit] = desk.advertise(place, tools, instructions)
   }
 
   private def inline(run: () => Unit): Unit = run()
@@ -205,6 +232,54 @@ object ServerTests extends TestSuite {
       val tools = new Counting
       new Server(edges.desk(Set(api)), tools, inline, quiet).pass() ==> 0
       (tools.runs, edges.answers) ==> (Vector(), Vector((q.slot, Outcome.Interrupted)))
+    }
+
+    test("a repository's request is run in the run its conversation's origin names") {
+      val edges = new InMemoryEdges
+      val q = request(0, repo.place)
+      edges.originates(q.conversation, Origin.Work(repo, run))
+      edges.dispatch(Vector(q), grit.core.store.Tx.classification(using TestTx.fake))(using
+        TestTx.fake
+      )
+      new Server(edges.desk(Set(repo.place)), new Counting, inline, quiet).pass() ==> 1
+      edges.answers ==> Vector((q.slot, Outcome.Done("ran in repository:grit's copy for w1")))
+    }
+
+    test(
+      "a claimed repository request its conversation runs no work in is answered failed, and nothing runs"
+    ) {
+      val edges = new InMemoryEdges
+      val q = request(0, repo.place)
+      edges.originates(
+        q.conversation,
+        Origin.Tui(Directory.of("/work/api").getOrElse(throw new java.lang.AssertionError()), "s")
+      )
+      edges.dispatch(Vector(q), grit.core.store.Tx.classification(using TestTx.fake))(using
+        TestTx.fake
+      )
+      val tools = new Counting
+      new Server(edges.desk(Set(repo.place)), tools, inline, quiet).pass() ==> 0
+      (tools.runs, edges.answers) ==> (Vector(), Vector((q.slot, Outcome.Failed(noRoute))))
+    }
+
+    test("a claimed repository request whose origin cannot be read is answered failed, and said") {
+      val edges = new InMemoryEdges
+      val q = request(0, repo.place)
+      edges.originates(q.conversation, Origin.Work(repo, run))
+      edges.dispatch(Vector(q), grit.core.store.Tx.classification(using TestTx.fake))(using
+        TestTx.fake
+      )
+      val tools = new Counting
+      val said = new Said
+      new Server(new Unread(edges.desk(Set(repo.place))), tools, inline, said.hear).pass() ==> 0
+      (tools.runs, edges.answers, said.lines) ==> (
+        Vector(),
+        Vector((q.slot, Outcome.Failed(noRoute))),
+        Vector(
+          "origin of tool:c:0:0:0 unread: gone",
+          s"refused tool:c:0:0:0: NoRoute(${repo.place})"
+        )
+      )
     }
   }
 }

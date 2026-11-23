@@ -16,7 +16,7 @@ import grit.core.tool.{Outcome, ToolName, ToolSet}
   */
 trait Tools {
 
-  /** `request` run where `route` says; `said` hears what an operator would want to know of the
+  /** `request` run where `route` says, a repository route in that run's working copy; `said` hears what an operator would want to know of the
     * run that the model is not told (why an answer could not be read, say), never its arguments
     * or its answer.
     */
@@ -45,11 +45,11 @@ final class Server(desk: Desk^, tools: Tools^, runner: (() => Unit) => Unit, sai
       desk.open().fold(e => { said(s"requests unread: ${e.why}"); Vector.empty }, identity)
     val rerun = reruns.map(q => start(q)).count(identity)
     val claimed = opened.map { q =>
-      Edges.authorize(q, desk.registration) match {
+      Edges.hosts(q, desk.registration) match {
         case Left(refused) =>
           said(s"refused ${q.slot.key}: $refused")
           false
-        case Right(_) =>
+        case Right(()) =>
           desk.claim(q) match {
             case Right(true) => start(q)
             case Right(false) => false
@@ -62,11 +62,31 @@ final class Server(desk: Desk^, tools: Tools^, runner: (() => Unit) => Unit, sai
     rerun + claimed.count(identity)
   }
 
-  /** Runs `q`, claimed by this desk, and answers it; false when it has no route here. */
-  private def start(q: ToolRequest): Boolean =
-    Edges.authorize(q, desk.registration) match {
+  /** Runs `q`, claimed by this desk, and answers it; false when it has no route here, and it is
+    * answered failed, since its claim is held and no other edge will answer it.
+    */
+  private def start(q: ToolRequest): Boolean = {
+    val origin = desk
+      .origin(q)
+      .fold(
+        e => {
+          said(s"origin of ${q.slot.key} unread: ${e.why}")
+          None
+        },
+        identity
+      )
+    // Local, so the run below captures the desk and `said`, not the server and its runner.
+    def answered(q: ToolRequest, outcome: Outcome): Unit =
+      desk.answer(q.slot, outcome) match {
+        case Right(true) => ()
+        case Right(false) =>
+          said(s"late answer to ${q.slot.key}, dropped: the turn stopped waiting")
+        case Left(e) => said(s"answer to ${q.slot.key} not written: ${e.why}")
+      }
+    Edges.authorize(q, desk.registration, origin) match {
       case Left(refused) =>
         said(s"refused ${q.slot.key}: $refused")
+        answered(q, Outcome.Failed(Server.unrouted(q)))
         false
       case Right(route) =>
         runner { () =>
@@ -75,15 +95,11 @@ final class Server(desk: Desk^, tools: Tools^, runner: (() => Unit) => Unit, sai
             catch {
               case NonFatal(e) => Outcome.Failed(s"The edge failed running it: ${e.getMessage}")
             }
-          desk.answer(q.slot, outcome) match {
-            case Right(true) => ()
-            case Right(false) =>
-              said(s"late answer to ${q.slot.key}, dropped: the turn stopped waiting")
-            case Left(e) => said(s"answer to ${q.slot.key} not written: ${e.why}")
-          }
+          answered(q, outcome)
         }
         true
     }
+  }
 
   /** Serves on a daemon thread of its own until [[close]]: a pass whenever the desk is woken,
     * and at least every [[Server.Poll]].
@@ -110,6 +126,10 @@ object Server {
 
   /** The longest an idle edge waits before looking again, whatever it is told: 1 second. */
   val Poll: FiniteDuration = 1.second
+
+  /** What the model is told of a request claimed here that has no route: that nothing ran. */
+  def unrouted(q: ToolRequest): String =
+    s"This edge runs nothing at ${q.workspace.written} for this conversation; nothing ran."
 
   /** A [[Server]]'s `runner`: each run on a virtual thread of its own, named `named` (an
     * unnamed virtual thread's name is empty, the default).
