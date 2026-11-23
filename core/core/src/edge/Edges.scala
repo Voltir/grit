@@ -39,10 +39,16 @@ enum Refused {
 
 object Edges {
 
-  /** Whether `by` registered `request`'s workspace. */
-  def hosts(request: ToolRequest, by: Registration): Either[Refused.NotHosted, Unit] =
-    if (by.places.contains(request.workspace)) Right(())
-    else Left(Refused.NotHosted(request.workspace))
+  /** Whether `by` registered `request`'s workspace, and something can run there: a directory, a
+    * service, or a repository's own place. An edge claims only what this lets through.
+    */
+  def hosts(request: ToolRequest, by: Registration): Either[Refused, Unit] = {
+    val at = request.workspace
+    if (!by.places.contains(at)) Left(Refused.NotHosted(at))
+    else if (at.directory.isDefined || at.service.isDefined || at.repository.exists(_.place == at))
+      Right(())
+    else Left(Refused.NoRoute(at))
+  }
 
   /** Whether `by` may run `request`, and where: an edge serves only the places it registered;
     * a directory place is routed to its directory, a service place to its service, and a

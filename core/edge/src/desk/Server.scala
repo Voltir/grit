@@ -66,15 +66,19 @@ final class Server(desk: Desk^, tools: Tools^, runner: (() => Unit) => Unit, sai
     * answered failed, since its claim is held and no other edge will answer it.
     */
   private def start(q: ToolRequest): Boolean = {
-    val origin = desk
-      .origin(q)
-      .fold(
-        e => {
-          said(s"origin of ${q.slot.key} unread: ${e.why}")
-          None
-        },
-        identity
-      )
+    // Only a repository's place routes by its conversation's origin (Edges.authorize).
+    val origin =
+      if (q.workspace.repository.isEmpty) None
+      else
+        desk
+          .origin(q)
+          .fold(
+            e => {
+              said(s"origin of ${q.slot.key} unread: ${e.why}")
+              None
+            },
+            identity
+          )
     // Local, so the run below captures the desk and `said`, not the server and its runner.
     def answered(q: ToolRequest, outcome: Outcome): Unit =
       desk.answer(q.slot, outcome) match {

@@ -190,6 +190,22 @@ object ServerTests extends TestSuite {
       said.lines ==> Vector(s"${q.slot.key}: the answer could not be read")
     }
 
+    test(
+      "a request at a registered place where nothing runs is never claimed, and left for another edge"
+    ) {
+      val thread = Place.under(grit.core.place.Namespace.Slack, Vector("acme", "dev"))
+      val within = Place.under(grit.core.place.Namespace.Repository, Vector("grit", "w1"))
+      Vector(thread, within).map { at =>
+        val edges = new InMemoryEdges
+        val q = request(0, at)
+        edges.dispatch(Vector(q), grit.core.store.Tx.classification(using TestTx.fake))(using
+          TestTx.fake
+        )
+        val tools = new Counting
+        val passed = new Server(edges.desk(Set(at)), tools, inline, quiet).pass()
+        (passed, tools.runs, edges.answers.size, edges.desk(Set(at)).claim(q))
+      } ==> Vector((0, Vector(), 0, Right(true)), (0, Vector(), 0, Right(true)))
+    }
     test("a request another edge claimed first is not run here") {
       val edges = new InMemoryEdges
       val q = request(0, api)

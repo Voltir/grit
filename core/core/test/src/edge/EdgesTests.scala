@@ -97,6 +97,19 @@ object EdgesTests extends TestSuite {
       Edges.authorize(request(issues), serving, None) ==> Left(Refused.NoRoute(issues))
     }
 
+    test(
+      "an edge does not host a registered place where nothing runs: a thread, or a place within a repository"
+    ) {
+      val thread = Place.under(Namespace.Slack, Vector("acme", "dev"))
+      val within = Place.under(Namespace.Repository, Vector("grit", "w1"))
+      val grit = repository("grit").place
+      val all = by.copy(places = Set(thread, within, grit))
+      (
+        Edges.hosts(request(thread), all),
+        Edges.hosts(request(within), all),
+        Edges.hosts(request(grit), all)
+      ) ==> (Left(Refused.NoRoute(thread)), Left(Refused.NoRoute(within)), Right(()))
+    }
     test("a registered place that is neither a directory nor a service is refused") {
       val thread = Place.under(Namespace.Slack, Vector("acme", "dev"))
       Edges.authorize(request(thread), by.copy(places = Set(thread)), None) ==> Left(
