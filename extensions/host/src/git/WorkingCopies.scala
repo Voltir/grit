@@ -22,10 +22,12 @@ import grit.host.checkout.LocalTree
   * kept, and so is every directory there without its lock. With `target`, a new branch is cut
   * only when the clone's origin is `target`'s remote ([[Remote.fetchedBy]]); `Failed` otherwise,
   * naming both, no copy or branch made. With `target`, and the clone's origin its remote, the
-  * sweep also deletes each local `grit/{work}` branch with no copy that is done with, asking
-  * `target`'s remote repository of at most [[SweepAsks]] of them: its pull request merged or
-  * closed with the branch's tip its head; or none opened, and origin's default branch holding
-  * all of it, or its tip committed past [[Unpublished]] ago, said through `note` first. The
+  * sweep also deletes each local `grit/{work}` branch with no copy that is done with: one
+  * origin's default branch holds all of, with no call; else, asking `target`'s remote
+  * repository, oldest first and on from where the last sweep stopped, at most [[SweepAsks]]
+  * calls a sweep (so every branch is reached within ceil(branches / [[SweepAsks]]) sweeps), one
+  * whose pull request was merged or closed with the branch's tip its head, or one with none
+  * opened whose tip was committed past [[Unpublished]] ago, said through `note` first. The
   * first answer the remote repository cannot give ends it; a branch there is never deleted.
   */
 final class WorkingCopies(
@@ -202,10 +204,12 @@ final class WorkingCopies(
   }
 
   /** With `target`, at the sweep, and only when the clone's origin is `target`'s remote: each
-    * local `grit/{work}` branch with no copy, asked of `target`'s remote repository newest first, at
-    * most [[SweepAsks]] of them, is deleted when it is done with: its pull request merged or
-    * closed with its head the branch's tip, or none opened and the branch holding no commit
-    * origin's default branch lacks, or none opened and its tip committed more than
+    * local `grit/{work}` branch with no copy is deleted when it is done with. One origin's default
+    * branch holds all of is deleted with no call. Every other is asked of `target`'s remote
+    * repository, oldest first, starting after the branch the last sweep asked last, at most
+    * [[SweepAsks]] calls a sweep, so every such branch is reached within ceil(branches /
+    * [[SweepAsks]]) sweeps; it is deleted when its pull request was merged or closed with its
+    * head the branch's tip, or none was opened and its tip was committed more than
     * [[Unpublished]] ago (said through `note` first, naming the branch and its tip). The first
     * answer the remote repository cannot give ends it, nothing more deleted; a branch on the
     * remote repository is never deleted.
@@ -222,48 +226,60 @@ final class WorkingCopies(
       val branches = git(
         home,
         "for-each-ref",
-        "--sort=-committerdate",
-        "--format=%(refname:short) %(objectname) %(committerdate:unix)",
+        "--sort=committerdate",
+        "--format=%(refname) %(objectname) %(committerdate:unix)",
         "refs/heads/grit/"
       ).toOption.toVector
         .flatMap(_.output.text.linesIterator.toVector)
         .flatMap { line =>
           line.split(' ') match {
-            case Array(branch, tip, at) if at.toLongOption.isDefined =>
-              Vector((branch, tip, at.toLong))
+            case Array(ref, tip, at)
+                if ref.startsWith("refs/heads/") && at.toLongOption.isDefined =>
+              Vector((ref.stripPrefix("refs/heads/"), tip, at.toLong))
             case _ => Vector.empty
           }
         }
         .filterNot((branch, _, _) => held.contains(branch.stripPrefix("grit/")))
-      @tailrec def each(left: List[(String, String, Long)]): Unit = left match {
-        case Nil => ()
-        case (branch, tip, at) :: rest =>
+      def deleted(branch: String): Unit = { val _ = git(home, "branch", "--quiet", "-D", branch) }
+      val (merged, asking) = branches.partition((branch, _, _) =>
+        default.exists(d =>
+          git(home, "rev-list", "--count", s"$d..refs/heads/$branch")
+            .exists(_.output.text.trim == "0")
+        )
+      )
+      merged.foreach((branch, _, _) => deleted(branch))
+      val after = attempt(Files.readString(cursor).trim).toOption
+      val from = asking.indexWhere(_._1 == after.getOrElse("")) + 1
+      @tailrec def each(left: List[(String, String, Long)], asked: Int): Unit = left match {
+        case (branch, tip, at) :: rest if asked < SweepAsks =>
           t.repository.pullRequest(branch) match {
             case Left(_) => ()
             case Right(pull) =>
+              val _ = attempt(Files.writeString(cursor, branch))
               val done = pull match {
                 case Some(RemoteRepository.PullRequest.Merged(_, head)) => head == tip
                 case Some(RemoteRepository.PullRequest.Closed(_, head)) => head == tip
                 case Some(RemoteRepository.PullRequest.Open(_)) => false
                 case None =>
-                  default.exists(d =>
-                    git(home, "rev-list", "--count", s"$d..$branch")
-                      .exists(_.output.text.trim == "0")
-                  ) || (at < cutoff && {
+                  at < cutoff && {
                     note(
                       s"[main] deleting $branch, never offered, its last commit $tip " +
                         s"made ${java.time.Instant.ofEpochSecond(at)}, past $Unpublished unpublished"
                     )
                     true
-                  })
+                  }
               }
-              if (done) { val _ = git(home, "branch", "--quiet", "-D", branch) }
-              each(rest)
+              if (done) deleted(branch)
+              each(rest, asked + 1)
           }
+        case _ => ()
       }
-      each(branches.take(SweepAsks).toList)
+      each((asking.drop(from) ++ asking.take(from)).toList, 0)
     }
   }
+
+  /** Where the sweep keeps the branch it asked last, beside the copies' directory. */
+  private def cursor: Path = copies.resolveSibling(s"${repository.name}.swept")
 
   /** The clone's records of worktrees whose directory is gone, dropped. */
   private def pruned(): Unit = { val _ = git(home, "worktree", "prune") }

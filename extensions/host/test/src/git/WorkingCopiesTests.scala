@@ -52,6 +52,23 @@ object WorkingCopiesTests extends TestSuite {
     tip
   }
 
+  /** `grit/{name}` in `repo`'s clone, one commit past main committed at `epoch` seconds: its tip.
+    */
+  private def dated(repo: Repo^, name: String, epoch: Long): String = {
+    val tree = git(repo, repo.source, "rev-parse", "main^{tree}").output.text.trim
+    val parent = git(repo, repo.source, "rev-parse", "main").output.text.trim
+    val made = repo.root.resolveSibling(s"commit-$name")
+    Files.writeString(
+      made,
+      s"tree $tree\nparent $parent\nauthor t <t@example.com> $epoch +0000\n" +
+        s"committer t <t@example.com> $epoch +0000\n\n$name\n"
+    )
+    val tip =
+      git(repo, repo.source, "hash-object", "-t", "commit", "-w", made.toString).output.text.trim
+    val _ = git(repo, repo.source, "update-ref", s"refs/heads/grit/$name", tip)
+    tip
+  }
+
   /** Copies of `repo`'s clone on `clock`, pushed and offered on `remote`, its sweep's lines
     * said through `note`.
     */
@@ -364,25 +381,76 @@ object WorkingCopiesTests extends TestSuite {
       "the sweep stops at the first answer the remote repository cannot give, asks at most SweepAsks, and deletes nothing for another origin"
     ) {
       inRepository { repo =>
-        for (n <- 1 to WorkingCopies.SweepAsks + 2) {
-          val _ = git(repo, repo.source, "branch", s"grit/e$n", "main")
-        }
-        def left =
-          (1 to WorkingCopies.SweepAsks + 2).count(n => hasBranch(repo, repo.source, s"grit/e$n"))
+        val n = WorkingCopies.SweepAsks + 2
+        val tips = (1 to n).map(k => dated(repo, s"e$k", start.getEpochSecond - 1000 + k))
+        def closedAll(remote: FakeRemoteRepository): Unit =
+          for ((tip, k) <- tips.zipWithIndex) {
+            val _ = remote.open(s"grit/e${k + 1}", "Fix", "Fixed.")
+            remote.close(s"grit/e${k + 1}", tip)
+          }
+        def left = (1 to n).count(k => hasBranch(repo, repo.source, s"grit/e$k"))
         val failing = new FakeRemoteRepository(repo.origin.toString)
+        closedAll(failing)
         failing.answers.set(1)
         val _ = swept(repo, failing, new SetClock(start)).opened(work("a"))
         val afterFailing = (left, failing.asked.size)
         val counting = new FakeRemoteRepository(repo.origin.toString)
+        closedAll(counting)
         val _ = swept(repo, counting, new SetClock(start)).opened(work("b"))
         val afterCounting = (left, counting.asked.size)
         val _ = git(repo, repo.source, "remote", "set-url", "origin", "/srv/elsewhere.git")
         val elsewhere = new FakeRemoteRepository(repo.origin.toString)
         val _ = swept(repo, elsewhere, new SetClock(start)).opened(work("c"))
         (afterFailing, afterCounting, (left, elsewhere.asked.size)) ==> (
-          (WorkingCopies.SweepAsks + 1, 2),
+          (n - 1, 2),
           (1, WorkingCopies.SweepAsks),
           (1, 0)
+        )
+      }
+    }
+    test("the sweep asks oldest first, so a branch past SweepAsks unheld ones is reached at once") {
+      inRepository { repo =>
+        val n = WorkingCopies.SweepAsks + 5
+        val remote = new FakeRemoteRepository(repo.origin.toString)
+        val now = start.getEpochSecond
+        val oldest = dated(repo, "old", now - 10000)
+        for (k <- 1 until n) { val _ = dated(repo, s"y$k", now - 1000 + k) }
+        val _ = remote.open("grit/old", "Fix", "Fixed.")
+        remote.close("grit/old", oldest)
+        val _ = swept(repo, remote, new SetClock(start)).opened(work("a"))
+        (hasBranch(repo, repo.source, "grit/old"), remote.asked.size, remote.asked.get(0)) ==>
+          (false, WorkingCopies.SweepAsks, "grit/old")
+      }
+    }
+    test("each sweep asks on from where the last stopped, so every branch is reached within two") {
+      inRepository { repo =>
+        val n = WorkingCopies.SweepAsks + 5
+        val now = start.getEpochSecond
+        val names = (1 to n).map { k =>
+          val _ = dated(repo, s"y$k", now - 1000 + k)
+          s"grit/y$k"
+        }
+        val first = new FakeRemoteRepository(repo.origin.toString)
+        val _ = swept(repo, first, new SetClock(start)).opened(work("a"))
+        val second = new FakeRemoteRepository(repo.origin.toString)
+        val _ = swept(repo, second, new SetClock(start)).opened(work("b"))
+        val asked = first.asked.asScala.toVector ++ second.asked.asScala.toVector
+        (asked.toSet == names.toSet, second.asked.get(0)) ==>
+          (true, s"grit/y${WorkingCopies.SweepAsks + 1}")
+      }
+    }
+    test(
+      "a branch origin's default holds all of is deleted without asking, and a tag of its name changes nothing"
+    ) {
+      inRepository { repo =>
+        val n = WorkingCopies.SweepAsks + 5
+        for (k <- 1 to n) { val _ = git(repo, repo.source, "branch", s"grit/e$k", "main") }
+        val _ = git(repo, repo.source, "tag", "grit/e1", "main")
+        val remote = new FakeRemoteRepository(repo.origin.toString)
+        val _ = swept(repo, remote, new SetClock(start)).opened(work("a"))
+        ((1 to n).count(k => hasBranch(repo, repo.source, s"grit/e$k")), remote.asked.size) ==> (
+          0,
+          0
         )
       }
     }
