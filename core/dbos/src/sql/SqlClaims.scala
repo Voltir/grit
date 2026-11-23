@@ -430,38 +430,38 @@ private[dbos] object SqlClaims {
        |         WHERE s.harness = c.session_harness AND s.local = c.session_local
        |           AND ${SqlClearance.kept("s")}) END)""".stripMargin
 
-  /** What the recording of the session whose row id is `session`, once its row holds the events,
-    * does to claims: once `ended`, every claim it works is worked by none; otherwise, when
-    * `starting`, every claim of its holder that no session works is worked by it, lapsed or not.
-    * Either way only claims kept at the session's own label and in its own room.
+  /** `claiming` done, once the row whose id is `session` holds the events, to the claims kept at
+    * that session's own label and in its own room; a claim its holder takes, lapsed or not.
     */
-  def recorded(session: Long, ended: Boolean, starting: Boolean)(using
+  def recorded(session: Long, claiming: Session.Claiming)(using
       Tx^
   ): Either[StoreError, Unit] = {
     val same =
       "c.classification_id = s.classification_id AND c.room_id IS NOT DISTINCT FROM s.room_id"
-    if (ended)
-      SqlStatements
-        .update(
-          s"""UPDATE grit.claims c SET session_harness = NULL, session_local = NULL
+    claiming match {
+      case Session.Claiming.Frees =>
+        SqlStatements
+          .update(
+            s"""UPDATE grit.claims c SET session_harness = NULL, session_local = NULL
              |  FROM grit.sessions s
              | WHERE s.id = ? AND c.session_harness = s.harness AND c.session_local = s.local
              |   AND $same""".stripMargin
-        )(_.setLong(1, session))
-        .map(_ => ())
-    else if (starting)
-      SqlStatements
-        .cleared(
-          s"""WITH ${SqlClearance.With},
+          )(_.setLong(1, session))
+          .map(_ => ())
+      case Session.Claiming.Takes =>
+        SqlStatements
+          .cleared(
+            s"""WITH ${SqlClearance.With},
              |taken AS (
              |  UPDATE grit.claims c SET session_harness = s.harness, session_local = s.local
              |    FROM grit.sessions s
              |   WHERE s.id = ? AND c.holder = s.holder AND c.session_local IS NULL AND $same
              |  RETURNING 1)
              |SELECT count(*) AS n FROM taken""".stripMargin
-        )(_.setLong(SqlClearance.Params + 1, session))(_ => ())
-        .map(_ => ())
-    else Right(())
+          )(_.setLong(SqlClearance.Params + 1, session))(_ => ())
+          .map(_ => ())
+      case Session.Claiming.Leaves => Right(())
+    }
   }
 
   /** `session` bound to the two parameters from `i`, its harness then its local id. */

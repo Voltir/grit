@@ -250,7 +250,7 @@ abstract class EdgeSessionsContract extends TestSuite {
       )
       val _ = record(Reader, ended(session("ending"), 2))
       val freed = opening(h, session("onlooker"))
-      worked("next", h, 3)
+      val _ = record(Reader, started(session("next"), h, 3))
       (freed, opening(h, session("onlooker"))) ==> (
         Right((Some("Work the ending thing."), None)),
         Right(
@@ -286,6 +286,61 @@ abstract class EdgeSessionsContract extends TestSuite {
       )
     }
 
+    test(
+      "an open session's later events, naming its holder, take nothing when another's end frees its claim"
+    ) {
+      val h = got(ClaimHolder.of("contract/sibling"))
+      val _ = record(Reader, started(session("sibling"), h, 1), started(session("closer"), h, 1))
+      claimedBrief(
+        h,
+        "Work the sibling thing.",
+        At,
+        got(DocKey.of("contract/sibling-1")),
+        Some(session("closer"))
+      )
+      val _ = record(Reader, ended(session("closer"), 2))
+      worked("sibling", h, 3)
+      opening(h, session("onlooker")) ==> Right((Some("Work the sibling thing."), None))
+    }
+    test("a batch sent again with no new event takes nothing of its holder's") {
+      val h = got(ClaimHolder.of("contract/again"))
+      val _ = record(Reader, started(session("again"), h, 1))
+      claimedBrief(h, "Work the again thing.", At, got(DocKey.of("contract/again-1")), None)
+      val _ = record(Reader, started(session("again"), h, 1))
+      opening(h, session("onlooker")) ==> Right((Some("Work the again thing."), None))
+    }
+    test("an open session's started event, as a compaction sends, takes nothing of its holder's") {
+      val h = got(ClaimHolder.of("contract/compacting"))
+      val _ = record(Reader, started(session("compacting"), h, 1))
+      claimedBrief(
+        h,
+        "Work the compacting thing.",
+        At,
+        got(DocKey.of("contract/compacting-1")),
+        None
+      )
+      val _ = record(Reader, started(session("compacting"), h, 2))
+      opening(h, session("onlooker")) ==> Right((Some("Work the compacting thing."), None))
+    }
+    test("a session reopened takes the claims of the holder it kept, not of its batch's") {
+      val (kept, later) =
+        (got(ClaimHolder.of("contract/kept-holder")), got(ClaimHolder.of("contract/later-holder")))
+      val _ = record(Reader, started(session("keeping"), kept, 1), ended(session("keeping"), 2))
+      claimedBrief(kept, "Work the kept thing.", At, got(DocKey.of("contract/kept-1")), None)
+      claimedBrief(later, "Work the later thing.", At, got(DocKey.of("contract/later-1")), None)
+      val _ = record(Reader, started(session("keeping"), later, 3))
+      (opening(kept, session("onlooker")), opening(later, session("onlooker"))) ==> (
+        Right(
+          (
+            Some(
+              s"held by Some(${session("keeping").written}) for contract/kept-holder, moved by ${Some(Moving)}"
+            ),
+            None
+          )
+        ),
+        Right((Some("Work the later thing."), None))
+      )
+    }
     test("a session started again after its end has its agents keep its claim again") {
       val h = got(ClaimHolder.of("contract/resuming"))
       val lease = Claims.Lease.toSeconds
@@ -365,6 +420,23 @@ object EdgeSessionsContract {
       holder,
       seconds.toVector.map(s =>
         got(Event.of(s, EdgeContracts.At.plusSeconds(s), Event.Kind.Edited, Event.Shape.Empty))
+      )
+    )
+
+  /** `id`'s start, `second` after [[EdgeContracts.At]], its ordinal `second`, at [[Worktree]], as
+    * `holder`.
+    */
+  def started(id: SessionId, holder: ClaimHolder, second: Long): EdgeSessions.Batch =
+    batch(id, Some(holder)).copy(events =
+      Vector(
+        got(
+          Event.of(
+            second,
+            EdgeContracts.At.plusSeconds(second),
+            Event.Kind.Started,
+            Event.Shape.Empty
+          )
+        )
       )
     )
 

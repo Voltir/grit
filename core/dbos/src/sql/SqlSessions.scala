@@ -36,12 +36,8 @@ private[dbos] final class SqlSessions extends Sessions {
           logged = lines.collect { case Log.Line.Logged(_, e) => e }
           _ <- write(row.id, lines)
           _ <- update(row, fresh, logged, lines.size)
-          _ <- SqlClaims.recorded(
-            row.id,
-            ended = logged.exists(_.kind == Event.Kind.Ended) &&
-              Session.ending(row.ended, logged).isDefined,
-            starting = header.holder.isDefined && Session.ending(row.ended, logged).isEmpty
-          )
+          // A log's seqs start at 1, so the lines it held are its next seq less one.
+          _ <- SqlClaims.recorded(row.id, Session.claiming(row.next - 1, row.ended, logged))
           _ <-
             if (logged.exists(_.kind == Event.Kind.Commit)) SqlNotices.send(SqlNotices.Sessions, "")
             else Right(())

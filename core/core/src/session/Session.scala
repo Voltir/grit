@@ -57,6 +57,34 @@ object Session {
       }
     }
 
+  /** What logging `events` on a session does to claims, as [[Sessions.record]] moves them. */
+  enum Claiming {
+
+    /** Each claim the session works is worked by none. */
+    case Frees
+
+    /** The session takes each claim of the holder it works as that no session works. */
+    case Takes
+
+    /** No claim changes. */
+    case Leaves
+  }
+
+  /** What logging `events`, in their order, on a session whose log held `lines` lines and that
+    * had ended at `ended` does to claims: [[Claiming.Frees]] when they end it, an `ended` event
+    * among them; [[Claiming.Takes]] when they open it, a `started` event among them leaving it
+    * open though it was not before (it held no line, or had ended); [[Claiming.Leaves]] otherwise.
+    */
+  def claiming(lines: Int, ended: Option[Instant], events: Vector[Event]): Claiming = {
+    val after = ending(ended, events)
+    if (events.exists(_.kind == Event.Kind.Ended) && after.isDefined) Claiming.Frees
+    else if (
+      events.exists(_.kind == Event.Kind.Started) && after.isEmpty &&
+      (lines == 0 || ended.isDefined)
+    ) Claiming.Takes
+    else Claiming.Leaves
+  }
+
   /** What a session's row begins with, the first time an event is recorded on it. `label` is
     * kept joined with the recording transaction's floor, in that transaction's own room when it
     * has one. `at` is where the session worked, not a room: a harness session's worktree under

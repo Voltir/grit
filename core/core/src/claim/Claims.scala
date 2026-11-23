@@ -11,7 +11,7 @@ import grit.core.visibility.Label
 
 /** A claim: `holder` works its plugin's `subject` as `role`, made at `made` by `by` (with the
   * accounts linked to them when it is read), kept at `label`, worked by `session`. It has no
-  * `session` until a session of its holder starts or resumes, which takes it
+  * `session` until a session of its holder opens ([[grit.core.session.Session.claiming]]), which takes it
   * ([[grit.core.session.Sessions.record]]), and none again once that session's recorded end
   * frees it. `active` is the latest of `made` and, as the reading transaction reads them, the last
   * event of `session` and, until `session` ends, of each session whose `parent` it is that the

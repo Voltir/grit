@@ -55,6 +55,23 @@ object SessionLogTests extends TestSuite {
       assert(Session.ending(Some(ended.at), Vector(event(9, Event.Kind.Started))) == None)
       assert(Session.ending(Some(ended.at), Vector(event(2, Event.Kind.Started))) == Some(ended.at))
     }
+    test("a session takes claims only when a started event opens it, and frees them as it ends") {
+      import Session.Claiming.{Frees, Leaves, Takes}
+      val (start, edit, end) =
+        (event(3, Event.Kind.Started), event(3), event(3, Event.Kind.Ended))
+      val endedAt = Some(t0.plusSeconds(2))
+      Vector(
+        Session.claiming(0, None, Vector(start)),
+        Session.claiming(0, None, Vector(edit)),
+        Session.claiming(4, None, Vector(start)),
+        Session.claiming(4, None, Vector(edit)),
+        Session.claiming(4, None, Vector.empty),
+        Session.claiming(4, endedAt, Vector(start)),
+        Session.claiming(4, endedAt, Vector(event(1, Event.Kind.Started))),
+        Session.claiming(4, None, Vector(end)),
+        Session.claiming(4, endedAt, Vector(edit))
+      ) ==> Vector(Takes, Leaves, Leaves, Leaves, Leaves, Takes, Leaves, Frees, Leaves)
+    }
     test("a shape is held to 300 UTF-8 bytes, not characters") {
       // {"p":"…"} is 8 bytes around its text; each é is 2 bytes.
       val at = Event.Shape.of(ujson.Obj("p" -> ("é" * 146)))

@@ -16,8 +16,7 @@ import grit.core.visibility.{Integrity, Label}
   * `vouched`. Held to [[EdgeSessionsContract]]; it reads no labels or rooms, so every session
   * and brief is every vouched account's, and what a session did lately is its record alone (its
   * summary the newest closing it logged, its counters its events'), with no commits, edits or
-  * reads; an `ended` event ends a session and leaves each claim it works worked by none, a batch
-  * naming a holder otherwise gives its session each claim of that holder no session works, and a
+  * reads; a batch moves claims as [[Session.claiming]] says, by the holder its session kept, and a
   * claim it holds lapses as [[Script.claim]] says. While the script is failing, every call fails as a database that
   * cannot be read does. Every call is recorded in the script.
   */
@@ -248,17 +247,19 @@ object ScriptedSessions {
         } else {
           ordinals = ordinals.updated(b.id, seen ++ fresh.map(_.n))
           val said = fresh.sortBy(_.n).collect { case Event(_, _, Event.Kind.Closing(s), _) => s }
-          val ending =
-            Session.ending(sessions.find(_.id == b.id).flatMap(_.ended), fresh.sortBy(_.n))
-          claims =
-            if (ending.isDefined)
+          val before = sessions.find(_.id == b.id)
+          val ending = Session.ending(before.flatMap(_.ended), fresh.sortBy(_.n))
+          val holder = before.flatMap(_.holder).orElse(b.holder)
+          claims = Session.claiming(seen.size, before.flatMap(_.ended), fresh.sortBy(_.n)) match {
+            case Session.Claiming.Frees =>
               claims.map(c => if (c.session.contains(b.id)) c.copy(session = None) else c)
-            else
-              b.holder.fold(claims)(h =>
-                claims.map(c =>
-                  if (c.holder == h && c.session.isEmpty) c.copy(session = Some(b.id)) else c
-                )
+            case Session.Claiming.Takes =>
+              claims.map(c =>
+                if (holder.contains(c.holder) && c.session.isEmpty) c.copy(session = Some(b.id))
+                else c
               )
+            case Session.Claiming.Leaves => claims
+          }
           sessions = sessions.find(_.id == b.id) match {
             case Some(_) =>
               sessions.map(o =>
