@@ -98,6 +98,31 @@ object LocalBranchTests extends TestSuite {
       }
     }
     test(
+      "an offer of a branch holding nothing origin's default lacks pushes nothing and opens nothing"
+    ) {
+      inRepository { repo =>
+        val _ = git(repo, repo.source, "branch", "grit/w1", "main")
+        val remoteRepository = new FakeRemoteRepository(repo.origin.toString)
+        val offered = branch(repo, remoteRepository).offer("Fix it", "Fixed.")
+        (
+          offered,
+          refs(repo, repo.origin),
+          remoteRepository.opens.asScala.toVector,
+          remoteRepository.asked.asScala.toVector
+        ) ==> (
+          Left(
+            HostError.Failed(
+              "grit/w1 holds nothing origin's default branch lacks, so nothing was pushed and " +
+                "no pull request was opened. Commit your change first."
+            )
+          ),
+          Vector("refs/heads/main"),
+          Vector.empty,
+          Vector.empty
+        )
+      }
+    }
+    test(
       "a branch the repository holds diverged from is refused, never forced, and nothing opens"
     ) {
       inRepository { repo =>

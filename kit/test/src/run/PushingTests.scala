@@ -27,7 +27,20 @@ object PushingTests extends TestSuite {
             Clock.system()
           )
         val work = GitFixture.work("w1")
-        val _ = copies.opened(work)
+        val copy =
+          copies.opened(work).fold(e => throw new java.lang.AssertionError(e.message), identity)
+        val _ = GitFixture.git(
+          repo,
+          copy,
+          "-c",
+          "user.name=t",
+          "-c",
+          "user.email=t@example.com",
+          "commit",
+          "--allow-empty",
+          "-qm",
+          "in copy"
+        )
         // The bare origin's own hook sees what its receiving git inherited from the push.
         val seen = repo.root.resolveSibling("seen.txt")
         val hook = repo.origin.resolve("hooks").resolve("pre-receive")

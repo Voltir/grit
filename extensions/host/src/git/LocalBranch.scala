@@ -94,14 +94,26 @@ final class LocalBranch(
   private val ref = s"refs/heads/$branch"
 
   def offer(title: String, body: String): Either[HostError, URI] =
-    remoteRepository.pullRequest(branch).flatMap {
-      case Some(RemoteRepository.PullRequest.Merged(at, _)) =>
-        Left(LocalBranch.ended(branch, at, "merged"))
-      case Some(RemoteRepository.PullRequest.Closed(at, _)) =>
-        Left(LocalBranch.ended(branch, at, "closed"))
-      case Some(RemoteRepository.PullRequest.Open(at)) => pushed().map(_ => at)
-      case None => pushed().flatMap(_ => remoteRepository.open(branch, title, body))
-    }
+    ahead()
+      .flatMap { a =>
+        if (a) Right(())
+        else
+          Left(
+            HostError.Failed(
+              s"$branch holds nothing origin's default branch lacks, so nothing was pushed and " +
+                "no pull request was opened. Commit your change first."
+            )
+          )
+      }
+      .flatMap(_ => remoteRepository.pullRequest(branch))
+      .flatMap {
+        case Some(RemoteRepository.PullRequest.Merged(at, _)) =>
+          Left(LocalBranch.ended(branch, at, "merged"))
+        case Some(RemoteRepository.PullRequest.Closed(at, _)) =>
+          Left(LocalBranch.ended(branch, at, "closed"))
+        case Some(RemoteRepository.PullRequest.Open(at)) => pushed().map(_ => at)
+        case None => pushed().flatMap(_ => remoteRepository.open(branch, title, body))
+      }
 
   def stands: Either[HostError, Branch.Stands] =
     for {
@@ -116,13 +128,33 @@ final class LocalBranch(
       case None => Branch.Stands.Pushed
     }
 
-  /** The branch's last commit in the clone. */
-  private def head(): Either[HostError, String] =
+  /** Whether the branch holds a commit that origin's default branch lacks, as the clone last
+    * fetched it: a stale fetch can only answer `true` wrongly, never `false`. `Failed` when the
+    * clone names no default branch of origin, or has no such branch.
+    */
+  private[git] def ahead(): Either[HostError, Boolean] =
+    for {
+      symbolic <- local("symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
+      default <-
+        if (symbolic.exit == 0) Right(symbolic.output.text.trim)
+        else Left(HostError.Failed("The clone names no default branch of origin."))
+      count <- local("rev-list", "--count", s"$default..$ref")
+      n <- count.output.text.trim.toIntOption
+        .filter(_ => count.exit == 0)
+        .toRight(HostError.Failed(s"The clone has no branch $branch."))
+    } yield n > 0
+
+  /** git with `args` in the clone, its own credentials and no secret. */
+  private def local(args: String*): Either[HostError, Ran] =
     Argv
-      .of("git", "rev-parse", "--verify", "--quiet", ref)
+      .of("git", args*)
       .left
       .map(HostError.Failed(_))
       .flatMap(argv => processes.run(argv, RelPath.Root, WorkingCopies.GitLongest))
+
+  /** The branch's last commit in the clone. */
+  private def head(): Either[HostError, String] =
+    local("rev-parse", "--verify", "--quiet", ref)
       .flatMap { r =>
         if (r.exit == 0) Right(r.output.text.trim)
         else Left(HostError.Failed(s"The clone has no branch $branch."))

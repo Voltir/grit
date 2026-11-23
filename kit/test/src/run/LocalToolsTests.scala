@@ -189,6 +189,21 @@ object LocalToolsTests extends TestSuite {
       GitFixture.inRepository { repo =>
         val remoteRepository = new GitFixture.FakeRemoteRepository(repo.origin.toString)
         val w1 = GitFixture.work("w1")
+        // The run's branch, one commit past main, as a run that committed its change leaves it.
+        val _ = GitFixture.git(repo, repo.source, "checkout", "--quiet", "-B", "grit/w1")
+        val _ = GitFixture.git(
+          repo,
+          repo.source,
+          "-c",
+          "user.name=t",
+          "-c",
+          "user.email=t@example.com",
+          "commit",
+          "--allow-empty",
+          "-qm",
+          "fix"
+        )
+        val _ = GitFixture.git(repo, repo.source, "checkout", "--quiet", "main")
         val said = pushingIn(repo, remoteRepository) { (tools, copies) =>
           copies
             .held(w1) { _ =>

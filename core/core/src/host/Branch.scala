@@ -9,7 +9,8 @@ trait Branch extends caps.SharedCapability {
     * address, opened with `title` and `body` when none is open. Offered again, it pushes what
     * was committed since and gives the same address. A push the repository refuses (one that
     * is not a fast-forward) opens nothing. `Failed`, nothing pushed, when its pull request was
-    * merged or closed: grit does not open another.
+    * merged or closed: grit does not open another. `Failed`, nothing pushed or opened, when the
+    * branch holds nothing origin's default branch lacks.
     */
   def offer(title: String, body: String): Either[HostError, URI]
 
