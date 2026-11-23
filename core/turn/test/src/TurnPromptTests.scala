@@ -3,7 +3,7 @@ package grit.turn
 import grit.core.context.SectionTag
 import grit.core.id.EdgeName
 import grit.core.persona.Persona
-import grit.core.place.{Directory, Namespace, Place}
+import grit.core.place.{Directory, Namespace, Place, Repository, WorkName}
 import grit.core.prompt.{Fragment, Layer}
 import grit.core.store.Origin
 import grit.core.tool.{Retry, ToolName, ToolSet}
@@ -14,6 +14,11 @@ import utest.*
 object TurnPromptTests extends TestSuite {
 
   private val dir = Directory.of("/work/api").getOrElse(throw new java.lang.AssertionError())
+  private val repo = Repository.of("grit").getOrElse(throw new java.lang.AssertionError())
+  private val run = Origin.Work(
+    repo,
+    WorkName.of("fix-typo").getOrElse(throw new java.lang.AssertionError())
+  )
 
   private def set(asks: Boolean*): ToolSet =
     ToolSet
@@ -88,6 +93,14 @@ object TurnPromptTests extends TestSuite {
         "You are in a Slack thread that several people read and write in. Where your " +
         "instructions say \"the person\", read the one whose message you are answering. Your " +
         "replies are rendered from Markdown; keep them short."
+    }
+
+    test(
+      "a run of work's edge: in its repository, nobody reads the reply until the run ends, and no question is asked"
+    ) {
+      TurnPrompt.edge(run).text ==>
+        "This is a run of work in the repository grit: nobody reads your reply until the run " +
+        "ends, and nobody can answer a question, so do not ask one."
     }
 
     test(
@@ -213,6 +226,22 @@ object TurnPromptTests extends TestSuite {
     }
 
     test(
+      "reach at a repository says the tools act on this run's working copy of it, never that a person is asked; served with none offered, or unserved, says so"
+    ) {
+      (
+        TurnPrompt.reach(Some(repo.place), TurnPrompt.Serving.Offering(set(false, true))).text,
+        TurnPrompt.reach(Some(repo.place), TurnPrompt.Serving.Offering(ToolSet.Empty)).text,
+        TurnPrompt.reach(Some(repo.place), TurnPrompt.Serving.Unserved).text
+      ) ==> (
+        "Your file and command tools act on this run's working copy of the repository grit.",
+        "The tools of the repository grit are not available in this conversation, so you " +
+          "cannot read or change files there or run commands.",
+        "Nothing is serving the repository grit right now, so you cannot read or change files " +
+          "there or run commands."
+      )
+    }
+
+    test(
       "reached says the tools served at a service the turn reaches run there; with none, nothing"
     ) {
       val elsewhere =
@@ -281,8 +310,16 @@ object TurnPromptTests extends TestSuite {
           .fold(e => throw new java.lang.AssertionError(e), identity),
         "1.0"
       )
-      Vector(TurnPrompt.room(Origin.Slack("T1", "C1", "1.0"), label), TurnPrompt.room(dm, label))
-        .map(f => (f.layer, f.text)) ==> Vector(
+      Vector(
+        TurnPrompt.room(Origin.Slack("T1", "C1", "1.0"), label),
+        TurnPrompt.room(run, label),
+        TurnPrompt.room(dm, label)
+      ).map(f => (f.layer, f.text)) ==> Vector(
+        (
+          Layer.Reach,
+          "This conversation is labelled [level: confidential, in: {trial}]: what is said here " +
+            "may be read only where that label is allowed."
+        ),
         (
           Layer.Reach,
           "This conversation is labelled [level: confidential, in: {trial}]: what is said here " +

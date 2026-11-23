@@ -445,11 +445,13 @@ object TurnOffer {
     linked.exists(s => offering.gate(covering.getOrElse(s, Vector.empty)).nonEmpty)
   }
 
-  /** Where a conversation from `origin` works: a TUI session's directory; else the service the
-    * first of `links` holding its place names ([[WorksIn.of]]); else none.
+  /** Where a conversation from `origin` works: a TUI session's directory; a run of work's
+    * repository ([[Origin.Work]]); else the service the first of `links` holding its place names
+    * ([[WorksIn.of]]); else none.
     */
   def workspaceOf(origin: Origin, links: Vector[WorksIn]): Option[Place] = origin match {
     case Origin.Tui(dir, _) => Some(Place.of(dir))
+    case Origin.Work(repository, _) => Some(repository.place)
     case other => WorksIn.of(links, other.place).map(_.place)
   }
 

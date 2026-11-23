@@ -233,10 +233,13 @@ object TurnPrompt {
   }
 
   /** Who reads a reply from `origin`'s edge, and what it renders: one person in a terminal,
-    * several people in a Slack thread or channel, one person in a direct message, or nobody until a task's
-    * run ends.
+    * several people in a Slack thread or channel, one person in a direct message, or nobody until a
+    * task's run or a run of work ends.
     */
   def edge(origin: Origin): Fragment = {
+    val unread =
+      "nobody reads your reply until the run ends, and nobody can answer a question, so do " +
+        "not ask one."
     val text = origin match {
       case _: Origin.Tui =>
         "You are talking with one person in a terminal. Your replies are rendered from " +
@@ -251,9 +254,9 @@ object TurnPrompt {
         "You are in a Slack channel that several people read and write in. Where your " +
           "instructions say \"the person\", read the one whose message you are answering. " +
           "Your replies are rendered from Markdown; keep them short."
-      case _: Origin.Task | _: Origin.Work =>
-        "This is a triggered task's run: nobody reads your reply until the run ends, and " +
-          "nobody can answer a question, so do not ask one."
+      case _: Origin.Task => s"This is a triggered task's run: $unread"
+      case Origin.Work(repository, _) =>
+        s"This is a run of work in the repository ${repository.name}: $unread"
       case _: Origin.Direct =>
         "You are in a direct message with one person, who alone reads it. Your replies are " +
           "rendered from Markdown; keep them short."
@@ -343,12 +346,13 @@ object TurnPrompt {
 
   /** What a turn may reach in `workspace`, as `serving` says: the tools offered in a
     * directory act on it (and, when some ask first, calling one is how the person is asked); at
-    * a service place, the tools offered run at that service. Said instead: that nothing serves
-    * it, when no edge does; that its tools are not available in this conversation, when one
-    * does and none is offered (the conversation's labels allow none), naming only the directory
-    * or the service; that it has no workspace, when the conversation has none (a place neither
-    * a directory nor a service reads as none). Worded by workspace, never by what serves it,
-    * so another edge serving the same one leaves the prompt the same.
+    * a service place, the tools offered run at that service; at a repository, they act on the
+    * run's working copy of it, and no person is asked. Said instead: that nothing serves it,
+    * when no edge does; that its tools are not available in this conversation, when one does and
+    * none is offered (the conversation's labels allow none), naming only the directory, the
+    * service or the repository; that it has no workspace, when the conversation has none (a
+    * place neither a directory, a service nor a repository reads as none). Worded by workspace,
+    * never by what serves it, so another edge serving the same one leaves the prompt the same.
     */
   def reach(workspace: Option[Place], serving: Serving): Fragment = {
     val tools = serving match {
@@ -356,8 +360,12 @@ object TurnPrompt {
       case Serving.Offering(set) => set
     }
     val served = serving != Serving.Unserved
-    val text = (workspace.flatMap(_.directory), workspace.flatMap(_.service)) match {
-      case (Some(dir), _) if tools.tools.isEmpty =>
+    val text = (
+      workspace.flatMap(_.directory),
+      workspace.flatMap(_.service),
+      workspace.flatMap(_.repository)
+    ) match {
+      case (Some(dir), _, _) if tools.tools.isEmpty =>
         // Served, the conversation's labels allow nothing of it: never said why, which would
         // name a label.
         (if (served)
@@ -365,19 +373,29 @@ object TurnPrompt {
              "conversation, so you "
          else s"Nothing is serving the directory ${Directory.value(dir)} right now, so you ") +
           "cannot read or change files there or run commands."
-      case (Some(dir), _) =>
+      case (Some(dir), _, _) =>
         val asks =
           if (tools.tools.exists(_.asks))
             " Calling one that changes something is how the person is asked to approve it."
           else ""
         s"Your file and command tools act on the directory ${Directory.value(dir)}.$asks"
-      case (None, Some(service)) if tools.tools.isEmpty =>
+      case (None, Some(service), _) if tools.tools.isEmpty =>
         if (served) s"The tools of ${service.name} are not available in this conversation."
         else s"Nothing is serving ${service.name} right now, so its tools are not offered."
-      case (None, Some(service)) =>
+      case (None, Some(service), _) =>
         s"This conversation works in ${service.name}: the tools served there are offered to " +
           s"you, and calling one runs it at ${service.name}."
-      case (None, None) =>
+      case (None, None, Some(repository)) if tools.tools.isEmpty =>
+        (if (served)
+           s"The tools of the repository ${repository.name} are not available in this " +
+             "conversation, so you "
+         else s"Nothing is serving the repository ${repository.name} right now, so you ") +
+          "cannot read or change files there or run commands."
+      // No sentence on asking: nobody answers during a run of work.
+      case (None, None, Some(repository)) =>
+        s"Your file and command tools act on this run's working copy of the repository " +
+          s"${repository.name}."
+      case (None, None, None) =>
         "This conversation has no directory, so you cannot read or change files or run commands."
     }
     Fragment(Layer.Reach, Fragment.Grit, text)

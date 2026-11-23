@@ -25,7 +25,7 @@ import grit.core.identity.{Account, TestAccounts}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.persona.Persona
-import grit.core.place.{Directory, Place, Reaches, Service, WorksIn}
+import grit.core.place.{Directory, Place, Reaches, Repository, Service, WorkName, WorksIn}
 import grit.core.prompt.{Fragment, Layer, SystemPrompt}
 import grit.core.recipe.{ByFocus, Offering, ServiceOffer, Shaping, TurnRecipe}
 import grit.core.speech.Venue
@@ -1105,6 +1105,16 @@ object TurnOfferTests extends TestSuite {
         Vector(WorksIn(Place.Everywhere, github))
       ) ==>
         Some(Place.of(dir))
+    }
+
+    test("a run of work works in its repository, though a link holds its place") {
+      val grit = Repository.of("grit").fold(e => throw new java.lang.AssertionError(e), identity)
+      val work = WorkName.of("fix-typo").fold(e => throw new java.lang.AssertionError(e), identity)
+      TurnOffer.workspaceOf(
+        Origin.Work(grit, work),
+        Vector(WorksIn(Place.Everywhere, github))
+      ) ==>
+        Some(grit.place)
     }
 
     test(
