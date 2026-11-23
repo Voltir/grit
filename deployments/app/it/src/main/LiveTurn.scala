@@ -22,7 +22,7 @@ import grit.dbos.engine.Engine
 import grit.host.checkout.Redaction
 import grit.host.git.WorkingCopies
 import grit.kit.deployment.Offered
-import grit.kit.run.{LocalEdge, LocalTools}
+import grit.kit.run.{LocalEdge, LocalTools, Pushing}
 import grit.lifecycle.close.{Close, CloseEnv, CloseRecords}
 import grit.lifecycle.post.{PostEnv, Posting}
 import grit.lifecycle.settle.{Settle, SettleEnv, SettleRecords}
@@ -112,7 +112,8 @@ object LiveTurn {
       recipe: TurnRecipe = TurnRecipe.Shipped,
       holder: Origin -> Option[ClaimHolder] = _ => None,
       copies: Option[WorkingCopies^] = None,
-      run: Option[WorkName] = None
+      run: Option[WorkName] = None,
+      pushing: Option[Pushing^] = None
   ): Unit =
     launchWith(
       engine,
@@ -126,7 +127,8 @@ object LiveTurn {
       recipe,
       holder,
       copies,
-      run
+      run,
+      pushing
     )
 
   /** As [[launchIn]], every model call made through `models`. */
@@ -142,7 +144,8 @@ object LiveTurn {
       recipe: TurnRecipe,
       holder: Origin -> Option[ClaimHolder] = _ => None,
       copies: Option[WorkingCopies^] = None,
-      run: Option[WorkName] = None
+      run: Option[WorkName] = None,
+      pushing: Option[Pushing^] = None
   ): Unit = {
     // One Mentions weighs a said root before its offer and asks its task questions in route.
     val mentions =
@@ -350,7 +353,14 @@ object LiveTurn {
       case Origin.Tui(directory, _) =>
         LocalEdge.over(
           directory,
-          new LocalTools(offered, Redaction.of(Map.empty), Clock.system(), Fresh.random(), copies),
+          new LocalTools(
+            offered,
+            Redaction.of(Map.empty),
+            Clock.system(),
+            Fresh.random(),
+            copies,
+            pushing
+          ),
           NoInstructions,
           org.slf4j.LoggerFactory.getLogger("grit.edge")
         ) match {
