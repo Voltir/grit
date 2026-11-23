@@ -23,7 +23,7 @@ import grit.core.store.{
 }
 import grit.core.tool.{Hosted, Tool, ToolName, ToolSet, ToolSetId, ToolSets, Toolbox}
 import grit.core.triage.{Corpora, Tags}
-import grit.core.visibility.Classification
+import grit.core.visibility.{Classification, Integrity}
 
 /** What a turn offers its model, as its `offer` step decided (ADR 0016, 0017): the workspace
   * its hosted calls are addressed to, none when its conversation has none
@@ -147,7 +147,9 @@ object TurnOffer {
     * `weighed`'s answers (none when `weighed` is `None` or `Unanswered`,
     * [[grit.core.recipe.Offering.decide]]). A withheld service's tools are left out of the set,
     * `advertised` and `reached`, and what it may reach there or besides is not said; all of it
-    * is in `shaped`, and its edge's instructions are not carried. Its message is dated ([[Zoned]]) in the zone `principals` says its first
+    * is in `shaped`, and its edge's instructions are not carried. A repository workspace's
+    * instructions are carried only where what is said there is believed at member
+    * ([[grit.core.visibility.Visibility.believedAt]]); its tools are offered either way. Its message is dated ([[Zoned]]) in the zone `principals` says its first
     * entry's account is placed in, else in `deployment`, the deployment's
     * ([[grit.core.spend.Budget.zone]]). `TurnFailure.Store` when a store fails, the conversation
     * is gone, or two tools offered share a name. A stored voice this build does not know is the
@@ -247,9 +249,19 @@ object TurnOffer {
       (hostedSet, set) = offered
       _ <- hosting.toolSets.keep(set)
       _ <- if (whole.id == set.id) Right(()) else hosting.toolSets.keep(whole)
-      place <- advert.fold[Either[StoreError, SystemPrompt]](Right(SystemPrompt.of(Vector.empty)))(
-        a => hosting.prompts.prompt(a.instructions)
+      // A system prompt is never stubbed, so a repository's files are taken only where what is
+      // said there is believed at member, as its tools' results are (Visibility.believedAt).
+      believed = workspace.forall(w =>
+        w.repository.isEmpty || Tx
+          .visibility(tx)
+          .believedAt(w, Integrity.Member)
+          .dominates(Integrity.Member)
       )
+      place <- advert
+        .filter(_ => believed)
+        .fold[Either[StoreError, SystemPrompt]](Right(SystemPrompt.of(Vector.empty)))(a =>
+          hosting.prompts.prompt(a.instructions)
+        )
       // Each service the turn takes tools from brings the guidance its edge declared there.
       guidance <- hosting.prompts.prompt(offeredReached.collect {
         case (_, set, instructions) if set.tools.nonEmpty => instructions

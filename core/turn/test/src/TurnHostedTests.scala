@@ -959,6 +959,49 @@ object TurnHostedTests extends TestSuite {
     }
 
     test(
+      "a run is sent its repository's instruction file only where the repository is capped at member, and offered its tools either way"
+    ) {
+      def sent(
+          visibility: grit.core.visibility.Visibility
+      ): (Option[Boolean], Option[Vector[String]]) = {
+        val entries = new InMemoryEntryStore
+        val turn = say(entries, "hello")
+        val durable = new InMemoryDurable(visibility = visibility)
+        val edge = new Served(new InMemoryEdges, durable, _ => Serve.Never, repository.place)
+        val file = Fragment(
+          Layer.Place,
+          "repository:grit/AGENTS.md",
+          "Instructions from AGENTS.md:\n\nBe brief."
+        )
+        edge.advertise(Vector(hostedFetch), Vector(file))
+        val provider = model()
+        durable.run(turn.workflowId)(
+          hostedBody(
+            entries,
+            provider,
+            edge,
+            from = run
+          )
+        )
+        val request = provider.requests.headOption
+        (request.map(_.system.contains("Be brief.")), request.map(_.tools.map(_.name)))
+      }
+      val capped = grit.core.visibility.Visibility
+        .of(
+          grit.core.visibility.Compartments.Shipped,
+          grit.core.visibility.RoomLabels.Public,
+          Vector.empty,
+          Vector.empty,
+          caps = Vector(grit.core.visibility.Cap(repository.place, Integrity.Member))
+        )
+        .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+      (sent(capped), sent(grit.core.visibility.Visibility.Shipped)) ==> (
+        (Some(true), Some(Vector("topic", "fetch"))),
+        (Some(false), Some(Vector("topic", "fetch")))
+      )
+    }
+
+    test(
       "a turn run again is offered the tools its offer step recorded, though its edge now offers others"
     ) {
       val entries = new InMemoryEntryStore
