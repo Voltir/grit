@@ -3,6 +3,7 @@ package grit.turn
 import grit.core.id.{ConversationId, DocumentVersionId, EntrySeq, PieceId, ToolCallId}
 import grit.core.tool.{ToolName, ToolSet}
 import grit.core.visibility.Integrity
+import grit.prose.words.Words
 
 /** One thing a round's request may show the model, by where it is kept: an entry of the
   * turn's own conversation, a nearby one, a document version, a piece of a kept file, or a tool
@@ -207,10 +208,6 @@ object TurnGate {
     }
   }
 
-  /** `tools` as `offered` says each ([[ToolSet.plainly]]): "a", "a or b", "a, b or c". */
   private def actions(tools: Vector[ToolName], offered: ToolSet): String =
-    tools.map(offered.plainly) match {
-      case init :+ last if init.nonEmpty => s"${init.mkString(", ")} or $last"
-      case said => said.mkString
-    }
+    Words.alternatives(tools.map(offered.plainly))
 }
