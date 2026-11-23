@@ -392,6 +392,53 @@ of the same build.
 - *Fix:* re-export by hand: `type Variable = grit.core.secret.Variable` and `val Variable:
   grit.core.secret.Variable.type = grit.core.secret.Variable` (core's `edge` package).
 
+**An `Option` of a capability, mapped, or iterated with `foreach` in a closure.**
+
+- *Symptom:* `Local reach capability copies* leaks into capture scope of method name.` at
+  `copies.map(_.repository)` where `copies: Option[WorkingCopies^]`; for a field,
+  `Local reach capability T.this.copies* leaks into capture scope of class T.` at
+  `copies.foreach(c => …)`; for a parameter `branch: Option[Branch^]` read in a lambda the
+  method returns, `… leaks into capture scope of method later.`
+- *Cause:* the lambda handed to `map` or `foreach` captures the element, whose capture set is
+  the reach capability `copies*`, and that may not outlive the method or class it is local to.
+- *Fix:* a `match` on `Some` and `None` (`LocalTools.repository`), which compiles.
+
+**A `for` that yields a new capability from an `Option`'s.**
+
+- *Symptom:* at `for (p <- pushing) yield p.branch(work)`, with `pushing: Option[Pushing^]`:
+  ``Capability `fresh` outlives its scope: it leaks into outer capture set 's1 which is owned
+  by method branch.``
+- *Cause:* the `yield` is a `map` whose lambda's result holds a capability fresh to each call,
+  which no capture set outside the lambda may name.
+- *Fix:* a `match`, building the result in its `Some` case (`Work.Where.stands`).
+
+**A capability field pattern-extracted from an enum case outside the enum.**
+
+- *Symptom:* returning `copies` from `case Work.Where.Copy(copies, _, _) => Some(copies)` as an
+  `Option[WorkingCopies^{where}]`: ``Note that capability `copies` cannot flow into capture set
+  {where}.``, the field's members shown at `any⁴ … in the result type of method _1`.
+- *Cause:* the extractor's `_1` returns the field at a fresh root, not at the scrutinee's.
+- *Fix:* use the extracted value inside the case, as `Work.Where`'s own methods do; give the
+  enum a method that does what the caller needed, rather than handing the field out.
+
+**A function value that captures the enclosing method's capabilities, typed `=>`.**
+
+- *Symptom:* `val step: Console^ => Either[String, Unit] = console => …` in `Work.run`:
+  `Separation failure: value step's type grit.core.edge.Console^ => Either[String, Unit] hides
+  parameter under. The parameter needs to be annotated with consume to allow this.`; typed
+  `->`, ``Note that capability `clock` cannot flow into capture set {}.``
+- *Cause:* `=>` is `->{any}`, and separation checking will not let a local hide a parameter
+  under `any`; `->` says it captures nothing.
+- *Fix:* name what it captures: `Console^ ->{under, clock, fresh} Either[String, Unit]`.
+
+**`grit/*` inside a Scaladoc comment.** Not a capture-checking trap, but a compile trap of the
+same build.
+
+- *Symptom:* `unclosed comment` at the comment's `/**`.
+- *Cause:* Scala comments nest, so the `/*` in `grit/*` opens a second comment.
+- *Fix:* write `grit/{work}`; backticks do not help, since the lexer reads comments before
+  Scaladoc's markup.
+
 ## Macros
 
 grit's one macro is a type's `literal` (`grit.std.literal.Literal.checked`, called from each
