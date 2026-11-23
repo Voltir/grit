@@ -10,7 +10,7 @@ import grit.core.id.{ClaimHolder, SourceId, TurnRef}
 import grit.core.identity.Account
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{Catalog, ModelSetting, ModelSettings, Pinned}
-import grit.core.place.{Directory, Reaches}
+import grit.core.place.{Directory, Reaches, WorkName}
 import grit.core.provider.{Delta, ModelRequest, Models, Provider, ProviderError}
 import grit.core.recipe.TurnRecipe
 import grit.core.stitch.StitchReads
@@ -20,6 +20,7 @@ import grit.core.triage.Corpora
 import grit.core.visibility.Subject
 import grit.dbos.engine.Engine
 import grit.host.checkout.Redaction
+import grit.host.git.WorkingCopies
 import grit.kit.deployment.Offered
 import grit.kit.run.{LocalEdge, LocalTools}
 import grit.lifecycle.close.{Close, CloseEnv, CloseRecords}
@@ -96,6 +97,8 @@ object LiveTurn {
     * `root`, each gated call waiting `answerWithin` for its answer. The session reaches the services of `reaches`, offered as `recipe`
     * shapes it by the sources of `knowledge`; a message said to grit that the recipe weighs
     * is asked of the stub classifier. Its turns' sessions work as the holder `holder` names.
+    * With `copies` and `run`, the session is that run of `copies`' repository, served by the
+    * same edge in the run's working copy.
     */
   def launchIn(
       engine: Engine^,
@@ -107,7 +110,9 @@ object LiveTurn {
       reaches: Vector[Reaches] = Vector.empty,
       knowledge: Corpora = Corpora.Empty,
       recipe: TurnRecipe = TurnRecipe.Shipped,
-      holder: Origin -> Option[ClaimHolder] = _ => None
+      holder: Origin -> Option[ClaimHolder] = _ => None,
+      copies: Option[WorkingCopies^] = None,
+      run: Option[WorkName] = None
   ): Unit =
     launchWith(
       engine,
@@ -119,7 +124,9 @@ object LiveTurn {
       reaches,
       knowledge,
       recipe,
-      holder
+      holder,
+      copies,
+      run
     )
 
   /** As [[launchIn]], every model call made through `models`. */
@@ -133,7 +140,9 @@ object LiveTurn {
       reaches: Vector[Reaches],
       knowledge: Corpora,
       recipe: TurnRecipe,
-      holder: Origin -> Option[ClaimHolder] = _ => None
+      holder: Origin -> Option[ClaimHolder] = _ => None,
+      copies: Option[WorkingCopies^] = None,
+      run: Option[WorkName] = None
   ): Unit = {
     // One Mentions weighs a said root before its offer and asks its task questions in route.
     val mentions =
@@ -331,14 +340,17 @@ object LiveTurn {
         knowledge = knowledge
       )
     )
-    // This process's edge, serving the checkout as grit's own does.
+    // This process's edge, serving the checkout as grit's own does, and a run's working copy.
     val here = origin(root)
-    session = here
+    session = (copies, run) match {
+      case (Some(kept), Some(work)) => Origin.Work(kept.repository, work)
+      case _ => here
+    }
     here match {
       case Origin.Tui(directory, _) =>
         LocalEdge.over(
           directory,
-          new LocalTools(offered, Redaction.of(Map.empty), Clock.system(), Fresh.random(), None),
+          new LocalTools(offered, Redaction.of(Map.empty), Clock.system(), Fresh.random(), copies),
           NoInstructions,
           org.slf4j.LoggerFactory.getLogger("grit.edge")
         ) match {

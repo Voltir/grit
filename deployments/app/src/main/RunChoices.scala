@@ -136,20 +136,30 @@ private[main] object RunChoices {
 
   private[main] val ToolsVar = "GRIT_TOOLS"
 
-  /** The tools `GRIT_TOOLS` names, `read`, `all` or `allowlist`, for the chat when `chat`, else
-    * for a run with arguments or `grit serve`. Unset is [[Offered.All]] in the chat, where a
-    * person approves each call that changes something, and [[Offered.Read]] elsewhere, where
-    * nobody can; `all` outside the chat is refused. `allowlist` is
-    * [[Offered.ReferenceAllowlist]] anywhere: it asks no one (ADR 0055).
+  /** What the coding tools are chosen for: the chat, a run of work in its working copy
+    * (`grit work --in`), or any other run with arguments and `grit serve`.
+    */
+  private[main] enum ToolsFor { case Chat, Copy, Run }
+
+  /** The tools `GRIT_TOOLS` names, `read`, `all` or `allowlist`, for `chosen`. Unset is
+    * [[Offered.All]] in the chat, where a person approves each call that changes something,
+    * [[Offered.ReferenceAllowlist]] in a run's working copy, which the run is there to change and
+    * where nobody can approve, and [[Offered.Read]] elsewhere; `all` outside the chat is refused.
+    * `allowlist` is [[Offered.ReferenceAllowlist]] anywhere: it asks no one (ADR 0055).
     */
   private[main] def toolChoice(
       env: Map[String, String],
-      chat: Boolean
+      chosen: ToolsFor
   ): Either[String, Offered] =
     env.get(ToolsVar).map(_.trim) match {
-      case None => Right(if (chat) Offered.All else Offered.Read)
+      case None =>
+        Right(chosen match {
+          case ToolsFor.Chat => Offered.All
+          case ToolsFor.Copy => Offered.Allowlisted(Offered.ReferenceAllowlist)
+          case ToolsFor.Run => Offered.Read
+        })
       case Some("read") => Right(Offered.Read)
-      case Some("all") if chat => Right(Offered.All)
+      case Some("all") if chosen == ToolsFor.Chat => Right(Offered.All)
       case Some("all") =>
         Left(s"$ToolsVar=all needs the chat, which answers what a tool asks first")
       case Some("allowlist") => Right(Offered.Allowlisted(Offered.ReferenceAllowlist))

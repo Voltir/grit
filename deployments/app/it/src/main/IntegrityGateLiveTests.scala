@@ -127,7 +127,7 @@ object IntegrityGateLiveTests extends TestSuite {
 
   private def reference =
     Clearances
-      .caps(Map.empty)
+      .caps(Map.empty, Vector.empty)
       .flatMap(Clearances.visibility(Vector.empty, None, Vector.empty, _, Vector.empty))
       .fold(sys.error(_), identity)
 

@@ -165,5 +165,39 @@ object WorkingCopiesTests extends TestSuite {
         )
       }
     }
+
+    test(
+      "a run whose copy is gone and whose branch remains is held again on its branch, its commits there"
+    ) {
+      inRepository { repo =>
+        val copies = over(repo, new SetClock(start))
+        val first = made(copies, "fix-a")
+        Files.writeString(first.resolve("note.txt"), "kept")
+        val _ = git(repo, first, "add", "note.txt")
+        val _ = git(
+          repo,
+          first,
+          "-c",
+          "user.name=grit",
+          "-c",
+          "user.email=grit@example.invalid",
+          "-c",
+          "commit.gpgsign=false",
+          "commit",
+          "--quiet",
+          "-m",
+          "note"
+        )
+        val committed = git(repo, first, "rev-parse", "HEAD").output.text.trim
+        val _ = git(repo, repo.source, "worktree", "remove", "--force", first.toString)
+        copies.held(work("fix-a")) { copy =>
+          (
+            git(repo, copy, "rev-parse", "--abbrev-ref", "HEAD").output.text.trim,
+            git(repo, copy, "rev-parse", "HEAD").output.text.trim,
+            Files.exists(copy.resolve("note.txt"))
+          )
+        } ==> Right(("grit/fix-a", committed, true))
+      }
+    }
   }
 }

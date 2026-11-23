@@ -6,8 +6,9 @@ import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 
 import grit.core.clock.{Clock, Fresh}
-import grit.core.id.{SourceId, WorkflowId}
+import grit.core.id.{Sha256, SourceId, WorkflowId}
 import grit.core.inbox.TurnEnding
+import grit.core.place.{Repository, WorkName}
 import grit.core.store.{TestWentOn, WentOn}
 import grit.host.checkout.{LocalRuns, Redaction}
 import grit.kit.rehearse.{RehearsalRunner, Rehearsed}
@@ -54,9 +55,11 @@ object WorkTests extends TestSuite {
         Work.asked("grit", Vector("--check", "brief.md")),
         Work.asked("grit", Vector("--check", " ", "brief.md"))
       ) ==> (
-        Right(Work.Asked(Path.of("brief.md"), dry = false, None)),
-        Right(Work.Asked(Path.of("brief.md"), dry = true, None)),
-        Right(Work.Asked(Path.of("brief.md"), dry = false, Some(TestWentOn.command("make test")))),
+        Right(Work.Asked(Path.of("brief.md"), dry = false, None, None)),
+        Right(Work.Asked(Path.of("brief.md"), dry = true, None, None)),
+        Right(
+          Work.Asked(Path.of("brief.md"), dry = false, Some(TestWentOn.command("make test")), None)
+        ),
         Left(Work.usage("grit")),
         Left(Work.usage("grit")),
         Left(Work.usage("grit")),
@@ -64,6 +67,53 @@ object WorkTests extends TestSuite {
         Left(Work.usage("grit")),
         Left("the check command is empty")
       )
+    }
+
+    test(
+      "work --in names a repository and --run a run in it, before --check or --dry; --run alone, or a name that is no repository's or run's, is refused"
+    ) {
+      val grit = Repository.of("grit").getOrElse(throw new java.lang.AssertionError())
+      val fix = WorkName.of("fix-a").getOrElse(throw new java.lang.AssertionError())
+      (
+        Work.asked("grit", Vector("--in", "grit", "brief.md")),
+        Work.asked("grit", Vector("--in", "grit", "--run", "fix-a", "--check", "make", "brief.md")),
+        Work.asked("grit", Vector("--in", "grit", "--dry", "brief.md")),
+        Work.asked("grit", Vector("--run", "fix-a", "brief.md")),
+        Work.asked("grit", Vector("--in", "brief.md")),
+        Work.asked("grit", Vector("--in", "my-app", "brief.md")).left.map(_.takeWhile(_ != ':')),
+        Work
+          .asked("grit", Vector("--in", "grit", "--run", "9a", "brief.md"))
+          .left
+          .map(_.takeWhile(_ != ':'))
+      ) ==> (
+        Right(
+          Work.Asked(Path.of("brief.md"), dry = false, None, Some(Work.InRepository(grit, None)))
+        ),
+        Right(
+          Work.Asked(
+            Path.of("brief.md"),
+            dry = false,
+            Some(TestWentOn.command("make")),
+            Some(Work.InRepository(grit, Some(fix)))
+          )
+        ),
+        Right(
+          Work.Asked(Path.of("brief.md"), dry = true, None, Some(Work.InRepository(grit, None)))
+        ),
+        Left(Work.usage("grit")),
+        Left(Work.usage("grit")),
+        Left("--in"),
+        Left("--run")
+      )
+    }
+
+    test(
+      "a text with no --run is the run w and its SHA-256's first 11 hex digits, the same each time"
+    ) {
+      val text = "fix the typo"
+      val hex = Sha256.text(text).hex
+      (WorkName.value(Work.named(text)), Work.named(text) == Work.named(text + " ")) ==>
+        (s"w${hex.take(11)}", false)
     }
 
     test("work's form and refusals name the program it runs under") {
@@ -78,8 +128,8 @@ object WorkTests extends TestSuite {
           Work.text("kalandra", blank)
         ) ==> (
           Left(
-            "kalandra work takes one file: kalandra work [--check '<command>'] <file>, or " +
-              "kalandra work --dry <file>"
+            "kalandra work takes one file: kalandra work [--in <repository> [--run <name>]] " +
+              "[--check '<command>'] <file>, or kalandra work [--in <repository>] --dry <file>"
           ),
           "kalandra work --dry calls no model, so it runs only with no model key set: " +
             "unset ANTHROPIC_API_KEY and OPENROUTER_API_KEY",

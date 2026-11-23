@@ -2,7 +2,7 @@ package grit.app.main
 
 import scala.concurrent.duration.DurationLong
 
-import grit.app.config.PrefsEnv
+import grit.app.config.{PrefsEnv, RepositoriesEnv}
 import grit.assembly.estimate.CharEstimate
 import grit.chat.run.Chat
 import grit.chat.settings.Prefs
@@ -18,7 +18,8 @@ import grit.core.place.Directory
 import grit.core.recipe.TurnRecipe
 import grit.core.store.Origin
 import grit.dbos.engine.{Engine, Link, NotTaken, Unopened}
-import grit.host.checkout.Redaction
+import grit.host.checkout.{LocalProcesses, Redaction}
+import grit.host.git.WorkingCopies
 import grit.host.machine.LocalMachine
 import grit.kit.deployment.{Assembly, Deployment}
 import grit.kit.environment.{DotEnv, Exit, Secrets}
@@ -153,7 +154,7 @@ import Backfills.*
   *     the working directory under `GRIT_SESSION` ([[Kit.find]]); refused when no chat was held
   *     there. It only reads, beside a running grit or none, never starts the engine, and never
   *     creates the conversation.
-  *   - **`work [--check '<command>'] <file>` or `work --dry <file>`: `grit work`**, the file's text said once to grit
+  *   - **`work [--in <repository> [--run <name>]] [--check '<command>'] <file>` or `work --dry <file>`: `grit work`**, the file's text said once to grit
   *     in the directory grit runs in, under `GRIT_SESSION`, with that directory's edge served
   *     as the chat serves it ([[ChatEdges.serving]]): the tools `GRIT_TOOLS` names, as in a run
   *     with arguments, its instruction files, and scout's tools when `GRIT_SCOUT` is set; its
@@ -175,7 +176,17 @@ import Backfills.*
   *     running, or a check, ends with it; a signal leaves either to the next start's sweep in
   *     the directory. With `--dry`, nothing is said and no model is called: it prints the turn's
   *     first model call as a dry rehearsal shows it ([[Work.shown]]), every part whole, over the
-  *     same composition; it is refused while a model key is set, so it cannot spend.
+  *     same composition; it is refused while a model key is set, so it cannot spend. With
+  *     `--in <repository>`, the text is said as a run of work in that repository
+  *     ([[grit.core.store.Origin.Work]]): `--run <name>` names the run, else [[Work.named]] of
+  *     the text, so the same text said again resumes it. The repository is one
+  *     `GRIT_REPOSITORIES` declares (`name=path`, its clone on this machine; [[RepositoriesEnv]]),
+  *     and the run works in its own working copy of the clone, on the branch `grit/<run>` under
+  *     `GRIT_COPIES`, held while it runs; its check runs there. Its tools default to `allowlist`,
+  *     not `read`: the run is there to change its copy and commit, and nobody can approve a
+  *     call. It runs only on an engine this process starts, whose deployment believes the
+  *     repository's files at member ([[Clearances.caps]]). A repository not declared, or a
+  *     clone that is no directory, is refused before anything runs.
   *   - **Other arguments: each is a message**, answered by one turn and printed. Repeat a
   *     message to watch a redelivery come back as the same turn; run again to watch
   *     finished turns replay without calling the model. Nothing here answers a gated call,
@@ -206,7 +217,8 @@ object Main {
         Some(exitOnLeft(backfillTopics(args.drop(2).toVector)))
       else None
     val reported = cacheReported(args.toVector)
-    // `grit work <file>` or `grit work --dry <file>`: one text said in this directory.
+    // `grit work <file>` or `grit work --dry <file>`: one text said in this directory, or with
+    // `--in`, in a run of work in a declared repository's working copy.
     val working: Option[Work.Asked] =
       if (args.headOption.contains("work"))
         Some(exitOnLeft(Work.asked(Program, args.toVector.drop(1))))
@@ -227,7 +239,14 @@ object Main {
     val redaction = Redaction.of(env)
     org.slf4j.LoggerFactory.getLogger("grit.main").info(redaction.described)
 
-    val offered = exitOnLeft(toolChoice(env, chat = tui))
+    val offered = exitOnLeft(
+      toolChoice(
+        env,
+        if (tui) ToolsFor.Chat
+        else if (working.exists(_.in.nonEmpty)) ToolsFor.Copy
+        else ToolsFor.Run
+      )
+    )
     // The chat and `grit work` also serve scout's tools when GRIT_SCOUT names its binary.
     val scoutServer = if (tui || working.nonEmpty) exitOnLeft(ChatEdges.scout(env)) else None
     // `grit serve` also serves GitHub's tools when GITHUB_MCP_TOKEN is set, Slack's
@@ -371,26 +390,77 @@ object Main {
           if (asked.dry && secrets.keys.nonEmpty) exitOnLeft(Left(Work.keyed(Program)))
           val text = exitOnLeft(Work.text(Program, asked.file))
           val cap = exitOnLeft(Work.turns(env))
-          // grit work runs on whichever engine holds the database, this process's or another's.
-          val under =
-            Work.Under(
-              deployment,
-              secrets,
-              origin,
-              root,
-              sys.env,
-              redaction,
-              stubDelay.millis,
-              _ => Right(())
-            )
           // A command the turn left going, or a check, ends with the run; a signal leaves it to
-          // the next start's sweep in this directory.
-          exitOnLeft(
-            ChatEdges
-              .serving(directory, root, offered, scoutServer, redaction, clock, fresh, None) {
-                here => Work.run(asked, text, cap, under, here, clock, fresh, println)
-              }
-          ).swap.toOption
+          // the next start's sweep in this directory, or in the run's working copy.
+          asked.in match {
+            case None =>
+              // grit work runs on whichever engine holds the database, this process's or
+              // another's.
+              val under =
+                Work.Under(
+                  deployment,
+                  secrets,
+                  Work.Where.At(origin, root),
+                  sys.env,
+                  redaction,
+                  stubDelay.millis,
+                  _ => Right(())
+                )
+              exitOnLeft(
+                ChatEdges
+                  .serving(directory, root, offered, scoutServer, redaction, clock, fresh, None) {
+                    here => Work.run(asked, text, cap, under, here, clock, fresh, println)
+                  }
+              ).swap.toOption
+            case Some(in) =>
+              val clone = exitOnLeft(
+                RepositoriesEnv
+                  .declared(env)
+                  .flatMap(RepositoriesEnv.cloneOf(_, in.repository))
+                  .flatMap(RepositoriesEnv.existing)
+              )
+              val copies: WorkingCopies^ = new WorkingCopies(
+                in.repository,
+                clone,
+                exitOnLeft(RepositoriesEnv.copies(env)),
+                new LocalProcesses(clone, sys.env, redaction),
+                clock
+              )
+              val work = in.run.getOrElse(Work.named(text))
+              exitOnLeft(
+                ChatEdges
+                  .serving(
+                    directory,
+                    root,
+                    offered,
+                    scoutServer,
+                    redaction,
+                    clock,
+                    fresh,
+                    Some(copies)
+                  ) { here =>
+                    // Built here, where its copies are: a run in a copy is one of this engine's.
+                    Work.run(
+                      asked,
+                      text,
+                      cap,
+                      Work.Under(
+                        deployment,
+                        secrets,
+                        Work.Where.Copy(copies, work),
+                        sys.env,
+                        redaction,
+                        stubDelay.millis,
+                        RepositoriesEnv.startedHere
+                      ),
+                      here,
+                      clock,
+                      fresh,
+                      println
+                    )
+                  }
+              ).swap.toOption
+          }
         }
       else if (tui) {
         // The lock first, before anything paints (ADR 0015): held, this grit is the engine;

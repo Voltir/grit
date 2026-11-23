@@ -3,7 +3,7 @@ package grit.app.main
 import grit.app.config.Listed.csv
 import grit.core.identity.Account
 import grit.core.model.{Ladder, Policy}
-import grit.core.place.{Place, Service}
+import grit.core.place.{Place, Repository, Service}
 import grit.core.visibility.{
   Cap,
   Cleared,
@@ -58,7 +58,9 @@ private[main] object Clearances {
     * one may, with `parties` cleared. Either way what is said at its places is capped as `caps`
     * declare ([[caps]]), and each of `shared`, a service's place it shares only with the people
     * it names, is invited and labelled internal, so each room within it is unmapped until a
-    * person labels it. A party named twice is refused.
+    * person labels it. Every other room, a declared repository's among them, is public: a
+    * deployment whose rooms are otherwise unmapped must label a repository's place, or every
+    * write a run of work makes there is refused. A party named twice is refused.
     */
   private[main] def visibility(
       admins: Vector[UserId],
@@ -115,11 +117,16 @@ private[main] object Clearances {
   /** The reference deployment's caps (ADR 0036) as `env` declares them: Slack's posting
     * service's results ([[SlackEdge.PostsAt]]) at `Member`, since each is its own edge's account
     * of a post it made; each repository [[GithubMemberReposVar]] names at `Member`; the rest of
-    * GitHub at `Untrusted`, since its token may reach repositories anyone may write in. Any other
-    * service's are `Untrusted`, undeclared, and no room is capped. Why not, naming the variable,
-    * when it names a repository that is not `{owner}/{name}`.
+    * GitHub at `Untrusted`, since its token may reach repositories anyone may write in; and each
+    * of `repositories`, a repository the operator declared ([[grit.app.config.RepositoriesEnv]]), at `Member`,
+    * since its clone is the operator's own: what a run of work reads and says there. Any other
+    * service's are `Untrusted`, undeclared, and no other room is capped. Why not, naming the
+    * variable, when it names a GitHub repository that is not `{owner}/{name}`.
     */
-  private[main] def caps(env: Map[String, String]): Either[String, Vector[Cap]] =
+  private[main] def caps(
+      env: Map[String, String],
+      repositories: Vector[Repository]
+  ): Either[String, Vector[Cap]] =
     for {
       github <- Service.of("github")
       members <- csv(env, GithubMemberReposVar)
@@ -131,7 +138,8 @@ private[main] object Clearances {
     } yield Vector(
       Cap(SlackEdge.PostsAt.place, Integrity.Member),
       Cap(github.place, Integrity.Untrusted)
-    ) ++ members.distinct.map(Cap(_, Integrity.Member))
+    ) ++ members.distinct.map(Cap(_, Integrity.Member)) ++
+      repositories.distinct.map(r => Cap(r.place, Integrity.Member))
 
   /** The reference deployment's clearances (ADR 0031), each at [[Compartments.Shipped]]'s top:
     * every pair `policy` pins that names its upstream ([[Party.of]]; grit's own deployment

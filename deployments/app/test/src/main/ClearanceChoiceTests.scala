@@ -2,7 +2,8 @@ package grit.app.main
 
 import grit.core.edge.Variable
 import grit.core.model.{Policy, Upstream}
-import grit.core.visibility.{Cleared, Compartments, Label, Party}
+import grit.core.place.{Namespace, Place, Repository}
+import grit.core.visibility.{Cleared, Compartments, Integrity, Label, Party}
 import grit.kit.deployment.Offered
 import grit.models.{JevClassifier, OpenRouterConfig, Seed, StubClassifier, StubModels}
 import grit.slack.edge.{Backfill, ReplyNote, SlackCommand, SlackEdge}
@@ -105,6 +106,23 @@ object ClearanceChoiceTests extends TestSuite {
         "GRIT_DREAM_PROVIDER is unset: the dream summary's first model, whose upstream OpenRouter picks, is " +
           "cleared for public rooms alone; naming its one upstream there clears that pair for every label " +
           "(the dream summary follows no other role's variables)"
+      )
+    }
+    test(
+      "a repository the operator declares is believed at member, at its place and its runs'; undeclared, it is untrusted there"
+    ) {
+      val grit = Repository.of("grit").getOrElse(throw new java.lang.AssertionError("grit"))
+      val run = Place.under(Namespace.Repository, Vector("grit", "w1"))
+      def believed(declared: Vector[Repository]) =
+        Clearances
+          .caps(Map.empty, declared)
+          .flatMap(Clearances.visibility(Vector.empty, None, Vector.empty, _, Vector.empty))
+          .map(v =>
+            (v.believedAt(grit.place, Integrity.Member), v.believedAt(run, Integrity.Member))
+          )
+      (believed(Vector(grit)), believed(Vector.empty)) ==> (
+        Right((Integrity.Member, Integrity.Member)),
+        Right((Integrity.Untrusted, Integrity.Untrusted))
       )
     }
   }

@@ -1,6 +1,6 @@
 package grit.app.main
 
-import grit.app.config.{Budgets, Claimed, LifecycleEnv}
+import grit.app.config.{Budgets, Claimed, LifecycleEnv, RepositoriesEnv}
 import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
 import grit.core.edge.{ServedEdge, Variable}
@@ -92,7 +92,8 @@ private[main] object Deploying {
       )
       identities <- Identities.of(trusted, domains).left.map(_.message)
       named <- admins(env)
-      capped <- caps(env)
+      declared <- RepositoriesEnv.declared(env)
+      capped <- caps(env, declared.map(_._1))
       drive <- DriveAt
       // Serving Drive, its place is shared, believed at member, and Drive cleared for the top.
       driving = env.contains(DriveKeyVar)

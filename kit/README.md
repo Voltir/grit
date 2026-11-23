@@ -44,7 +44,8 @@ In dependency order:
   `LocalEdge` is that edge for the checkout the process runs in (ADR 0017): it offers the
   coding tools `LocalTools` runs there (one `LocalRuns` per checkout, closed when the chat
   ends), with the instruction files around it, read again so an
-  edit reaches the next turn without a restart. Only
+  edit reaches the next turn without a restart; given a repository's `WorkingCopies`, it also
+  serves that repository's place, each run of work in its own copy (`grit.host.git`). Only
   `serve` and `catchUp` end what the deployment's identities no longer trust as they start: a
   process running its own chat may be declared with fewer edges, and so trust fewer realms. Every way grit runs launches the same
   workflows, telling the time by the engine's clock, with declared schedules reconciled at
@@ -65,6 +66,8 @@ In dependency order:
   (`LocalEdge.serving`, with whatever it adds), and says through `Work.Under`'s `admit` whether
   a run may go on when another process runs the engine: a turn runs on the engine holding the
   database, so an attached run is offered that engine's deployment's tools, not its own.
+  `Work.Where` says where its text is said and its check runs: at an origin in a directory, or
+  as a run of work in that run's working copy, held while the run goes on.
   ← `deployment`, `environment`, `run`, `rehearse`
 
 No source file sits at the module's root, and the test tree mirrors it.

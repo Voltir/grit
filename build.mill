@@ -834,7 +834,9 @@ object grit extends Module {
         super.moduleDeps ++ Seq[JavaModule](
           grit.dbos.it,
           grit.slack.test,
-          grit.mcp.test
+          grit.mcp.test,
+          // For GitFixture: a run of work's copy is a real git worktree.
+          grit.host.test
         )
       def mvnDeps = Task { super.mvnDeps() ++ Seq(mvn"com.lihaoyi::os-lib:0.11.8") }
       def forkEnv = Task {

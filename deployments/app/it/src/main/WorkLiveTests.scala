@@ -5,13 +5,15 @@ import java.nio.file.{Files, Path}
 
 import scala.collection.mutable
 
+import grit.app.config.RepositoriesEnv
 import grit.core.clock.{Clock, Fresh}
 import grit.core.edge.Console
 import grit.core.place.Directory
 import grit.core.recipe.TurnRecipe
-import grit.core.store.Origin
+import grit.core.store.{Origin, WentOn}
 import grit.dbos.sql.{DbConfig, TestPostgres}
 import grit.host.checkout.{LocalRuns, Redaction}
+import grit.host.git.{GitFixture, WorkingCopies}
 import grit.kit.deployment.{Deployment, Offered}
 import grit.kit.environment.Secrets
 import grit.kit.rehearse.Rehearsed
@@ -138,8 +140,7 @@ object WorkLiveTests extends TestSuite {
       val under = Work.Under(
         deployment,
         secrets,
-        origin,
-        root,
+        Work.Where.At(origin, root),
         Map.empty,
         Redaction.of(Map.empty),
         scala.concurrent.duration.Duration.Zero,
@@ -148,7 +149,7 @@ object WorkLiveTests extends TestSuite {
           case Console.Runner.Elsewhere(_) => Left("refused elsewhere")
         }
       )
-      val asked = Work.Asked(root.resolve("task.md"), dry, None)
+      val asked = Work.Asked(root.resolve("task.md"), dry, None, None)
       var ran: Option[Either[String, Unit]] = None
       var begun: Option[Boolean] = None
       val held = working(root, config, deployment) { console =>
@@ -335,6 +336,76 @@ object WorkLiveTests extends TestSuite {
           }
         }
         system.map(_.contains(ChatEdges.ScoutInstructions)) ==> Some(true)
+      }
+    }
+    test(
+      "a work run in a repository holds its own copy on grit/<run> while it runs, its check runs there, and leaves nothing uncommitted"
+    ) {
+      checkout { root =>
+        GitFixture.inRepository { repo =>
+          val config = TestPostgres.freshDatabase("work_in_copy")
+          val deployment = deployed(root)
+          val secrets =
+            Secrets
+              .of(ServedDeployment.env(config), deployment)
+              .fold(r => sys.error(r.message), identity)
+          val clock = Clock.system()
+          val copies = new WorkingCopies(
+            GitFixture.repository,
+            repo.source,
+            repo.root,
+            repo.processes,
+            clock
+          )
+          val run = GitFixture.work("w1")
+          val check =
+            right(WentOn.Command.of("test \"$(git rev-parse --abbrev-ref HEAD)\" = grit/w1"))
+          val asked = Work.Asked(
+            root.resolve("task.md"),
+            dry = false,
+            Some(check),
+            Some(Work.InRepository(GitFixture.repository, Some(run)))
+          )
+          val printed = mutable.ArrayBuffer.empty[String]
+          val ran = right(
+            ChatEdges.serving(
+              right(Directory.of(root.toString)),
+              root,
+              offered,
+              None,
+              Redaction.of(Map.empty),
+              clock,
+              Fresh.random(),
+              Some(copies)
+            )(here =>
+              Work.run(
+                asked,
+                "say hello",
+                Work.DefaultTurns,
+                Work.Under(
+                  deployment,
+                  secrets,
+                  Work.Where.Copy(copies, run),
+                  sys.env,
+                  Redaction.of(Map.empty),
+                  scala.concurrent.duration.Duration.Zero,
+                  RepositoriesEnv.startedHere
+                ),
+                here,
+                clock,
+                Fresh.random(),
+                printed += _
+              )
+            )
+          )
+          val copy = repo.root.resolve("grit").resolve("w1")
+          (
+            ran,
+            printed.exists(_.contains(s"checking: ${check.text}")),
+            printed.exists(_.contains("check failed")),
+            GitFixture.git(repo, copy, "status", "--porcelain").output.text
+          ) ==> (Right(()), true, false, "")
+        }
       }
     }
   }

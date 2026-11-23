@@ -3,6 +3,7 @@ package grit.app.main
 import grit.chat.look.Look
 import grit.kit.deployment.Offered
 
+import RunChoices.ToolsFor
 import utest.*
 
 /** How many model calls a turn may make (`GRIT_TOOL_ROUNDS`), and how a loop's steps are
@@ -27,11 +28,13 @@ object ToolRoundsTests extends TestSuite {
     }
 
     test(
-      "GRIT_TOOLS: unset is every tool in the chat and the read-only ones in a run; allowlist is the reference allowlist in either"
+      "GRIT_TOOLS: unset is every tool in the chat, the reference allowlist in a run's working copy and the read-only ones in another run; allowlist is the reference allowlist in any"
     ) {
-      RunChoices.toolChoice(Map.empty, chat = true) ==> Right(Offered.All)
-      RunChoices.toolChoice(Map.empty, chat = false) ==> Right(Offered.Read)
-      for (chat <- Seq(true, false)) {
+      RunChoices.toolChoice(Map.empty, ToolsFor.Chat) ==> Right(Offered.All)
+      RunChoices.toolChoice(Map.empty, ToolsFor.Copy) ==>
+        Right(Offered.Allowlisted(Offered.ReferenceAllowlist))
+      RunChoices.toolChoice(Map.empty, ToolsFor.Run) ==> Right(Offered.Read)
+      for (chat <- ToolsFor.values) {
         RunChoices.toolChoice(Map("GRIT_TOOLS" -> "read"), chat) ==> Right(Offered.Read)
         // It asks no one, so a run, and `grit serve`, may offer it (ADR 0055).
         RunChoices.toolChoice(Map("GRIT_TOOLS" -> " allowlist"), chat) ==>
@@ -51,10 +54,11 @@ object ToolRoundsTests extends TestSuite {
         "`scripts/check …` (at least one argument: the suites or modules to check)"
       )
       Offered.ReferenceAllowlist.longest ==> scala.concurrent.duration.Duration(30, "minutes")
-      RunChoices.toolChoice(Map("GRIT_TOOLS" -> " all "), chat = true) ==> Right(Offered.All)
-      // A run has nobody to approve a call that changes something.
-      RunChoices.toolChoice(Map("GRIT_TOOLS" -> "all"), chat = false) ==>
-        Left("GRIT_TOOLS=all needs the chat, which answers what a tool asks first")
+      RunChoices.toolChoice(Map("GRIT_TOOLS" -> " all "), ToolsFor.Chat) ==> Right(Offered.All)
+      // A run has nobody to approve a call that changes something, in its copy or not.
+      for (run <- Seq(ToolsFor.Copy, ToolsFor.Run))
+        RunChoices.toolChoice(Map("GRIT_TOOLS" -> "all"), run) ==>
+          Left("GRIT_TOOLS=all needs the chat, which answers what a tool asks first")
     }
 
     test("a loop's steps show by their family") {

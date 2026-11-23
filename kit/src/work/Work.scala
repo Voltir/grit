@@ -13,14 +13,17 @@ import grit.core.id.{Sha256, SourceId, TurnRef, WorkflowId}
 import grit.core.identity.Account
 import grit.core.inbox.{InboxError, TurnEnding}
 import grit.core.message.Message
+import grit.core.place.{Repository, WorkName}
 import grit.core.store.{Origin, Payload, WentOn}
 import grit.core.visibility.Subject
 import grit.dbos.sql.DbConfig
 import grit.host.checkout.{LocalRuns, LocalShell, Redaction}
+import grit.host.git.WorkingCopies
 import grit.kit.deployment.Deployment
 import grit.kit.environment.Secrets
 import grit.kit.rehearse.{RehearsalRunner, Rehearse, Rehearsed, Situation, StandIns}
 import grit.kit.run.Kit
+import grit.std.either.Proven
 import grit.turn.TurnStream
 
 /** `work`: one text said to a deployment in a directory's session and its turns awaited, or
@@ -29,15 +32,32 @@ import grit.turn.TurnStream
   */
 object Work {
 
-  /** What `grit work` was asked: the file holding its text, whether it is dry, and the
-    * acceptance command `--check` names, when it names one.
+  /** What `grit work` was asked: the file holding its text, whether it is dry, the acceptance
+    * command `--check` names, when it names one, and the run of work `--in` asks for.
     */
-  final case class Asked(file: Path, dry: Boolean, check: Option[WentOn.Command])
+  final case class Asked(
+      file: Path,
+      dry: Boolean,
+      check: Option[WentOn.Command],
+      in: Option[InRepository]
+  )
+
+  /** The run of work `--in` asks for: in `repository`, as the run `--run` names, or, when it
+    * names none, as [[named]] names the text's.
+    */
+  final case class InRepository(repository: Repository, run: Option[WorkName])
+
+  /** The run a text is when `--run` names none: `w` and the first 11 hex digits of its UTF-8
+    * SHA-256, so the same text said again is the same run.
+    */
+  def named(text: String): WorkName =
+    // `w` then 11 lowercase hex digits: a lowercase letter, then 11 of the rule's characters.
+    Proven.right(WorkName.of("w" + Sha256.text(text).hex.take(11)))
 
   /** Why `<program> work`'s arguments are refused: its form, as `program` (`grit`) is run. */
   def usage(program: String): String =
-    s"$program work takes one file: $program work [--check '<command>'] <file>, or " +
-      s"$program work --dry <file>"
+    s"$program work takes one file: $program work [--in <repository> [--run <name>]] " +
+      s"[--check '<command>'] <file>, or $program work [--in <repository>] --dry <file>"
 
   /** Why `<program> work --dry` is refused while a model key is set. */
   def keyed(program: String): String =
@@ -50,20 +70,41 @@ object Work {
       "that is not shown: where it marks the prompt cache (after the system prompt, and on the " +
       "last message the next call repeats) and how it encodes each tool."
 
-  /** `rest`, the arguments after `work` of `program`, as asked: a file, `--check`, a command and
-    * a file, or `--dry` and a file; [[usage]] otherwise, and why a command is not one
-    * ([[WentOn.Command.of]]).
+  /** `rest`, the arguments after `work` of `program`, as asked: a file after `--check` and a
+    * command, or after `--dry`, but not both; either after `--in` and a repository's name, and
+    * that after `--run` and a run's name; [[usage]] otherwise, and why a command, a repository's
+    * name or a run's is not one ([[WentOn.Command.of]], [[Repository.of]], [[WorkName.of]]).
     */
   def asked(program: String, rest: Vector[String]): Either[String, Asked] = {
-    def at(file: String, dry: Boolean, check: Option[WentOn.Command]) =
-      scala.util.Try(Path.of(file)).toOption.map(Asked(_, dry, check)).toRight(usage(program))
-    rest match {
-      case Vector("--dry", file) => at(file, dry = true, None)
-      case Vector("--check", command, file) if !file.startsWith("--") =>
-        WentOn.Command.of(command).flatMap(c => at(file, dry = false, Some(c)))
-      case Vector(file) if !file.startsWith("--") => at(file, dry = false, None)
+    def flag(s: String) = s.startsWith("--")
+    @tailrec
+    def read(
+        left: List[String],
+        dry: Boolean,
+        check: Option[String],
+        in: Option[String],
+        run: Option[String]
+    ): Either[String, Asked] = left match {
+      case "--dry" :: more if !dry => read(more, true, check, in, run)
+      case "--check" :: c :: more if check.isEmpty => read(more, dry, Some(c), in, run)
+      case "--in" :: r :: more if in.isEmpty && !flag(r) => read(more, dry, check, Some(r), run)
+      case "--run" :: n :: more if run.isEmpty && !flag(n) => read(more, dry, check, in, Some(n))
+      case file :: Nil if !flag(file) && !(dry && check.nonEmpty) && (run.isEmpty || in.nonEmpty) =>
+        for {
+          command <- check.fold[Either[String, Option[WentOn.Command]]](Right(None))(c =>
+            WentOn.Command.of(c).map(Some(_))
+          )
+          repository <- in.fold[Either[String, Option[Repository]]](Right(None))(r =>
+            Repository.of(r).map(Some(_)).left.map(why => s"--in: $why")
+          )
+          named <- run.fold[Either[String, Option[WorkName]]](Right(None))(n =>
+            WorkName.of(n).map(Some(_)).left.map(why => s"--run: $why")
+          )
+          at <- scala.util.Try(Path.of(file)).toOption.toRight(usage(program))
+        } yield Asked(at, dry, command, repository.map(InRepository(_, named)))
       case _ => Left(usage(program))
     }
+    read(rest.toList, false, None, None, None)
   }
 
   /** The source a text is said under: `work:` and the lower-case hex of its UTF-8 SHA-256, so
@@ -246,17 +287,42 @@ object Work {
         finally console.close()
     }
 
+  /** Where a work run's text is said and its check runs. */
+  enum Where {
+
+    /** At `origin`, its check in the directory `root`. */
+    case At(origin: Origin, root: Path)
+
+    /** As the run `work` of `copies`' repository ([[Origin.Work]]), its check in that run's
+      * working copy, held for the run ([[WorkingCopies.held]]).
+      */
+    case Copy(copies: WorkingCopies^, work: WorkName)
+
+    /** The origin its text is said at. */
+    def saidAt: Origin = this match {
+      case At(origin, _) => origin
+      case Copy(copies, work) => Origin.Work(copies.repository, work)
+    }
+
+    /** `body` given the directory the check runs in: `root`, or the run's working copy, held
+      * while `body` runs; why not when the copy cannot be held.
+      */
+    def within[A](body: Path => A): Either[HostError, A] = this match {
+      case At(_, root) => Right(body(root))
+      case Copy(copies, work) => copies.held(work)(body)
+    }
+  }
+
   /** What a deployment supplies a work run: the `deployment` run over the database `secrets`
-    * names, the `origin` its text is said at, the directory `root` its check runs in under the
-    * environment `env` with what it shows cleared by `redaction`, how long the stub model, when `secrets` holds no key,
+    * names, `where` its text is said and its check runs, under the environment `env` with what
+    * it shows cleared by `redaction`, how long the stub model, when `secrets` holds no key,
     * waits before it answers (`stubDelay`), and `admit`, whether a run, dry or not, may go on
     * given who runs the database's engine (`Left`: why not).
     */
   final case class Under(
       deployment: Deployment,
       secrets: Secrets,
-      origin: Origin,
-      root: Path,
+      where: Where^,
       env: Map[String, String],
       redaction: Redaction,
       stubDelay: FiniteDuration,
@@ -267,30 +333,34 @@ object Work {
     * ([[Kit.console]]), `here` served first and each model call printed through `print` as it
     * goes and once answered, once `under.admit` allows who runs the engine: dry, the first
     * model call `text` said would make, shown ([[shown]]) and nothing said; otherwise `text` said
-    * and its turns awaited, up to `cap` ([[said]]), `asked.check` run among runs in `under.root`
-    * ([[checked]]). Why not, and then nothing is said: the database cannot be
-    * reached, `under.admit` refuses (the console is never opened, and an engine lock taken here
-    * is held until the process ends), or as [[shown]] and [[said]] say.
+    * and its turns awaited, up to `cap` ([[said]]), `asked.check` run among runs where
+    * `under.where` says ([[checked]]); a run in a working copy holds it while it runs. Why not,
+    * and then nothing is said: the database cannot be reached, `under.admit` refuses (the
+    * console is never opened, and an engine lock taken here is held until the process ends),
+    * the copy cannot be held (as [[HostError.message]] says, [[HostError.NoCopyFree]] among
+    * them), or as [[shown]] and [[said]] say.
     */
   def run(
       asked: Asked,
       text: String,
       cap: Int,
-      under: Under,
+      under: Under^,
       here: Console.Edge^,
       clock: Clock^,
       fresh: Fresh^,
       print: String -> Unit
   ): Either[String, Unit] = {
     // The same composition either way: only the last step differs.
-    val step: Console^ => Either[String, Unit] = console =>
+    val origin = under.where.saidAt
+    def saidIn(console: Console^, root: Path): Either[String, Unit] = {
+      val checks: LocalRuns^ = new LocalRuns(root, under.env, under.redaction, clock, fresh)
+      try said(console, origin, text, cap, asked.check, checks, print)
+      finally checks.close()
+    }
+    val step: Console^ ->{under, clock, fresh} Either[String, Unit] = console =>
       if (asked.dry)
-        shown(under.secrets.database, under.deployment, under.origin, text, clock, print)
-      else {
-        val checks: LocalRuns^ = new LocalRuns(under.root, under.env, under.redaction, clock, fresh)
-        try said(console, under.origin, text, cap, asked.check, checks, print)
-        finally checks.close()
-      }
+        shown(under.secrets.database, under.deployment, origin, text, clock, print)
+      else under.where.within(saidIn(console, _)).left.map(_.message).flatten
     Kit.console(
       under.deployment,
       under.secrets,
