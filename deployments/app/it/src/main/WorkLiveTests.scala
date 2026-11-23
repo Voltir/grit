@@ -98,7 +98,8 @@ object WorkLiveTests extends TestSuite {
         right(ChatEdges.scout(Map(ChatEdges.ScoutVar -> root.resolve("scout").toString))),
         Redaction.of(Map.empty),
         clock,
-        Fresh.random()
+        Fresh.random(),
+        None
       ) { here =>
         Kit.console(
           deployment,
@@ -159,7 +160,8 @@ object WorkLiveTests extends TestSuite {
             None,
             Redaction.of(Map.empty),
             clock,
-            Fresh.random()
+            Fresh.random(),
+            None
           )(here =>
             Work.run(
               asked,

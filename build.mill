@@ -785,7 +785,8 @@ object grit extends Module {
       )
 
     object test extends GritTests {
-      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
+      // grit.host.test for its GitFixture: a run's working copy is a real git worktree.
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test, grit.host.test)
     }
 
     /* What a deployment outside `grit` may name: the boundary private[grit] draws. */

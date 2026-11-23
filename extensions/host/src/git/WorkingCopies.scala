@@ -21,7 +21,7 @@ import grit.host.checkout.LocalTree
   * kept, and so is every directory there without its lock.
   */
 final class WorkingCopies(
-    repository: Repository,
+    val repository: Repository,
     clone: Path,
     root: Path,
     processes: Processes^,

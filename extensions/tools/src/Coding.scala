@@ -44,8 +44,9 @@ import grit.prose.words.Words
   * tool's description is all the model is told of it, so it states the tool's limits and
   * every failure the model can see. `write`, `edit` and `run` ask a person first in [[all]], and
   * nobody in [[allowlisted]] (ADR 0055), where `stop` joins them; either way they are bound only
-  * to a call stamped at [[Integrity.Member]] or above. Every tool's results are believed at [[Integrity.Member]]:
-  * the checkout is its operator's own.
+  * to a call stamped at [[Integrity.Member]] or above. Every tool's results are believed at
+  * [[Integrity.Member]], met at a repository's place with what its deployment caps it at
+  * ([[grit.core.visibility.Visibility.believedAt]]).
   */
 object Coding {
 

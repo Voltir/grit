@@ -5,25 +5,39 @@ import java.nio.file.Path
 import grit.core.clock.{Clock, Fresh}
 import grit.core.edge.{Route, ToolRequest}
 import grit.core.host.Allowlisted
-import grit.core.place.Directory
+import grit.core.place.{Directory, Repository}
 import grit.core.tool.{Outcome, SetRefusal, ToolSet}
 import grit.edge.desk.{Run, Tools}
 import grit.host.checkout.{LocalEdits, LocalRuns, LocalShell, LocalWorkspace, Redaction}
+import grit.host.git.WorkingCopies
 import grit.kit.deployment.Offered
 import grit.tools.Coding
 
 /** The coding tools this process's edge runs a request with, over the directory it was routed
-  * to (a request routed to a service is `Failed`, and nothing runs): those `offered` hosts
+  * to, or for a repository route in the working copy `copies` keeps for its run (a request
+  * routed to a service, or to a repository `copies` does not keep, is `Failed`, and nothing
+  * runs; so is one whose copy cannot be opened, with why): those `offered` hosts
   * ([[Offered.hosted]]), an allowlisted `run` starting only what its allowlist permits. A command
   * sees the process's own environment, not `.env`'s; what a tool shows is cleared by
   * `redaction`, the deployment's one. A command an allowlisted `run` left going is one of its
   * directory's runs, which every later request routed there reaches, whichever conversation
   * sent it, until [[close]].
   */
-final class LocalTools(offered: Offered, redaction: Redaction, clock: Clock^, fresh: Fresh^)
-    extends Tools
+final class LocalTools(
+    offered: Offered,
+    redaction: Redaction,
+    clock: Clock^,
+    fresh: Fresh^,
+    copies: Option[WorkingCopies^]
+) extends Tools
     with AutoCloseable
     with caps.SharedCapability {
+
+  /** The repository whose runs these tools serve, each in its working copy. */
+  def repository: Option[Repository] = copies match {
+    case Some(c) => Some(c.repository)
+    case None => None
+  }
 
   /** Each directory's runs, made by its first allowlisted request. Only ever read or changed
     * under this object's lock.
@@ -44,10 +58,18 @@ final class LocalTools(offered: Offered, redaction: Redaction, clock: Clock^, fr
       Outcome.Failed(
         s"The coding tools act on a directory, not ${service.place.written}; nothing ran."
       )
-    case Route.Repository(repository, _) =>
-      Outcome.Failed(
-        s"This edge keeps no working copy of ${repository.place.written}; nothing ran."
-      )
+    case Route.Repository(repository, work) =>
+      copies match {
+        case Some(kept) if kept.repository == repository =>
+          // The run's driver holds its copy (WorkingCopies.held); opened gives the same one.
+          kept
+            .opened(work)
+            .fold(e => Outcome.Failed(s"${e.message} Nothing ran."), over(_, request))
+        case _ =>
+          Outcome.Failed(
+            s"This edge keeps no working copy of ${repository.place.written}; nothing ran."
+          )
+      }
   }
 
   private def over(root: Path, request: ToolRequest): Outcome = {

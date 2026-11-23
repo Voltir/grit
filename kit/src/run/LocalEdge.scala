@@ -12,6 +12,7 @@ import grit.core.prompt.Fragment
 import grit.core.tool.{SetRefusal, ToolSet}
 import grit.edge.desk.{PlaceFragments, Server, Tools}
 import grit.host.checkout.{LocalInstructions, Redaction}
+import grit.host.git.WorkingCopies
 import grit.kit.deployment.Offered
 
 /** The edge a process serves for its own checkout (ADR 0017). */
@@ -27,8 +28,10 @@ object LocalEdge {
     * files are read again every [[AdvertEvery]] until the process ends, and advertised when
     * they changed, so an edit reaches the next turn without a restart. A registration or an
     * advert that fails is logged to `log` as a warning, and turns are then served by no edge
-    * here; what the server says of a run, as information. `Left` names a tool `tools` cannot offer
-    * with the others.
+    * here; what the server says of a run, as information. When `tools` serve a repository's runs
+    * ([[LocalTools.repository]]), the edge registers that repository's place too and offers the
+    * same tools there, with no instruction files. `Left` names a tool `tools` cannot offer with
+    * the others.
     */
   def over(
       directory: Directory,
@@ -39,16 +42,27 @@ object LocalEdge {
     tools.hosted match {
       case Left(twice) => Left(twice)
       case Right(hosted) =>
+        val repository = tools.repository.map(_.place)
         val edge: Console.Edge^ = desks =>
-          serve(desks, Place.of(directory), hosted, instructions, tools, log.warn(_), log.info(_))
+          serve(
+            desks,
+            Place.of(directory),
+            repository,
+            hosted,
+            instructions,
+            tools,
+            log.warn(_),
+            log.info(_)
+          )
         Right(edge)
     }
 
   /** `use` given the edge this process serves for `directory` ([[over]]): the coding tools
-    * `offered` names, run there ([[LocalTools]]) with what they show cleared by `redaction`,
-    * and the instruction files around it as this machine reads them; the tools closed once
-    * `use` returns or throws, which ends any command they left running. Why not, before `use`
-    * runs: a tool `offered` names cannot be offered with the others.
+    * `offered` names, run there ([[LocalTools]]), and for each run of `copies`' repository in
+    * its working copy, with what they show cleared by `redaction`, and the instruction files
+    * around the directory as this machine reads them; the tools closed once `use` returns or
+    * throws, which ends any command they left running. Why not, before `use` runs: a tool
+    * `offered` names cannot be offered with the others.
     */
   def serving[A](
       directory: Directory,
@@ -56,9 +70,10 @@ object LocalEdge {
       redaction: Redaction,
       clock: Clock^,
       fresh: Fresh^,
+      copies: Option[WorkingCopies^],
       log: org.slf4j.Logger
   )(use: Console.Edge^ => A): Either[String, A] = {
-    val tools = new LocalTools(offered, redaction, clock, fresh)
+    val tools = new LocalTools(offered, redaction, clock, fresh, copies)
     try
       over(directory, tools, new LocalInstructions(), log) match {
         case Left(refused) => Left(refused.refusing("the coding tools"))
@@ -70,6 +85,7 @@ object LocalEdge {
   private def serve(
       desks: Desks^,
       place: Place,
+      repository: Option[Place],
       hosted: ToolSet,
       instructions: Instructions^,
       tools: Tools^,
@@ -80,13 +96,21 @@ object LocalEdge {
       place.directory.fold(Vector.empty)(dir =>
         PlaceFragments.of(instructions.around(dir), CharEstimate)
       )
-    desks.register(PrincipalId.Local, Set(place)) match {
+    desks.register(PrincipalId.Local, Set(place) ++ repository) match {
       case Left(e) => warn(s"this edge could not register: ${e.why}")
       case Right(desk) =>
         desk
           .advertise(place, hosted, first)
           .left
           .foreach(e => warn(s"not advertised: ${e.why}"))
+        // A fragment names its file by its path on this machine, which no stored advert of a
+        // repository's place may hold: its runs are told no instruction files yet.
+        repository.foreach(at =>
+          desk
+            .advertise(at, hosted, Vector.empty)
+            .left
+            .foreach(e => warn(s"not advertised: ${e.why}"))
+        )
         place.directory.foreach { dir =>
           val _ = Thread.ofVirtual().name("grit-advert").start { () =>
             var sent: Vector[Fragment] = first

@@ -9,9 +9,11 @@ import grit.core.clock.{Clock, Fresh}
 import grit.core.edge.{Edges, Permit, Registration, ToolRequest}
 import grit.core.host.{Allowlist, Argv, HostError}
 import grit.core.id.{CallSlot, ConversationId, EdgeId, PrincipalId, TurnRef, TurnSeq}
-import grit.core.place.{Directory, Place}
+import grit.core.place.{Directory, Place, Repository, WorkName}
+import grit.core.store.Origin
 import grit.core.tool.{CallError, Outcome, Retry, ToolName}
 import grit.host.checkout.Redaction
+import grit.host.git.{GitFixture, WorkingCopies}
 import grit.kit.deployment.Offered
 
 import utest.*
@@ -23,8 +25,11 @@ object LocalToolsTests extends TestSuite {
     e.fold(why => throw new java.lang.AssertionError(why), identity)
 
   /** Tools offering `offered`, given to `body`, closed after. */
-  private def offering[A](offered: Offered)(body: LocalTools^ => A): A = {
-    val tools = new LocalTools(offered, Redaction.of(Map.empty), Clock.system(), Fresh.random())
+  private def offering[A](offered: Offered, copies: Option[WorkingCopies^] = None)(
+      body: LocalTools^ => A
+  ): A = {
+    val tools =
+      new LocalTools(offered, Redaction.of(Map.empty), Clock.system(), Fresh.random(), copies)
     try body(tools)
     finally tools.close()
   }
@@ -69,6 +74,47 @@ object LocalToolsTests extends TestSuite {
       .fold(r => throw new java.lang.AssertionError(r.toString), identity)
     tools.run(route, q, _ => ())
   }
+
+  /** `tool` called with `arguments` by `tools` at `repository`'s place, from a conversation of
+    * the run `run` of `of`, its request's destination its workspace.
+    */
+  private def inRun(
+      tools: LocalTools^,
+      repository: Repository,
+      of: Repository,
+      run: WorkName,
+      tool: String,
+      arguments: ujson.Value
+  ): Outcome = {
+    val turn = TurnRef(ConversationId("c"), TurnSeq.First)
+    val q = ToolRequest(
+      CallSlot.of(turn, 0, 0).getOrElse(throw new java.lang.AssertionError()),
+      ToolRequest.Protocol,
+      turn.conversationId,
+      repository.place,
+      PrincipalId.Local,
+      right(ToolName.of(tool)),
+      Permit.Free,
+      Retry.Interrupt,
+      arguments,
+      Set.empty,
+      Some(repository.place)
+    )
+    val route = Edges
+      .authorize(
+        q,
+        Registration(EdgeId("e"), PrincipalId.Local, Set(q.workspace)),
+        Some(Origin.Work(of, run))
+      )
+      .fold(r => throw new java.lang.AssertionError(r.toString), identity)
+    tools.run(route, q, _ => ())
+  }
+
+  /** The coding tools' writes and runs, asking no one. */
+  private val writing = Offered.Allowlisted(Offered.ReferenceAllowlist)
+
+  private def made(text: String): ujson.Value =
+    ujson.Obj("path" -> "made.txt", "content" -> text)
 
   val tests = Tests {
     test("a run's id reaches tail in a later request to the same checkout") {
@@ -149,6 +195,103 @@ object LocalToolsTests extends TestSuite {
         "made\n",
         false
       )
+    }
+
+    test(
+      "a repository's request runs in its run's working copy, and the clone is left as it was"
+    ) {
+      GitFixture.inRepository { repo =>
+        val copies = new WorkingCopies(
+          GitFixture.repository,
+          repo.source,
+          repo.root,
+          repo.processes,
+          Clock.system()
+        )
+        val w1 = GitFixture.work("w1")
+        offering(writing, Some(copies)) { tools =>
+          right(
+            copies
+              .held(w1) { copy =>
+                (
+                  inRun(
+                    tools,
+                    GitFixture.repository,
+                    GitFixture.repository,
+                    w1,
+                    "write",
+                    made("a\n")
+                  ),
+                  Some(copy.resolve("made.txt")).filter(Files.exists(_)).map(Files.readString),
+                  Files.exists(repo.source.resolve("made.txt"))
+                )
+              }
+              .left
+              .map(_.message)
+          )
+        } ==> (Outcome.Done("Wrote made.txt: 1 line."), Some("a\n"), false)
+      }
+    }
+
+    test("a request of one run never lands in another run's copy") {
+      GitFixture.inRepository { repo =>
+        val copies = new WorkingCopies(
+          GitFixture.repository,
+          repo.source,
+          repo.root,
+          repo.processes,
+          Clock.system()
+        )
+        val (w1, w2) = (GitFixture.work("w1"), GitFixture.work("w2"))
+        offering(writing, Some(copies)) { tools =>
+          right(
+            copies
+              .held(w1) { one =>
+                right(
+                  copies
+                    .held(w2) { two =>
+                      val _ = inRun(
+                        tools,
+                        GitFixture.repository,
+                        GitFixture.repository,
+                        w1,
+                        "write",
+                        made("one\n")
+                      )
+                      (
+                        Some(one.resolve("made.txt")).filter(Files.exists(_)).map(Files.readString),
+                        Files.exists(two.resolve("made.txt"))
+                      )
+                    }
+                    .left
+                    .map(_.message)
+                )
+              }
+              .left
+              .map(_.message)
+          )
+        } ==> (Some("one\n"), false)
+      }
+    }
+
+    test(
+      "a request for a repository whose copies these tools do not keep fails, and nothing runs"
+    ) {
+      GitFixture.inRepository { repo =>
+        val copies = new WorkingCopies(
+          GitFixture.repository,
+          repo.source,
+          repo.root,
+          repo.processes,
+          Clock.system()
+        )
+        val other = right(Repository.of("other"))
+        val w1 = GitFixture.work("w1")
+        offering(writing, Some(copies)) { tools =>
+          inRun(tools, other, other, w1, "write", made("a\n"))
+        } ==> Outcome.Failed("This edge keeps no working copy of repository:other; nothing ran.")
+        Files.exists(repo.root.resolve("other")) ==> false
+      }
     }
   }
 }

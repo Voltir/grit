@@ -338,7 +338,7 @@ object LiveTurn {
       case Origin.Tui(directory, _) =>
         LocalEdge.over(
           directory,
-          new LocalTools(offered, Redaction.of(Map.empty), Clock.system(), Fresh.random()),
+          new LocalTools(offered, Redaction.of(Map.empty), Clock.system(), Fresh.random(), None),
           NoInstructions,
           org.slf4j.LoggerFactory.getLogger("grit.edge")
         ) match {

@@ -386,9 +386,10 @@ object Main {
           // A command the turn left going, or a check, ends with the run; a signal leaves it to
           // the next start's sweep in this directory.
           exitOnLeft(
-            ChatEdges.serving(directory, root, offered, scoutServer, redaction, clock, fresh) {
-              here => Work.run(asked, text, cap, under, here, clock, fresh, println)
-            }
+            ChatEdges
+              .serving(directory, root, offered, scoutServer, redaction, clock, fresh, None) {
+                here => Work.run(asked, text, cap, under, here, clock, fresh, println)
+              }
           ).swap.toOption
         }
       else if (tui) {
@@ -397,7 +398,7 @@ object Main {
         // A command a run left going ends with the chat; a signal leaves it to the next start's
         // sweep in its checkout.
         exitOnLeft(
-          ChatEdges.serving(directory, root, offered, scoutServer, redaction, clock, fresh) {
+          ChatEdges.serving(directory, root, offered, scoutServer, redaction, clock, fresh, None) {
             here =>
               val opener = Kit.console(deployment, secrets, stubDelay.millis, clock, here) match {
                 case Right(found) => found
