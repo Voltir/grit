@@ -21,7 +21,7 @@ private[dbos] object SqlRooms {
           asker <- Opener.asker(origin, None)
         } yield asker.fold(Label.Public)(Tx.clearanceOf)
       case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Room(_, _) | Origin.Thread(_, _, _) |
-          Origin.Task(_, _) =>
+          Origin.Task(_, _) | Origin.Work(_, _) =>
         Right(Tx.roomLabel(origin.room))
     }
 }

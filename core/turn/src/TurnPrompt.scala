@@ -197,7 +197,8 @@ object TurnPrompt {
       case _: Origin.Direct =>
         s"This is a direct message, labelled $shown at its person's clearance: what is " +
           "said here is read only in this direct message."
-      case _: Origin.Tui | _: Origin.Slack | _: Origin.Room | _: Origin.Thread | _: Origin.Task =>
+      case _: Origin.Tui | _: Origin.Slack | _: Origin.Room | _: Origin.Thread | _: Origin.Task |
+          _: Origin.Work =>
         s"This conversation is labelled $shown: what is said here may be read only where " +
           "that label is allowed."
     }
@@ -250,7 +251,7 @@ object TurnPrompt {
         "You are in a Slack channel that several people read and write in. Where your " +
           "instructions say \"the person\", read the one whose message you are answering. " +
           "Your replies are rendered from Markdown; keep them short."
-      case _: Origin.Task =>
+      case _: Origin.Task | _: Origin.Work =>
         "This is a triggered task's run: nobody reads your reply until the run ends, and " +
           "nobody can answer a question, so do not ask one."
       case _: Origin.Direct =>

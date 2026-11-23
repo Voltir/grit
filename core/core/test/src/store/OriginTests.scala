@@ -1,8 +1,8 @@
 package grit.core.store
 
 import grit.core.id.EdgeName
-import grit.core.identity.TestAccounts
-import grit.core.place.Directory
+import grit.core.identity.{Account, Principal, TestAccounts}
+import grit.core.place.{Directory, Repository, WorkName}
 
 import utest.*
 
@@ -76,6 +76,39 @@ object OriginTests extends TestSuite {
       val error =
         assertCompileError("Origin.Direct(grit.core.identity.Account.Local, \"1712.3\")")
       assert(error.msg.contains("Sourced"))
+    }
+
+    test(
+      "a run of work's room is its repository, the run below it; it comes by the console's edge, its messages are for nobody, and its asker is its first entry's author"
+    ) {
+      val run = Origin.Work(
+        Repository.of("grit").getOrElse(throw new java.lang.AssertionError()),
+        WorkName.of("fix-typo").getOrElse(throw new java.lang.AssertionError())
+      )
+      (
+        run.room.written,
+        run.place.written,
+        run.edge,
+        run.audience,
+        run.focus(Position.Opening),
+        run.stitchable,
+        run.rolls,
+        run.asking,
+        run.topLevel
+      ) ==> (
+        "repository:grit",
+        "repository:grit/fix-typo",
+        EdgeName.Tui,
+        Audience.Nobody,
+        Focus.Focused,
+        false,
+        false,
+        None,
+        None
+      )
+      val nobody: Account.Sourced => Either[StoreError, Option[Principal]] = _ => Right(None)
+      Vector(None, Some(None)).map(run.asker(_)(nobody)) ==>
+        Vector(Right(None), Right(Some(Principal.Grit)))
     }
 
     test("only a TUI session is held with the operator") {

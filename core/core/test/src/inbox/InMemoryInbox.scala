@@ -188,7 +188,7 @@ final class InMemoryInbox(
     case Origin.Direct(account, _) =>
       Tx.clearanceOf(person(account))(using inForce)
     case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Room(_, _) | Origin.Thread(_, _, _) |
-        Origin.Task(_, _) =>
+        Origin.Task(_, _) | Origin.Work(_, _) =>
       Tx.roomLabel(origin.room)(using inForce)
   }
 
@@ -354,7 +354,7 @@ final class InMemoryInbox(
     case d @ Origin.Direct(_, _) =>
       known.filter(c => !labelOf(origin).dominates(c.label)).map(_ => InboxError.Sealed(d))
     case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Room(_, _) | Origin.Thread(_, _, _) |
-        Origin.Task(_, _) =>
+        Origin.Task(_, _) | Origin.Work(_, _) =>
       None
   }
 

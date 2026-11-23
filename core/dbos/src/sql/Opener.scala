@@ -93,7 +93,7 @@ private[dbos] final class Opener(visibility: Visibility) {
           n.origin match {
             case Origin.Direct(_, _) => direct(n)
             case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Room(_, _) |
-                Origin.Thread(_, _, _) | Origin.Task(_, _) =>
+                Origin.Thread(_, _, _) | Origin.Task(_, _) | Origin.Work(_, _) =>
               Right(Clearance.inRoom(n.origin.room, n.label, n.label))
           }
         })
@@ -103,7 +103,7 @@ private[dbos] final class Opener(visibility: Visibility) {
             n.origin match {
               case Origin.Direct(_, _) => direct(n)
               case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Room(_, _) |
-                  Origin.Thread(_, _, _) | Origin.Task(_, _) =>
+                  Origin.Thread(_, _, _) | Origin.Task(_, _) | Origin.Work(_, _) =>
                 Opener
                   .asker(n.origin, n.first)
                   .map(asker =>

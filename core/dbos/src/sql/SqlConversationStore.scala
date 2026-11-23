@@ -6,7 +6,7 @@ import scala.util.Using
 
 import grit.core.id.{CallSlot, ConversationId}
 import grit.core.identity.Account
-import grit.core.place.Directory
+import grit.core.place.{Directory, Repository, WorkName}
 import grit.core.store.{Conversation, ConversationStore, Origin, StoreError, Tx}
 import grit.core.visibility.Label
 
@@ -193,6 +193,8 @@ private[dbos] object SqlConversationStore {
       ujson.Obj("kind" -> "task", "name" -> name, "run" -> run)
     case Origin.Direct(account, thread) =>
       ujson.Obj("kind" -> "direct", "account" -> Account.written(account), "thread" -> thread)
+    case Origin.Work(repository, work) =>
+      ujson.Obj("kind" -> "work", "repository" -> repository.name, "work" -> WorkName.value(work))
   }
 
   /** The origin stored as `v` ([[originJson]]'s form), or why it is none. */
@@ -232,6 +234,11 @@ private[dbos] object SqlConversationStore {
               .toRight(s"a direct message is with an account a source names: $written")
             thread <- str(o, "thread")
           } yield Origin.Direct(account, thread)
+        case "work" =>
+          for {
+            repository <- str(o, "repository").flatMap(Repository.of)
+            work <- str(o, "work").flatMap(WorkName.of)
+          } yield Origin.Work(repository, work)
         case other => Left(s"unknown origin kind: $other")
       }
     } yield origin

@@ -1,7 +1,7 @@
 package grit.dbos.sql
 
 import grit.core.identity.Account
-import grit.core.place.Directory
+import grit.core.place.{Directory, Repository, WorkName}
 import grit.core.store.Origin
 
 import utest.*
@@ -14,6 +14,11 @@ object OriginJsonTests extends TestSuite {
 
   private val person: Account.Sourced =
     Account.of("slack", "T1/U1").fold(e => sys.error(e), identity)
+
+  private val run = Origin.Work(
+    Repository.of("grit").fold(e => sys.error(e), identity),
+    WorkName.of("fix-typo").fold(e => sys.error(e), identity)
+  )
 
   val tests = Tests {
     test("tui") {
@@ -51,6 +56,11 @@ object OriginJsonTests extends TestSuite {
         ujson.Obj("kind" -> "task", "name" -> "e2e", "run" -> "2026-09-23")
     }
 
+    test("work") {
+      SqlConversationStore.originJson(run) ==>
+        ujson.Obj("kind" -> "work", "repository" -> "grit", "work" -> "fix-typo")
+    }
+
     test("direct") {
       SqlConversationStore.originJson(Origin.Direct(person, "1.2")) ==>
         ujson.Obj("kind" -> "direct", "account" -> "slack:T1/U1", "thread" -> "1.2")
@@ -70,12 +80,16 @@ object OriginJsonTests extends TestSuite {
           Origin.Room("T1", "C1"),
           Origin.Thread("T1", "C1", "1.2"),
           Origin.Task("e2e", "r"),
-          Origin.Direct(person, "1.2")
+          Origin.Direct(person, "1.2"),
+          run
         )
       origins.map(o => SqlConversationStore.readOrigin(SqlConversationStore.originJson(o))) ==>
         origins.map(Right(_))
       SqlConversationStore.readOrigin(ujson.Obj("kind" -> "email", "to" -> "x")) ==>
         Left("unknown origin kind: email")
+      SqlConversationStore.readOrigin(
+        ujson.Obj("kind" -> "work", "repository" -> "grit", "work" -> "Fix")
+      ) ==> Left("a run of work's name holds 'F', not a lowercase letter, a digit or '-': Fix")
       SqlConversationStore.readOrigin(ujson.Obj("kind" -> "tui", "directory" -> "/home/nick")) ==>
         Left("missing field: session")
       SqlConversationStore.readOrigin(

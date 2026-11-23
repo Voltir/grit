@@ -40,14 +40,15 @@ object Administration {
 
   /** The account a turn of `origin`'s conversation is asked through, `first` the account that
     * wrote its first entry when that entry is inbound: in a direct message, its person's own,
-    * whoever wrote it; in a task's run, none; otherwise `first`. [[grit.core.store.Askers.of]]'s
+    * whoever wrote it; in a task's run, none; otherwise (a run of work among them) `first`. [[grit.core.store.Askers.of]]'s
     * rule, by account, which [[Administration.runFor]] runs as.
     */
   private[grit] def askedThrough(origin: Origin, first: Option[Account]): Option[Account] =
     origin match {
       case Origin.Direct(account, _) => Some(account)
       case Origin.Task(_, _) => None
-      case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Room(_, _) | Origin.Thread(_, _, _) =>
+      case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Room(_, _) | Origin.Thread(_, _, _) |
+          Origin.Work(_, _) =>
         first
     }
 

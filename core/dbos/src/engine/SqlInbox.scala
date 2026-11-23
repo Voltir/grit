@@ -591,7 +591,7 @@ private[dbos] object SqlInbox {
     origin match {
       case Origin.Direct(_, _) => Left(InboxError.Invalid(why))
       case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Room(_, _) | Origin.Thread(_, _, _) |
-          Origin.Task(_, _) =>
+          Origin.Task(_, _) | Origin.Work(_, _) =>
         Right(())
     }
 

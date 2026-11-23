@@ -214,6 +214,7 @@ object Digest {
     case Origin.Room(_, channel) => s"slack #$channel"
     case Origin.Thread(_, channel, _) => s"slack #$channel"
     case Origin.Task(name, _) => s"task $name"
+    case Origin.Work(repository, _) => s"repository ${repository.name}"
     case Origin.Direct(_, _) => "a direct message"
   }
 

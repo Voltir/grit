@@ -7,7 +7,9 @@ object EdgeName {
   def apply(value: String): EdgeName = value
   def value(name: EdgeName): String = name
 
-  /** The terminal's: a TUI session's messages arrive through it. */
+  /** The terminal's: a TUI session's messages arrive through it, and a run of work's, said and
+    * awaited by its driver at the terminal.
+    */
   val Tui: EdgeName = "tui"
 
   /** Slack's: a Slack thread's messages arrive through it, and it posts their replies. */
