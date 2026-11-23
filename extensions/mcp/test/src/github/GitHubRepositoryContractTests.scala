@@ -1,7 +1,6 @@
 package grit.mcp.github
-import grit.core.host.{RemoteRepository, RemoteRepositoryContract}
 
-import utest.*
+import grit.core.host.{RemoteRepository, RemoteRepositoryContract}
 
 /** [[RemoteRepositoryContract]] over [[GitHubRepository]] and [[FakeGitHubServer]]. */
 object GitHubRepositoryContractTests extends RemoteRepositoryContract {

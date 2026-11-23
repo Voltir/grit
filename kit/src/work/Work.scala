@@ -165,7 +165,8 @@ object Work {
     * when it did. A turn that answered goes on only below `cap`, for a reason other than
     * `last`'s: when its check failed, or when its check passed with its branch unpushed or no
     * pull request opened. With its pull request open or merged, it stops with that address;
-    * closed, or how its branch stands unread, it fails. With no check, it never goes on.
+    * closed, or how its branch stands unread, it fails. With no check, it never goes on: its
+    * branch not offered, it fails.
     */
   def after(
       named: String,
@@ -182,7 +183,11 @@ object Work {
       offered(named, "the check passed", stood, turn, cap, last)
     case (TurnEnding.Answered, Some(Verdict.Unchecked(stood))) =>
       offered(named, "it answered", stood, turn, cap, last) match {
-        case After.GoOn(_, _, _) => After.Stop(None)
+        case After.GoOn(_, reason, _) =>
+          val how =
+            if (reason == WentOn.Unpushed) "its branch is not pushed"
+            else "no pull request is open for its branch"
+          After.Fail(s"$named: it answered, but $how; the run ends with nothing offered")
         case other => other
       }
     case (TurnEnding.Answered, Some(Verdict.Unrun(why))) =>
@@ -477,8 +482,12 @@ object Work {
     * ([[grit.core.inbox.Inbox.continued]]), as [[after]] says, up to `cap` turns, each said
     * under [[source]] of its number, so a rerun walks the chain to where it stopped: a turn
     * that answered and was followed by a recorded turn is not checked again, its failure
-    * printed as recorded. Why not: the inbox refused the text or a continuation, a turn left
-    * no reply, or as [[After.Fail]] says.
+    * printed as recorded. A turn that answered, once its check passes or with no check, reads
+    * how the run's branch stands from `stands` (`None` when it offers no branch); `stands`
+    * captures the run's push capability, the remote repository and its secret, and is called
+    * only while `said` runs, never kept. The answer is the address of the pull request the task
+    * ended with open or merged, `None` when it ended with none. Why not: the inbox refused the
+    * text or a continuation, a turn left no reply, or as [[After.Fail]] says.
     */
   def said(
       console: Console^,

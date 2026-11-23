@@ -14,6 +14,57 @@ import utest.*
 object PushingTests extends TestSuite {
 
   val tests = Tests {
+    test(
+      "git pushing a run's branch is handed no secret: neither the token's variable nor any other its environment holds"
+    ) {
+      GitFixture.inRepository { repo =>
+        val copies =
+          new WorkingCopies(
+            GitFixture.repository,
+            repo.source,
+            repo.root,
+            repo.processes,
+            Clock.system()
+          )
+        val work = GitFixture.work("w1")
+        val _ = copies.opened(work)
+        // The bare origin's own hook sees what its receiving git inherited from the push.
+        val seen = repo.root.resolveSibling("seen.txt")
+        val hook = repo.origin.resolve("hooks").resolve("pre-receive")
+        Files.writeString(hook, s"#!/bin/sh\nenv > '$seen'\n")
+        val _ = hook.toFile.setExecutable(true)
+        val planted = repo.environment ++ Map(
+          "GRIT_REMOTE_REPOSITORY_TOKEN" -> "ghs_plantedRemoteToken123",
+          "ANTHROPIC_API_KEY" -> "sk-ant-plantedKey0123456",
+          "LANG" -> "C.UTF-8"
+        )
+        val pushing = Pushing.of(
+          repo.source,
+          GitFixture.targetOf(new GitFixture.FakeRemoteRepository(repo.origin.toString)),
+          TestSecrets.of(Variable("GRIT_REMOTE_REPOSITORY_TOKEN"), "ghs_plantedRemoteToken123"),
+          planted,
+          Redaction.of(Map.empty),
+          Place.under(Namespace.Service, Vector("github", "acme", "app")),
+          "acme/app"
+        ) match {
+          case Right(p) => p
+          case Left(why) => throw new java.lang.AssertionError(why)
+        }
+        val offered = pushing.branch(work).offer("Fix it", "Fixed.")
+        val env = if (Files.exists(seen)) Files.readString(seen) else ""
+        (
+          offered.isRight,
+          env.contains("LANG=C.UTF-8"),
+          Vector(
+            "GRIT_REMOTE_REPOSITORY_TOKEN",
+            "ghs_planted",
+            "ANTHROPIC_API_KEY",
+            "sk-ant-planted"
+          )
+            .filter(env.contains)
+        ) ==> (true, true, Vector.empty)
+      }
+    }
     test("a run's branch is pushed from the clone Pushing was made at, whatever its copy holds") {
       GitFixture.inRepository { repo =>
         val copies =

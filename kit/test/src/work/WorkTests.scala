@@ -298,7 +298,7 @@ object WorkTests extends TestSuite {
     }
 
     test(
-      "with no check, a turn that answered stops on its pull request open, fails on it closed, and never goes on"
+      "with no check, a turn that answered stops on its pull request open, and fails, never going on, on it closed or its branch not offered"
     ) {
       val at = URI.create("https://github.com/acme/app/pull/7")
       def unchecked(stands: Branch.Stands) =
@@ -313,14 +313,20 @@ object WorkTests extends TestSuite {
       (
         unchecked(Branch.Stands.Open(at)),
         unchecked(Branch.Stands.Closed(at)),
-        unchecked(Branch.Stands.Unpushed)
+        unchecked(Branch.Stands.Unpushed),
+        unchecked(Branch.Stands.Pushed)
       ) ==> (
         Work.After.Offered(at, s"[main] w2: it answered; its pull request is open: $at"),
         Work.After.Fail(
           s"w2: it answered, but its pull request $at was closed; grit does not open another. " +
             "Run the task under a new --run name to offer the change again."
         ),
-        Work.After.Stop(None)
+        Work.After.Fail(
+          "w2: it answered, but its branch is not pushed; the run ends with nothing offered"
+        ),
+        Work.After.Fail(
+          "w2: it answered, but no pull request is open for its branch; the run ends with nothing offered"
+        )
       )
     }
 
