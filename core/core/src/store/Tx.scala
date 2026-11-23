@@ -182,8 +182,9 @@ object Tx {
   }
 
   /** The label `to` is written at outside grit: the label in force there ([[roomLabel]]) when
-    * it is set through grit or the deployment's labeller maps it explicitly, with only declared
-    * compartments; `None` otherwise, and then nothing writes to it. `None` for a quiet room
+    * it is set through grit or the deployment's labeller has it `Mapped` (by the labeller's
+    * `otherwise` too, when that is `Mapped`), with only declared compartments; `None` when it
+    * is `Unmapped`, and then nothing writes to it. `None` for a quiet room
     * ([[quiet]]) and for a direct message's room ([[Place.direct]]): only its own turns write
     * there. What is offered or sent outside grit; reads of grit's own rows are filtered by each
     * row's own label.
