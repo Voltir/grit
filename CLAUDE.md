@@ -136,7 +136,7 @@ __.sources`. Everything else, and the procedure: the `grit-test-cycle` and `grit
 Braces, never significant indentation — `-no-indent` makes it a compile error.
 
 **Three kinds of suite.** `test` modules need nothing outside the JVM but `grit.claudecode`'s,
-which run bash 5, jq, curl, git and python3, with no skip; `it` modules run
+which run bash 5, jq, curl, git and python3, and `grit.host`'s, which run git, with no skip; `it` modules run
 against Postgres and DBOS through `scripts/it`, which needs Docker, with no skip; `probes`
 modules pin what capture and separation checking reject.
 
