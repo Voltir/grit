@@ -157,11 +157,15 @@ object ProjectMarkdownTests extends TestSuite {
     ) {
       val one = DocumentVersionId.of(1).getOrElse(sys.error("no version"))
       val a = artifact("a", "A", "Body.")
-      val shown = ProjectMarkdown.shown(a, one)
-      ProjectMarkdown.readShown(
-        shown.replace("version: 1\n", "version: 1\nbrief: builder 9,501 of 9,500\n")
-      ) ==> ProjectMarkdown.readShown(shown)
-      assert(ProjectMarkdown.readShown(shown) == Right((a, one)))
+      val over = ProjectMarkdown.shown(
+        a,
+        one,
+        Vector((role = MethodFixtures.role("builder"), size = 9501))
+      )
+      (
+        over.contains("\nbrief: builder 9,501 of 9,500\n"),
+        ProjectMarkdown.readShown(over)
+      ) ==> (true, Right((a, one)))
     }
     test("a hard-wrapped paragraph is kept as one paragraph with no breaks") {
       val body = right(
