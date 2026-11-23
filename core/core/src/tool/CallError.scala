@@ -99,3 +99,11 @@ final case class DeclaresField(name: ToolName) extends SetRefusal {
   def message: String =
     s"the tool ${ToolName.value(name)}'s parameters declare ${Writes.Field}, which only its writes may name"
 }
+
+/** The tool `name` both writes outside grit and changes its workspace ([[Hosted.changing]]): a
+  * call of it has one destination, so it can be only one of these.
+  */
+final case class WritesAndChanges(name: ToolName) extends SetRefusal {
+  def message: String =
+    s"the tool ${ToolName.value(name)} both writes outside grit and changes its workspace"
+}

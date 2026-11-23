@@ -21,7 +21,8 @@ object PlainWordsTests extends TestSuite {
       Retry.Rerun,
       None,
       Integrity.Member,
-      action
+      action,
+      changes = false
     )
 
   // file_note declares no action: it is said as "use file_note".

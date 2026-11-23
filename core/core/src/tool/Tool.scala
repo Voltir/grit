@@ -42,7 +42,8 @@ final class Tool[A] private[tool] (
         spec.retry,
         Some(writes),
         requires,
-        spec.action
+        spec.action,
+        changes = false
       )
     case _ =>
       val parameters = spec.args.schema(false)
@@ -54,7 +55,8 @@ final class Tool[A] private[tool] (
         spec.retry,
         None,
         requires,
-        spec.action
+        spec.action,
+        changes = aim == Tool.Aim.Workspace
       )
   }
 
@@ -154,7 +156,8 @@ object Tool {
 
   /** A stand-in for `entry`, a tool a turn recorded that this build no longer has: offered
     * under its recorded name and schema, asking first when it did, writing to the
-    * destinations it recorded, and requiring what it did, so its [[Offered.entry]] is `entry`
+    * destinations it recorded, changing its workspace when it did, and requiring what it did,
+    * so its [[Offered.entry]] is `entry`
     * and a replayed turn takes the steps it took; every call of it is answered that the tool
     * is gone, and nothing runs.
     */
@@ -168,7 +171,15 @@ object Tool {
         Gate.Ask(_ => s"${ToolName.value(entry.name)} is gone: approving it runs nothing.")
       else Gate.Free
     entry.writes.fold[Offered](
-      new Hosted(spec, gate, _ => "", (_, _, _) => None, entry.requires, Believed.Default, false)
+      new Hosted(
+        spec,
+        gate,
+        _ => "",
+        (_, _, _) => None,
+        entry.requires,
+        Believed.Default,
+        entry.changes
+      )
         .over(_ => goneOutcome)
     )(writes =>
       new Writing(spec, gate, _ => "", writes, entry.requires).over((_, _) => goneOutcome)
@@ -277,7 +288,8 @@ final class Hosted[A] private[tool] (
       spec.retry,
       None,
       requires,
-      spec.action
+      spec.action,
+      changes
     )
   }
 
@@ -340,7 +352,8 @@ object Hosted {
     * be shown. When `entry` writes ([[ToolSet.Entry.writes]]), its schema adds a required
     * [[Writes.Field]] whose choices are the entry's names, and a call naming none of them, or
     * nothing, is [[CallError.Unwritable]]; a bound call carries the named place as its
-    * destination ([[Bound.Hosted.destination]]), and its arguments without the field.
+    * destination ([[Bound.Hosted.destination]]), and its arguments without the field. An entry
+    * that changes ([[ToolSet.Entry.changes]]) is offered changing ([[changing]]).
     */
   def advertised(entry: ToolSet.Entry): Option[Tool.Offered] =
     Option.unless(entry.asks) {
@@ -355,7 +368,7 @@ object Hosted {
           (_, _, _) => None,
           entry.requires,
           Believed.Default,
-          false
+          entry.changes
         )
       )(writes => new Writing(spec, Gate.Free, shown, writes, entry.requires))
     }
@@ -387,7 +400,16 @@ object Hosted {
       writes: Writes[D]
   ): Either[String, Writing[A, D]] =
     if (Writes.declared(spec.args.schema(false))) Left(DeclaresField(spec.name).message)
-    else Right(new Writing(spec, gate, shown, writes, ToolSet.Entry.byShape(Some(writes.placed))))
+    else
+      Right(
+        new Writing(
+          spec,
+          gate,
+          shown,
+          writes,
+          ToolSet.Entry.byShape(Some(writes.placed), changes = false)
+        )
+      )
 
   /** A call of the tool `spec`, `gate`, `shown` and `output` describe, its `arguments` read
     * under `repairs`, bound for an edge to run, writing to `destination`, or to the workspace
@@ -465,7 +487,8 @@ final class Writing[A, D <: caps.Pure] private[tool] (
       spec.retry,
       Some(writes.placed),
       requires,
-      spec.action
+      spec.action,
+      changes = false
     )
 
   private[tool] def bind(

@@ -121,6 +121,39 @@ object ToolSetTests extends TestSuite {
       assert(declared.id != set(peek, post).id)
     }
 
+    test(
+      "an entry that changes requires member by its shape, is stored with changes and no requires, reads back, and gives the set another id"
+    ) {
+      val changing = ToolSet.Entry(
+        ToolName("peek"),
+        "Peeks.",
+        ujson.Obj("type" -> "object"),
+        asks = false,
+        Retry.Rerun,
+        changes = true
+      )
+      (changing.requires, changing.readOnly) ==> (Integrity.Member, false)
+      ujson.write(ToolSet.write(set(changing))) ==>
+        """{"tools":[{"name":"peek","does":"Peeks.","parameters":{"type":"object"},"asks":false,"retry":"rerun","changes":true}]}"""
+      ToolSet.read(ToolSet.write(set(changing))) ==> Right(set(changing))
+      assert(set(changing).id != set(peek).id)
+    }
+
+    test(
+      "an entry that both writes and changes is refused where its set is built, and in its stored form"
+    ) {
+      val both = post.copy(changes = true)
+      val stored = ujson.Obj(
+        "tools" -> ujson.Arr(
+          ToolSet.write(set(post))("tools")(0).obj.clone().addOne("changes" -> ujson.True)
+        )
+      )
+      (ToolSet.of(Vector(both)).left.map(_.message), ToolSet.read(stored)) ==> (
+        Left("the tool post both writes outside grit and changes its workspace"),
+        Left("the tool post both writes outside grit and changes its workspace")
+      )
+    }
+
     test("an action is stored, read back, and gives the set another id") {
       val acting = set(peek.copy(action = Some("peek at things")), post)
       ToolSet.write(acting)("tools").arr.map(_.obj.get("action").map(_.str)).toVector ==>

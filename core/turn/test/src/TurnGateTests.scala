@@ -13,7 +13,7 @@ object TurnGateTests extends TestSuite {
     Compartment.of("team").getOrElse(throw new java.lang.AssertionError("team is a compartment"))
 
   private def entry(name: ToolName, requires: Integrity, action: Option[String]): ToolSet.Entry =
-    ToolSet.Entry(name, "does", ujson.Obj(), false, Retry.Rerun, None, requires, action)
+    ToolSet.Entry(name, "does", ujson.Obj(), false, Retry.Rerun, None, requires, action, false)
 
   private def set(entries: ToolSet.Entry*): ToolSet =
     ToolSet.of(entries.toVector).getOrElse(throw new java.lang.AssertionError("distinct names"))

@@ -739,7 +739,8 @@ object RunFixtures {
         Retry.Rerun,
         None,
         Integrity.Member,
-        Some("read guarded paths")
+        Some("read guarded paths"),
+        changes = false
       )
       val set = ToolSet
         .of(

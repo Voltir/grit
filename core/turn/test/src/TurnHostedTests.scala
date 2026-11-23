@@ -281,6 +281,43 @@ object TurnHostedTests extends TestSuite {
     }
 
     test(
+      "a changing tool the engine does not describe, advertised at a run's repository, is requested with that repository as its destination"
+    ) {
+      val repository =
+        grit.core.place.Repository
+          .of("grit")
+          .fold(e => throw new java.lang.AssertionError(e), identity)
+      val work =
+        grit.core.place.WorkName
+          .of("fix-typo")
+          .fold(e => throw new java.lang.AssertionError(e), identity)
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "fetch")
+      val durable = new InMemoryDurable
+      val edge = new Served(
+        new InMemoryEdges,
+        durable,
+        _ => Serve.Now(Outcome.Done("fetched")),
+        repository.place
+      )
+      edge.advertise(Vector(hostedFetch.changing))
+      val provider = model(("t1", "fetch", "a.txt"))
+      durable.run(turn.workflowId)(
+        hostedBody(
+          entries,
+          provider,
+          edge,
+          hosted = Vector.empty,
+          from = Origin.Work(repository, work)
+        )
+      ) ==> Done
+      (edge.sent.map(q => (q.workspace, q.destination)), results(provider).map(_.content)) ==> (
+        Vector((repository.place, Some(repository.place))),
+        Vector("fetched")
+      )
+    }
+
+    test(
       "a changing call from a turn that read above its directory is answered that it may not write there, and no edge runs it"
     ) {
       val entries = new InMemoryEntryStore

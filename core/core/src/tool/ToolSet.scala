@@ -38,7 +38,8 @@ object ToolSet {
     * [[Writes.Field]]; `writes`, where its calls write outside grit, `None` for a tool that
     * declares no such destination (its arguments still go to the service it runs at);
     * `requires`, the integrity a call must be stamped at to be bound ([[Toolbox.bind]]), by
-    * default its shape's ([[Entry.byShape]]); `action`, its spec's ([[ToolSpec.action]]).
+    * default its shape's ([[Entry.byShape]]); `action`, its spec's ([[ToolSpec.action]]);
+    * `changes`, whether it is [[Hosted.changing]].
     */
   final case class Entry(
       name: ToolName,
@@ -48,7 +49,8 @@ object ToolSet {
       retry: Retry,
       writes: Option[Writes[Place]],
       requires: Integrity,
-      action: Option[String]
+      action: Option[String],
+      changes: Boolean
   ) {
 
     /** What a person can no longer have done when its calls are withheld, in words that follow
@@ -56,10 +58,10 @@ object ToolSet {
       */
     def plainly: String = action.getOrElse(used(name))
 
-    /** Whether it declares that its calls write nothing out of grit and wait for no person's
-      * answer.
+    /** Whether it declares that its calls write nothing out of grit, change no workspace, and
+      * wait for no person's answer.
       */
-    def readOnly: Boolean = writes.isEmpty && !asks
+    def readOnly: Boolean = writes.isEmpty && !changes && !asks
 
     /** This entry as a call may reach it from a transaction that `sends` its arguments to the
       * service it runs at, or not: one that declares no destination only when it does; one
@@ -83,14 +85,17 @@ object ToolSet {
         asks: Boolean,
         retry: Retry,
         writes: Option[Writes[Place]] = None,
-        action: Option[String] = None
-    ): Entry = Entry(name, does, parameters, asks, retry, writes, byShape(writes), action)
+        action: Option[String] = None,
+        changes: Boolean = false
+    ): Entry =
+      Entry(name, does, parameters, asks, retry, writes, byShape(writes, changes), action, changes)
 
     /** What a tool requires unless it declares otherwise: [[Integrity.WritesOut]] for one that
-      * writes outside grit (`writes` is some), nothing ([[Integrity.Untrusted]]) otherwise.
+      * writes outside grit (`writes` is some) or `changes` its workspace, nothing
+      * ([[Integrity.Untrusted]]) otherwise.
       */
-    def byShape(writes: Option[Writes[Place]]): Integrity =
-      writes.fold(Integrity.Untrusted)(_ => Integrity.WritesOut)
+    def byShape(writes: Option[Writes[Place]], changes: Boolean): Integrity =
+      if (writes.nonEmpty || changes) Integrity.WritesOut else Integrity.Untrusted
   }
 
   val Empty: ToolSet = ToolSet(Vector.empty)
@@ -99,7 +104,8 @@ object ToolSet {
   private def used(name: ToolName): String = s"use ${ToolName.value(name)}"
 
   /** `entries` as a set, in this order; `Left` naming the first name repeated, else the first
-    * entry whose parameters declare [[Writes.Field]], so every set built reads back ([[read]]).
+    * entry whose parameters declare [[Writes.Field]], else the first that both writes and
+    * changes, so every set built reads back ([[read]]).
     */
   def of(entries: Vector[Entry]): Either[SetRefusal, ToolSet] = {
     val names = entries.map(_.name)
@@ -108,7 +114,11 @@ object ToolSet {
       case None =>
         entries.find(e => Writes.declared(e.parameters)) match {
           case Some(declaring) => Left(DeclaresField(declaring.name))
-          case None => Right(ToolSet(entries))
+          case None =>
+            entries.find(e => e.writes.nonEmpty && e.changes) match {
+              case Some(both) => Left(WritesAndChanges(both.name))
+              case None => Right(ToolSet(entries))
+            }
         }
     }
   }
@@ -116,9 +126,9 @@ object ToolSet {
   /** The stored form: `{"tools":[{"name","does","parameters","asks","retry"}, …]}`, in the
     * set's order, an entry with writes also holding `"writes": {"describe", "to": [{"name",
     * "place"}, …]}`, each place written, and one whose `requires` is not its shape's
-    * ([[Entry.byShape]]) holding `"requires"`, written ([[Integrity.written]]), and one with an
-    * action holding `"action"`. Each only on an entry that has it, so a set without any keeps
-    * the form, and the id, it had before.
+    * ([[Entry.byShape]]) holding `"requires"`, written ([[Integrity.written]]), one with an
+    * action holding `"action"`, and one that changes holding `"changes": true`. Each only on an
+    * entry that has it, so a set without any keeps the form, and the id, it had before.
     * The id hashes it, so a change here changes every set's id.
     */
   def write(set: ToolSet): ujson.Value =
@@ -139,16 +149,18 @@ object ToolSet {
             )
           )
         }
-        if (e.requires != Entry.byShape(e.writes))
+        if (e.requires != Entry.byShape(e.writes, e.changes))
           stored("requires") = Integrity.written(e.requires)
         e.action.foreach(a => stored("action") = a)
+        if (e.changes) stored("changes") = true
         stored
       })
     )
 
   /** The set stored as `v` ([[write]]'s form), or why it is none; why not, also, when an
-    * entry's parameters declare [[Writes.Field]]. An entry holding no `"requires"` requires
-    * what its shape does ([[Entry.byShape]]); one holding no `"action"` has none.
+    * entry's parameters declare [[Writes.Field]], or one both writes and changes. An entry
+    * holding no `"requires"` requires what its shape does ([[Entry.byShape]]); one holding no
+    * `"action"` has none; one holding no `"changes"` does not change.
     */
   def read(v: ujson.Value): Either[String, ToolSet] = {
     def field(o: collection.Map[String, ujson.Value], key: String): Either[String, ujson.Value] =
@@ -165,9 +177,14 @@ object ToolSet {
         named <- ToolName.of(name)
         _ <- Either.cond(!Writes.declared(parameters), (), DeclaresField(named).message)
         writes <- o.get("writes").fold(Right(None))(w => stored(w).map(Some(_)))
+        changes <- o
+          .get("changes")
+          .fold[Either[String, Boolean]](Right(false))(
+            _.boolOpt.toRight("a tool's changes is not a boolean")
+          )
         requires <- o
           .get("requires")
-          .fold[Either[String, Integrity]](Right(Entry.byShape(writes)))(r =>
+          .fold[Either[String, Integrity]](Right(Entry.byShape(writes, changes)))(r =>
             r.strOpt.toRight("a tool's requires is not a string").flatMap(Integrity.read)
           )
         action <- o
@@ -175,7 +192,7 @@ object ToolSet {
           .fold[Either[String, Option[String]]](Right(None))(a =>
             a.strOpt.toRight("a tool's action is not a string").map(Some(_))
           )
-      } yield Entry(named, does, parameters, asks, retry, writes, requires, action)
+      } yield Entry(named, does, parameters, asks, retry, writes, requires, action, changes)
     def stored(w: ujson.Value): Either[String, Writes[Place]] =
       for {
         o <- w.objOpt.toRight("a tool's writes is not an object")

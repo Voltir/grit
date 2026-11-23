@@ -160,6 +160,27 @@ object ToolboxTests extends TestSuite {
     }
 
     test(
+      "a changing tool gone from this build stands in under its entry, changing: a request naming no destination is misdirected"
+    ) {
+      val entry =
+        new Hosted(echo.spec, Gate.Free, (t: String) => t, Believed.Default).changing.entry
+      val gone = Tool.gone(entry)
+      val box = Toolbox.of(gone).fold(d => throw new java.lang.AssertionError(d.toString), identity)
+      (
+        gone.entry,
+        box
+          .requested(
+            AssistantBlock.ToolCall(ToolCallId("c1"), "echo", ujson.Obj("text" -> "hi")),
+            Repairs.All,
+            None,
+            Place.Everywhere
+          )
+          .left
+          .map(_.message)
+      ) ==> (entry, Left("echo was told no place to write to; it did not run."))
+    }
+
+    test(
       "a changing tool binds no call, which would run with no destination; its description binds one changing"
     ) {
       val described = new Hosted(echo.spec, Gate.Free, (t: String) => t, Believed.Default).changing
