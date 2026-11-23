@@ -24,8 +24,11 @@ first compile the modules you will ask about: `./mill <module>.compile`, and
 stale answer shows itself as a `[stale: …]` tag on a file, a `-- not file text, changed since
 its .tasty` line, a `-- not loaded:` line, or no match for a symbol the source has. Whoever
 briefs an agent that may not run Mill compiles the root the brief names, at the commit the
-brief is about, before launching it. When that agent meets a stale answer anyway, it reads
-those files by `grep` and `sed -n` range, and says so in its report.
+brief is about, before launching it. When that agent meets a stale answer anyway, it uses the
+placed text scout prints under a `-- … placed in the source by its lines` note (current file
+text, unchecked by a compile: an edited name or signature may not match, and a member added
+since is not listed), reads by `sed -n` only a definition scout could not place, and says so
+in its report.
 
 **Which query, for what** (MCP arguments; a list argument is a JSON array of quoted strings,
 `["Turn"]`, never a bare word or one comma-joined string):
@@ -42,7 +45,10 @@ those files by `grep` and `sed -n` range, and says so in its report.
 - a trait and its implementations: `family {"trait": "Durable"}`;
 - a suite, a test or a helper: `tests {"suite": "TurnToolsTests", "test": "<name prefix>"}`,
   `tests {"suite": "TurnToolsTests", "body": ["helper"]}` (`show` finds a test-source name
-  only when main sources lack it).
+  only when main sources lack it);
+- the test or definition at a line a compiler error or a failing test names:
+  `show {"symbols": ["core/core/test/src/edge/EdgesContract.scala:150"]}`, never `sed -n`
+  around the line.
 
 **What not to read.**
 
@@ -59,7 +65,7 @@ those files by `grep` and `sed -n` range, and says so in its report.
   to learn its shape.
 - Trust the public interface and referential transparency: ask for private members only to
   edit them or to understand an implementation.
-- Bash remains right for text search (`grep`), a test file's imports, never-compiled code, and
+- Bash remains right for text search (`grep`), never-compiled code, and
   a region inside a body you have not edited.
 
 **Editing.**
