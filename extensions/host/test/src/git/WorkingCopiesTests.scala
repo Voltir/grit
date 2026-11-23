@@ -27,6 +27,50 @@ object WorkingCopiesTests extends TestSuite {
       case Left(e) => throw new java.lang.AssertionError(s"$name: ${e.message}")
     }
 
+  /** `grit/{name}` in `repo`'s clone, `commits` empty commits past main, the clone left on main:
+    * its tip.
+    */
+  private def branched(repo: Repo^, name: String, commits: Int): String = {
+    val _ = git(repo, repo.source, "checkout", "--quiet", "-B", s"grit/$name", "main")
+    for (_ <- 1 to commits) {
+      val _ = git(
+        repo,
+        repo.source,
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@example.com",
+        "commit",
+        "--quiet",
+        "--allow-empty",
+        "-m",
+        name
+      )
+    }
+    val tip = git(repo, repo.source, "rev-parse", "HEAD").output.text.trim
+    val _ = git(repo, repo.source, "checkout", "--quiet", "main")
+    tip
+  }
+
+  /** Copies of `repo`'s clone on `clock`, pushed and offered on `remote`, its sweep's lines
+    * said through `note`.
+    */
+  private def swept(
+      repo: Repo^,
+      remote: FakeRemoteRepository,
+      clock: SetClock,
+      note: String -> Unit = _ => ()
+  ): WorkingCopies^ =
+    new WorkingCopies(
+      repository,
+      repo.source,
+      repo.root,
+      repo.processes,
+      clock,
+      Some(targetOf(remote)),
+      note
+    )
+
   /** The names of the copies under `repo`'s root, sorted. */
   private def present(repo: Repo^): Vector[String] = {
     val listing = Files.list(repo.root.resolve("grit"))
@@ -263,6 +307,82 @@ object WorkingCopiesTests extends TestSuite {
           true,
           WorkingCopies.Removed.Uncommitted(dirty),
           true
+        )
+      }
+    }
+    test(
+      "the sweep deletes a branch with no copy whose pull request was merged or closed at its tip, and keeps every other"
+    ) {
+      inRepository { repo =>
+        val remote = new FakeRemoteRepository(repo.origin.toString)
+        val merged = branched(repo, "merged", 1)
+        val closed = branched(repo, "closed", 1)
+        val _ = branched(repo, "past", 1)
+        val _ = branched(repo, "open", 1)
+        val _ = git(repo, repo.source, "branch", "other", "main")
+        val _ = made(over(repo, new SetClock(start)), "held")
+        val held = git(repo, repo.source, "rev-parse", "grit/held").output.text.trim
+        val _ = git(repo, repo.source, "push", "--quiet", repo.origin.toString, "grit/merged")
+        for (b <- Vector("merged", "closed", "past", "open", "held"))
+          remote.open(s"grit/$b", "Fix", "Fixed.")
+        remote.merge("grit/merged", merged)
+        remote.close("grit/closed", closed)
+        remote.close("grit/past", "0000000000000000000000000000000000000000")
+        remote.close("grit/held", held)
+        val _ = made(swept(repo, remote, new SetClock(start)), "fresh")
+        (
+          Vector("merged", "closed", "past", "open", "held").filter(b =>
+            hasBranch(repo, repo.source, s"grit/$b")
+          ),
+          hasBranch(repo, repo.source, "other"),
+          hasBranch(repo, repo.origin, "grit/merged")
+        ) ==> (Vector("past", "open", "held"), true, true)
+      }
+    }
+    test(
+      "a branch never offered is deleted when origin's default holds all of it, or once its tip is past Unpublished, said first"
+    ) {
+      inRepository { repo =>
+        val remote = new FakeRemoteRepository(repo.origin.toString)
+        val _ = branched(repo, "empty", 0)
+        val young = branched(repo, "young", 1)
+        val now = Instant.now()
+        val noted = scala.collection.mutable.ArrayBuffer.empty[String]
+        val _ = made(swept(repo, remote, new SetClock(now)), "a")
+        val first =
+          (hasBranch(repo, repo.source, "grit/empty"), hasBranch(repo, repo.source, "grit/young"))
+        val later = new SetClock(now.plusSeconds(WorkingCopies.Unpublished.toSeconds + 3600))
+        val _ = made(swept(repo, remote, later, noted += _), "b")
+        (first, hasBranch(repo, repo.source, "grit/young"), noted.map(_.split(" made ").head)) ==> (
+          (false, true),
+          false,
+          Vector(s"[main] deleting grit/young, never offered, its last commit $young")
+        )
+      }
+    }
+    test(
+      "the sweep stops at the first answer the remote repository cannot give, asks at most SweepAsks, and deletes nothing for another origin"
+    ) {
+      inRepository { repo =>
+        for (n <- 1 to WorkingCopies.SweepAsks + 2) {
+          val _ = git(repo, repo.source, "branch", s"grit/e$n", "main")
+        }
+        def left =
+          (1 to WorkingCopies.SweepAsks + 2).count(n => hasBranch(repo, repo.source, s"grit/e$n"))
+        val failing = new FakeRemoteRepository(repo.origin.toString)
+        failing.answers.set(1)
+        val _ = swept(repo, failing, new SetClock(start)).opened(work("a"))
+        val afterFailing = (left, failing.asked.size)
+        val counting = new FakeRemoteRepository(repo.origin.toString)
+        val _ = swept(repo, counting, new SetClock(start)).opened(work("b"))
+        val afterCounting = (left, counting.asked.size)
+        val _ = git(repo, repo.source, "remote", "set-url", "origin", "/srv/elsewhere.git")
+        val elsewhere = new FakeRemoteRepository(repo.origin.toString)
+        val _ = swept(repo, elsewhere, new SetClock(start)).opened(work("c"))
+        (afterFailing, afterCounting, (left, elsewhere.asked.size)) ==> (
+          (WorkingCopies.SweepAsks + 1, 2),
+          (1, WorkingCopies.SweepAsks),
+          (1, 0)
         )
       }
     }

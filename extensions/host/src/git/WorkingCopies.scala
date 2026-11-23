@@ -6,11 +6,12 @@ import java.nio.file.{Files, Path, StandardOpenOption}
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
+import scala.annotation.tailrec
 import scala.concurrent.duration.FiniteDuration
 import scala.jdk.CollectionConverters.*
 
 import grit.core.clock.Clock
-import grit.core.host.{Argv, HostError, Processes, Ran, RelPath}
+import grit.core.host.{Argv, HostError, Processes, Ran, RelPath, RemoteRepository}
 import grit.core.place.{Repository, WorkName}
 import grit.host.checkout.Checkout.attempt
 import grit.host.checkout.LocalTree
@@ -20,7 +21,12 @@ import grit.host.checkout.LocalTree
   * for [[Kept]] that is neither held nor holding changes never committed is removed, its branch
   * kept, and so is every directory there without its lock. With `target`, a new branch is cut
   * only when the clone's origin is `target`'s remote ([[Remote.fetchedBy]]); `Failed` otherwise,
-  * naming both, no copy or branch made.
+  * naming both, no copy or branch made. With `target`, and the clone's origin its remote, the
+  * sweep also deletes each local `grit/{work}` branch with no copy that is done with, asking
+  * `target`'s remote repository of at most [[SweepAsks]] of them: its pull request merged or
+  * closed with the branch's tip its head; or none opened, and origin's default branch holding
+  * all of it, or its tip committed past [[Unpublished]] ago, said through `note` first. The
+  * first answer the remote repository cannot give ends it; a branch there is never deleted.
   */
 final class WorkingCopies(
     val repository: Repository,
@@ -28,7 +34,8 @@ final class WorkingCopies(
     root: Path,
     processes: Processes^,
     clock: Clock^,
-    target: Option[PushTarget^] = None
+    target: Option[PushTarget^] = None,
+    note: String -> Unit = _ => ()
 ) extends caps.SharedCapability {
   import WorkingCopies.*
 
@@ -188,6 +195,74 @@ final class WorkingCopies(
       }
       if (gone.nonEmpty) pruned()
     }
+    target match {
+      case Some(t) => branchesSwept(t)
+      case None => ()
+    }
+  }
+
+  /** With `target`, at the sweep, and only when the clone's origin is `target`'s remote: each
+    * local `grit/{work}` branch with no copy, asked of `target`'s remote repository newest first, at
+    * most [[SweepAsks]] of them, is deleted when it is done with: its pull request merged or
+    * closed with its head the branch's tip, or none opened and the branch holding no commit
+    * origin's default branch lacks, or none opened and its tip committed more than
+    * [[Unpublished]] ago (said through `note` first, naming the branch and its tip). The first
+    * answer the remote repository cannot give ends it, nothing more deleted; a branch on the
+    * remote repository is never deleted.
+    */
+  private def branchesSwept(t: PushTarget^): Unit = {
+    val origin = git(home, "remote", "get-url", "origin").toOption
+      .map(_.output.text.linesIterator.nextOption().getOrElse("").trim)
+    if (origin.exists(t.remote.fetchedBy)) {
+      val default =
+        ran(home, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD").toOption
+          .collect { case (_, r) if r.exit == 0 => r.output.text.trim }
+      val cutoff = clock.now().getEpochSecond - Unpublished.toSeconds
+      val held = names().getOrElse(Set.empty)
+      val branches = git(
+        home,
+        "for-each-ref",
+        "--sort=-committerdate",
+        "--format=%(refname:short) %(objectname) %(committerdate:unix)",
+        "refs/heads/grit/"
+      ).toOption.toVector
+        .flatMap(_.output.text.linesIterator.toVector)
+        .flatMap { line =>
+          line.split(' ') match {
+            case Array(branch, tip, at) if at.toLongOption.isDefined =>
+              Vector((branch, tip, at.toLong))
+            case _ => Vector.empty
+          }
+        }
+        .filterNot((branch, _, _) => held.contains(branch.stripPrefix("grit/")))
+      @tailrec def each(left: List[(String, String, Long)]): Unit = left match {
+        case Nil => ()
+        case (branch, tip, at) :: rest =>
+          t.repository.pullRequest(branch) match {
+            case Left(_) => ()
+            case Right(pull) =>
+              val done = pull match {
+                case Some(RemoteRepository.PullRequest.Merged(_, head)) => head == tip
+                case Some(RemoteRepository.PullRequest.Closed(_, head)) => head == tip
+                case Some(RemoteRepository.PullRequest.Open(_)) => false
+                case None =>
+                  default.exists(d =>
+                    git(home, "rev-list", "--count", s"$d..$branch")
+                      .exists(_.output.text.trim == "0")
+                  ) || (at < cutoff && {
+                    note(
+                      s"[main] deleting $branch, never offered, its last commit $tip " +
+                        s"made ${java.time.Instant.ofEpochSecond(at)}, past $Unpublished unpublished"
+                    )
+                    true
+                  })
+              }
+              if (done) { val _ = git(home, "branch", "--quiet", "-D", branch) }
+              each(rest)
+          }
+      }
+      each(branches.take(SweepAsks).toList)
+    }
   }
 
   /** The clone's records of worktrees whose directory is gone, dropped. */
@@ -284,6 +359,14 @@ object WorkingCopies {
     /** It is kept at `at`, as another process holds it. */
     case Held(at: Path)
   }
+
+  /** 20: the most branches one sweep asks the remote repository about. */
+  val SweepAsks: Int = 20
+
+  /** 90 days: how long a branch never offered, holding commits origin's default branch lacks,
+    * is kept after its last commit.
+    */
+  val Unpublished: FiniteDuration = FiniteDuration(90, TimeUnit.DAYS)
 
   /** 8: the most copies of one repository. */
   val Most: Int = 8
