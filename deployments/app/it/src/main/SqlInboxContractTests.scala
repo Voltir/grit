@@ -36,7 +36,7 @@ import grit.turn.Turn
   * turn's progress is read from DBOS's tables, which launching creates) whose every workflow
   * body is [[Parked]].
   */
-object SqlInboxContractTests extends InboxContract {
+object SqlInboxContractTests extends InboxContract, caps.SharedCapability {
 
   /** A workflow body that returns at once, writing nothing. The contract reads only what the
     * inbox itself records, so no workflow it starts may write beside a test while it runs: a
@@ -87,19 +87,28 @@ object SqlInboxContractTests extends InboxContract {
     }
   }
 
-  /** Over the suite's shared database under the shipped visibility, and over a database of its
-    * own under any other: an engine refuses to start under compartments that drop one its
-    * database ran under.
+  /* The suite's one engine, launched on its shared database under the shipped visibility and
+   * no cap, which most tests ask for: an engine's stop takes about a second, so one per test
+   * was most of the suite's time. Holding it makes the suite a capability. */
+  private lazy val shared: Engine^ = {
+    val engine = LiveEngine.open(config, Turn.Epoch)
+    engine.launch(Parked, Parked, Parked, Parked, Parked, Parked, Vector.empty)
+    engine
+  }
+
+  override def utestAfterAll(): Unit = shared.close()
+
+  /** Over the suite's shared engine under the shipped visibility and no cap, and over an engine
+    * and a database of its own under any other: an engine refuses to start under compartments
+    * that drop one its database ran under, and a capped test counts the day's spend.
     */
   protected def withInbox[A](budget: Budget, visibility: Visibility)(
       body: (Inbox, InboxContract.Store^) => A
   ): A =
-    over(
-      if (visibility == Visibility.Shipped) config
-      else TestPostgres.freshDatabase("sql_inbox_contract_labelled"),
-      budget,
-      visibility
-    )(body)
+    if (visibility == Visibility.Shipped && budget == LiveEngine.Uncapped)
+      under(shared, config)(body)
+    else
+      over(TestPostgres.freshDatabase("sql_inbox_contract_own"), budget, visibility)(body)
 
   /** Over a database of its own, its engine closed after `before` and launched again under
     * `now`.
@@ -126,221 +135,228 @@ object SqlInboxContractTests extends InboxContract {
     )
     try {
       engine.launch(Parked, Parked, Parked, Parked, Parked, Parked, Vector.empty)
-      def spend(usd: BigDecimal): Unit = {
-        val turn = TurnRef(ConversationId(UUID.randomUUID().toString), TurnSeq.First)
-        val usage = Usage(Tokens(1), Tokens(1), Tokens.Zero, Some(usd))
-        engine.jot
-          .write(Subject.Public)(
-            engine.ledger
-              .record(
-                EntryId(s"spent:${UUID.randomUUID()}"),
-                turn,
-                turn.workflowId,
-                "m",
-                None,
-                None,
-                usage,
-                Tokens(1)
-              )
-          )
-          .fold(e => sys.error(e.toString), identity)
-      }
-      def exists(origin: Origin): Boolean =
-        engine.db
-          .read(Subject.Public)(engine.conversations.find(origin))
-          .fold(e => sys.error(e.toString), _.nonEmpty)
-      def written(origin: Origin): Vector[(Payload, Option[String])] =
-        engine.db
-          .read(Subject.Public)(for {
-            found <- engine.conversations.find(origin)
-            all <- found.fold(Right(Vector.empty): Either[StoreError, Vector[Entry]])(c =>
-              engine.entries.list(c.id)
-            )
-            names <- engine.principals.speakers(all.map(_.id))
-          } yield all.map(e => (e.payload, names.of(e.id))))
-          .fold(e => sys.error(e.toString), identity)
-      def linked(origin: Origin): Vector[Option[Href]] =
-        engine.db
-          .read(Subject.Public)(for {
-            found <- engine.conversations.find(origin)
-            all <- found.fold(Right(Vector.empty): Either[StoreError, Vector[Entry]])(c =>
-              engine.entries.list(c.id)
-            )
-            read <- engine.principals.speakers(all.map(_.id))
-          } yield all.map(e => read.link(e.id)))
-          .fold(e => sys.error(e.toString), identity)
-      def dated(origin: Origin): Vector[java.time.Instant] =
-        engine.db
-          .read(Subject.Public)(
-            engine.conversations
-              .find(origin)
-              .flatMap(
-                _.fold(Right(Vector.empty): Either[StoreError, Vector[Entry]])(c =>
-                  engine.entries.list(c.id)
-                )
-              )
-          )
-          .fold(e => sys.error(e.toString), _.map(_.createdAt))
-      def believed(origin: Origin): Vector[Integrity] =
-        engine.db
-          .read(Subject.Public)(
-            engine.conversations
-              .find(origin)
-              .flatMap(
-                _.fold(Right(Vector.empty): Either[StoreError, Vector[Entry]])(c =>
-                  engine.entries.list(c.id)
-                )
-              )
-          )
-          .fold(e => sys.error(e.toString), _.map(_.integrity))
-      def periods(origin: Origin): Vector[Period] =
-        engine.db
-          .read(Subject.Public)(
-            engine.conversations
-              .find(origin)
-              .flatMap(
-                _.fold(Right(Vector.empty): Either[StoreError, Vector[Period]])(c =>
-                  engine.periods.all(c.id)
-                )
-              )
-          )
-          .fold(e => sys.error(e.toString), identity)
-      def close(turn: TurnRef): Unit =
-        engine.jot
-          .write(Subject.Public)(
-            engine.periods
-              .of(turn)
-              .flatMap(
-                _.toRight(StoreError.Invalid(s"no period holds $turn")).flatMap(p =>
-                  engine.periods.seal(
-                    CloseRef(p.ref, turn.turnSeq, Instant.EPOCH),
-                    CloseReason.Lapsed,
-                    TestClosings.prose("closed"),
-                    Instant.EPOCH
-                  )
-                )
-              )
-          )
-          .fold(e => sys.error(e.toString), _ => ())
-      def name(account: Account, name: String): Unit =
-        engine.jot
-          .write(Subject.Public)(engine.principals.name(account, name))
-          .fold(e => sys.error(e.toString), identity)
-      def reached(origin: Origin): Vector[Option[Reach]] =
-        engine.db
-          .read(Subject.Public)(for {
-            found <- engine.conversations.find(origin)
-            all <- found.fold(Right(Vector.empty): Either[StoreError, Vector[Entry]])(c =>
-              engine.entries.list(c.id)
-            )
-            reaches <- all.foldLeft[Either[StoreError, Vector[Option[Reach]]]](
-              Right(Vector.empty)
-            ) { (acc, e) =>
-              acc.flatMap(done =>
-                engine.speech.reach(TurnRef(e.conversationId, e.turnSeq)).map(done :+ _)
-              )
-            }
-          } yield reaches)
-          .fold(e => sys.error(e.toString), identity)
-      def postedBy(origin: Origin): Option[CallSlot] =
-        engine.db
-          .read(Subject.Public)(
-            engine.conversations
-              .find(origin)
-              .flatMap(
-                _.fold(Right(None): Either[StoreError, Option[CallSlot]])(c =>
-                  engine.conversations.postedBy(c.id)
-                )
-              )
-          )
-          .fold(e => sys.error(e.toString), identity)
-      def append(turn: TurnRef, id: EntryId, payload: Payload): Unit =
-        engine.jot
-          .write(Subject.Turn(turn))(for {
-            next <- engine.entries.lockNext(turn.conversationId)
-            _ <- engine.entries.insert(
-              Entry(
-                id,
-                turn.conversationId,
-                turn.turnSeq,
-                None,
-                next.seq,
-                payload,
-                Instant.now(),
-                Integrity.Member
-              )
-            )
-          } yield ())
-          .fold(e => sys.error(e.toString), identity)
-      def answers(turn: TurnRef, call: ToolCallId): Int =
-        LiveDb.transaction(db) { (tx: Tx^) ?=>
-          val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-          Using.resource(
-            conn.prepareStatement(
-              "SELECT count(*) FROM dbos.notifications WHERE destination_uuid = ? AND topic = ?"
-            )
-          ) { ps =>
-            ps.setString(1, WorkflowId.value(turn.workflowId))
-            ps.setString(2, Approval.topic(call))
-            Using.resource(ps.executeQuery())(rs => if (rs.next()) rs.getInt(1) else 0)
-          }
-        }
-      body(
-        engine.inbox,
-        InboxContract.Store(
-          spend,
-          exists,
-          written,
-          dated,
-          believed,
-          periods,
-          close,
-          name,
-          reached,
-          postedBy,
-          (declared, now) =>
-            engine.jot
-              .write(Subject.Public)(engine.schedules.declare(declared, now))
-              .fold(e => sys.error(e.toString), identity),
-          id =>
-            engine.db
-              .read(Subject.Public)(engine.schedules.read(id))
-              .fold(e => sys.error(e.toString), identity),
-          now =>
-            engine.db
-              .read(Subject.Public) {
-                for {
-                  flying <- engine.schedules.inFlight(1000)
-                  due <- engine.schedules.due(now, 1000)
-                } yield flying ++ due
-              }
-              .fold(e => sys.error(e.toString), _.map(_._1)),
-          turn => {
-            val _ = engine.awaitTurn(turn)
-          },
-          (slot, version, at) =>
-            engine.jot
-              .write(Subject.Public)(engine.schedules.replied(slot, version, at))
-              .fold(e => sys.error(e.toString), identity),
-          origin =>
-            engine.db
-              .read(Subject.Public)(engine.conversations.find(origin))
-              .fold(e => sys.error(e.toString), _.map(_.label)),
-          origin => unreadable(engine, db, origin),
-          vouched =>
-            engine.jot
-              .write(Subject.Public)(
-                engine
-                  .voucher(Set(InboxContract.T1, InboxContract.T2), InboxContract.Claimed)
-                  .vouch(vouched)
-              )
-              .fold(e => sys.error(e.toString), _ => ()),
-          room => quieted(engine, room),
-          linked,
-          append,
-          answers
-        )
-      )
+      under(engine, db)(body)
     } finally engine.close()
+  }
+
+  /** Runs `body` with `engine`'s inbox, launched on `db`, and the store under it. */
+  private def under[A](engine: Engine^, db: DbConfig)(
+      body: (Inbox, InboxContract.Store^) => A
+  ): A = {
+    def spend(usd: BigDecimal): Unit = {
+      val turn = TurnRef(ConversationId(UUID.randomUUID().toString), TurnSeq.First)
+      val usage = Usage(Tokens(1), Tokens(1), Tokens.Zero, Some(usd))
+      engine.jot
+        .write(Subject.Public)(
+          engine.ledger
+            .record(
+              EntryId(s"spent:${UUID.randomUUID()}"),
+              turn,
+              turn.workflowId,
+              "m",
+              None,
+              None,
+              usage,
+              Tokens(1)
+            )
+        )
+        .fold(e => sys.error(e.toString), identity)
+    }
+    def exists(origin: Origin): Boolean =
+      engine.db
+        .read(Subject.Public)(engine.conversations.find(origin))
+        .fold(e => sys.error(e.toString), _.nonEmpty)
+    def written(origin: Origin): Vector[(Payload, Option[String])] =
+      engine.db
+        .read(Subject.Public)(for {
+          found <- engine.conversations.find(origin)
+          all <- found.fold(Right(Vector.empty): Either[StoreError, Vector[Entry]])(c =>
+            engine.entries.list(c.id)
+          )
+          names <- engine.principals.speakers(all.map(_.id))
+        } yield all.map(e => (e.payload, names.of(e.id))))
+        .fold(e => sys.error(e.toString), identity)
+    def linked(origin: Origin): Vector[Option[Href]] =
+      engine.db
+        .read(Subject.Public)(for {
+          found <- engine.conversations.find(origin)
+          all <- found.fold(Right(Vector.empty): Either[StoreError, Vector[Entry]])(c =>
+            engine.entries.list(c.id)
+          )
+          read <- engine.principals.speakers(all.map(_.id))
+        } yield all.map(e => read.link(e.id)))
+        .fold(e => sys.error(e.toString), identity)
+    def dated(origin: Origin): Vector[java.time.Instant] =
+      engine.db
+        .read(Subject.Public)(
+          engine.conversations
+            .find(origin)
+            .flatMap(
+              _.fold(Right(Vector.empty): Either[StoreError, Vector[Entry]])(c =>
+                engine.entries.list(c.id)
+              )
+            )
+        )
+        .fold(e => sys.error(e.toString), _.map(_.createdAt))
+    def believed(origin: Origin): Vector[Integrity] =
+      engine.db
+        .read(Subject.Public)(
+          engine.conversations
+            .find(origin)
+            .flatMap(
+              _.fold(Right(Vector.empty): Either[StoreError, Vector[Entry]])(c =>
+                engine.entries.list(c.id)
+              )
+            )
+        )
+        .fold(e => sys.error(e.toString), _.map(_.integrity))
+    def periods(origin: Origin): Vector[Period] =
+      engine.db
+        .read(Subject.Public)(
+          engine.conversations
+            .find(origin)
+            .flatMap(
+              _.fold(Right(Vector.empty): Either[StoreError, Vector[Period]])(c =>
+                engine.periods.all(c.id)
+              )
+            )
+        )
+        .fold(e => sys.error(e.toString), identity)
+    def close(turn: TurnRef): Unit =
+      engine.jot
+        .write(Subject.Public)(
+          engine.periods
+            .of(turn)
+            .flatMap(
+              _.toRight(StoreError.Invalid(s"no period holds $turn")).flatMap(p =>
+                engine.periods.seal(
+                  CloseRef(p.ref, turn.turnSeq, Instant.EPOCH),
+                  CloseReason.Lapsed,
+                  TestClosings.prose("closed"),
+                  Instant.EPOCH
+                )
+              )
+            )
+        )
+        .fold(e => sys.error(e.toString), _ => ())
+    def name(account: Account, name: String): Unit =
+      engine.jot
+        .write(Subject.Public)(engine.principals.name(account, name))
+        .fold(e => sys.error(e.toString), identity)
+    def reached(origin: Origin): Vector[Option[Reach]] =
+      engine.db
+        .read(Subject.Public)(for {
+          found <- engine.conversations.find(origin)
+          all <- found.fold(Right(Vector.empty): Either[StoreError, Vector[Entry]])(c =>
+            engine.entries.list(c.id)
+          )
+          reaches <- all.foldLeft[Either[StoreError, Vector[Option[Reach]]]](
+            Right(Vector.empty)
+          ) { (acc, e) =>
+            acc.flatMap(done =>
+              engine.speech.reach(TurnRef(e.conversationId, e.turnSeq)).map(done :+ _)
+            )
+          }
+        } yield reaches)
+        .fold(e => sys.error(e.toString), identity)
+    def postedBy(origin: Origin): Option[CallSlot] =
+      engine.db
+        .read(Subject.Public)(
+          engine.conversations
+            .find(origin)
+            .flatMap(
+              _.fold(Right(None): Either[StoreError, Option[CallSlot]])(c =>
+                engine.conversations.postedBy(c.id)
+              )
+            )
+        )
+        .fold(e => sys.error(e.toString), identity)
+    def append(turn: TurnRef, id: EntryId, payload: Payload): Unit =
+      engine.jot
+        .write(Subject.Turn(turn))(for {
+          next <- engine.entries.lockNext(turn.conversationId)
+          _ <- engine.entries.insert(
+            Entry(
+              id,
+              turn.conversationId,
+              turn.turnSeq,
+              None,
+              next.seq,
+              payload,
+              Instant.now(),
+              Integrity.Member
+            )
+          )
+        } yield ())
+        .fold(e => sys.error(e.toString), identity)
+    def answers(turn: TurnRef, call: ToolCallId): Int =
+      LiveDb.transaction(db) { (tx: Tx^) ?=>
+        val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+        Using.resource(
+          conn.prepareStatement(
+            "SELECT count(*) FROM dbos.notifications WHERE destination_uuid = ? AND topic = ?"
+          )
+        ) { ps =>
+          ps.setString(1, WorkflowId.value(turn.workflowId))
+          ps.setString(2, Approval.topic(call))
+          Using.resource(ps.executeQuery())(rs => if (rs.next()) rs.getInt(1) else 0)
+        }
+      }
+    body(
+      engine.inbox,
+      InboxContract.Store(
+        spend,
+        exists,
+        written,
+        dated,
+        believed,
+        periods,
+        close,
+        name,
+        reached,
+        postedBy,
+        (declared, now) =>
+          engine.jot
+            .write(Subject.Public)(engine.schedules.declare(declared, now))
+            .fold(e => sys.error(e.toString), identity),
+        id =>
+          engine.db
+            .read(Subject.Public)(engine.schedules.read(id))
+            .fold(e => sys.error(e.toString), identity),
+        now =>
+          engine.db
+            .read(Subject.Public) {
+              for {
+                flying <- engine.schedules.inFlight(1000)
+                due <- engine.schedules.due(now, 1000)
+              } yield flying ++ due
+            }
+            .fold(e => sys.error(e.toString), _.map(_._1)),
+        turn => {
+          val _ = engine.awaitTurn(turn)
+        },
+        (slot, version, at) =>
+          engine.jot
+            .write(Subject.Public)(engine.schedules.replied(slot, version, at))
+            .fold(e => sys.error(e.toString), identity),
+        origin =>
+          engine.db
+            .read(Subject.Public)(engine.conversations.find(origin))
+            .fold(e => sys.error(e.toString), _.map(_.label)),
+        origin => unreadable(engine, db, origin),
+        vouched =>
+          engine.jot
+            .write(Subject.Public)(
+              engine
+                .voucher(Set(InboxContract.T1, InboxContract.T2), InboxContract.Claimed)
+                .vouch(vouched)
+            )
+            .fold(e => sys.error(e.toString), _ => ()),
+        room => quieted(engine, room),
+        linked,
+        append,
+        answers
+      )
+    )
   }
 }
