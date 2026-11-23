@@ -4,7 +4,7 @@ import java.time.Instant
 
 import scala.concurrent.duration.*
 
-import grit.core.claim.ClaimRole
+import grit.core.claim.{ClaimRole, Claimed}
 import grit.core.document.{
   BriefClaim,
   DocLabel,
@@ -69,7 +69,7 @@ object SqlEdgeSessionsContractTests extends EdgeSessionsContract {
       subject: DocKey,
       session: Option[SessionId]
   ): Unit = {
-    val _ = LiveDb
+    LiveDb
       .transaction(config, Clearance.of(Label.Public))(
         for {
           _ <- briefs.write(
@@ -98,7 +98,10 @@ object SqlEdgeSessionsContractTests extends EdgeSessionsContract {
           )
         } yield made
       )
-      .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+      .fold(e => throw new java.lang.AssertionError(e.toString), identity) match {
+      case Claimed.Made(_) => ()
+      case other => throw new java.lang.AssertionError(s"$subject not claimed: $other")
+    }
   }
 
   protected def recording[A](body: EdgeSessions^ => A): A = {
