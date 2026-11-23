@@ -280,6 +280,7 @@ object Coding {
       Believed.At(Integrity.Member)
     ).requiring(Integrity.Member)
       .logging((a, _, _) => Some(Unrecorded.edited(RelPath.value(a.path))))
+      .changing
 
   private def writing(hosted: Hosted[WriteArgs], edits: Edits^): Tool[WriteArgs]^{edits} =
     hosted.over(a =>
@@ -340,6 +341,7 @@ object Coding {
       Believed.At(Integrity.Member)
     ).requiring(Integrity.Member)
       .logging((a, _, _) => Some(Unrecorded.edited(RelPath.value(a.path))))
+      .changing
 
   private def editing(hosted: Hosted[EditArgs], edits: Edits^): Tool[EditArgs]^{edits} =
     hosted.over(a =>
@@ -392,6 +394,7 @@ object Coding {
             .getOrElse(Unrecorded.Ran(Event.Shape.Empty))
         )
       )
+      .changing
 
   def run(shell: Shell^): Tool[RunArgs]^{shell} =
     runHosted.over(a => outcome(shell.run(a.command, a.timeout))(answered))
@@ -469,6 +472,7 @@ object Coding {
           committed(at, commits(a.argv), shown).getOrElse(Unrecorded.Ran(Event.Shape.Empty))
         )
       )
+      .changing
   }
 
   private def argvRun(runs: Allowlisted^): Tool[ArgvArgs]^{runs} =
@@ -527,6 +531,8 @@ object Coding {
       Believed.At(Integrity.Member)
     ).requiring(Integrity.Member)
       .logging((_, at, shown) => endedCommit(at, shown))
+      // Runs are shared by every conversation at the checkout: ending one changes it.
+      .changing
 
   private def tail(runs: Allowlisted^): Tool[TailArgs]^{runs} =
     tailHosted.over(a =>

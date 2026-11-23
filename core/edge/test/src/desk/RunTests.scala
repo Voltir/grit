@@ -173,6 +173,34 @@ object RunTests extends TestSuite {
       ran.result() ==> "C1"
     }
 
+    test(
+      "a changing tool runs only when its request's destination is its workspace; with none, or another place, it fails unrun"
+    ) {
+      val ran = new StringBuilder
+      val touch = new Hosted(
+        ToolSpec(ToolName("touch"), "Touches.", Args.of((text = Field.text("What."))).map(_.text)),
+        Gate.Free,
+        t => t,
+        Believed.Default
+      ).changing.over { text =>
+        ran.append(text)
+        Outcome.Done(s"touched $text")
+      }
+      val box = Toolbox.of(touch).getOrElse(throw new java.lang.AssertionError())
+      val elsewhere = Place.read("fs:/work/web").getOrElse(throw new java.lang.AssertionError())
+      (
+        Run.request(request("touch", destination = Some(api)), box),
+        Run.request(request("touch"), box),
+        Run.request(request("touch", destination = Some(elsewhere)), box),
+        ran.result()
+      ) ==> (
+        Outcome.Done("touched hi"),
+        Outcome.Failed("touch was told no place to write to; it did not run."),
+        Outcome.Failed("touch does not write to fs:/work/web here; it did not run."),
+        "hi"
+      )
+    }
+
     test("a request of a later protocol is answered that this edge is too old") {
       Run.request(request(protocol = ToolRequest.Protocol + 1), tools) ==>
         Outcome.Failed(

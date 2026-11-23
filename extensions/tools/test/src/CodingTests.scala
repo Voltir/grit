@@ -90,21 +90,33 @@ object CodingTests extends TestSuite {
   private def call(name: String, args: ujson.Value): AssistantBlock.ToolCall =
     AssistantBlock.ToolCall(ToolCallId("c1"), name, args)
 
-  /** `name` called with `args` against every tool over `host`: what it asks, and what it
-    * came to when run, approved when it asks.
+  /** The tools that change the checkout, whose requests are sent with it as their destination. */
+  private[tools] val Changing: Set[String] = Set("write", "edit", "run", "stop")
+
+  /** `name` called with `args` against every tool over `host`, as a request at [[worktree]]
+    * reaches it: what it asks, and what it came to when run, approved when it asks.
     */
   private def settle(
       host: Scripted,
       name: String,
       args: ujson.Value
   ): Either[String, (Option[String], Outcome)] =
-    all(host).bind(TestTainted.authority(call(name, args)), Repairs.All).left.map(_.message).map {
-      case free: Bound.Free => (None, free(TestCallSlots.First))
-      case gated: Bound.Gated => (Some(gated.ask), gated(Approval.Approved, TestCallSlots.First))
-      case hosted: Bound.Hosted => (hosted.ask, Outcome.Failed("hosted, not run here"))
-      case _: Bound.Reading => (None, Outcome.Failed("reads the store, not run here"))
-      case _: Bound.Keeping => (None, Outcome.Failed("keeps in the store, not run here"))
-    }
+    all(host)
+      .requested(
+        call(name, args),
+        Repairs.All,
+        Option.when(Changing(name))(worktree),
+        worktree
+      )
+      .left
+      .map(_.message)
+      .map {
+        case free: Bound.Free => (None, free(TestCallSlots.First))
+        case gated: Bound.Gated => (Some(gated.ask), gated(Approval.Approved, TestCallSlots.First))
+        case hosted: Bound.Hosted => (hosted.ask, Outcome.Failed("hosted, not run here"))
+        case _: Bound.Reading => (None, Outcome.Failed("reads the store, not run here"))
+        case _: Bound.Keeping => (None, Outcome.Failed("keeps in the store, not run here"))
+      }
 
   val tests = Tests {
     test("the tool sets") {
@@ -148,7 +160,8 @@ object CodingTests extends TestSuite {
     }
 
     test("each call is shown in one line: the tool, then what it acts on") {
-      val box = all(new Scripted())
+      val box =
+        Toolbox.of(Coding.hosted*).fold(d => throw new java.lang.AssertionError(d), identity)
       val calls = Vector(
         "read" -> ujson.Obj("path" -> "src/a.scala", "offset" -> 10),
         "list" -> ujson.Obj(),

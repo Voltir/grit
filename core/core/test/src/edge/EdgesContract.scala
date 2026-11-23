@@ -209,6 +209,20 @@ abstract class EdgesContract extends TestSuite {
         Right(Vector((r.slot.key, Some(slack("board")))))
     }
 
+    test(
+      "a request whose destination is its workspace, a change of it, is open with that destination"
+    ) {
+      val here = place("changed")
+      val r = request("changed", 0, here, destination = Some(here))
+      val d = desk(Set(here))
+      // Under the shipped labels, where a directory is public and so written to.
+      transaction(Clearance.of(Label.Public), Visibility.Shipped)(
+        requests.dispatch(Vector(r), Tx.classification)
+      ) ==> Right(())
+      d.open().map(_.map(q => (q.slot.key, q.destination))) ==>
+        Right(Vector((r.slot.key, Some(here))))
+    }
+
     test("the first claim wins, and a second claim of it is refused") {
       val here = place("claim")
       val r = request("claim", 0, here)

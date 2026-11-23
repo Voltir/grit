@@ -72,16 +72,18 @@ final class Toolbox[+C^] private (private val tools: Vector[Tool.Offered^{C}]) {
     * `repairs`, ready to run: a tool that writes ([[Writing.over]]) is told `destination`,
     * whatever the arguments hold for [[Writes.Field]]. Why it cannot be, as [[bind]];
     * [[CallError.Misdirected]] when the tool writes and `destination` is none of its places,
-    * or nothing, or when the tool writes nowhere and `destination` is a place.
+    * or nothing, when the tool changes its workspace ([[Hosted.changing]]) and `destination` is
+    * not `workspace`, the request's, or when the tool does neither and `destination` is a place.
     */
   def requested(
       call: AssistantBlock.ToolCall,
       repairs: Repairs,
-      destination: Option[Place]
+      destination: Option[Place],
+      workspace: Place
   ): Either[CallError, Bound^{C}] =
     tools.find(t => ToolName.value(t.name) == Toolbox.named(call.name, repairs.names)) match {
       case None => Left(CallError.Unknown(call.name, names))
-      case Some(tool) => tool.told(call, repairs.args, destination)
+      case Some(tool) => tool.told(call, repairs.args, destination, workspace)
     }
 }
 
@@ -260,7 +262,9 @@ object Bound {
     * ([[Tool.Offered.output]]), what its results are believed at when it runs at no service;
     * `logs`, what the call adds to its turn's session's log when the edge at a place ran it to
     * [[Outcome.Done]], read from that place and the `Done` text as its model was shown it,
-    * after clipping, `None` for a tool that logs nothing ([[Hosted.logging]]).
+    * after clipping, `None` for a tool that logs nothing ([[Hosted.logging]]); `changes`,
+    * whether its tool is [[Hosted.changing]], so the request it is sent as has the workspace it
+    * goes to as its destination.
     */
   final class Hosted private[tool] (
       val tool: ToolName,
@@ -272,7 +276,8 @@ object Bound {
       val repairs: Set[grit.core.model.ArgRepair],
       val retry: Retry,
       val destination: Option[Place],
-      val output: Believed
+      val output: Believed,
+      val changes: Boolean
   ) extends Bound
 
 }

@@ -10,7 +10,7 @@ import grit.core.edge.{Edges, Permit, Registration, ToolRequest}
 import grit.core.host.{Allowlist, Argv, HostError}
 import grit.core.id.{CallSlot, ConversationId, EdgeId, PrincipalId, TurnRef, TurnSeq}
 import grit.core.place.{Directory, Place}
-import grit.core.tool.{Outcome, Retry, ToolName}
+import grit.core.tool.{CallError, Outcome, Retry, ToolName}
 import grit.host.checkout.Redaction
 import grit.kit.deployment.Offered
 
@@ -30,29 +30,39 @@ object LocalToolsTests extends TestSuite {
   }
 
   /** `tool` called with `arguments` by tools offering `offered` over the checkout `root`. */
-  private def run(offered: Offered, root: Path, tool: String, arguments: ujson.Value): Outcome =
-    offering(offered)(call(_, root, tool, arguments))
+  private def run(
+      offered: Offered,
+      root: Path,
+      tool: String,
+      arguments: ujson.Value,
+      destination: Place => Option[Place] = Some(_)
+  ): Outcome =
+    offering(offered)(call(_, root, tool, arguments, destination))
 
-  /** `tool` called with `arguments` by `tools` over the checkout `root`. */
+  /** `tool` called with `arguments` by `tools` over the checkout `root`, its request's
+    * destination what `destination` makes of the checkout's place.
+    */
   private def call(
       tools: LocalTools^,
       root: Path,
       tool: String,
-      arguments: ujson.Value
+      arguments: ujson.Value,
+      destination: Place => Option[Place] = _ => None
   ): Outcome = {
     val turn = TurnRef(ConversationId("c"), TurnSeq.First)
+    val workspace = Place.of(right(Directory.of(root.toString)))
     val q = ToolRequest(
       CallSlot.of(turn, 0, 0).getOrElse(throw new java.lang.AssertionError()),
       ToolRequest.Protocol,
       turn.conversationId,
-      Place.of(right(Directory.of(root.toString))),
+      workspace,
       PrincipalId.Local,
       right(ToolName.of(tool)),
       Permit.Free,
       Retry.Interrupt,
       arguments,
       Set.empty,
-      None
+      destination(workspace)
     )
     val route = Edges
       .authorize(q, Registration(EdgeId("e"), PrincipalId.Local, Set(q.workspace)))
@@ -69,7 +79,8 @@ object LocalToolsTests extends TestSuite {
       val listed = Allowlist.Rule.Leading(right(Argv.of("./slow")))
       val offered = Offered.Allowlisted(right(Allowlist.of(Vector(listed), 5.seconds)))
       offering(offered) { tools =>
-        val started = call(tools, root, "run", ujson.Obj("program" -> "./slow", "wait" -> 0))
+        val started =
+          call(tools, root, "run", ujson.Obj("program" -> "./slow", "wait" -> 0), Some(_))
         val id = started match {
           case Outcome.Done(text, _, _, _, _) =>
             "as `([0-9a-f]{8})`".r.findFirstMatchIn(text).map(_.group(1)).getOrElse("")
@@ -97,6 +108,45 @@ object LocalToolsTests extends TestSuite {
       ) ==> (
         Outcome.Done(s"Exit code 0. Output:\nhello from $root\n"),
         Outcome.Failed(HostError.Unlisted(touch).message),
+        false
+      )
+    }
+
+    test(
+      "a change to the checkout runs only when its request's destination is the checkout: write, edit and run told none, or another place, are misdirected and change nothing"
+    ) {
+      val root = Files.createTempDirectory("changing").toRealPath()
+      val script = root.resolve("hello")
+      Files.writeString(script, "#!/bin/sh\necho hi > ran\n")
+      Files.setPosixFilePermissions(script, PosixFilePermissions.fromString("rwx------"))
+      val listed = Allowlist.Rule.Leading(right(Argv.of("./hello")))
+      val offered = Offered.Allowlisted(right(Allowlist.of(Vector(listed), 5.seconds)))
+      val other = Place.of(right(Directory.of("/elsewhere")))
+      def misdirected(tool: String, to: Option[Place]): Outcome =
+        CallError.Misdirected(right(ToolName.of(tool)), to).outcome
+      val made = ujson.Obj("path" -> "made.txt", "content" -> "made\n")
+      val edited = ujson.Obj(
+        "path" -> "made.txt",
+        "edits" -> ujson.Arr(ujson.Obj("oldText" -> "made", "newText" -> "edited"))
+      )
+      val hello = ujson.Obj("program" -> "./hello")
+      (
+        run(offered, root, "write", made, _ => None),
+        run(offered, root, "write", made, _ => Some(other)),
+        Files.exists(root.resolve("made.txt")),
+        run(offered, root, "write", made),
+        run(offered, root, "edit", edited, _ => None),
+        run(offered, root, "run", hello, _ => None),
+        Files.readString(root.resolve("made.txt")),
+        Files.exists(root.resolve("ran"))
+      ) ==> (
+        misdirected("write", None),
+        misdirected("write", Some(other)),
+        false,
+        Outcome.Done("Wrote made.txt: 1 line."),
+        misdirected("edit", None),
+        misdirected("run", None),
+        "made\n",
         false
       )
     }

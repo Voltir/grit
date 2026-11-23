@@ -22,7 +22,7 @@ final class Tool[A] private[tool] (
     val gate: Gate[A],
     shown: A -> String,
     run: Tool.Run[A]^,
-    aim: Option[Tool.Aim],
+    aim: Tool.Aim,
     requires: Integrity,
     val output: Believed
 ) extends Tool.Offered {
@@ -32,19 +32,7 @@ final class Tool[A] private[tool] (
   def schema(strict: Boolean): ToolSchema = Gate.described(spec.schema(strict), gate != Gate.Free)
 
   def entry: ToolSet.Entry = aim match {
-    case None =>
-      val parameters = spec.args.schema(false)
-      ToolSet.Entry(
-        spec.name,
-        spec.does,
-        parameters,
-        gate != Gate.Free,
-        spec.retry,
-        None,
-        requires,
-        spec.action
-      )
-    case Some(Tool.Aim(parameters, writes)) =>
+    case Tool.Aim.Places(parameters, writes) =>
       val asks = gate != Gate.Free
       ToolSet.Entry(
         spec.name,
@@ -56,35 +44,53 @@ final class Tool[A] private[tool] (
         requires,
         spec.action
       )
+    case _ =>
+      val parameters = spec.args.schema(false)
+      ToolSet.Entry(
+        spec.name,
+        spec.does,
+        parameters,
+        gate != Gate.Free,
+        spec.retry,
+        None,
+        requires,
+        spec.action
+      )
   }
 
   private[tool] def bind(
       call: AssistantBlock.ToolCall,
       repairs: Set[ArgRepair],
       stamped: Integrity
-  ): Either[CallError, Bound^{this}] = {
-    val unwritable = for {
-      a <- aim
-      sent <- call.arguments.objOpt
-      error <- a.writes.chosen(spec.name, sent).left.toOption
-    } yield error
-    unwritable.fold(read(call.arguments, repairs, stamped))(Left(_))
+  ): Either[CallError, Bound^{this}] = aim match {
+    // Bound here, it would run with no destination, which a change of a workspace never does.
+    case Tool.Aim.Workspace => Left(CallError.Misdirected(spec.name, None))
+    case Tool.Aim.Nowhere => read(call.arguments, repairs, stamped)
+    case Tool.Aim.Places(_, writes) =>
+      call.arguments.objOpt.flatMap(writes.chosen(spec.name, _).left.toOption) match {
+        case Some(error) => Left(error)
+        case None => read(call.arguments, repairs, stamped)
+      }
   }
 
   private[tool] def told(
       call: AssistantBlock.ToolCall,
       repairs: Set[ArgRepair],
-      destination: Option[Place]
+      destination: Option[Place],
+      workspace: Place
   ): Either[CallError, Bound^{this}] =
     aim match {
-      case None =>
+      case Tool.Aim.Nowhere =>
         destination.fold(read(call.arguments, repairs, Integrity.Untrusted))(at =>
           Left(CallError.Misdirected(spec.name, Some(at)))
         )
-      case Some(a) =>
+      case Tool.Aim.Workspace =>
+        if (destination.contains(workspace)) read(call.arguments, repairs, Integrity.Untrusted)
+        else Left(CallError.Misdirected(spec.name, destination))
+      case Tool.Aim.Places(_, a) =>
         // The name the arguments are read with is one placed at the destination, so the
         // tool is told the destination there, whatever the call sent.
-        destination.flatMap(at => a.writes.to.collectFirst { case (name, `at`) => name }) match {
+        destination.flatMap(at => a.to.collectFirst { case (name, `at`) => name }) match {
           case None => Left(CallError.Misdirected(spec.name, destination))
           case Some(name) =>
             val aimed = call.arguments.objOpt.fold(call.arguments)(sent =>
@@ -162,7 +168,7 @@ object Tool {
         Gate.Ask(_ => s"${ToolName.value(entry.name)} is gone: approving it runs nothing.")
       else Gate.Free
     entry.writes.fold[Offered](
-      new Hosted(spec, gate, _ => "", (_, _, _) => None, entry.requires, Believed.Default)
+      new Hosted(spec, gate, _ => "", (_, _, _) => None, entry.requires, Believed.Default, false)
         .over(_ => goneOutcome)
     )(writes =>
       new Writing(spec, gate, _ => "", writes, entry.requires).over((_, _) => goneOutcome)
@@ -213,20 +219,26 @@ object Tool {
         stamped: Integrity
     ): Either[CallError, Bound^{this}]
 
-    /** `call`, which names this tool, sent to an edge as a request to write to
+    /** `call`, which names this tool, sent to an edge as a request at `workspace` to write to
       * `destination`, read against it with `repairs` ([[Toolbox.requested]]).
       */
     private[tool] def told(
         call: AssistantBlock.ToolCall,
         repairs: Set[ArgRepair],
-        destination: Option[Place]
+        destination: Option[Place],
+        workspace: Place
     ): Either[CallError, Bound^{this}]
   }
 
-  /** What a tool that writes outside grit records of itself ([[Writing.over]]): its
-    * parameters without [[Writes.Field]], and its destinations as places.
+  /** Where a tool's calls are aimed: nowhere a request names; at the workspace the request goes
+    * to ([[Hosted.changing]]); or, for a tool that writes outside grit ([[Writing.over]]), at
+    * its destinations as places, its parameters without [[Writes.Field]].
     */
-  private[tool] final case class Aim(parameters: ujson.Value, writes: Writes[Place])
+  private[tool] enum Aim {
+    case Nowhere
+    case Workspace
+    case Places(parameters: ujson.Value, writes: Writes[Place])
+  }
 }
 
 /** The half of a tool that says what it is and never runs it: what the model is told of it,
@@ -241,14 +253,15 @@ final class Hosted[A] private[tool] (
     shown: A -> String,
     logs: (A, Place, String) -> Option[Unrecorded],
     requires: Integrity,
-    val output: Believed
+    val output: Believed,
+    changes: Boolean
 ) extends Tool.Offered {
 
   /** A tool described by `spec`, `gate` and `shown`, its results believed at `output` when a
     * call does not say.
     */
   def this(spec: ToolSpec[A], gate: Gate[A], shown: A -> String, output: Believed) =
-    this(spec, gate, shown, (_, _, _) => None, Integrity.Untrusted, output)
+    this(spec, gate, shown, (_, _, _) => None, Integrity.Untrusted, output, false)
 
   def name: ToolName = spec.name
 
@@ -270,7 +283,7 @@ final class Hosted[A] private[tool] (
 
   /** This hosted tool, its calls bound only when stamped at `integrity` or above. */
   def requiring(integrity: Integrity): Hosted[A] =
-    new Hosted(spec, gate, shown, logs, integrity, output)
+    new Hosted(spec, gate, shown, logs, integrity, output, changes)
 
   /** This hosted tool, each call of it that an edge runs to `Done` logged in its turn's session
     * as `logs` reads its arguments, the place the call ran at, and the `Done` text as shown,
@@ -278,7 +291,13 @@ final class Hosted[A] private[tool] (
     * every call of the [[Tool]] [[over]] makes, which runs at no place.
     */
   def logging(logs: (A, Place, String) -> Option[Unrecorded]): Hosted[A] =
-    new Hosted(spec, gate, shown, logs, requires, output)
+    new Hosted(spec, gate, shown, logs, requires, output, changes)
+
+  /** This tool, each call of it a write to the workspace it runs at
+    * ([[Bound.Hosted.changes]]): the [[Tool]] made of it runs only a request whose destination
+    * is that workspace ([[Toolbox.requested]]), and binds no call ([[Toolbox.bind]]).
+    */
+  def changing: Hosted[A] = new Hosted(spec, gate, shown, logs, requires, output, true)
 
   /** This tool, run by `run`. */
   def over(run: A => Outcome): Tool[A]^{run} =
@@ -286,25 +305,28 @@ final class Hosted[A] private[tool] (
 
   /** This tool, run by `run`, which is told the call it runs. */
   def calling(run: (A, CallSlot) => Outcome): Tool[A]^{run} =
-    new Tool(spec, gate, shown, new Tool.Plain(run), None, requires, output)
+    new Tool(spec, gate, shown, new Tool.Plain(run), aim, requires, output)
 
   /** This tool, run by `run`, which is told the call it runs and handed, at each call, reads
     * for that call's turn as the turn hands them ([[Bound.Reading]]). An edge does not run it.
     */
   def reading(run: (A, CallSlot, Reads^) => Outcome): Tool[A]^{run} =
-    new Tool(spec, gate, shown, new Tool.Reading(run), None, requires, output)
+    new Tool(spec, gate, shown, new Tool.Reading(run), aim, requires, output)
+
+  private def aim: Tool.Aim = if (changes) Tool.Aim.Workspace else Tool.Aim.Nowhere
 
   private[tool] def bind(
       call: AssistantBlock.ToolCall,
       repairs: Set[ArgRepair],
       stamped: Integrity
   ): Either[CallError, Bound^{this}] =
-    Hosted.bound(spec, gate, shown, logs, output, call.arguments, repairs, None)
+    Hosted.bound(spec, gate, shown, logs, output, call.arguments, repairs, None, changes)
 
   private[tool] def told(
       call: AssistantBlock.ToolCall,
       repairs: Set[ArgRepair],
-      destination: Option[Place]
+      destination: Option[Place],
+      workspace: Place
   ): Either[CallError, Bound^{this}] =
     bind(call, repairs, Integrity.Untrusted)
 }
@@ -326,7 +348,15 @@ object Hosted {
         ToolSpec(entry.name, entry.does, Args.raw(entry.parameters), entry.retry, entry.action)
       val shown: ujson.Value -> String = args => args.render().take(ShownMax)
       entry.writes.fold[Tool.Offered](
-        new Hosted(spec, Gate.Free, shown, (_, _, _) => None, entry.requires, Believed.Default)
+        new Hosted(
+          spec,
+          Gate.Free,
+          shown,
+          (_, _, _) => None,
+          entry.requires,
+          Believed.Default,
+          false
+        )
       )(writes => new Writing(spec, Gate.Free, shown, writes, entry.requires))
     }
 
@@ -344,7 +374,7 @@ object Hosted {
   def keeping[A](spec: ToolSpec[A], shown: A -> String, requires: Integrity, output: Believed)(
       run: (A, CallSlot, Integrity) => (Tx^) ?=> Either[StoreError, Outcome]
   ): Tool[A]^{run} =
-    new Tool(spec, Gate.Free, shown, new Tool.Keeping(run), None, requires, output)
+    new Tool(spec, Gate.Free, shown, new Tool.Keeping(run), Tool.Aim.Nowhere, requires, output)
 
   /** A tool an edge runs that writes outside grit to one of `writes`' destinations, described
     * by `spec`, `gate` and `shown`, requiring what its shape does ([[ToolSet.Entry.byShape]]);
@@ -360,7 +390,8 @@ object Hosted {
     else Right(new Writing(spec, gate, shown, writes, ToolSet.Entry.byShape(Some(writes.placed))))
 
   /** A call of the tool `spec`, `gate`, `shown` and `output` describe, its `arguments` read
-    * under `repairs`, bound for an edge to run, writing to `destination`.
+    * under `repairs`, bound for an edge to run, writing to `destination`, or to the workspace
+    * its request goes to when it `changes` ([[Hosted.changing]]).
     */
   private[tool] def bound[A](
       spec: ToolSpec[A],
@@ -370,7 +401,8 @@ object Hosted {
       output: Believed,
       arguments: ujson.Value,
       repairs: Set[ArgRepair],
-      destination: Option[Place]
+      destination: Option[Place],
+      changes: Boolean
   ): Either[CallError, Bound.Hosted] =
     spec.args.read(arguments, repairs) match {
       case Left(error) => Left(CallError.refused(spec.name, error, arguments))
@@ -391,7 +423,8 @@ object Hosted {
             repairs,
             spec.retry,
             destination,
-            output
+            output,
+            changes
           )
         )
     }
@@ -442,7 +475,17 @@ final class Writing[A, D <: caps.Pure] private[tool] (
   ): Either[CallError, Bound^{this}] =
     call.arguments.objOpt match {
       case None =>
-        Hosted.bound(spec, gate, shown, (_, _, _) => None, output, call.arguments, repairs, None)
+        Hosted.bound(
+          spec,
+          gate,
+          shown,
+          (_, _, _) => None,
+          output,
+          call.arguments,
+          repairs,
+          None,
+          false
+        )
       case Some(sent) =>
         writes
           .chosen(spec.name, sent)
@@ -456,7 +499,8 @@ final class Writing[A, D <: caps.Pure] private[tool] (
                 output,
                 rest,
                 repairs,
-                Some(writes.place(to))
+                Some(writes.place(to)),
+                changes = false
               )
           )
     }
@@ -464,7 +508,8 @@ final class Writing[A, D <: caps.Pure] private[tool] (
   private[tool] def told(
       call: AssistantBlock.ToolCall,
       repairs: Set[ArgRepair],
-      destination: Option[Place]
+      destination: Option[Place],
+      workspace: Place
   ): Either[CallError, Bound^{this}] =
     bind(call, repairs, Integrity.Untrusted)
 
@@ -483,7 +528,7 @@ final class Writing[A, D <: caps.Pure] private[tool] (
       aimed,
       sent => shown(sent._1),
       new Tool.Plain((sent, _) => run(sent._1, sent._2)),
-      Some(Tool.Aim(spec.args.schema(false), writes.placed)),
+      Tool.Aim.Places(spec.args.schema(false), writes.placed),
       requires,
       Believed.Default
     )

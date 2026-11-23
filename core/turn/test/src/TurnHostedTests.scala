@@ -280,6 +280,39 @@ object TurnHostedTests extends TestSuite {
         .map(_.map(_.integrity)) ==> Right(Some(Integrity.Member))
     }
 
+    test(
+      "a changing call from a turn that read above its directory is answered that it may not write there, and no edge runs it"
+    ) {
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "fetch")
+      // The directory is public; the turn is routed restricted, its reads at restricted.
+      val visibility = labelling(
+        Vector(Place.of(checkout) -> Label.Public),
+        Vector(RoutedOpen, RoutedFlash, RoutedSummary, RoutedQuery).flatMap(r =>
+          grit.core.visibility.Party.of(r).map(grit.core.visibility.Cleared(_, restricted))
+        )
+      )
+      val durable =
+        new InMemoryDurable(resolve = _ => Clearance.of(restricted), visibility = visibility)
+      val changing = hostedFetch.changing
+      val edge = new Served(new InMemoryEdges, durable, _ => Serve.Now(Outcome.Done("fetched")))
+      edge.advertise(Vector(changing))
+      val provider = model(("t1", "fetch", "a.txt"))
+      durable.run(turn.workflowId)(
+        hostedBody(
+          entries,
+          provider,
+          edge,
+          hosted = Vector(changing),
+          db = grit.core.act.MovesFixtures.FakeDb(Clearance.of(restricted), visibility),
+          catalog = RoutedCatalog
+        )
+      ) ==> Done
+      results(provider).map(_.content) ==> Vector(
+        s"Nothing was sent: this conversation may not write to ${Place.of(checkout).written}."
+      )
+    }
+
     test("a turn's request records its asker") {
       val entries = new InMemoryEntryStore
       val turn = say(entries, "fetch")

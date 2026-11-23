@@ -134,7 +134,8 @@ object Calling {
       })
 
   /** The request for the call at `cs`, bound to `hosted`, addressed to `place`, let through by
-    * `permit`, for `principal`, from `cs`'s conversation.
+    * `permit`, for `principal`, from `cs`'s conversation; a changing call's
+    * ([[Bound.Hosted.changes]]) destination is `place`.
     */
   def request(
       cs: CallSlot,
@@ -154,7 +155,7 @@ object Calling {
       hosted.retry,
       hosted.arguments,
       hosted.repairs,
-      hosted.destination
+      hosted.destination.orElse(Option.when(hosted.changes)(place))
     )
 
   /** Those of `sent` addressed to `place` written for the live edge serving it, which is woken

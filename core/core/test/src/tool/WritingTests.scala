@@ -49,7 +49,7 @@ object WritingTests extends TestSuite {
 
   /** What `box` comes to for a request of `args` to `destination`, run when it binds. */
   private def ran(args: ujson.Value, destination: Option[Place]): Either[CallError, Outcome] =
-    box.requested(call(args), Repairs.All, destination).map {
+    box.requested(call(args), Repairs.All, destination, Place.Everywhere).map {
       case free: Bound.Free => free(TestCallSlots.First)
       case other => throw new java.lang.AssertionError(s"not free: $other")
     }

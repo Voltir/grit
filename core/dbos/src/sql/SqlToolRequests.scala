@@ -47,7 +47,7 @@ final class SqlToolRequests extends ToolRequests {
              |  workspace_id, principal, tool, permit, retry, arguments, repairs, state,
              |  destination_id, outcome, answered_at)
              |SELECT ?, ?, ?, ?::uuid, ?, id, ?, ?, ?, ?, ?::jsonb, ?::jsonb, refusal.state,
-             |  (SELECT id FROM destination), refusal.outcome,
+             |  COALESCE((SELECT id FROM destination), CASE WHEN ? THEN id END), refusal.outcome,
              |  CASE WHEN refusal.outcome IS NULL THEN NULL ELSE clock_timestamp() END
              |  FROM place,
              |       (SELECT o AS outcome, CASE WHEN o IS NULL THEN 'open' ELSE 'answered' END AS state
@@ -58,8 +58,14 @@ final class SqlToolRequests extends ToolRequests {
         requests.map { q =>
           val refused = ToolRequests.refusal(q, at)
           ps.setString(1, SqlToolRequests.pathJson(q.workspace))
-          // JSON null for no destination, so no destination place is written.
-          ps.setString(2, q.destination.fold("null")(SqlToolRequests.pathJson))
+          // JSON null for no destination, so no destination place is written; nor for one that is
+          // the workspace (a change of it, Hosted.changing), whose place `place` writes: one
+          // statement may not upsert a row twice.
+          val atWorkspace = q.destination.contains(q.workspace)
+          ps.setString(
+            2,
+            q.destination.filterNot(_ => atWorkspace).fold("null")(SqlToolRequests.pathJson)
+          )
           ps.setString(3, q.slot.key)
           ps.setInt(4, q.protocol)
           ps.setString(5, WorkflowId.value(q.slot.turn.workflowId))
@@ -71,9 +77,10 @@ final class SqlToolRequests extends ToolRequests {
           ps.setString(11, q.retry.key)
           ps.setString(12, ujson.write(q.arguments))
           ps.setString(13, SqlToolRequests.repairsJson(q))
+          ps.setBoolean(14, atWorkspace)
           refused match {
-            case Some(outcome) => ps.setString(14, ujson.write(OutcomeJson.write(outcome)))
-            case None => ps.setNull(14, java.sql.Types.VARCHAR)
+            case Some(outcome) => ps.setString(15, ujson.write(OutcomeJson.write(outcome)))
+            case None => ps.setNull(15, java.sql.Types.VARCHAR)
           }
           ps.executeUpdate()
           refused.isEmpty

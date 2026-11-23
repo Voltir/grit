@@ -111,7 +111,8 @@ object CallingTests extends TestSuite {
     box.requested(
       AssistantBlock.ToolCall(ToolCallId("c1"), tool, ujson.Obj("path" -> "a")),
       Repairs.All,
-      None
+      None,
+      Place.Everywhere
     ) match {
       case Right(h: Bound.Hosted) => h
       case other => throw new java.lang.AssertionError(s"not hosted: $other")

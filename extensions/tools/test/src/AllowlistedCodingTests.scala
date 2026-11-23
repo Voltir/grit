@@ -57,8 +57,8 @@ object AllowlistedCodingTests extends TestSuite {
   private def call(name: String, args: ujson.Value): AssistantBlock.ToolCall =
     AssistantBlock.ToolCall(ToolCallId("c1"), name, args)
 
-  /** `name` called with `args` against the allowlisted tools: whether it asks, and what it came to
-    * when run.
+  /** `name` called with `args` against the allowlisted tools, as a request at [[worktree]] reaches
+    * them: whether it asks, and what it came to when run.
     */
   private def settle(
       host: CodingTests.Scripted,
@@ -67,7 +67,12 @@ object AllowlistedCodingTests extends TestSuite {
       args: ujson.Value
   ): Either[String, (Boolean, Outcome)] =
     tools(host, runs)
-      .bind(TestTainted.authority(call(name, args)), Repairs.All)
+      .requested(
+        call(name, args),
+        Repairs.All,
+        Option.when(CodingTests.Changing(name))(worktree),
+        worktree
+      )
       .left
       .map(_.message)
       .map {
@@ -328,8 +333,9 @@ object AllowlistedCodingTests extends TestSuite {
     }
 
     test("run, tail and stop are shown as their name, then the command or the id") {
-      val runs = Allowlisted.over(new Noting(scripts), allowlist(10.minutes))
-      val box = tools(new CodingTests.Scripted(), runs)
+      val box = Toolbox
+        .of(Coding.allowlistedHosted(allowlist(10.minutes))*)
+        .fold(d => throw new java.lang.AssertionError(d), identity)
       Vector(
         "run" -> ujson.Obj("program" -> "./mill", "args" -> ujson.Arr("compile")),
         "tail" -> ujson.Obj("id" -> nth(1), "wait" -> 5),

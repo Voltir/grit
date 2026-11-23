@@ -20,7 +20,8 @@ object Run {
     * ([[grit.core.tool.Writing]]) is told the destination its request holds, whatever its
     * arguments held for [[grit.core.tool.Writes.Field]]; [[Outcome.Failed]], unrun, when the
     * request holds none or one at which the tool has no destination, or holds one for a tool
-    * that writes nowhere.
+    * that writes nowhere. A changing tool ([[grit.core.tool.Hosted.changing]]) runs only when
+    * its request's destination is its workspace; [[Outcome.Failed]], unrun, otherwise.
     */
   def request[C^](request: ToolRequest, tools: Toolbox[C]): Outcome =
     if (request.protocol > ToolRequest.Protocol)
@@ -32,7 +33,12 @@ object Run {
         request.arguments
       )
       val bound: Either[CallError, Bound^{C}] =
-        tools.requested(call, Repairs(NameRepair.AsSent, request.repairs), request.destination)
+        tools.requested(
+          call,
+          Repairs(NameRepair.AsSent, request.repairs),
+          request.destination,
+          request.workspace
+        )
       bound match {
         case Left(error) => error.outcome
         case Right(free: Bound.Free) =>

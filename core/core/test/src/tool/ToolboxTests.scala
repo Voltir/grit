@@ -154,7 +154,38 @@ object ToolboxTests extends TestSuite {
         .fold(d => throw new java.lang.AssertionError(d.toString), identity)
       val sent: AssistantBlock.ToolCall =
         AssistantBlock.ToolCall(ToolCallId("c1"), "echo", ujson.Obj("text" -> "hi"))
-      guarded.requested(sent, Repairs.All, None).map(_.tool) ==> Right(ToolName("echo"))
+      guarded.requested(sent, Repairs.All, None, Place.Everywhere).map(_.tool) ==> Right(
+        ToolName("echo")
+      )
+    }
+
+    test(
+      "a changing tool binds no call, which would run with no destination; its description binds one changing"
+    ) {
+      val described = new Hosted(echo.spec, Gate.Free, (t: String) => t, Believed.Default).changing
+      val ran = new StringBuilder
+      val box = Toolbox
+        .of(described.over { t =>
+          ran.append(t)
+          Outcome.Done(t)
+        })
+        .fold(d => throw new java.lang.AssertionError(d.toString), identity)
+      val engine = Toolbox
+        .of(described)
+        .fold(d => throw new java.lang.AssertionError(d.toString), identity)
+      val sent = call("echo", ujson.Obj("text" -> "hi"))
+      (
+        box.bind(sent, Repairs.All).map(_.tool),
+        engine.bind(sent, Repairs.All).map {
+          case h: Bound.Hosted => (h.destination, h.changes)
+          case other => throw new java.lang.AssertionError(s"not hosted: $other")
+        },
+        ran.result()
+      ) ==> (
+        Left(CallError.Misdirected(ToolName("echo"), None)),
+        Right((None, true)),
+        ""
+      )
     }
 
     test("a tool requires member when it writes and nothing otherwise, unless it declares more") {
