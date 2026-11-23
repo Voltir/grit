@@ -196,8 +196,7 @@ object CommandRouteTests extends TestSuite {
         unnamed == (Status.Ok, "did it"),
         malformed == (
           Status.BadRequest,
-          "the Grit-Session header names no session: " +
-            SessionId.read("no harness").left.getOrElse("")
+          "the Grit-Session header names no session: not a session's id, written <harness>:<id>"
         ),
         twice == (Status.BadRequest, "send one Grit-Session header, not several"),
         commands.ran.map(_.session) ==
