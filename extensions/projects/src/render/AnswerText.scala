@@ -352,6 +352,11 @@ object AnswerText {
   def released(key: ArtifactKey, holder: ClaimHolder): String =
     ujson.write(ujson.Obj("released" -> key.value, "holder" -> ClaimHolder.value(holder)))
 
+  /** `it lapses at <claim.lapses> unless they keep working`: what a refusal naming another's
+    * claim says of when it frees itself.
+    */
+  def lapsing(claim: Claim): String = s"it lapses at ${claim.lapses} unless they keep working"
+
   /** Live claims as a JSON object a program reads: `claims`, each its artifact's `key`, its
     * `role`, `holder`, who it is claimed for, `by`, who claimed it (written as given), `since`,
     * when it was made, `lapses`, when it lapses unless its holder keeps working, and `session`,

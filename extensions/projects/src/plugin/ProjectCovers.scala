@@ -12,6 +12,7 @@ import grit.core.store.Tx
 import grit.projects.artifact.{Artifact, Project}
 import grit.projects.method.{Cover, Method}
 import grit.projects.name.{ArtifactKey, ProjectKey, StateName}
+import grit.projects.render.AnswerText
 
 import ProjectArgs.*
 import ProjectCommands.*
@@ -187,7 +188,7 @@ private[plugin] object ProjectCovers {
             s"${calledIn(project, key)} is $side ${calledIn(project, other.key)}, which is claimed " +
               s"as ${ClaimRole.value(c.role)} for ${ClaimHolder.value(c.holder)} by ${accounts(c.by)} " +
               s"since ${c.made}; that claim covers everything under it, and so would this one; " +
-              s"it lapses at ${c.lapses} unless they keep working; project_release frees it"
+              s"${AnswerText.lapsing(c)}; project_release frees it"
           )
         )
     }

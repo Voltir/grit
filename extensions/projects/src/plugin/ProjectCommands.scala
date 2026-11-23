@@ -1568,7 +1568,7 @@ private[plugin] final class ProjectCommands(
                   first.fold(s"${a.head.called} is claimed already; project_release frees it")(c =>
                     s"${a.head.called} is claimed already, as ${ClaimRole.value(c.role)} " +
                       s"for ${ClaimHolder.value(c.holder)} by ${accounts(c.by)} since " +
-                      s"${c.made}; it lapses at ${c.lapses} unless they keep working; " +
+                      s"${c.made}; ${AnswerText.lapsing(c)}; " +
                       "project_release frees it"
                   )
                 )
@@ -1619,7 +1619,7 @@ private[plugin] final class ProjectCommands(
         other.fold(s"$holder works another artifact already; ${releaseFirst("it")}")(c =>
           s"$holder works ${subjectOf(project, c)} already, claimed since ${c.made}" +
             c.session.fold("")(s => s", worked by session ${s.written}") +
-            s"; it lapses at ${c.lapses} unless they keep working; ${releaseFirst("it")}"
+            s"; ${AnswerText.lapsing(c)}; ${releaseFirst("it")}"
         )
       )
 
