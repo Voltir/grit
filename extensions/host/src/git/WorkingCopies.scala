@@ -1,15 +1,18 @@
 package grit.host.git
 
+import java.nio.channels.FileChannel
 import java.nio.file.attribute.FileTime
-import java.nio.file.{Files, Path}
+import java.nio.file.{Files, Path, StandardOpenOption}
 import java.util.concurrent.TimeUnit
 
 import scala.concurrent.duration.FiniteDuration
+import scala.jdk.CollectionConverters.*
 
 import grit.core.clock.Clock
 import grit.core.host.{Argv, HostError, Processes, Ran, RelPath}
 import grit.core.place.{Repository, WorkName}
 import grit.host.checkout.Checkout.attempt
+import grit.host.checkout.LocalTree
 
 /** Working copies of `repository`'s clone at `clone`, each at `root/{repository}/{work}` on the
   * branch `grit/{work}`, git run through `processes`.
@@ -27,22 +30,120 @@ final class WorkingCopies(
   private val copies = root.toAbsolutePath.normalize.resolve(repository.name)
 
   /** `work`'s copy, made on `grit/{work}` when it has none: from the clone's HEAD, or from the
-    * branch where it exists.
+    * branch where it exists. At [[Most]] copies, the least recently used one that is neither
+    * held nor holding changes never committed is removed first, its branch kept;
+    * [[HostError.NoCopyFree]] when there is none.
     */
   def opened(work: WorkName): Either[HostError, Path] = Made.synchronized {
-    val dir = copies.resolve(WorkName.value(work))
+    val dir = dirOf(WorkName.value(work))
     val lock = lockOf(dir)
     if (Files.isDirectory(dir) && Files.exists(lock)) used(dir)
     else
       for {
-        _ <- attempt {
-          val _ = Files.createDirectories(copies)
-          if (!Files.exists(lock)) { val _ = Files.createFile(lock) }
-        }
+        _ <- bounded(WorkName.value(work))
+        _ <- locked(lock)
         _ <- made(work, dir)
         at <- used(dir)
       } yield at
   }
+
+  /** `body` given `work`'s copy, as [[opened]] gives it, held while it runs: neither the bound
+    * nor a sweep removes a held copy. The path outlives the hold; the copy may not. `Failed`
+    * when another process holds it.
+    */
+  def held[A](work: WorkName)(body: Path => A): Either[HostError, A] = {
+    val dir = dirOf(WorkName.value(work))
+    val lock = lockOf(dir)
+    hold(lock).flatMap { _ =>
+      try opened(work).map(body)
+      finally release(lock, dir)
+    }
+  }
+
+  private def dirOf(name: String): Path = copies.resolve(name)
+
+  /** `lock` held by this process, once more when it holds it already. */
+  private def hold(lock: Path): Either[HostError, Unit] = Made.synchronized {
+    Option(Holds.get(lock)) match {
+      case Some(h) => Right { val _ = Holds.put(lock, h.copy(depth = h.depth + 1)) }
+      case None =>
+        locked(lock).flatMap { _ =>
+          attempt(FileChannel.open(lock, StandardOpenOption.WRITE)).flatMap { channel =>
+            attempt(Option(channel.tryLock())) match {
+              case Right(Some(_)) => Right { val _ = Holds.put(lock, Holding(channel, 1)) }
+              case other =>
+                channel.close()
+                Left(other.left.getOrElse(HostError.Failed(s"Another grit holds `$lock`.")))
+            }
+          }
+        }
+    }
+  }
+
+  /** One hold of `lock` let go; at the last, `dir` used now and the lock freed. */
+  private def release(lock: Path, dir: Path): Unit = Made.synchronized {
+    Option(Holds.get(lock)).foreach { h =>
+      if (h.depth > 1) { val _ = Holds.put(lock, h.copy(depth = h.depth - 1)) }
+      else {
+        val _ = Holds.remove(lock)
+        if (Files.isDirectory(dir)) { val _ = used(dir) }
+        h.channel.close()
+      }
+    }
+  }
+
+  /** `lock` there, made when it is not: never opened, as this process may hold it. */
+  private def locked(lock: Path): Either[HostError, Unit] = attempt {
+    val _ = Files.createDirectories(copies)
+    if (!Files.exists(lock)) { val _ = Files.createFile(lock) }
+  }
+
+  /** The names of the copies there are, a lock or a directory each. */
+  private def names(): Either[HostError, Set[String]] = attempt {
+    if (!Files.isDirectory(copies)) Set.empty
+    else {
+      val listing = Files.list(copies)
+      try listing.iterator.asScala.map(_.getFileName.toString.stripSuffix(".lock")).toSet
+      finally listing.close()
+    }
+  }
+
+  /** Room for `name`'s copy: below [[Most]] others, the least recently used free ones removed. */
+  private def bounded(name: String): Either[HostError, Unit] =
+    names().flatMap { all =>
+      val others = all - name
+      val over = others.size - Most + 1
+      if (over <= 0) Right(())
+      else {
+        val gone = others.toVector.sortBy(lastUsed).iterator.filter(free).take(over).size
+        if (gone > 0) pruned()
+        if (gone == over) Right(()) else Left(HostError.NoCopyFree(Most))
+      }
+    }
+
+  /** When `name`'s copy was last used: its directory's time, the start of time without one. */
+  private def lastUsed(name: String): Long = {
+    val dir = dirOf(name)
+    if (Files.isDirectory(dir)) Files.getLastModifiedTime(dir).toMillis else 0L
+  }
+
+  /** Whether `name`'s copy was removed: not when held, by this process or another, nor when it
+    * holds changes never committed.
+    */
+  private def free(name: String): Boolean = {
+    val dir = dirOf(name)
+    val lock = lockOf(dir)
+    !Holds.containsKey(lock) && clean(dir) &&
+    (if (Files.exists(lock)) LocalTree.free(lock)(_ => ()) else LocalTree.removed(dir).isEmpty)
+  }
+
+  /** Whether `dir` holds nothing never committed: no directory, or git showing no change. */
+  private def clean(dir: Path): Boolean =
+    !Files.isDirectory(dir) ||
+      git(dir, "status", "--porcelain").exists(_.output.text.trim.isEmpty)
+
+  /** The clone's records of worktrees whose directory is gone, dropped. */
+  private def pruned(): Unit = { val _ = git(home, "worktree", "prune") }
 
   /** `dir` made a worktree of the clone, on `grit/{work}`. The lock beside it exists first. */
   private def made(work: WorkName, dir: Path): Either[HostError, Unit] = {
@@ -77,11 +178,23 @@ final class WorkingCopies(
 
 object WorkingCopies {
 
+  /** 8: the most copies of one repository. */
+  val Most: Int = 8
+
   /** 2 minutes: the longest a git command runs. */
   val GitLongest: FiniteDuration = FiniteDuration(2, TimeUnit.MINUTES)
 
-  /** What every process's copies are made and removed under, one at a time. */
+  /** What this process's copies are made, held and removed under, one at a time. */
   private object Made
+
+  /** A lock this process holds, and how many holds are open on it. */
+  private final case class Holding(channel: FileChannel, depth: Int)
+
+  /** The locks this process holds, by path. Process-wide, not one instance's: a lock is the
+    * process's, and opening a lock this process holds lets go of it (POSIX locks), so every
+    * instance must see every hold before it touches a lock. Read and changed under [[Made]].
+    */
+  private val Holds = new java.util.HashMap[Path, Holding]()
 
   private def lockOf(dir: Path): Path = dir.resolveSibling(s"${dir.getFileName}.lock")
 }

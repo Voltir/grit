@@ -3,6 +3,8 @@ package grit.host.git
 import java.nio.file.{Files, Path}
 import java.time.Instant
 
+import scala.jdk.CollectionConverters.*
+
 import grit.core.clock.SetClock
 import grit.core.host.HostError
 import grit.host.git.GitFixture.*
@@ -25,7 +27,89 @@ object WorkingCopiesTests extends TestSuite {
       case Left(e) => throw new java.lang.AssertionError(s"$name: ${e.message}")
     }
 
+  /** The names of the copies under `repo`'s root, sorted. */
+  private def present(repo: Repo^): Vector[String] = {
+    val listing = Files.list(repo.root.resolve("grit"))
+    try
+      listing.iterator.asScala
+        .filter(Files.isDirectory(_))
+        .map(_.getFileName.toString)
+        .toVector
+        .sorted
+    finally listing.close()
+  }
+
+  /** `names`, each held by `copies` around the next, `body` run inside the last. */
+  private def allHeld[A](copies: WorkingCopies^, names: List[String])(body: => A): A =
+    names match {
+      case Nil => body
+      case n :: rest =>
+        copies.held(work(n))(_ => allHeld(copies, rest)(body)) match {
+          case Right(a) => a
+          case Left(e) => throw new java.lang.AssertionError(s"$n: ${e.message}")
+        }
+    }
+
+  /** Whether the kernel has `lock` locked by this process: a hold the JVM still records but the
+    * system has dropped would let another process remove the copy.
+    */
+  private def lockedHere(lock: Path): Boolean = {
+    val pid = ProcessHandle.current.pid.toString
+    val inode = Files.getAttribute(lock, "unix:ino").toString
+    Files.readAllLines(Path.of("/proc/locks")).asScala.exists { line =>
+      val fields = line.trim.split("\\s+")
+      fields.length > 5 && fields(4) == pid && fields(5).endsWith(s":$inode")
+    }
+  }
+
+  private val eight = (0 until WorkingCopies.Most).toList.map(i => s"run-$i")
+
   val tests = Tests {
+    test("at Most copies, the least recently used one is removed for a new copy, its branch kept") {
+      inRepository { repo =>
+        val clock = new SetClock(start)
+        val copies = over(repo, clock)
+        eight.foreach { n =>
+          val _ = made(copies, n); clock.at = clock.at.plusSeconds(60)
+        }
+        val _ = made(copies, "run-0")
+        clock.at = clock.at.plusSeconds(60)
+        val ninth = copies.opened(work("run-8"))
+        (ninth.isRight, present(repo), hasBranch(repo, repo.source, "grit/run-1")) ==> (
+          true,
+          (eight.filterNot(_ == "run-1") :+ "run-8").sorted.toVector,
+          true
+        )
+      }
+    }
+
+    test("when every copy is held, none is removed, a new one is refused, and every hold stands") {
+      inRepository { repo =>
+        val copies = over(repo, new SetClock(start))
+        val (refused, standing) = allHeld(copies, eight) {
+          val r = copies.opened(work("run-8"))
+          (r, eight.filter(n => lockedHere(repo.root.resolve("grit").resolve(s"$n.lock"))))
+        }
+        (refused, present(repo), standing) ==> (
+          Left(HostError.NoCopyFree(WorkingCopies.Most)),
+          eight.toVector,
+          eight
+        )
+      }
+    }
+
+    test("a copy holding changes never committed is not removed for a new copy") {
+      inRepository { repo =>
+        val copies = over(repo, new SetClock(start))
+        eight.foreach(n => Files.writeString(made(copies, n).resolve("draft.txt"), "unsaved"))
+        val refused = copies.opened(work("run-8"))
+        (refused, present(repo)) ==> (
+          Left(HostError.NoCopyFree(WorkingCopies.Most)),
+          eight.toVector
+        )
+      }
+    }
+
     test("a run's copy is made on grit/{work}, and the next opened gives the same copy back") {
       inRepository { repo =>
         val copies = over(repo, new SetClock(start))

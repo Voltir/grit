@@ -58,6 +58,11 @@ enum HostError {
   /** No run `id` is kept in the checkout ([[Runs]]). */
   case Gone(id: RunId)
 
+  /** All `most` working copies of a repository are held by a run, or hold changes never
+    * committed; no copy was made.
+    */
+  case NoCopyFree(most: Int)
+
   /** One or two sentences: what went wrong, and for a timeout the output so far. */
   def message: String = this match {
     case NotFound(p) => s"There is no file or directory `${RelPath.value(p)}`."
@@ -93,5 +98,8 @@ enum HostError {
       s"No command `${id.written}` is kept in this checkout: grit restarted since it started, " +
         "or it ended and was forgotten after newer commands ended. Its output is gone; run it " +
         "again to see it."
+    case NoCopyFree(most) =>
+      s"All $most working copies of this repository are in use or hold changes that were never " +
+        "committed, so no copy was made. Try again when a run ends, or ask a person to clear one."
   }
 }
