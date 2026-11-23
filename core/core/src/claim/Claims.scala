@@ -61,22 +61,15 @@ enum Claimed {
   case Elsewhere(session: SessionId, holder: ClaimHolder)
 }
 
-/** What [[Claims.moved]] came to. */
-enum ClaimMoved {
+/** What [[Claims.moved]] came to: as [[Claimed]]'s cases say, the holder being the one moved to
+  * and the session the one it moves to; or [[ClaimMoved.Gone]].
+  */
+type ClaimMoved = Claimed.Made | Claimed.Holding | Claimed.Elsewhere | ClaimMoved.Gone.type
 
-  /** Moved, and now live. */
-  case Made(claim: Claim)
-
-  /** Refused, moving nothing: the label holds a claim by the holder moved to on another subject
-    * already; it, when this transaction reads it.
-    */
-  case Holding(other: Option[Claim])
-
-  /** Refused, moving nothing: the session moved to works as `holder`, another. */
-  case Elsewhere(session: SessionId, holder: ClaimHolder)
+object ClaimMoved {
 
   /** Moving nothing: the claim is gone. */
-  case Gone
+  case object Gone
 }
 
 /** One plugin's claims, as its transaction reads them: at each label, one live claim per subject
@@ -116,8 +109,8 @@ trait Claims extends caps.Pure {
   def release(subject: DocKey, label: Label)(using Tx^): Either[StoreError, Option[Claim]]
 
   /** `claim`, as [[live]] answered it, moved to `holder`'s session `session` as `role`, made anew
-    * at `at`, keeping `by` and its label: [[ClaimMoved.Made]]. [[ClaimMoved.Holding]] when
-    * `holder` has another live claim at that label, [[ClaimMoved.Elsewhere]] when this transaction
+    * at `at`, keeping `by` and its label: [[Claimed.Made]]. [[Claimed.Holding]] when
+    * `holder` has another live claim at that label, [[Claimed.Elsewhere]] when this transaction
     * reads `session` working as another holder; [[ClaimMoved.Gone]] when it is gone, as [[held]]
     * finds it, though `holder` has another. A claim of `holder`'s on another subject that has
     * lapsed by `at` refuses nothing, and is gone once the move is made. Who may move it is the

@@ -475,7 +475,7 @@ abstract class ClaimsContract extends TestSuite {
       val now = made("p/a", "move-2", when = hour, working = Some(session("move-b")))
         .copy(role = reviewer)
       assert(
-        moved == ClaimMoved.Made(now),
+        moved == Claimed.Made(now),
         live(c, hour) == Vector(now),
         claim(c, "p/b", "move-1", when = hour) == Claimed.Made(made("p/b", "move-1", when = hour))
       )
@@ -489,7 +489,7 @@ abstract class ClaimsContract extends TestSuite {
         ok(c.moved(made("p/a", "mh-1"), holder("mh-2"), session("mh-b"), builder, at))
       )
       assert(
-        moved == ClaimMoved.Holding(Some(made("p/b", "mh-2"))),
+        moved == Claimed.Holding(Some(made("p/b", "mh-2"))),
         live(c, at) == Vector(made("p/a", "mh-1"), made("p/b", "mh-2"))
       )
     }
@@ -544,8 +544,8 @@ abstract class ClaimsContract extends TestSuite {
         )
       )
       assert(
-        away == ClaimMoved.Made(made("p/a", "ml-2", when = lapse, working = Some(session("ml-b")))),
-        own == ClaimMoved.Made(made("p/b", "ml-3", when = lapse, working = Some(session("ml-d"))))
+        away == Claimed.Made(made("p/a", "ml-2", when = lapse, working = Some(session("ml-b")))),
+        own == Claimed.Made(made("p/b", "ml-3", when = lapse, working = Some(session("ml-d"))))
       )
     }
 
@@ -559,7 +559,7 @@ abstract class ClaimsContract extends TestSuite {
         )
       )
       val now = made("p/a", "mp-2", when = lapse, working = Some(session("mp-b")))
-      assert(moved == ClaimMoved.Made(now), live(c, at) == Vector(now))
+      assert(moved == Claimed.Made(now), live(c, at) == Vector(now))
     }
 
     test("a move to a session working as another holder is Elsewhere, moving nothing") {
@@ -573,7 +573,7 @@ abstract class ClaimsContract extends TestSuite {
         ok(c.moved(made("p/a", "me-1"), holder("me-2"), session("me-b"), builder, at))
       )
       assert(
-        moved == ClaimMoved.Elsewhere(session("me-b"), holder("me-3")),
+        moved == Claimed.Elsewhere(session("me-b"), holder("me-3")),
         live(c, at) == Vector(made("p/a", "me-1"))
       )
     }

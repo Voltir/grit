@@ -1554,51 +1554,45 @@ private[plugin] final class ProjectCommands(
             case Claiming.Target.Oldest(_, _, _, s) => s
             case Claiming.Target.TakeoverTo(_, to) => Some(to)
           }
-          made <- moving match {
-            case Some((c, to)) =>
-              stored(claims.moved(c, args.holder, to, args.role, at)).flatMap {
-                case ClaimMoved.Made(m) => Right(m)
-                case ClaimMoved.Holding(other) => Left(holdingRefused(project, holder, other))
-                case ClaimMoved.Elsewhere(s, other) => Left(elsewhereRefused(s, other, holder))
-                case ClaimMoved.Gone =>
-                  Left(Stop.Refused(s"${a.head.called}'s claim is gone; nothing was moved"))
-              }
-            case None =>
-              claimedFor(claims, document, args, asked, by.person, at).flatMap {
-                case Claimed.Made(c) => Right(c)
-                case Claimed.Taken(first) =>
-                  Left(
-                    Stop.Refused(
-                      first.fold(s"${a.head.called} is claimed already; project_release frees it")(
-                        c =>
-                          s"${a.head.called} is claimed already, as ${ClaimRole.value(c.role)} " +
-                            s"for ${ClaimHolder.value(c.holder)} by ${accounts(c.by)} since " +
-                            s"${c.made}; it lapses at ${c.lapses} unless they keep working; " +
-                            "project_release frees it"
-                      )
-                    )
+          came <- (moving match {
+            case Some((c, to)) => stored(claims.moved(c, args.holder, to, args.role, at))
+            case None => claimedFor(claims, document, args, asked, by.person, at)
+          }): Either[Stop, Claimed | ClaimMoved]
+          made <- came match {
+            case Claimed.Made(c) => Right(c)
+            case ClaimMoved.Gone =>
+              Left(Stop.Refused(s"${a.head.called}'s claim is gone; nothing was moved"))
+            case Claimed.Taken(first) =>
+              Left(
+                Stop.Refused(
+                  first.fold(s"${a.head.called} is claimed already; project_release frees it")(c =>
+                    s"${a.head.called} is claimed already, as ${ClaimRole.value(c.role)} " +
+                      s"for ${ClaimHolder.value(c.holder)} by ${accounts(c.by)} since " +
+                      s"${c.made}; it lapses at ${c.lapses} unless they keep working; " +
+                      "project_release frees it"
                   )
-                case Claimed.Holding(other) => Left(holdingRefused(project, holder, other))
-                case Claimed.HeldBy(c) =>
-                  val move = asked.fold("")(s =>
-                    " " + Takeover.said(
-                      Takeover(claimCommand, a.head.key.value),
-                      c.role,
-                      args.holder,
-                      s,
-                      "to your session"
-                    )
-                  )
-                  Left(
-                    Stop.Refused(
-                      s"${a.head.called} is claimed already as ${ClaimRole.value(c.role)} for " +
-                        ClaimHolder.value(c.holder) +
-                        c.session.fold("")(s => s", ${Claims.working(c, s)}") +
-                        s". Nothing was changed.$move"
-                    )
-                  )
-                case Claimed.Elsewhere(s, other) => Left(elsewhereRefused(s, other, holder))
-              }
+                )
+              )
+            case Claimed.Holding(other) => Left(holdingRefused(project, holder, other))
+            case Claimed.HeldBy(c) =>
+              val move = asked.fold("")(s =>
+                " " + Takeover.said(
+                  Takeover(claimCommand, a.head.key.value),
+                  c.role,
+                  args.holder,
+                  s,
+                  "to your session"
+                )
+              )
+              Left(
+                Stop.Refused(
+                  s"${a.head.called} is claimed already as ${ClaimRole.value(c.role)} for " +
+                    ClaimHolder.value(c.holder) +
+                    c.session.fold("")(s => s", ${Claims.working(c, s)}") +
+                    s". Nothing was changed.$move"
+                )
+              )
+            case Claimed.Elsewhere(s, other) => Left(elsewhereRefused(s, other, holder))
           }
           // The role has a view and the artifact is the project's, so the claim has its brief.
           unkept <- rendered(method, whole, ids(project), Vector(made)).headOption

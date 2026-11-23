@@ -348,7 +348,7 @@ object ClaimsLiveTests extends TestSuite {
         val held = holding.get(10, TimeUnit.SECONDS)
         // The claim read back names its person's accounts; the one made, as it was given.
         val moved = moving.get(10, TimeUnit.SECONDS).map {
-          case ClaimMoved.Holding(Some(h)) => ClaimMoved.Holding(Some(h.copy(by = by)))
+          case Claimed.Holding(Some(h)) => Claimed.Holding(Some(h.copy(by = by)))
           case other => other
         }
         val left = ok(LiveDb.transaction(config)(c.live(at))).map(m =>
@@ -357,7 +357,7 @@ object ClaimsLiveTests extends TestSuite {
         (waited, moved, left) ==> ((
           true,
           held match {
-            case Claimed.Made(h) => Right(ClaimMoved.Holding(Some(h)))
+            case Claimed.Made(h) => Right(Claimed.Holding(Some(h)))
             case other => Right(other)
           },
           Vector("p/held" -> "move-race-2", "p/moving" -> "move-race-1")

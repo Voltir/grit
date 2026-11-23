@@ -111,15 +111,15 @@ final class InMemoryClaims {
       val other =
         rows.find(r => here(r) && r.claim.holder == holder && r.claim.subject != claim.subject)
       (holderOf(session).filter(_ != holder), mine, other) match {
-        case (Some(away), _, _) => Right(ClaimMoved.Elsewhere(session, away))
+        case (Some(away), _, _) => Right(Claimed.Elsewhere(session, away))
         case (None, None, _) => Right(ClaimMoved.Gone)
-        case (None, Some(_), Some(o)) => Right(ClaimMoved.Holding(Option.when(reads(o))(read(o))))
+        case (None, Some(_), Some(o)) => Right(Claimed.Holding(Option.when(reads(o))(read(o))))
         case (None, Some(m), None) =>
           val now = m.copy(claim =
             m.claim.copy(holder = holder, role = role, session = Some(session), made = at)
           )
           rows = rows.map(r => if (r == m) now else r)
-          Right(ClaimMoved.Made(read(now)))
+          Right(Claimed.Made(read(now)))
       }
     }
 

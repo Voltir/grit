@@ -221,7 +221,7 @@ private[dbos] final class SqlClaims(plugin: PluginName) extends Claims {
       using Tx^
   ): Either[StoreError, ClaimMoved] =
     SqlClaims.elsewhere(Some(session), holder).flatMap {
-      case Some((s, away)) => Right(ClaimMoved.Elsewhere(s, away))
+      case Some((s, away)) => Right(Claimed.Elsewhere(s, away))
       case None =>
         for {
           id <- SqlLabels.intern(claim.label)
@@ -235,7 +235,7 @@ private[dbos] final class SqlClaims(plugin: PluginName) extends Claims {
               holding(claim.subject, holder, id)
                 .flatMap(
                   _.fold[Either[StoreError, ClaimMoved]](Left(failed))(h =>
-                    Right(ClaimMoved.Holding(h))
+                    Right(Claimed.Holding(h))
                   )
                 )
           }
@@ -278,7 +278,7 @@ private[dbos] final class SqlClaims(plugin: PluginName) extends Claims {
       }(SqlDocuments.instant(_, "active"))
       .map(
         _.headOption.fold(ClaimMoved.Gone)(active =>
-          ClaimMoved.Made(
+          Claimed.Made(
             claim.copy(
               holder = holder,
               role = role,
