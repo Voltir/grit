@@ -63,12 +63,8 @@ object ClaimHolders {
   }
 
   /** The holder a session in `dir` on `machine` works as, or, given `agent`, the one that agent
-    * works as, `dir` then being the starting session's directory, not the agent's own:
-    * `<machine>/<segment>-<dir's hash>[/<type>/<session's hash>]`, `segment` being `dir`'s last
-    * segment slugged ([[Slug.slugged]]) to at most [[Slugged]] characters, and `type` the agent's
-    * whole when it is an [[AgentType]], else so slugged then `-` and its hash. Equal inputs give
-    * equal holders; one directory on two machines, two; two types, two, short of a hash
-    * collision.
+    * works as, `dir` then being the starting session's directory, not the agent's own. One
+    * directory on two machines gives two; two types, two, short of a hash collision.
     */
   def of(machine: MachineName, dir: Directory, agent: Option[Agent]): ClaimHolder = {
     val path = Directory.value(dir)

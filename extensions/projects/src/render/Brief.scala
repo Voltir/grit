@@ -33,9 +33,7 @@ enum BriefRefusal extends caps.Pure {
   * text before `## Cited`. The links followed, up to the view's depth, are every `cites`, in a head
   * and a body, and the `parent` of the artifact and of each of its ancestors, never of an artifact
   * reached by a cite; a path may pass through artifacts of kinds the view does not name, but only
-  * artifacts of its kinds are cited, and none it carries. Pointers replace the farthest whole
-  * citations first; then each pointer, nearest first, is given whole again if it still fits.
-  * `pointed` lists the keys shown as pointers, and a citation that does not fit even as a pointer
+  * artifacts of its kinds are cited, and none it carries. `pointed` lists the keys shown as pointers, and a citation that does not fit even as a pointer
   * is left out. `shows` lists every artifact whose words the text holds, whole or as a pointer, in
   * the order it shows them: `artifact`, each carried, then each cited.
   */

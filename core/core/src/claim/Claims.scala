@@ -73,11 +73,7 @@ object ClaimMoved {
 }
 
 /** One plugin's claims, as its transaction reads them: at each label, one live claim per subject
-  * and one per holder. A claim's lease is its session's work, and that session's agents'
-  * ([[Claim.active]]). A
-  * release deletes it, and so does a claim taking it over once lapsed; the
-  * session sweep deletes a claim lapsed longer than [[grit.core.session.Session.Unended]]. Nothing
-  * is versioned.
+  * and one per holder. Nothing is versioned.
   */
 trait Claims extends caps.Pure {
 
