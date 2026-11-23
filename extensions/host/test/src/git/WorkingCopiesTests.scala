@@ -65,6 +65,46 @@ object WorkingCopiesTests extends TestSuite {
   private val eight = (0 until WorkingCopies.Most).toList.map(i => s"run-$i")
 
   val tests = Tests {
+    test(
+      "the first call removes a copy unused for Kept, its branch kept; one used since, or holding changes, stays"
+    ) {
+      inRepository { repo =>
+        val clock = new SetClock(start)
+        val earlier = over(repo, clock)
+        val _ = made(earlier, "old")
+        Files.writeString(made(earlier, "draft").resolve("draft.txt"), "unsaved")
+        clock.at = start.plusSeconds(6 * 86400)
+        val _ = made(earlier, "recent")
+        clock.at = start.plusMillis(WorkingCopies.Kept.toMillis).plusSeconds(3600)
+        val _ = made(over(repo, clock), "next")
+        (present(repo), hasBranch(repo, repo.source, "grit/old")) ==> (
+          Vector("draft", "next", "recent"),
+          true
+        )
+      }
+    }
+
+    test("the first call removes a directory left without its lock") {
+      inRepository { repo =>
+        val stray = Files.createDirectories(repo.root.resolve("grit").resolve("stray"))
+        Files.writeString(stray.resolve("left.txt"), "left")
+        val _ = made(over(repo, new SetClock(start)), "next")
+        present(repo) ==> Vector("next")
+      }
+    }
+
+    test("a run's own directory left without its lock is made again as its copy") {
+      inRepository { repo =>
+        val copies = over(repo, new SetClock(start))
+        val _ = made(copies, "first")
+        val left = Files.createDirectories(repo.root.resolve("grit").resolve("fix-a"))
+        Files.writeString(left.resolve("left.txt"), "left")
+        val again = made(copies, "fix-a")
+        val branch = git(repo, again, "rev-parse", "--abbrev-ref", "HEAD").output.text.trim
+        (branch, Files.exists(again.resolve("left.txt"))) ==> ("grit/fix-a", false)
+      }
+    }
+
     test("at Most copies, the least recently used one is removed for a new copy, its branch kept") {
       inRepository { repo =>
         val clock = new SetClock(start)

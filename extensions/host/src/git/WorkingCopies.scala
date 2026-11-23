@@ -4,6 +4,7 @@ import java.nio.channels.FileChannel
 import java.nio.file.attribute.FileTime
 import java.nio.file.{Files, Path, StandardOpenOption}
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 import scala.concurrent.duration.FiniteDuration
 import scala.jdk.CollectionConverters.*
@@ -15,7 +16,9 @@ import grit.host.checkout.Checkout.attempt
 import grit.host.checkout.LocalTree
 
 /** Working copies of `repository`'s clone at `clone`, each at `root/{repository}/{work}` on the
-  * branch `grit/{work}`, git run through `processes`.
+  * branch `grit/{work}`, git run through `processes`. Its first call sweeps: every copy unused
+  * for [[Kept]] that is neither held nor holding changes never committed is removed, its branch
+  * kept, and so is every directory there without its lock.
   */
 final class WorkingCopies(
     repository: Repository,
@@ -28,6 +31,7 @@ final class WorkingCopies(
 
   private val home = clone.toAbsolutePath.normalize
   private val copies = root.toAbsolutePath.normalize.resolve(repository.name)
+  private val swept = new AtomicBoolean(false)
 
   /** `work`'s copy, made on `grit/{work}` when it has none: from the clone's HEAD, or from the
     * branch where it exists. At [[Most]] copies, the least recently used one that is neither
@@ -35,11 +39,13 @@ final class WorkingCopies(
     * [[HostError.NoCopyFree]] when there is none.
     */
   def opened(work: WorkName): Either[HostError, Path] = Made.synchronized {
+    sweep()
     val dir = dirOf(WorkName.value(work))
     val lock = lockOf(dir)
-    if (Files.isDirectory(dir) && Files.exists(lock)) used(dir)
+    if (isCopy(dir) && Files.exists(lock)) used(dir)
     else
       for {
+        _ <- cleared(dir)
         _ <- bounded(WorkName.value(work))
         _ <- locked(lock)
         _ <- made(work, dir)
@@ -139,8 +145,32 @@ final class WorkingCopies(
 
   /** Whether `dir` holds nothing never committed: no directory, or git showing no change. */
   private def clean(dir: Path): Boolean =
-    !Files.isDirectory(dir) ||
-      git(dir, "status", "--porcelain").exists(_.output.text.trim.isEmpty)
+    !isCopy(dir) || git(dir, "status", "--porcelain").exists(_.output.text.trim.isEmpty)
+
+  /** Whether `dir` is a worktree git made: its `.git` there, so git looks no further up. */
+  private def isCopy(dir: Path): Boolean = Files.exists(dir.resolve(".git"))
+
+  /** `dir` gone when it is there but no copy, as an interrupted removal leaves it. */
+  private def cleared(dir: Path): Either[HostError, Unit] =
+    if (!Files.exists(dir)) Right(())
+    else
+      LocalTree.removed(dir) match {
+        case left if left.nonEmpty => Left(HostError.Failed(s"`$dir` could not be removed."))
+        case _ => Right(pruned())
+      }
+
+  /** At this instance's first call, the sweep its doc names. */
+  private def sweep(): Unit = if (!swept.getAndSet(true)) {
+    val cutoff = clock.now().toEpochMilli - Kept.toMillis
+    names().foreach { all =>
+      val gone = all.toVector.filter { name =>
+        val dir = dirOf(name)
+        if (Files.exists(lockOf(dir))) lastUsed(name) < cutoff && free(name)
+        else LocalTree.removed(dir).isEmpty
+      }
+      if (gone.nonEmpty) pruned()
+    }
+  }
 
   /** The clone's records of worktrees whose directory is gone, dropped. */
   private def pruned(): Unit = { val _ = git(home, "worktree", "prune") }
@@ -180,6 +210,9 @@ object WorkingCopies {
 
   /** 8: the most copies of one repository. */
   val Most: Int = 8
+
+  /** 7 days: how long a copy neither held nor holding changes is kept unused. */
+  val Kept: FiniteDuration = FiniteDuration(7, TimeUnit.DAYS)
 
   /** 2 minutes: the longest a git command runs. */
   val GitLongest: FiniteDuration = FiniteDuration(2, TimeUnit.MINUTES)
