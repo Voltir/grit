@@ -11,7 +11,19 @@ import scala.concurrent.duration.FiniteDuration
 import scala.jdk.CollectionConverters.*
 
 import grit.core.clock.Clock
-import grit.core.host.{Argv, HostError, Processes, Ran, RelPath, RemoteRepository}
+import grit.core.host.{
+  Argv,
+  Clipped,
+  HostError,
+  Instructions,
+  Processes,
+  Ran,
+  RelPath,
+  RemoteRepository,
+  RepositoryInstructions,
+  Started,
+  Workspace
+}
 import grit.core.place.{Repository, WorkName}
 import grit.host.checkout.Checkout.attempt
 import grit.host.checkout.LocalTree
@@ -91,6 +103,116 @@ final class WorkingCopies(
       pruned()
       WorkingCopies.Removed.Gone
     } else WorkingCopies.Removed.Held(dir)
+  }
+
+  /** The repository's own instruction file: the first of [[Instructions.Names]] committed at its
+    * root as a file on origin's default branch, as the clone last fetched it, never its working
+    * tree or its own commits; its lines each ended by `\n` and redacted as `processes` redacts
+    * what programs show, cut at [[Instructions.MaxBytes]] on a character boundary. `None` when
+    * neither name is committed there. `Failed` when the clone has no origin, its origin is not
+    * `target`'s remote, `refs/remotes/origin/HEAD` names no default branch (nothing is asked
+    * of origin), the only one there is a link (never followed), it is over
+    * [[Workspace.MaxFileBytes]], it holds a NUL or bytes that are not UTF-8, or git fails or runs
+    * past [[GitLongest]].
+    */
+  def instructionFile(): Either[HostError, Option[RepositoryInstructions]] = Made.synchronized {
+    // `ls-tree -l`: "{mode} {type} {sha} {size}\t{name}", one line per name found at the root.
+    val Entry = """(\d+) (\w+) ([0-9a-f]+) +(-|\d+)\t(.+)""".r
+    for {
+      _ <- fetchesFromTarget()
+      default <- defaultBranch().flatMap {
+        case Some(d) => Right(d)
+        case None =>
+          Left(
+            HostError.Failed(
+              s"origin's default branch is not named in the clone at $home (it has no " +
+                "refs/remotes/origin/HEAD), so no instruction file is read."
+            )
+          )
+      }
+      listed <- git(home, ("ls-tree" +: "-l" +: default +: "--" +: Instructions.Names)*)
+      entries = listed.output.text.linesIterator.collect {
+        case Entry(mode, kind, sha, size, name) =>
+          (name, (mode, kind, sha, size))
+      }.toMap
+      read <- Instructions.Names.flatMap(n => entries.get(n).map(n -> _)).collectFirst {
+        case (name, ("100644" | "100755", "blob", sha, size)) => (name, sha, size.toLong)
+      } match {
+        case Some((name, _, size)) if size > Workspace.MaxFileBytes =>
+          Left(
+            HostError.Failed(
+              s"$name at the root of ${repository.name} is $size bytes, over the " +
+                s"${Workspace.MaxFileBytes} read, so it is not read."
+            )
+          )
+        case Some((name, sha, _)) => blob(name, sha).map(Some(_))
+        case None =>
+          Instructions.Names.find(n => entries.get(n).exists(_._1 == "120000")) match {
+            case Some(link) =>
+              Left(
+                HostError.Failed(
+                  s"$link is committed at the root of ${repository.name} only as a link, which " +
+                    "is not followed."
+                )
+              )
+            case None => Right(None)
+          }
+      }
+    } yield read
+  }
+
+  /** The blob `sha`, the file `name`, read as [[instructionFile]] reads it. */
+  private def blob(name: String, sha: String): Either[HostError, RepositoryInstructions] = {
+    val deadline = clock.millis() + GitLongest.toMillis
+    def left = FiniteDuration(math.max(0L, deadline - clock.millis()), TimeUnit.MILLISECONDS)
+    val most = Instructions.MaxBytes
+    @tailrec def lines(kept: StringBuilder, bytes: Int)(using
+        s: Started^
+    ): Either[HostError, Boolean] =
+      if (bytes > most) { s.kill(); Right(true) }
+      else
+        s.next(left) match {
+          case Started.Next.Line(line) =>
+            val ended = line + "\n"
+            val _ = kept.append(ended)
+            lines(kept, bytes + ended.getBytes(java.nio.charset.StandardCharsets.UTF_8).length)
+          case Started.Next.Quiet =>
+            s.kill()
+            Left(HostError.Failed(s"`git cat-file` ran past $GitLongest reading $name."))
+          case Started.Next.Ended =>
+            s.await(left).flatMap { r =>
+              if (r.exit == 0) Right(false)
+              else
+                Left(
+                  HostError
+                    .Failed(s"`git cat-file` exited ${r.exit} reading $name: ${r.output.text}")
+                )
+            }
+        }
+    for {
+      argv <- Argv
+        .of("git", "-C", home.toString, "cat-file", "blob", sha)
+        .left
+        .map(HostError.Failed(_))
+      kept = new StringBuilder
+      over <- processes
+        .started(argv, RelPath.Root)(started => lines(kept, 0)(using started))
+        .flatten
+      text = kept.toString
+      _ <-
+        if (text.exists(c => c == '\u0000' || c == '�'))
+          Left(
+            HostError.Failed(
+              s"$name at the root of ${repository.name} is not UTF-8 text, so it is not read."
+            )
+          )
+        else Right(())
+      cut = Clipped.prefix(text, most)
+      file <- RepositoryInstructions
+        .of(name, cut, over || cut.length < text.length)
+        .left
+        .map(HostError.Failed(_))
+    } yield file
   }
 
   private def dirOf(name: String): Path = copies.resolve(name)
@@ -305,25 +427,39 @@ final class WorkingCopies(
     * the clone has none, origin is asked once. `Failed` when the clone has no origin, it cannot
     * be fetched, or its default branch cannot be read.
     */
-  private def base(): Either[HostError, String] = {
-    def head: Either[HostError, (Argv, Ran)] =
-      ran(home, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
+  private def base(): Either[HostError, String] =
+    for {
+      _ <- fetchesFromTarget()
+      _ <- git(home, "fetch", "--quiet", "--no-tags", "origin")
+      known <- defaultBranch()
+      default <- known match {
+        case Some(d) => Right(d)
+        case None =>
+          git(home, "remote", "set-head", "origin", "--auto").flatMap(_ =>
+            defaultBranch().flatMap(
+              _.toRight(HostError.Failed("origin's default branch cannot be read after set-head."))
+            )
+          )
+      }
+    } yield default
+
+  /** Whether the clone has an origin that is `target`'s remote ([[declared]]). */
+  private def fetchesFromTarget(): Either[HostError, Unit] =
     for {
       origin <- git(home, "remote", "get-url", "origin").left.map(_ =>
         HostError.Failed(s"The clone at $home has no remote origin to cut a run's branch from.")
       )
       _ <- declared(origin.output.text.linesIterator.nextOption().getOrElse("").trim)
-      _ <- git(home, "fetch", "--quiet", "--no-tags", "origin")
-      named <- head.flatMap {
-        case (_, r) if r.exit == 0 => Right(r)
-        case _ => git(home, "remote", "set-head", "origin", "--auto").flatMap(_ => head.map(_._2))
-      }
-      default = named.output.text.trim
-      _ <-
-        if (named.exit == 0 && default.startsWith("origin/")) Right(())
-        else Left(HostError.Failed(s"origin's default branch cannot be read: ${named.output.text}"))
-    } yield default
-  }
+    } yield ()
+
+  /** The default branch `refs/remotes/origin/HEAD` names, `origin/{name}`; `None` when it names
+    * none. Nothing is asked of origin.
+    */
+  private def defaultBranch(): Either[HostError, Option[String]] =
+    ran(home, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD").map { (_, r) =>
+      val default = r.output.text.trim
+      Option.when(r.exit == 0 && default.startsWith("origin/"))(default)
+    }
 
   /** `dir`, its last use now. */
   private def used(dir: Path): Either[HostError, Path] =

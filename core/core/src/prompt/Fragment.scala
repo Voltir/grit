@@ -3,8 +3,8 @@ package grit.core.prompt
 import grit.core.id.ShortHash
 
 /** One piece of a system prompt: `text`, from `source` ([[Fragment.Grit]] for grit's own
-  * words, a file's absolute path, or for a place's declared instructions the place as
-  * written).
+  * words, a file's absolute path, a repository's own file as `repository:{name}/{file}`, or for
+  * a place's declared instructions the place as written).
   */
 final case class Fragment(layer: Layer, source: String, text: String) {
 

@@ -46,7 +46,12 @@ object RepositoryLiveTests extends TestSuite {
     @volatile @caps.unsafe.untrackedCaptures
     var calls: Int = 0
 
+    // As shownRead: the first call's system prompt.
+    @volatile @caps.unsafe.untrackedCaptures
+    var system: Option[String] = None
+
     def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] = {
+      if (system.isEmpty) system = Some(request.system)
       val usage = Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, Some(BigDecimal(0)))
       def calling(id: String, tool: String, args: ujson.Obj): Message.Assistant =
         Message.Assistant(
@@ -104,6 +109,7 @@ object RepositoryLiveTests extends TestSuite {
     GitFixture.inRepository { repo =>
       val clone = repo.source
       Files.writeString(clone.resolve("README.md"), "first\n")
+      Files.writeString(clone.resolve("AGENTS.md"), "the committed rule\n")
       // The clone's own config, which its worktrees share, so the model's `git commit` runs
       // under no person's.
       for (
@@ -114,10 +120,12 @@ object RepositoryLiveTests extends TestSuite {
         )
       )
         GitFixture.git(repo, clone, "config", k, v)
-      GitFixture.git(repo, clone, "add", "README.md")
+      GitFixture.git(repo, clone, "add", "README.md", "AGENTS.md")
       GitFixture.git(repo, clone, "commit", "--quiet", "-m", "readme")
       // A run's branch is cut from origin's default branch, so the readme is pushed there.
       GitFixture.git(repo, clone, "push", "--quiet", "origin", "main")
+      // Text the clone holds and never committed, which no run is shown.
+      Files.writeString(clone.resolve("AGENTS.md"), "the uncommitted rule\n")
       def standing = (
         out(repo, clone, "rev-parse", "HEAD"),
         out(repo, clone, "rev-parse", "--abbrev-ref", "HEAD"),
@@ -180,6 +188,12 @@ object RepositoryLiveTests extends TestSuite {
                 finally checks.close()
               (
                 model.shownRead,
+                model.system.map(s =>
+                  (
+                    s.contains("Instructions from AGENTS.md:\n\nthe committed rule"),
+                    s.contains("uncommitted")
+                  )
+                ),
                 failed,
                 out(repo, copy, "rev-parse", "--abbrev-ref", "HEAD"),
                 out(repo, copy, "log", "-1", "--format=%s"),
@@ -200,11 +214,12 @@ object RepositoryLiveTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "a run of a declared repository is shown what it reads in its own copy, changes and commits it on its branch, its check passes there, and the clone is as it was"
+      "a run of a declared repository is shown its committed instruction file and what it reads in its own copy, changes and commits it on its branch, its check passes there, and the clone is as it was"
     ) {
       ran(declared = true) ==> (
         (
           Some(true),
+          Some((true, false)),
           Vector(false, false, false, false),
           "grit/w1",
           "change the readme",

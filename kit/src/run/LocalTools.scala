@@ -4,7 +4,7 @@ import java.nio.file.Path
 
 import grit.core.clock.{Clock, Fresh}
 import grit.core.edge.{Route, ToolRequest}
-import grit.core.host.Allowlisted
+import grit.core.host.{Allowlisted, HostError, RepositoryInstructions}
 import grit.core.place.{Directory, Repository}
 import grit.core.tool.{Outcome, SetRefusal, ToolSet}
 import grit.edge.desk.{Run, Tools}
@@ -34,6 +34,14 @@ final class LocalTools(
 ) extends Tools
     with AutoCloseable
     with caps.SharedCapability {
+
+  /** The repository's own instruction file ([[WorkingCopies.instructionFile]]); `Right(None)`
+    * when these tools serve no repository.
+    */
+  def instructionFile: Either[HostError, Option[RepositoryInstructions]] = copies match {
+    case Some(c) => c.instructionFile()
+    case None => Right(None)
+  }
 
   /** The repository whose runs these tools serve, each in its working copy. */
   def repository: Option[Repository] = copies match {

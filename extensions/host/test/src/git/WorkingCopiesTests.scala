@@ -123,6 +123,22 @@ object WorkingCopiesTests extends TestSuite {
     }
   }
 
+  /** `files` committed at the clone's root, pushed to origin's default branch and fetched. */
+  private def published(repo: Repo^, files: (String, String)*): Unit = {
+    for ((name, text) <- files) {
+      val _ = Files.writeString(repo.source.resolve(name), text)
+      val _ = git(repo, repo.source, "add", name)
+    }
+    val commit = Seq("-c", "user.name=g", "-c", "user.email=g@example.invalid")
+    val _ = git(repo, repo.source, (commit ++ Seq("commit", "-qm", "instructions"))*)
+    val _ = git(repo, repo.source, "push", "--quiet", "origin", "main")
+    val _ = git(repo, repo.source, "fetch", "--quiet", "origin")
+  }
+
+  /** What [[WorkingCopies.instructionFile]] read: its name, text and whether it was cut. */
+  private def instructed(repo: Repo^): Either[HostError, Option[(String, String, Boolean)]] =
+    over(repo, new SetClock(start)).instructionFile().map(_.map(f => (f.name, f.text, f.cut)))
+
   private val eight = (0 until WorkingCopies.Most).toList.map(i => s"run-$i")
 
   val tests = Tests {
@@ -207,6 +223,81 @@ object WorkingCopiesTests extends TestSuite {
         (refused, present(repo)) ==> (
           Left(HostError.NoCopyFree(WorkingCopies.Most)),
           eight.toVector
+        )
+      }
+    }
+
+    test(
+      "the repository's instruction file is origin's default branch's, never the clone's working tree or unpushed commits"
+    ) {
+      inRepository { repo =>
+        published(repo, "AGENTS.md" -> "committed\n")
+        val commit = Seq("-c", "user.name=g", "-c", "user.email=g@example.invalid")
+        Files.writeString(repo.source.resolve("AGENTS.md"), "unpushed\n")
+        val _ = git(repo, repo.source, (commit ++ Seq("commit", "-qam", "mine"))*)
+        Files.writeString(repo.source.resolve("AGENTS.md"), "uncommitted\n")
+        instructed(repo) ==> Right(Some(("AGENTS.md", "committed\n", false)))
+      }
+    }
+
+    test(
+      "a repository whose AGENTS.md is committed as a link gives its CLAUDE.md; one with only a link is refused, saying so"
+    ) {
+      inRepository { repo =>
+        val _ = Files.createSymbolicLink(repo.source.resolve("AGENTS.md"), Path.of("CLAUDE.md"))
+        val _ = git(repo, repo.source, "add", "AGENTS.md")
+        published(repo, "CLAUDE.md" -> "the claude file\n")
+        val both = instructed(repo)
+        val _ = git(repo, repo.source, "rm", "--quiet", "CLAUDE.md")
+        published(repo)
+        (both, instructed(repo)) ==> (
+          Right(Some(("CLAUDE.md", "the claude file\n", false))),
+          Left(
+            HostError.Failed(
+              "AGENTS.md is committed at the root of grit only as a link, which is not followed."
+            )
+          )
+        )
+      }
+    }
+
+    test(
+      "a repository's instruction file over MaxBytes is cut there before a character it would split, and says so"
+    ) {
+      inRepository { repo =>
+        val most = grit.core.host.Instructions.MaxBytes
+        // "é" is two bytes, its first the cap's last.
+        published(repo, "AGENTS.md" -> ("a" * (most - 1) + "é and more\n"))
+        instructed(repo) ==> Right(Some(("AGENTS.md", "a" * (most - 1), true)))
+      }
+    }
+
+    test(
+      "a repository with no instruction file at its root gives none; one holding NUL is refused as not text"
+    ) {
+      inRepository { repo =>
+        val _ = Files.createDirectories(repo.source.resolve("sub"))
+        published(repo, "sub/AGENTS.md" -> "below the root\n")
+        val none = instructed(repo)
+        published(repo, "CLAUDE.md" -> "half\u0000binary\n")
+        (none, instructed(repo)) ==> (
+          Right(None),
+          Left(
+            HostError.Failed("CLAUDE.md at the root of grit is not UTF-8 text, so it is not read.")
+          )
+        )
+      }
+    }
+
+    test("a clone whose origin/HEAD names no default branch gives no instruction file, saying so") {
+      inRepository { repo =>
+        published(repo, "AGENTS.md" -> "committed\n")
+        val _ = git(repo, repo.source, "remote", "set-head", "origin", "--delete")
+        instructed(repo) ==> Left(
+          HostError.Failed(
+            s"origin's default branch is not named in the clone at ${repo.source.toAbsolutePath.normalize}" +
+              " (it has no refs/remotes/origin/HEAD), so no instruction file is read."
+          )
         )
       }
     }

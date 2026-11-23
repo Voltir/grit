@@ -1,7 +1,7 @@
 package grit.edge.desk
 
-import grit.core.host.{Clipped, InstructionFile}
-import grit.core.place.Place
+import grit.core.host.{Clipped, InstructionFile, RepositoryInstructions}
+import grit.core.place.{Place, Repository}
 import grit.core.prompt.{Fragment, Layer}
 import grit.core.provider.TokenEstimator
 
@@ -59,9 +59,20 @@ object PlaceFragments {
     else Right(Fragment(Layer.Place, place.written, s"Instructions for ${place.written}:\n\n$said"))
   }
 
+  /** `file`, at `repository`'s root, as its Place fragment: from source
+    * `repository:{name}/{file.name}`, its text "Instructions from {file.name}:", a blank line,
+    * then the file's text, a cut one saying so on its last line.
+    */
+  def repository(repository: Repository, file: RepositoryInstructions): Fragment =
+    fragment(s"${repository.place.written}/${file.name}", file.name, file.text, file.cut)
+
   /** `file` as its fragment: its text under a heading naming it. */
-  private def fragment(file: InstructionFile): Fragment = {
-    val note = if (file.cut) "\n\n[The rest of this file is not shown.]" else ""
-    Fragment(Layer.Place, file.path, s"Instructions from ${file.path}:\n\n${file.text}$note")
+  private def fragment(file: InstructionFile): Fragment =
+    fragment(file.path, file.path, file.text, file.cut)
+
+  /** `text` from `source`, under a heading naming it `named`, saying when it was `cut`. */
+  private def fragment(source: String, named: String, text: String, cut: Boolean): Fragment = {
+    val note = if (cut) "\n\n[The rest of this file is not shown.]" else ""
+    Fragment(Layer.Place, source, s"Instructions from $named:\n\n$text$note")
   }
 }

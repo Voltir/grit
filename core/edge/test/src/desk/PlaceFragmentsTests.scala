@@ -1,8 +1,8 @@
 package grit.edge.desk
 
-import grit.core.host.InstructionFile
+import grit.core.host.{InstructionFile, RepositoryInstructions}
 import grit.core.message.{Message, Tokens}
-import grit.core.place.Service
+import grit.core.place.{Repository, Service}
 import grit.core.prompt.{Fragment, Layer}
 import grit.core.provider.TokenEstimator
 
@@ -83,6 +83,42 @@ object PlaceFragmentsTests extends TestSuite {
           )
         ),
         Left("the instructions declared for service:github are blank")
+      )
+    }
+
+    test(
+      "a repository's own file is one Place fragment from repository:{name}/{file}, headed with the file's name, a cut one saying so"
+    ) {
+      def right[A](e: Either[String, A]): A =
+        e.fold(why => throw new java.lang.AssertionError(why), identity)
+      val app = right(Repository.of("app"))
+      (
+        PlaceFragments.repository(
+          app,
+          right(RepositoryInstructions.of("AGENTS.md", "Be brief.\n", false))
+        ),
+        PlaceFragments.repository(app, right(RepositoryInstructions.of("CLAUDE.md", "Be", true)))
+      ) ==> (
+        Fragment(
+          Layer.Place,
+          "repository:app/AGENTS.md",
+          "Instructions from AGENTS.md:\n\nBe brief.\n"
+        ),
+        Fragment(
+          Layer.Place,
+          "repository:app/CLAUDE.md",
+          "Instructions from CLAUDE.md:\n\nBe\n\n[The rest of this file is not shown.]"
+        )
+      )
+    }
+
+    test("a repository's instruction file is named as one of the names searched for, or refused") {
+      (
+        RepositoryInstructions.of("/home/nick/app/AGENTS.md", "x", false),
+        RepositoryInstructions.of("CLAUDE.md", "x", false).map(_.name)
+      ) ==> (
+        Left("/home/nick/app/AGENTS.md is not an instruction file: one of AGENTS.md, CLAUDE.md"),
+        Right("CLAUDE.md")
       )
     }
   }

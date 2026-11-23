@@ -7,10 +7,10 @@ import grit.core.clock.{Clock, Fresh}
 import grit.core.edge.{Console, Desks}
 import grit.core.host.Instructions
 import grit.core.id.PrincipalId
-import grit.core.place.{Directory, Place}
+import grit.core.place.{Directory, Place, Repository}
 import grit.core.prompt.Fragment
 import grit.core.tool.{SetRefusal, ToolSet}
-import grit.edge.desk.{PlaceFragments, Server, Tools}
+import grit.edge.desk.{PlaceFragments, Server}
 import grit.host.checkout.{LocalInstructions, Redaction}
 import grit.host.git.WorkingCopies
 import grit.kit.deployment.Offered
@@ -30,8 +30,10 @@ object LocalEdge {
     * advert that fails is logged to `log` as a warning, and turns are then served by no edge
     * here; what the server says of a run, as information. When `tools` serve a repository's runs
     * ([[LocalTools.repository]]), the edge registers that repository's place too and offers
-    * there what `tools` runs at it ([[LocalTools.hostedInRepository]]), with no instruction
-    * files. `Left` names a tool `tools` cannot offer with the others.
+    * there what `tools` runs at it ([[LocalTools.hostedInRepository]]), with the repository's
+    * own instruction file ([[LocalTools.instructionFile]]), read again as often; one that
+    * cannot be read is advertised as none, and why is logged as a warning and as information
+    * when it changes. `Left` names a tool `tools` cannot offer with the others.
     */
   def over(
       directory: Directory,
@@ -42,7 +44,7 @@ object LocalEdge {
     tools.hosted.flatMap(h => tools.hostedInRepository.map((h, _))) match {
       case Left(twice) => Left(twice)
       case Right((hosted, inRepository)) =>
-        val repository = tools.repository.map(r => (r.place, inRepository))
+        val repository = tools.repository.map(r => (r, inRepository))
         val edge: Console.Edge^ = desks =>
           serve(
             desks,
@@ -87,43 +89,55 @@ object LocalEdge {
   private def serve(
       desks: Desks^,
       place: Place,
-      repository: Option[(Place, ToolSet)],
+      repository: Option[(Repository, ToolSet)],
       hosted: ToolSet,
       instructions: Instructions^,
-      tools: Tools^,
+      tools: LocalTools^,
       warn: String => Unit,
       info: String => Unit
   ): Unit = {
-    val first: Vector[Fragment] =
-      place.directory.fold(Vector.empty)(dir =>
-        PlaceFragments.of(instructions.around(dir), CharEstimate)
-      )
-    desks.register(PrincipalId.Local, Set(place) ++ repository.map(_._1)) match {
+    desks.register(PrincipalId.Local, Set(place) ++ repository.map(_._1.place)) match {
       case Left(e) => warn(s"this edge could not register: ${e.why}")
       case Right(desk) =>
-        desk
-          .advertise(place, hosted, first)
-          .left
-          .foreach(e => warn(s"not advertised: ${e.why}"))
-        // A fragment names its file by its path on this machine, which no stored advert of a
-        // repository's place may hold: its runs are told no instruction files yet.
-        repository.foreach((at, inRepository) =>
-          desk
-            .advertise(at, inRepository, Vector.empty)
-            .left
-            .foreach(e => warn(s"not advertised: ${e.why}"))
-        )
-        place.directory.foreach { dir =>
+        // What each place was last advertised with, and why the repository's file was not read.
+        var atPlace: Option[Vector[Fragment]] = None
+        var atRepository: Option[Vector[Fragment]] = None
+        var unread: Option[String] = None
+        def advertised(at: Place, set: ToolSet, now: Vector[Fragment]): Boolean =
+          desk.advertise(at, set, now) match {
+            case Right(()) => true
+            case Left(e) => warn(s"not advertised: ${e.why}"); false
+          }
+        def round(): Unit = {
+          val now =
+            place.directory.fold(Vector.empty)(dir =>
+              PlaceFragments.of(instructions.around(dir), CharEstimate)
+            )
+          if (!atPlace.contains(now) && advertised(place, hosted, now)) atPlace = Some(now)
+          repository.foreach { (r, inRepository) =>
+            val (files, why) = tools.instructionFile match {
+              case Left(e) => (Vector.empty, Some(e.message))
+              case Right(file) => (file.map(PlaceFragments.repository(r, _)).toVector, None)
+            }
+            // Said when it changes, not each round.
+            if (why != unread) {
+              why.foreach { w =>
+                val said = s"${r.place.written}'s instruction file is not shown to its runs: $w"
+                warn(said)
+                info(said)
+              }
+              unread = why
+            }
+            if (!atRepository.contains(files) && advertised(r.place, inRepository, files))
+              atRepository = Some(files)
+          }
+        }
+        round()
+        if (place.directory.nonEmpty || repository.nonEmpty) {
           val _ = Thread.ofVirtual().name("grit-advert").start { () =>
-            var sent: Vector[Fragment] = first
             while (true) {
               Thread.sleep(AdvertEvery.toMillis)
-              val now = PlaceFragments.of(instructions.around(dir), CharEstimate)
-              if (now != sent)
-                desk.advertise(place, hosted, now) match {
-                  case Right(()) => sent = now
-                  case Left(e) => warn(s"not advertised: ${e.why}")
-                }
+              round()
             }
           }
         }

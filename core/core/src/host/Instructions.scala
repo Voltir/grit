@@ -28,3 +28,18 @@ object Instructions {
   * and whether that text was `cut` short at the cap.
   */
 final case class InstructionFile(path: String, text: String, cut: Boolean)
+
+/** A repository's own instruction file, the one at its root named `name`: its `text`, and
+  * whether that text was `cut` short at [[Instructions.MaxBytes]].
+  */
+final case class RepositoryInstructions private (name: String, text: String, cut: Boolean)
+
+object RepositoryInstructions {
+
+  /** The file `name` at a repository's root, holding `text`; why not when `name` is none of
+    * [[Instructions.Names]].
+    */
+  def of(name: String, text: String, cut: Boolean): Either[String, RepositoryInstructions] =
+    if (Instructions.Names.contains(name)) Right(new RepositoryInstructions(name, text, cut))
+    else Left(s"$name is not an instruction file: one of ${Instructions.Names.mkString(", ")}")
+}
