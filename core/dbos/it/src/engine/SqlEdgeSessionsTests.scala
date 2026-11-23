@@ -195,7 +195,9 @@ object SqlEdgeSessionsTests extends TestSuite {
     )
   }
 
-  /** The keys of `holder`'s brief and of the session `own` as Nick opens it in `room`. */
+  /** The keys of `holder`'s brief and of the session `own` as Nick opens it in `room`; `<worked>`
+    * for a brief another session's claim holds.
+    */
   private def opening(
       room: Place,
       holder: ClaimHolder,
@@ -206,7 +208,8 @@ object SqlEdgeSessionsTests extends TestSuite {
       .map { b =>
         val key = b.brief match {
           case EdgeSessions.Briefed.Brief.Kept(d) => Some(DocKey.value(d.key))
-          case EdgeSessions.Briefed.Brief.Absent | EdgeSessions.Briefed.Brief.Worked(_, _) => None
+          case EdgeSessions.Briefed.Brief.Worked(_, _) => Some("<worked>")
+          case EdgeSessions.Briefed.Brief.Absent => None
         }
         (key, b.lately.map(_.session.id))
       }
