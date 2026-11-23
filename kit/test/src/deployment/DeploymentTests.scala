@@ -87,6 +87,21 @@ object DeploymentTests extends TestSuite {
 
   val tests = Tests {
     test(
+      "the reference allowlist starts no git push, however its options are written, but commits"
+    ) {
+      def permits(args: String*): Boolean =
+        grit.core.host.Argv
+          .of("git", args*)
+          .exists(Offered.ReferenceAllowlist.permits)
+      (
+        permits("push", "origin", "grit/w1"),
+        permits("-C", ".", "push"),
+        permits("-c", "alias.p=push", "push"),
+        permits("push"),
+        permits("commit", "-m", "fix")
+      ) ==> (false, false, false, false, true)
+    }
+    test(
       "Offered.All is refused while an edge is Unanswered, and an allowlisted set, which asks no one, is not; an edge that is Never does not block it"
     ) {
       (

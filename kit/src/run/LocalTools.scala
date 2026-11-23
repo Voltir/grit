@@ -11,7 +11,7 @@ import grit.edge.desk.{Run, Tools}
 import grit.host.checkout.{LocalEdits, LocalRuns, LocalShell, LocalWorkspace, Redaction}
 import grit.host.git.WorkingCopies
 import grit.kit.deployment.Offered
-import grit.tools.Coding
+import grit.tools.{Coding, Versioning}
 
 /** The coding tools this process's edge runs a request with, over the directory it was routed
   * to, or for a repository route in the working copy `copies` keeps for its run (a request
@@ -21,14 +21,16 @@ import grit.tools.Coding
   * sees the process's own environment, not `.env`'s; what a tool shows is cleared by
   * `redaction`, the deployment's one. A command an allowlisted `run` left going is one of its
   * directory's runs, which every later request routed there reaches, whichever conversation
-  * sent it, until [[close]].
+  * sent it, until [[close]]. With `pushing`, a repository route's `offer_pull_request` offers
+  * its run's branch ([[grit.tools.Versioning]]); at a directory, that tool is no tool here.
   */
 final class LocalTools(
     offered: Offered,
     redaction: Redaction,
     clock: Clock^,
     fresh: Fresh^,
-    copies: Option[WorkingCopies^]
+    copies: Option[WorkingCopies^],
+    pushing: Option[Pushing^] = None
 ) extends Tools
     with AutoCloseable
     with caps.SharedCapability {
@@ -51,6 +53,15 @@ final class LocalTools(
   def hosted: Either[SetRefusal, ToolSet] =
     ToolSet.of(offered.hosted.map(_.entry))
 
+  /** The tools [[run]] runs at its repository's place: [[hosted]]'s, then `offer_pull_request`
+    * when its runs push ([[Pushing]]).
+    */
+  def hostedInRepository: Either[SetRefusal, ToolSet] =
+    pushing match {
+      case Some(p) => ToolSet.of(offered.hosted.map(_.entry) :+ p.described.entry)
+      case None => hosted
+    }
+
   def run(route: Route, request: ToolRequest, said: String => Unit): Outcome = route match {
     case Route.Directory(dir) => over(Path.of(Directory.value(dir)), request)
     // This edge registers only directories, so a service route never reaches it.
@@ -64,7 +75,20 @@ final class LocalTools(
           // The run's driver holds its copy (WorkingCopies.held); opened gives the same one.
           kept
             .opened(work)
-            .fold(e => Outcome.Failed(s"${e.message} Nothing ran."), over(_, request))
+            .fold(
+              e => Outcome.Failed(s"${e.message} Nothing ran."),
+              copy =>
+                pushing match {
+                  case Some(p) if request.tool == Versioning.Name =>
+                    Versioning
+                      .offered(p.branch(work), p.described)
+                      .fold(
+                        why => Outcome.Failed(s"${why.refusing("The pull request tool")}."),
+                        tools => Run.request(request, tools)
+                      )
+                  case _ => over(copy, request)
+                }
+            )
         case _ =>
           Outcome.Failed(
             s"This edge keeps no working copy of ${repository.place.written}; nothing ran."

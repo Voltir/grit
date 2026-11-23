@@ -9,11 +9,12 @@ import grit.core.clock.{Clock, Fresh}
 import grit.core.edge.{Edges, Permit, Registration, ToolRequest}
 import grit.core.host.{Allowlist, Argv, HostError}
 import grit.core.id.{CallSlot, ConversationId, EdgeId, PrincipalId, TurnRef, TurnSeq}
-import grit.core.place.{Directory, Place, Repository, WorkName}
+import grit.core.place.{Directory, Namespace, Place, Repository, WorkName}
+import grit.core.secret.{TestSecrets, Variable}
 import grit.core.store.Origin
 import grit.core.tool.{CallError, Outcome, Retry, ToolName}
-import grit.host.checkout.Redaction
-import grit.host.git.{GitFixture, WorkingCopies}
+import grit.host.checkout.{LocalHanding, LocalProcesses, Redaction}
+import grit.host.git.{GitFixture, Remote, WorkingCopies}
 import grit.kit.deployment.Offered
 
 import utest.*
@@ -76,7 +77,7 @@ object LocalToolsTests extends TestSuite {
   }
 
   /** `tool` called with `arguments` by `tools` at `repository`'s place, from a conversation of
-    * the run `run` of `of`, its request's destination its workspace.
+    * the run `run` of `of`, its request's destination `destination` of its workspace.
     */
   private def inRun(
       tools: LocalTools^,
@@ -84,7 +85,8 @@ object LocalToolsTests extends TestSuite {
       of: Repository,
       run: WorkName,
       tool: String,
-      arguments: ujson.Value
+      arguments: ujson.Value,
+      destination: Place => Option[Place] = Some(_)
   ): Outcome = {
     val turn = TurnRef(ConversationId("c"), TurnSeq.First)
     val q = ToolRequest(
@@ -98,7 +100,7 @@ object LocalToolsTests extends TestSuite {
       Retry.Interrupt,
       arguments,
       Set.empty,
-      Some(repository.place)
+      destination(repository.place)
     )
     val route = Edges
       .authorize(
@@ -116,7 +118,147 @@ object LocalToolsTests extends TestSuite {
   private def made(text: String): ujson.Value =
     ujson.Obj("path" -> "made.txt", "content" -> text)
 
+  /** The forge repository's place the fixture's runs offer their branches at. */
+  private val forgePlace = Place.under(Namespace.Service, Vector("github", "acme", "app"))
+
+  /** `repo`'s runs pushed to its bare origin with a planted token, offered on `forge`. */
+  private def pushing(repo: GitFixture.Repo^, forge: GitFixture.FakeForge): Pushing^ = {
+    val quiet = Redaction.of(Map.empty)
+    Pushing
+      .of(
+        Remote.of(repo.origin.toString).fold(sys.error, identity),
+        new LocalProcesses(repo.source, repo.environment, quiet),
+        new LocalHanding(repo.source, repo.environment, quiet),
+        TestSecrets.of(Variable("GRIT_FORGE_TOKEN"), "ghs_plantedForgeToken123"),
+        forge,
+        forgePlace,
+        "acme/app"
+      ) match {
+      case Right(p) => p
+      case Left(why) => throw new java.lang.AssertionError(why)
+    }
+  }
+
+  /** `body` given tools whose runs of the fixture's repository push to its origin on `forge`. */
+  private def pushingIn[A](repo: GitFixture.Repo^, forge: GitFixture.FakeForge)(
+      body: (LocalTools^, WorkingCopies^) => A
+  ): A = {
+    val copies =
+      new WorkingCopies(
+        GitFixture.repository,
+        repo.source,
+        repo.root,
+        repo.processes,
+        Clock.system()
+      )
+    val tools = new LocalTools(
+      writing,
+      Redaction.of(Map.empty),
+      Clock.system(),
+      Fresh.random(),
+      Some(copies),
+      Some(pushing(repo, forge))
+    )
+    try body(tools, copies)
+    finally tools.close()
+  }
+
+  private val offer =
+    ujson.Obj("title" -> "Fix it", "body" -> "Fixed.", "to" -> "acme/app")
+
+  private def originHead(repo: GitFixture.Repo^): Option[String] = {
+    val ran = GitFixture.git(
+      repo,
+      repo.origin,
+      "for-each-ref",
+      "--format=%(objectname)",
+      "refs/heads/grit/w1"
+    )
+    Some(ran.output.text.trim).filter(_.nonEmpty)
+  }
+
   val tests = Tests {
+    test(
+      "a run's offer_pull_request pushes its branch to the declared repository and answers its pull request"
+    ) {
+      GitFixture.inRepository { repo =>
+        val forge = new GitFixture.FakeForge
+        val w1 = GitFixture.work("w1")
+        val said = pushingIn(repo, forge) { (tools, copies) =>
+          copies
+            .held(w1) { _ =>
+              inRun(
+                tools,
+                GitFixture.repository,
+                GitFixture.repository,
+                w1,
+                "offer_pull_request",
+                offer,
+                _ => Some(forgePlace)
+              )
+            }
+            .left
+            .map(_.message)
+        }
+        val local = GitFixture.git(repo, repo.source, "rev-parse", "grit/w1").output.text.trim
+        (said, originHead(repo) == Some(local), forge.opens.size) ==> (
+          Right(
+            Outcome.Done(
+              "The branch is pushed; its pull request is open at https://forge.invalid/pull/1."
+            )
+          ),
+          true,
+          1
+        )
+      }
+    }
+    test(
+      "offer_pull_request told no destination, or its workspace, is misdirected and pushes nothing"
+    ) {
+      GitFixture.inRepository { repo =>
+        val forge = new GitFixture.FakeForge
+        val w1 = GitFixture.work("w1")
+        val said = pushingIn(repo, forge) { (tools, copies) =>
+          copies
+            .held(w1) { _ =>
+              def told(to: Place => Option[Place]): String =
+                inRun(
+                  tools,
+                  GitFixture.repository,
+                  GitFixture.repository,
+                  w1,
+                  "offer_pull_request",
+                  offer,
+                  to
+                ) match {
+                  case Outcome.Failed(_) => "failed"
+                  case other => other.toString
+                }
+              Vector(told(_ => None), told(Some(_)))
+            }
+            .left
+            .map(_.message)
+        }
+        (said, originHead(repo), forge.opens.size) ==> (Right(Vector("failed", "failed")), None, 0)
+      }
+    }
+    test(
+      "offer_pull_request is offered at the repository's place alone, and only when its runs push"
+    ) {
+      GitFixture.inRepository { repo =>
+        def names(set: Either[grit.core.tool.SetRefusal, grit.core.tool.ToolSet]) =
+          set.toOption.toVector.flatMap(_.named(grit.tools.Versioning.Name)).map(_.name)
+        val (atDirectory, atRepository) = pushingIn(repo, new GitFixture.FakeForge) { (tools, _) =>
+          (names(tools.hosted), names(tools.hostedInRepository))
+        }
+        val unpushed = offering(writing) { tools => names(tools.hostedInRepository) }
+        (atDirectory, atRepository, unpushed) ==> (
+          Vector(),
+          Vector(ToolName("offer_pull_request")),
+          Vector()
+        )
+      }
+    }
     test("a run's id reaches tail in a later request to the same checkout") {
       val root = Files.createTempDirectory("allowlisted").toRealPath()
       val script = root.resolve("slow")

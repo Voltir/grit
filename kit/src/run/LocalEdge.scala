@@ -29,9 +29,9 @@ object LocalEdge {
     * they changed, so an edit reaches the next turn without a restart. A registration or an
     * advert that fails is logged to `log` as a warning, and turns are then served by no edge
     * here; what the server says of a run, as information. When `tools` serve a repository's runs
-    * ([[LocalTools.repository]]), the edge registers that repository's place too and offers the
-    * same tools there, with no instruction files. `Left` names a tool `tools` cannot offer with
-    * the others.
+    * ([[LocalTools.repository]]), the edge registers that repository's place too and offers
+    * there what `tools` runs at it ([[LocalTools.hostedInRepository]]), with no instruction
+    * files. `Left` names a tool `tools` cannot offer with the others.
     */
   def over(
       directory: Directory,
@@ -39,10 +39,10 @@ object LocalEdge {
       instructions: Instructions^,
       log: org.slf4j.Logger
   ): Either[SetRefusal, Console.Edge^] =
-    tools.hosted match {
+    tools.hosted.flatMap(h => tools.hostedInRepository.map((h, _))) match {
       case Left(twice) => Left(twice)
-      case Right(hosted) =>
-        val repository = tools.repository.map(_.place)
+      case Right((hosted, inRepository)) =>
+        val repository = tools.repository.map(r => (r.place, inRepository))
         val edge: Console.Edge^ = desks =>
           serve(
             desks,
@@ -85,7 +85,7 @@ object LocalEdge {
   private def serve(
       desks: Desks^,
       place: Place,
-      repository: Option[Place],
+      repository: Option[(Place, ToolSet)],
       hosted: ToolSet,
       instructions: Instructions^,
       tools: Tools^,
@@ -96,7 +96,7 @@ object LocalEdge {
       place.directory.fold(Vector.empty)(dir =>
         PlaceFragments.of(instructions.around(dir), CharEstimate)
       )
-    desks.register(PrincipalId.Local, Set(place) ++ repository) match {
+    desks.register(PrincipalId.Local, Set(place) ++ repository.map(_._1)) match {
       case Left(e) => warn(s"this edge could not register: ${e.why}")
       case Right(desk) =>
         desk
@@ -105,9 +105,9 @@ object LocalEdge {
           .foreach(e => warn(s"not advertised: ${e.why}"))
         // A fragment names its file by its path on this machine, which no stored advert of a
         // repository's place may hold: its runs are told no instruction files yet.
-        repository.foreach(at =>
+        repository.foreach((at, inRepository) =>
           desk
-            .advertise(at, hosted, Vector.empty)
+            .advertise(at, inRepository, Vector.empty)
             .left
             .foreach(e => warn(s"not advertised: ${e.why}"))
         )
