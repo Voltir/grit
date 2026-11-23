@@ -1,0 +1,22 @@
+{
+  "url": "https://api.github.com/repos/acme/app/pulls/1",
+  "id": 1,
+  "number": 1,
+  "html_url": "https://github.com/acme/app/pull/1",
+  "state": "open",
+  "title": "Fix it",
+  "created_at": "2026-11-23T00:00:00Z",
+  "closed_at": null,
+  "merged_at": null,
+  "head": {
+    "label": "acme:grit/w1",
+    "ref": "grit/w1",
+    "sha": "6dcb09b5b57875f334f61aebed695e2e4193db5e",
+    "repo": { "full_name": "acme/app" }
+  },
+  "base": {
+    "label": "acme:main",
+    "ref": "main",
+    "repo": { "full_name": "acme/app" }
+  }
+}

@@ -35,14 +35,6 @@ In dependency order:
   argument `Bound`s, so a deployment bounds a service at the edge rather than by asking the
   model (ADR 0017). A tool whose answers an `Attribution` places is offered and its results
   outside every bound withheld; an answer it cannot place is not shown at all. Imports `wire`.
-- **`github`** — GitHub's side of a scope: `GitHubScope`, a repository or an owner as the
-  `Bound` GitHub's tools name it, and a scope within them whose search tools are held by the
-  repository each result names; and `GitHubItems`, repositories and owners as places under the
-  service's and the `Accounts` reading each item of its issue, pull-request and file tools at
-  its repository by its author's `author_association`, so a deployment's `Cap` on a repository
-  caps them. It names a service, no organisation; which repositories, and at what, is the
-  deployment's to say. Imports `scope`; nothing else in mcp imports it
-  (`mcp-generic-names-no-github`).
 - **`client`**: a server a deployment declares and the transport it is reached by
   (`McpTransport`). Over HTTP, each request is a POST of its
   own held to its scope, carrying the token its `Credential` gives: a static token, or a
@@ -57,8 +49,16 @@ In dependency order:
   that request and those queued behind it fail. A server may name an argument grit sets on each
   call to the asking conversation's directory (`McpServer.directoryArgument`): it is left out
   of each listed schema, and a call that gives it, or comes from a conversation working in no
-  directory, is not sent. The JDK HTTP client lives here alone. Imports
-  `wire` and `scope`.
+  directory, is not sent. Imports `wire` and `scope`.
+- **`github`** — GitHub's side of a scope: `GitHubScope`, a repository or an owner as the
+  `Bound` GitHub's tools name it, and a scope within them whose search tools are held by the
+  repository each result names; and `GitHubItems`, repositories and owners as places under the
+  service's and the `Accounts` reading each item of its issue, pull-request and file tools at
+  its repository by its author's `author_association`, so a deployment's `Cap` on a repository
+  caps them. It names a service, no organisation; which repositories, and at what, is the
+  deployment's to say. And `GitHubRepository`, core's `RemoteRepository` over GitHub's REST
+  API, the one thing here that writes: it opens pull requests, with `client`'s credentials.
+  Imports `scope` and `client`; nothing else in mcp imports it (`mcp-generic-names-no-github`).
 - **`drive`**: Drive over its v3 REST API, read-only: a file's id as Drive writes it, what
   Drive says of files and their grants, `DriveRest` (a search whose query grit builds from the
   words asked, a listing of one folder's or drive's own files, a file and when it last changed,
@@ -154,6 +154,14 @@ answers under `test/resources/drive/`, each written with `Neutral`'s stand-ins f
 addresses, names and text, never as it came (its doc says how to run it). Drive's MCP server
 answers a service account's `tools/list` but refuses each of its `tools/call`s ("The caller does
 not have permission", 2026-10-16), so Drive is read over REST.
+
+`RemoteRepositoryContract` (core's tests) is what a remote repository keeps; it runs over
+`GitHubRepository` and `FakeGitHubServer`, GitHub's REST API for pull requests in the test JVM
+(`GitHubRepositoryContractTests`), and over grit.host's fake (`FakeRemoteRepositoryTests`).
+`FakeGitHubServer` answers from `test/resources/github/rest/`, which are hand-made from
+GitHub's documented shapes, not recorded: no live call has been made. `GitHubRepositoryLive`,
+a main in test sources that needs a token, is the probe that records them (its doc says how);
+it has not yet been run.
 
 `test/resources/github/tools-list.json` is the `tools/list` result GitHub's hosted read-only
 server (`https://api.githubcopilot.com/mcp/readonly`) answered on 2026-09-30, its icons

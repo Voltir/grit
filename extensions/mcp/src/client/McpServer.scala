@@ -138,7 +138,7 @@ object McpServer {
   private val Name = "[a-z][a-z0-9_]{0,15}".r
 
   /** Whether `uri` is absolute with a host, and `https`, or `http` on a loopback host. */
-  private[client] def secure(uri: URI): Boolean =
+  private[mcp] def secure(uri: URI): Boolean =
     uri.isAbsolute && Option(uri.getHost).exists(_.nonEmpty) &&
       (Option(uri.getScheme).map(_.toLowerCase) match {
         case Some("https") => true
