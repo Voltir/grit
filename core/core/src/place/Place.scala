@@ -29,6 +29,11 @@ enum Namespace(val key: String) {
     * ([[grit.core.visibility.VisibilityRefusal.CapOutside]]).
     */
   case Machine extends Namespace("machine")
+
+  /** Declared repositories, each holding the runs of work done in it: `repository:grit`, its
+    * run `repository:grit/fix-typo`.
+    */
+  case Repository extends Namespace("repository")
 }
 
 object Namespace {
@@ -53,6 +58,12 @@ final case class Place private (segments: Vector[String]) extends caps.Pure {
     */
   def service: Option[Service] = segments match {
     case Vector(ns, name) if ns == Namespace.Service.key => Service.of(name).toOption
+    case _ => None
+  }
+
+  /** The repository this place is or lies within; `None` for any other place. */
+  def repository: Option[Repository] = segments match {
+    case ns +: name +: _ if ns == Namespace.Repository.key => Repository.of(name).toOption
     case _ => None
   }
 

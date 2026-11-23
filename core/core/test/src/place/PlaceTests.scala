@@ -94,7 +94,8 @@ object PlaceTests extends TestSuite {
     test("a place that does not read names why") {
       Place.read("home/nick") ==>
         Left("no namespace in home/nick: write it as fs:/a/path, slack:team/channel or task:name")
-      Place.read("git:grit") ==> Left("no namespace git: fs, slack, task, service, direct, machine")
+      Place.read("git:grit") ==>
+        Left("no namespace git: fs, slack, task, service, direct, machine, repository")
     }
 
     test("each origin's place, a field holding / split like the rest") {
@@ -125,6 +126,55 @@ object PlaceTests extends TestSuite {
         ),
         Left("a service's name is a lowercase letter, then lowercase letters, digits or _: ")
       )
+    }
+
+    test("a repository and a run of work in it read back from their written form") {
+      Vector("repository:grit", "repository:grit/fix-typo").map(Place.read(_).map(_.written)) ==>
+        Vector(Right("repository:grit"), Right("repository:grit/fix-typo"))
+    }
+
+    test("a repository is named as a service is, and its place is repository:{name}") {
+      Repository.of("my_app2").map(r => (r.name, r.place.written)) ==>
+        Right(("my_app2", "repository:my_app2"))
+      Vector("MyApp", "2app", "my-app", "").map(Repository.of) ==> Vector(
+        Left(
+          "a repository's name is a lowercase letter, then lowercase letters, digits or _: MyApp"
+        ),
+        Left(
+          "a repository's name is a lowercase letter, then lowercase letters, digits or _: 2app"
+        ),
+        Left(
+          "a repository's name is a lowercase letter, then lowercase letters, digits or _: my-app"
+        ),
+        Left("a repository's name is a lowercase letter, then lowercase letters, digits or _: ")
+      )
+    }
+
+    test("a place names the repository it is or lies within; any other place none") {
+      val grit = Repository.of("grit").fold(e => throw new java.lang.AssertionError(e), identity)
+      Vector("repository:grit", "repository:grit/fix-typo", "repository:grit/fix-typo/more")
+        .map(place(_).repository) ==> Vector(Some(grit), Some(grit), Some(grit))
+      Vector("repository:Grit/fix", "service:grit", "fs:/repository/grit", "everywhere")
+        .map(place(_).repository) ==> Vector(None, None, None, None)
+    }
+
+    test(
+      "a run of work's name is a lowercase letter, then at most 39 lowercase letters, digits or -"
+    ) {
+      val longest = "a" + "b" * 39
+      Vector("fix-typo", "w3f2a", longest).map(WorkName.of(_).map(WorkName.value)) ==>
+        Vector(Right("fix-typo"), Right("w3f2a"), Right(longest))
+      Vector(longest + "c", "3f2a", "-a", "Fix", "a/b", "a.b", "a_b", "").map(WorkName.of) ==>
+        Vector(
+          Left(s"a run of work's name is over 40 characters: ${longest}c"),
+          Left("a run of work's name starts with a digit: 3f2a"),
+          Left("a run of work's name starts with '-': -a"),
+          Left("a run of work's name holds 'F', not a lowercase letter, a digit or '-': Fix"),
+          Left("a run of work's name holds '/', not a lowercase letter, a digit or '-': a/b"),
+          Left("a run of work's name holds '.', not a lowercase letter, a digit or '-': a.b"),
+          Left("a run of work's name holds '_', not a lowercase letter, a digit or '-': a_b"),
+          Left("a run of work's name is empty")
+        )
     }
 
     test("a place is a service only as service:{a service's name}, never below one") {

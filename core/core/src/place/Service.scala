@@ -17,11 +17,17 @@ object Service {
 
   /** `name`'s service, or why not, naming the rule it breaks. */
   def of(name: String): Either[String, Service] =
+    named("a service's name", name).map(new Service(_))
+
+  /** `name`, or why it is not `what`: a lowercase letter, then lowercase letters, digits or `_`.
+    * A service's rule, which a [[Repository]]'s name shares.
+    */
+  private[place] def named(what: String, name: String): Either[String, String] =
     if (
       name.headOption.exists(c => c >= 'a' && c <= 'z') &&
       name.forall(c => (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_')
-    ) Right(new Service(name))
-    else Left(s"a service's name is a lowercase letter, then lowercase letters, digits or _: $name")
+    ) Right(name)
+    else Left(s"$what is a lowercase letter, then lowercase letters, digits or _: $name")
 
   /** [[of]]'s service for the constant `name`. A name [[of]] refuses does not compile, with
     * [[of]]'s reason; nor does a name that is not a constant.
