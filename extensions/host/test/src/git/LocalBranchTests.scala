@@ -7,8 +7,8 @@ import scala.jdk.CollectionConverters.*
 
 import grit.core.clock.SetClock
 import grit.core.host.{Argv, Branch, Handing, HostError, RelPath, Started, Variables}
-import grit.core.secret.{Secret, TestSecrets, Variable}
-import grit.host.checkout.{LocalHanding, LocalProcesses, Redaction}
+import grit.core.secret.Secret
+import grit.host.checkout.{LocalHanding, Redaction}
 import grit.host.git.GitFixture.*
 
 import utest.*
@@ -17,10 +17,6 @@ import utest.*
   * remote repository kept in memory.
   */
 object LocalBranchTests extends TestSuite {
-
-  private val token = "ghs_plantedRemoteToken123"
-
-  private val secret: Secret = TestSecrets.of(Variable("GRIT_REMOTE_REPOSITORY_TOKEN"), token)
 
   /** A [[Handing]] that keeps each argv it builds, and the variables it is given. */
   private final class Recording(inner: Handing^) extends Handing {
@@ -49,13 +45,7 @@ object LocalBranchTests extends TestSuite {
       repo: Repo^,
       remoteRepository: FakeRemoteRepository,
       by: Handing^
-  ): LocalBranch^ = {
-    val inClone = new LocalProcesses(repo.source, repo.environment, Redaction.of(Map.empty))
-    PushTarget.of(remoteRepository) match {
-      case Right(target) => new LocalBranch(target, work("w1"), inClone, by, secret)
-      case Left(why) => throw new java.lang.AssertionError(why)
-    }
-  }
+  ): LocalBranch^ = GitFixture.handedBy(repo, remoteRepository, by).of(work("w1"))
 
   private val commit = Seq("-c", "user.name=g", "-c", "user.email=g@example.invalid")
 

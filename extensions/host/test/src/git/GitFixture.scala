@@ -5,8 +5,9 @@ import java.nio.file.{Files, Path}
 
 import scala.concurrent.duration.*
 
-import grit.core.host.{Argv, HostError, Processes, Ran, RelPath, RemoteRepository}
+import grit.core.host.{Argv, Handing, HostError, Processes, Ran, RelPath, RemoteRepository}
 import grit.core.place.{Repository, WorkName}
+import grit.core.secret.{Secret, TestSecrets, Variable}
 import grit.host.checkout.{LocalProcesses, LocalTree, Redaction}
 
 /** A real git repository with one commit on `main`, its clone's `origin` a bare repository of
@@ -141,6 +142,33 @@ object GitFixture {
       case other => throw new AssertionError(s"${argv.written}: $other")
     }
   }
+
+  /** The token the fixture's branches are pushed with, planted to be looked for. */
+  val token = "ghs_plantedRemoteToken123"
+
+  /** [[token]] as the remote repository's secret. */
+  val secret: Secret = TestSecrets.of(Variable("GRIT_REMOTE_REPOSITORY_TOKEN"), token)
+
+  /** The branches of `repo`'s clone, pushed with [[secret]] and offered on `remoteRepository`,
+    * at its own address.
+    */
+  def branchesOf(repo: Repo^, remoteRepository: FakeRemoteRepository): Branches^ =
+    Branches.at(
+      repo.source,
+      targetOf(remoteRepository),
+      secret,
+      repo.environment,
+      Redaction.of(Map.empty)
+    )
+
+  /** As [[branchesOf]], the secret handed by `by`. */
+  def handedBy(repo: Repo^, remoteRepository: FakeRemoteRepository, by: Handing^): Branches^ =
+    new Branches(
+      targetOf(remoteRepository),
+      new LocalProcesses(repo.source, repo.environment, Redaction.of(Map.empty)),
+      by,
+      secret
+    )
 
   /** Whether `in` has the local branch `branch`. */
   def hasBranch(repo: Repo^, in: Path, branch: String): Boolean = {

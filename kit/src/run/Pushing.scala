@@ -2,28 +2,24 @@ package grit.kit.run
 
 import java.nio.file.Path
 
-import grit.core.host.{Branch, Handing, Processes}
+import grit.core.host.Branch
 import grit.core.place.{Place, WorkName}
 import grit.core.secret.Secret
 import grit.core.tool.Writing
-import grit.host.checkout.{LocalHanding, LocalProcesses, Redaction}
-import grit.host.git.{LocalBranch, PushTarget}
+import grit.host.checkout.Redaction
+import grit.host.git.{Branches, PushTarget}
 import grit.tools.Versioning
 
-/** How a repository's runs offer their branches: each pushed and offered as `target` says, with
-  * `secret`, git run in the clone by `processes` and handed the secret by `handing`; `described`
-  * is the tool whose one destination is the remote repository's place.
+/** How a repository's runs offer their branches, `branches`; `described` is the tool whose one
+  * destination is the remote repository's place.
   */
 final class Pushing private (
-    target: PushTarget^,
-    processes: Processes^,
-    handing: Handing^,
-    secret: Secret,
+    val branches: Branches^,
     val described: Writing[Versioning.OfferArgs, Place]
 ) extends caps.SharedCapability {
 
   /** The run `work`'s branch. */
-  def branch(work: WorkName): Branch^ = new LocalBranch(target, work, processes, handing, secret)
+  def branch(work: WorkName): Branch^ = branches.of(work)
 }
 
 object Pushing {
@@ -46,13 +42,7 @@ object Pushing {
     Versioning.hosted(place, named) match {
       case Right(described) =>
         Right(
-          new Pushing(
-            target,
-            new LocalProcesses(clone, environment, redaction),
-            new LocalHanding(clone, environment, redaction),
-            secret,
-            described
-          )
+          new Pushing(Branches.at(clone, target, secret, environment, redaction), described)
         )
       case Left(why) => Left(why)
     }

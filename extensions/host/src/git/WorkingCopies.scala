@@ -32,11 +32,11 @@ import grit.host.checkout.LocalTree
   * branch `grit/{work}`, git run through `processes`. Its first call sweeps: every copy unused
   * for [[Kept]] that is neither held nor holding changes never committed is removed, its branch
   * kept, and so is every directory there without its lock; a copy holding such changes goes too
-  * once unused for [[Unpublished]], said through `note` first, unless held. With `target`, a new branch is cut
-  * only when the clone's origin is `target`'s remote ([[Remote.fetchedBy]]); `Failed` otherwise,
-  * naming both, no copy or branch made. With `target`, and the clone's origin its remote, the
+  * once unused for [[Unpublished]], said through `note` first, unless held. With `branches`, a new branch is cut
+  * only when the clone's origin is its target's remote ([[Remote.fetchedBy]]); `Failed` otherwise,
+  * naming both, no copy or branch made. With `branches`, and the clone's origin its remote, the
   * sweep also deletes each local `grit/{work}` branch with no copy that is done with: one
-  * origin's default branch holds all of, with no call; else, asking `target`'s remote
+  * origin's default branch holds all of, with no call; else, asking its target's remote
   * repository, oldest first and on from where the last sweep stopped, at most [[SweepAsks]]
   * calls a sweep (so every branch is reached within ceil(branches / [[SweepAsks]]) sweeps), one
   * whose pull request was merged or closed with the branch's tip its head, or one with none
@@ -49,7 +49,7 @@ final class WorkingCopies(
     root: Path,
     processes: Processes^,
     clock: Clock^,
-    target: Option[PushTarget^] = None,
+    branches: Option[Branches^] = None,
     note: String -> Unit = _ => ()
 ) extends caps.SharedCapability {
   import WorkingCopies.*
@@ -111,7 +111,7 @@ final class WorkingCopies(
     * tree or its own commits; its lines each ended by `\n` and redacted as `processes` redacts
     * what programs show, cut at [[Instructions.MaxBytes]] on a character boundary. `None` when
     * neither name is committed there. `Failed` when the clone has no origin, its origin is not
-    * `target`'s remote, `refs/remotes/origin/HEAD` names no default branch (nothing is asked
+    * its target's remote, `refs/remotes/origin/HEAD` names no default branch (nothing is asked
     * of origin), the only one there is a link (never followed), it is over
     * [[Workspace.MaxFileBytes]], it holds a NUL or bytes that are not UTF-8, or git fails or runs
     * past [[GitLongest]].
@@ -334,15 +334,15 @@ final class WorkingCopies(
       }
       if (gone.nonEmpty) pruned()
     }
-    target match {
-      case Some(t) => branchesSwept(t)
+    branches match {
+      case Some(b) => branchesSwept(b.target)
       case None => ()
     }
   }
 
-  /** With `target`, at the sweep, and only when the clone's origin is `target`'s remote: each
+  /** With `branches`, at the sweep, and only when the clone's origin is its target's remote: each
     * local `grit/{work}` branch with no copy is deleted when it is done with. One origin's default
-    * branch holds all of is deleted with no call. Every other is asked of `target`'s remote
+    * branch holds all of is deleted with no call. Every other is asked of its target's remote
     * repository, oldest first, starting after the branch the last sweep asked last, at most
     * [[SweepAsks]] calls a sweep, so every such branch is reached within ceil(branches /
     * [[SweepAsks]]) sweeps; it is deleted when its pull request was merged or closed with its
@@ -458,7 +458,7 @@ final class WorkingCopies(
       }
     } yield default
 
-  /** Whether the clone has an origin that is `target`'s remote ([[declared]]). */
+  /** Whether the clone has an origin that is its target's remote ([[declared]]). */
   private def fetchesFromTarget(): Either[HostError, Unit] =
     for {
       origin <- git(home, "remote", "get-url", "origin").left.map(_ =>
@@ -488,17 +488,18 @@ final class WorkingCopies(
       .map(HostError.Failed(_))
       .flatMap(argv => processes.run(argv, RelPath.Root, GitLongest).map((argv, _)))
 
-  /** Whether the clone's origin, fetched from at `url`, is `target`'s remote; always, with no
-    * `target`. The refusal shows `url` without its user or password.
+  /** Whether the clone's origin, fetched from at `url`, is its target's remote; always, with no
+    * `branches`. The refusal shows `url` without its user or password.
     */
-  private def declared(url: String): Either[HostError, Unit] = target match {
-    case Some(t) if !t.remote.fetchedBy(url) =>
+  private def declared(url: String): Either[HostError, Unit] = branches match {
+    case Some(b) if !b.target.remote.fetchedBy(url) =>
+      val to = b.target.remote.written
       Left(
         HostError.Failed(
           s"The clone at $home fetches from ${Remote.shown(url)}, not from the declared " +
-            s"${t.remote.written}, and a run's branch is cut only from the declared repository. " +
+            s"$to, and a run's branch is cut only from the declared repository. " +
             s"Point the clone's origin there (git -C $home remote set-url origin " +
-            s"${t.remote.written}), or declare the repository it fetches from."
+            s"$to), or declare the repository it fetches from."
         )
       )
     case _ => Right(())

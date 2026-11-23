@@ -441,7 +441,10 @@ object Main {
                 exitOnLeft(RepositoriesEnv.copies(env)),
                 new LocalProcesses(clone, sys.env, redaction),
                 clock,
-                target,
+                pushing match {
+                  case Some(p) => Some(p.branches)
+                  case None => None
+                },
                 line => println(line)
               )
               val work = in.run.getOrElse(Work.named(text))

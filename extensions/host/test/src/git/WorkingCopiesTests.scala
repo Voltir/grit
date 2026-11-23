@@ -84,7 +84,7 @@ object WorkingCopiesTests extends TestSuite {
       repo.root,
       repo.processes,
       clock,
-      Some(targetOf(remote)),
+      Some(branchesOf(repo, remote)),
       note
     )
 
@@ -359,10 +359,7 @@ object WorkingCopiesTests extends TestSuite {
       "with a target, a copy is cut when origin is its remote; another origin is refused, shown without its user, and nothing is made"
     ) {
       inRepository { repo =>
-        val target = PushTarget.of(new FakeRemoteRepository(repo.origin.toString)) match {
-          case Right(t) => t
-          case Left(why) => throw new java.lang.AssertionError(why)
-        }
+        val target = branchesOf(repo, new FakeRemoteRepository(repo.origin.toString))
         val copies =
           new WorkingCopies(
             repository,
@@ -403,10 +400,7 @@ object WorkingCopiesTests extends TestSuite {
     }
     test("an origin whose insteadOf sends git elsewhere is not the target's remote") {
       inRepository { repo =>
-        val target = PushTarget.of(new FakeRemoteRepository(repo.origin.toString)) match {
-          case Right(t) => t
-          case Left(why) => throw new java.lang.AssertionError(why)
-        }
+        val target = branchesOf(repo, new FakeRemoteRepository(repo.origin.toString))
         val _ = git(
           repo,
           repo.source,

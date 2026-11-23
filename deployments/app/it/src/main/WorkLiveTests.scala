@@ -486,19 +486,9 @@ object WorkLiveTests extends TestSuite {
       Secrets.of(ServedDeployment.env(config), deployment).fold(r => sys.error(r.message), identity)
     val clock = Clock.system()
     val remote = new GitFixture.FakeRemoteRepository(repo.origin.toString)
-    val target = GitFixture.targetOf(remote)
-    val copies =
-      new WorkingCopies(
-        GitFixture.repository,
-        repo.source,
-        repo.root,
-        repo.processes,
-        clock,
-        Some(target)
-      )
     val pushing = Pushing.of(
       repo.source,
-      target,
+      GitFixture.targetOf(remote),
       TestSecrets.of(SecretVariable("GRIT_REMOTE_REPOSITORY_TOKEN"), "ghs_plantedRemoteToken123"),
       repo.environment,
       Redaction.of(Map.empty),
@@ -508,6 +498,15 @@ object WorkLiveTests extends TestSuite {
       case Right(p) => p
       case Left(why) => throw new java.lang.AssertionError(why)
     }
+    val copies =
+      new WorkingCopies(
+        GitFixture.repository,
+        repo.source,
+        repo.root,
+        repo.processes,
+        clock,
+        Some(pushing.branches)
+      )
     val run = GitFixture.work("w1")
     if (offerFirst) {
       val copy =
