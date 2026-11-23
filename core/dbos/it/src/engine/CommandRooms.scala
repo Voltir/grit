@@ -1,11 +1,10 @@
-package grit.app.main
+package grit.dbos.engine
 
 import grit.core.id.{DocKey, PluginName}
 import grit.core.identity.{Account, TestAccounts}
 import grit.core.place.Place
 import grit.core.plugin.Plugin
 import grit.core.visibility.{Integrity, Subject}
-import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 
 import utest.*
@@ -13,7 +12,7 @@ import utest.*
 /** Labelled rooms and two cleared people, for suites running plugins' commands as an edge runs
   * them for a person in a room.
   */
-private[main] object CommandRooms {
+object CommandRooms {
 
   private def place(text: String): Place =
     Place.read(text).fold(e => sys.error(e), identity)

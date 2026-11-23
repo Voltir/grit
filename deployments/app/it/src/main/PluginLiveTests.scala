@@ -47,7 +47,7 @@ import grit.core.store.{ClosedPeriod, Db, Origin, Sealed, StoreError, Tx}
 import grit.core.tool.{Args, Bound, Field, Outcome, Repairs, ToolName, ToolSpec, Toolbox}
 import grit.core.visibility.Integrity
 import grit.core.visibility.Subject
-import grit.dbos.engine.{Engine, LiveEngine}
+import grit.dbos.engine.{CommandRooms, Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.digest.Digest
 import grit.lifecycle.post.{PostEnv, Posting}

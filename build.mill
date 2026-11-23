@@ -390,6 +390,14 @@ object grit extends Module {
     object probes extends GritProbes {
       def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.probes)
     }
+
+    /* The plugin's commands run as an edge runs them for a person in a labelled room, over the
+     * run's throwaway Postgres (TestPostgres): its own module, so a change to projects reaches
+     * these suites alone (scripts/check's --it-reached), not every live suite of the app.
+     * grit.dbos brings the driver. */
+    object it extends GritTests with LivePostgres {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.dbos.it, grit.projects.test)
+    }
   }
 
   /* Reminders: the plugin whose job `remind` posts a person's reminder in the thread that
@@ -819,16 +827,13 @@ object grit extends Module {
     }
 
     /* A provider called once, end to end and live. The crash test runs one phase in a child JVM on this
-     * classpath, which it halts mid-turn. projects' tests, so its commands run in labelled rooms
-     * (ProjectsLiveTests): the app deploys no projects plugin, but this is where an edge's
-     * commands meet real rooms. */
+     * classpath, which it halts mid-turn. */
     object it extends GritTests with LivePostgres {
       def moduleDeps =
         super.moduleDeps ++ Seq[JavaModule](
           grit.dbos.it,
           grit.slack.test,
-          grit.mcp.test,
-          grit.projects.test
+          grit.mcp.test
         )
       def mvnDeps = Task { super.mvnDeps() ++ Seq(mvn"com.lihaoyi::os-lib:0.11.8") }
       def forkEnv = Task {

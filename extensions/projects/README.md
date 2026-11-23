@@ -55,6 +55,11 @@ The tests' `paper` package is the paper check: OpenSpec (`OpenSpecTests`) and th
 elephant-goldfish model (`ElephantGoldfishTests`) written as method data, each passing
 `Method.of` and its worked examples, and a wrong example of each reported.
 
+The `it` tree, `plugin` alone, runs the commands as an edge runs them for a person in a labelled
+room, over a live Postgres (`ProjectsLiveTests`, with `grit.dbos.it`'s `CommandRooms`). It is
+this module's own, so a change to projects reaches these suites alone, not the app's. Like the
+module, it names no `java.sql`: its reads go through `LiveDb`.
+
 ## What the code cannot say
 
 - **A check is deterministic.** `TransitionCheck` is pure, so it reaches no store

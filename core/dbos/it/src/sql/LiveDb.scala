@@ -226,4 +226,30 @@ object LiveDb {
   /** The session `id` in `config`'s engine session record, for a suite outside `grit.dbos`. */
   def session(config: DbConfig, id: SessionId): Either[StoreError, Option[Session]] =
     transaction(config)(new SqlSessions().read(id))
+
+  /** The first column of each row `sql` reads from `config`'s database, as text, its `?`s
+    * bound in order to `args`, in a transaction of its own.
+    */
+  def strings(config: DbConfig, sql: String, args: String*): Vector[String] =
+    connected(config) { conn =>
+      Using.resource(conn.prepareStatement(sql)) { ps =>
+        args.zipWithIndex.foreach((a, i) => ps.setString(i + 1, a))
+        Using.resource(ps.executeQuery())(rs =>
+          Iterator.continually(rs).takeWhile(_.next()).map(_.getString(1)).toVector
+        )
+      }
+    }
+
+  /** `body`, run while a transaction of its own on `config`'s database holds the rows `sql`
+    * locks (a `SELECT … FOR UPDATE`), committed once `body` returns.
+    */
+  def locking[A](config: DbConfig, sql: String)(body: => A): A =
+    transaction(config) { (tx: Tx^) ?=>
+      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+      val _ =
+        Using.resource(conn.prepareStatement(sql))(ps =>
+          Using.resource(ps.executeQuery())(_.next())
+        )
+      body
+    }
 }

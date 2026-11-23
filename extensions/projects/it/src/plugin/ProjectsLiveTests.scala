@@ -1,11 +1,10 @@
-package grit.app.main
+package grit.projects.plugin
 
 import java.time.Instant
 import java.util.concurrent.{CountDownLatch, Executors, TimeUnit}
 
 import scala.concurrent.duration.*
 import scala.concurrent.{Await, ExecutionContext, Future}
-import scala.util.Using
 
 import grit.core.claim.Claims
 import grit.core.document.{DocRef, DocText}
@@ -17,10 +16,10 @@ import grit.core.place.{Namespace, Place}
 import grit.core.plugin.CommandOutcome
 import grit.core.session.Event
 import grit.core.store.StoreError
-import grit.core.store.Tx
 import grit.core.tool.ToolName
 import grit.core.visibility.Integrity
 import grit.core.visibility.{Clearance, Label, Level}
+import grit.dbos.engine.CommandRooms
 import grit.dbos.sql.LiveDb
 import grit.projects.artifact.{Artifact, ArtifactJson, OldFormFixtures}
 import grit.projects.method.{
@@ -31,7 +30,6 @@ import grit.projects.method.{
   RoleView,
   TransitionChecks
 }
-import grit.projects.plugin.{CommandFixtures, Projects}
 
 import utest.*
 
@@ -112,38 +110,22 @@ object ProjectsLiveTests extends TestSuite {
 
   /** The holder each current version of `key`'s brief is the brief of ([[DocRef.brief]]). */
   private def briefedFor(config: grit.dbos.sql.DbConfig, key: String = "p/1"): Vector[String] =
-    LiveDb.transaction(config) { (tx: Tx^) ?=>
-      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-      Using.resource(
-        conn.prepareStatement(
-          "SELECT r.ref FROM grit.documents d JOIN grit.document_refs r ON r.version = d.version " +
-            "WHERE d.plugin = 'projects' AND d.key = ? AND d.superseded_at IS NULL AND r.kind = ?"
-        )
-      ) { ps =>
-        ps.setString(1, s"$key#brief")
-        ps.setString(2, DocRef.Brief)
-        Using.resource(ps.executeQuery())(rs =>
-          Iterator.continually(rs).takeWhile(_.next()).map(_.getString(1)).toVector
-        )
-      }
-    }
+    LiveDb.strings(
+      config,
+      "SELECT r.ref FROM grit.documents d JOIN grit.document_refs r ON r.version = d.version " +
+        "WHERE d.plugin = 'projects' AND d.key = ? AND d.superseded_at IS NULL AND r.kind = ?",
+      s"$key#brief",
+      DocRef.Brief
+    )
 
   /** The text of each current version of `key`'s brief, as the database holds it. */
   private def currentBrief(config: grit.dbos.sql.DbConfig, key: String = "p/3"): Vector[String] =
-    LiveDb.transaction(config) { (tx: Tx^) ?=>
-      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-      Using.resource(
-        conn.prepareStatement(
-          "SELECT body FROM grit.documents WHERE plugin = 'projects' AND key = ? " +
-            "AND superseded_at IS NULL"
-        )
-      ) { ps =>
-        ps.setString(1, s"$key#brief")
-        Using.resource(ps.executeQuery())(rs =>
-          Iterator.continually(rs).takeWhile(_.next()).map(_.getString(1)).toVector
-        )
-      }
-    }
+    LiveDb.strings(
+      config,
+      "SELECT body FROM grit.documents WHERE plugin = 'projects' AND key = ? " +
+        "AND superseded_at IS NULL",
+      s"$key#brief"
+    )
 
   private def keep(
       commands: grit.core.edge.PluginCommands^,
@@ -887,14 +869,11 @@ object ProjectsLiveTests extends TestSuite {
           // Holds the claimed brief's current row, so the first keep stops at its brief, its
           // project's change made and not yet committed.
           val brief = Future {
-            LiveDb.transaction(config) { (tx: Tx^) ?=>
-              val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-              Using.resource(
-                conn.prepareStatement(
-                  "SELECT version FROM grit.documents WHERE plugin = 'projects' " +
-                    "AND key = 'p/3#brief' AND superseded_at IS NULL FOR UPDATE"
-                )
-              )(ps => Using.resource(ps.executeQuery())(rs => rs.next()))
+            LiveDb.locking(
+              config,
+              "SELECT version FROM grit.documents WHERE plugin = 'projects' " +
+                "AND key = 'p/3#brief' AND superseded_at IS NULL FOR UPDATE"
+            ) {
               holding.countDown()
               go.await(30, TimeUnit.SECONDS)
             }

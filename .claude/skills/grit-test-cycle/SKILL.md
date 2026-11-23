@@ -71,7 +71,7 @@ once more before the commit; `scripts/check --probes` runs them all.
 ## The integration tier (`--it`) and the milestone run (`--milestone`)
 
 The live suites, which run against Postgres and DBOS, are in `it` modules (`grit.dbos.it`,
-`grit.app.it`, `grit.eval.it`, `grit.eval.harness.it`) and run through `scripts/it`: one
+`grit.app.it`, `grit.databases.it`, `grit.projects.it`, `grit.eval.it`, `grit.eval.harness.it`) and run through `scripts/it`: one
 throwaway Postgres shared by every `it` JVM (`TestPostgres`), built from the same
 `docker/postgres/Dockerfile` compose builds, `postgres:18` plus `pg_textsearch` (ADR 0005).
 Run `--it` before committing a change to `grit.dbos`, `schema.sql`, an `it` module or the

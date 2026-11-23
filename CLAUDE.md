@@ -49,7 +49,7 @@ area`, and the README in its folder (package order, and what the code cannot say
 | `grit.digest` | `grit.digest` | core | the hello-world plugin |
 | `grit.remind` | `grit.remind` | core | the reminders plugin |
 | `grit.knowledge` | `ref`, `card`, `sync`, `github`, `drive`, `standing`, `topic`, `declassify`, `plugin` | core, prose | the plugin that keeps cards of a declared source (ADR 0028) |
-| `grit.projects` | `name`, `artifact`, `method`, `render`, `plugin` | core, prose | the plugin that keeps a project's artifacts under its method (ADR 0049) |
+| `grit.projects` | `name`, `artifact`, `method`, `render`, `plugin` | core, prose (its `it`: dbos) | the plugin that keeps a project's artifacts under its method (ADR 0049) |
 | `grit.models` | `grit.models` | core | `Provider`s and `Classifier`s |
 | `grit.formats` | `limits`, `tree`, `ooxml`, `google`, `pdf`, `choice` | core | the readers of PDF, Word, Excel and Google Slides files (ADR 0044), and PDFBox's quarantine |
 | `grit.host` | `checkout`, `machine`, `blobs` | core | `grit.core.host`'s capabilities over this machine |
