@@ -1,0 +1,247 @@
+package grit.host.git
+
+import java.net.URI
+import java.nio.file.{Files, Path}
+
+import scala.jdk.CollectionConverters.*
+
+import grit.core.clock.SetClock
+import grit.core.host.{Argv, Branch, Handing, HostError, RelPath, Started, Variables}
+import grit.core.secret.{Secret, TestSecrets, Variable}
+import grit.host.checkout.{LocalHanding, LocalProcesses, Redaction}
+import grit.host.git.GitFixture.*
+
+import utest.*
+
+/** [[LocalBranch]] over a real clone, its declared repository the fixture's bare origin, and a
+  * forge kept in memory.
+  */
+object LocalBranchTests extends TestSuite {
+
+  private val token = "ghs_plantedForgeToken123"
+
+  private val secret: Secret = TestSecrets.of(Variable("GRIT_FORGE_TOKEN"), token)
+
+  private def remote(at: Path): Remote =
+    Remote.of(at.toString).fold(why => throw new java.lang.AssertionError(why), identity)
+
+  /** A [[Handing]] that keeps each argv it builds, and the variables it is given. */
+  private final class Recording(inner: Handing^) extends Handing {
+    val argvs = new java.util.concurrent.CopyOnWriteArrayList[Argv]()
+    val variables = new java.util.concurrent.CopyOnWriteArrayList[Map[String, String]]()
+    def started[A](dir: RelPath, secret: Secret, vars: Variables)(
+        argv: String -> Either[String, Argv]
+    )(body: Started^ => A): Either[HostError, A] = {
+      val _ = variables.add(vars.values)
+      inner.started(dir, secret, vars) { path =>
+        val built = argv(path)
+        built.foreach(a => argvs.add(a))
+        built
+      }(body)
+    }
+  }
+
+  private def handing(repo: Repo^): LocalHanding =
+    new LocalHanding(repo.source, repo.environment, Redaction.of(Map.empty))
+
+  private def branch(repo: Repo^, forge: FakeForge): LocalBranch^ =
+    handedBy(repo, forge, handing(repo))
+
+  /** `grit/w1` of `repo`'s clone, git run there, handed `secret` by `by`. */
+  private def handedBy(repo: Repo^, forge: FakeForge, by: Handing^): LocalBranch^ = {
+    val inClone = new LocalProcesses(repo.source, repo.environment, Redaction.of(Map.empty))
+    new LocalBranch(remote(repo.origin), work("w1"), inClone, by, secret, forge)
+  }
+
+  private val commit = Seq("-c", "user.name=g", "-c", "user.email=g@example.invalid")
+
+  /** `grit/w1` in the clone, one commit `subject` past main, the clone left on main. */
+  private def onBranch(repo: Repo^, subject: String): Unit = {
+    val _ = git(repo, repo.source, "checkout", "--quiet", "-B", "grit/w1")
+    val _ = git(repo, repo.source, (commit ++ Seq("commit", "--allow-empty", "-qm", subject))*)
+    val _ = git(repo, repo.source, "checkout", "--quiet", "main")
+  }
+
+  private def refs(repo: Repo^, in: Path): Vector[String] =
+    git(repo, in, "for-each-ref", "--format=%(refname)").output.text.linesIterator.toVector
+
+  private def at(repo: Repo^, in: Path, ref: String): String =
+    git(repo, in, "rev-parse", ref).output.text.trim
+
+  private def right[A](e: Either[HostError, A]): A =
+    e.fold(why => throw new java.lang.AssertionError(why.message), identity)
+
+  val tests = Tests {
+    test("offer pushes grit/{work} alone to the declared repository, and opens its pull request") {
+      inRepository { repo =>
+        onBranch(repo, "fix")
+        val _ = git(repo, repo.source, "branch", "other")
+        val _ = git(repo, repo.source, "tag", "v1")
+        val _ = git(repo, repo.source, "config", "push.followTags", "true")
+        val forge = new FakeForge
+        val offered = branch(repo, forge).offer("Fix it", "Fixed.")
+        (
+          offered,
+          refs(repo, repo.origin),
+          at(repo, repo.origin, "refs/heads/grit/w1") == at(repo, repo.source, "grit/w1"),
+          forge.opens.asScala.toVector
+        ) ==> (
+          Right(URI.create("https://forge.invalid/pull/1")),
+          Vector("refs/heads/grit/w1", "refs/heads/main"),
+          true,
+          Vector(("grit/w1", "Fix it", "Fixed."))
+        )
+      }
+    }
+    test(
+      "a branch the repository holds diverged from is refused, never forced, and nothing opens"
+    ) {
+      inRepository { repo =>
+        onBranch(repo, "first")
+        val _ = git(repo, repo.source, "push", "--quiet", "origin", "grit/w1")
+        val held = at(repo, repo.origin, "refs/heads/grit/w1")
+        val _ = git(repo, repo.source, "branch", "-f", "grit/w1", "main")
+        onBranch(repo, "rewritten")
+        val forge = new FakeForge
+        val offered = branch(repo, forge).offer("Fix it", "Fixed.")
+        (
+          offered.left.map(_.message).left.exists(_.contains("Pushing grit/w1")),
+          at(repo, repo.origin, "refs/heads/grit/w1"),
+          forge.opens.size
+        ) ==> (true, held, 0)
+      }
+    }
+    test("offered again while open, it pushes what was committed since and opens none") {
+      inRepository { repo =>
+        onBranch(repo, "first")
+        val forge = new FakeForge
+        val first = branch(repo, forge).offer("Fix it", "Fixed.")
+        val _ = git(repo, repo.source, "checkout", "--quiet", "grit/w1")
+        val _ = git(repo, repo.source, (commit ++ Seq("commit", "--allow-empty", "-qm", "more"))*)
+        val second = branch(repo, forge).offer("Fix it again", "Again.")
+        (
+          first == second,
+          at(repo, repo.origin, "refs/heads/grit/w1") == at(repo, repo.source, "grit/w1"),
+          forge.opens.size
+        ) ==> (true, true, 1)
+      }
+    }
+    test("a branch stands Unpushed, Open once offered, Pushed when its pull request closed") {
+      inRepository { repo =>
+        onBranch(repo, "first")
+        val forge = new FakeForge
+        val b = branch(repo, forge)
+        val before = b.stands
+        val offered = right(b.offer("Fix it", "Fixed."))
+        val open = b.stands
+        forge.close("grit/w1")
+        val closed = b.stands
+        val _ = git(repo, repo.source, "checkout", "--quiet", "grit/w1")
+        val _ = git(repo, repo.source, (commit ++ Seq("commit", "--allow-empty", "-qm", "more"))*)
+        (before, open, closed, b.stands) ==> (
+          Right(Branch.Stands.Unpushed),
+          Right(Branch.Stands.Open(offered)),
+          Right(Branch.Stands.Pushed),
+          Right(Branch.Stands.Unpushed)
+        )
+      }
+    }
+    test(
+      "the token reaches git only by the helper's file, asked for the declared repository alone, hooks off"
+    ) {
+      inRepository { repo =>
+        onBranch(repo, "first")
+        val recording = new Recording(handing(repo))
+        val _ = right(handedBy(repo, new FakeForge, recording).offer("Fix it", "Fixed."))
+        val pushed = recording.argvs.asScala.toVector.headOption.map(_.args).getOrElse(Nil)
+        val declared = repo.origin.toString
+        (
+          pushed.exists(_.contains(token)),
+          recording.variables.asScala.exists(_.values.exists(_.contains(token))),
+          pushed.take(6).map(_.takeWhile(_ != '!')),
+          pushed.drop(6)
+        ) ==> (
+          false,
+          false,
+          List(
+            "-c",
+            "credential.helper=",
+            "-c",
+            s"credential.$declared.helper=",
+            "-c",
+            "core.hooksPath=/dev/null"
+          ),
+          List(
+            "push",
+            "--quiet",
+            "--no-follow-tags",
+            declared,
+            "refs/heads/grit/w1:refs/heads/grit/w1"
+          )
+        )
+      }
+    }
+    test("the helper, asked for a credential, answers the password read from its file") {
+      val dir = Files.createTempDirectory("grit-helper")
+      try {
+        val file = Files.writeString(dir.resolve("secret"), token)
+        val shell = LocalBranch.helper(file.toString).stripPrefix("!")
+        val p = new ProcessBuilder("sh", "-c", s"$shell get").redirectErrorStream(true).start()
+        val said = new String(p.getInputStream.readAllBytes())
+        (p.waitFor(), said) ==> (0, s"username=x-access-token\npassword=$token\n")
+      } finally {
+        Files.walk(dir).sorted(java.util.Comparator.reverseOrder()).forEach(Files.delete)
+      }
+    }
+    test("a handed path the helper could not name unquoted is refused, and nothing runs") {
+      val to = Remote.of("/srv/repo.git")
+      (
+        to.flatMap(LocalBranch.argv(_, "/tmp/a b/secret", "push")).isLeft,
+        to.flatMap(LocalBranch.argv(_, "/tmp/a;rm/secret", "push")).isLeft,
+        to.flatMap(LocalBranch.argv(_, "/tmp/grit-handed-1/secret", "push")).isRight
+      ) ==> (true, true, true)
+    }
+    test("a remote is an https address with no user in it, or an absolute path") {
+      Vector(
+        "https://github.com/acme/app.git",
+        "/srv/app.git",
+        "http://github.com/acme/app.git",
+        "https://x:ghs_t@github.com/acme/app.git",
+        "relative/app.git",
+        "origin",
+        "https://github.com/acme/app.git\n"
+      ).map(Remote.of(_).isRight) ==> Vector(true, true, false, false, false, false, false)
+    }
+    test(
+      "a copy whose .git a run rewrote still pushes the clone's branch to the declared repository"
+    ) {
+      inRepository { repo =>
+        val copies = new WorkingCopies(
+          repository,
+          repo.source,
+          repo.root,
+          repo.processes,
+          new SetClock(java.time.Instant.EPOCH)
+        )
+        val copy = right(copies.opened(work("w1")))
+        val _ = git(repo, copy, (commit ++ Seq("commit", "--allow-empty", "-qm", "in copy"))*)
+        val elsewhere = Files.createDirectories(repo.root.resolveSibling("planted"))
+        Files.writeString(copy.resolve(".git"), s"gitdir: $elsewhere\n")
+        val _ = right(branch(repo, new FakeForge).offer("Fix it", "Fixed."))
+        at(repo, repo.origin, "refs/heads/grit/w1") ==> at(repo, repo.source, "grit/w1")
+      }
+    }
+    test("the clone's hooks do not run when its branch is pushed") {
+      inRepository { repo =>
+        onBranch(repo, "first")
+        val ran = repo.root.resolveSibling("hook-ran")
+        val hook = repo.source.resolve(".git").resolve("hooks").resolve("pre-push")
+        Files.createDirectories(hook.getParent)
+        Files.writeString(hook, s"#!/bin/sh\ntouch $ran\n")
+        hook.toFile.setExecutable(true)
+        val offered = branch(repo, new FakeForge).offer("Fix it", "Fixed.")
+        (offered.isRight, Files.exists(ran)) ==> (true, false)
+      }
+    }
+  }
+}
