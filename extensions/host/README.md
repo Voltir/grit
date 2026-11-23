@@ -34,7 +34,7 @@ Its packages, in order, none importing another but `git` and `blobs`, which remo
 - **`git`**: `WorkingCopies` — a run of work's own working copy of a repository's clone, a git
   worktree at `<root>/<repository>/<work>` on the branch `grit/<work>`, held while its run goes
   on; at most `Most` of one repository, and those unused for `Kept` swept at start. A copy
-  holding changes never committed is never removed. Its sweep deletes the branches of runs done
+  holding changes never committed is removed only once unused for `Unpublished`. Its sweep deletes the branches of runs done
   with, on their remote repository first, by lease. `Branches` — a clone's run branches
   (`LocalBranch`), pushed and offered from the clone alone.
 - **`machine`**: `LocalMachine` — this process's `ProcessIdentity`.
