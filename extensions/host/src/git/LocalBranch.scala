@@ -2,7 +2,17 @@ package grit.host.git
 
 import java.net.URI
 
-import grit.core.host.{Argv, Branch, Forge, Handing, HostError, Processes, Ran, RelPath, Variables}
+import grit.core.host.{
+  Argv,
+  Branch,
+  Handing,
+  HostError,
+  Processes,
+  Ran,
+  RelPath,
+  RemoteRepository,
+  Variables
+}
 import grit.core.place.WorkName
 import grit.core.secret.Secret
 
@@ -27,7 +37,7 @@ object Remote {
 }
 
 /** The branch `grit/{work}` of the clone that `processes` and `handing` run at, pushed to `to`
-  * with `secret` and offered on `forge`. git runs in the clone, never the run's copy, so nothing
+  * with `secret` and offered on `remoteRepository`. git runs in the clone, never the run's copy, so nothing
   * a run writes in its copy reaches the push; it reads `secret` through a credential helper that
   * git asks only for `to`, with the clone's own helpers cleared and its hooks not run. Each git
   * command runs for at most [[WorkingCopies.GitLongest]].
@@ -38,7 +48,7 @@ final class LocalBranch(
     processes: Processes^,
     handing: Handing^,
     secret: Secret,
-    forge: Forge^
+    remoteRepository: RemoteRepository^
 ) extends Branch {
 
   private val branch = s"grit/${WorkName.value(work)}"
@@ -47,10 +57,10 @@ final class LocalBranch(
   def offer(title: String, body: String): Either[HostError, URI] =
     for {
       _ <- pushed()
-      open <- forge.opened(branch)
+      open <- remoteRepository.opened(branch)
       at <- open match {
         case Some(at) => Right(at)
-        case None => forge.open(branch, title, body)
+        case None => remoteRepository.open(branch, title, body)
       }
     } yield at
 
@@ -61,7 +71,7 @@ final class LocalBranch(
       stands <-
         if (!remote.contains(local)) Right(Branch.Stands.Unpushed)
         else
-          forge.opened(branch).map {
+          remoteRepository.opened(branch).map {
             case Some(at) => Branch.Stands.Open(at)
             case None => Branch.Stands.Pushed
           }

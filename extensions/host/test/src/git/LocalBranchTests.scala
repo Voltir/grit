@@ -14,13 +14,13 @@ import grit.host.git.GitFixture.*
 import utest.*
 
 /** [[LocalBranch]] over a real clone, its declared repository the fixture's bare origin, and a
-  * forge kept in memory.
+  * remote repository kept in memory.
   */
 object LocalBranchTests extends TestSuite {
 
-  private val token = "ghs_plantedForgeToken123"
+  private val token = "ghs_plantedRemoteToken123"
 
-  private val secret: Secret = TestSecrets.of(Variable("GRIT_FORGE_TOKEN"), token)
+  private val secret: Secret = TestSecrets.of(Variable("GRIT_REMOTE_REPOSITORY_TOKEN"), token)
 
   private def remote(at: Path): Remote =
     Remote.of(at.toString).fold(why => throw new java.lang.AssertionError(why), identity)
@@ -44,13 +44,17 @@ object LocalBranchTests extends TestSuite {
   private def handing(repo: Repo^): LocalHanding =
     new LocalHanding(repo.source, repo.environment, Redaction.of(Map.empty))
 
-  private def branch(repo: Repo^, forge: FakeForge): LocalBranch^ =
-    handedBy(repo, forge, handing(repo))
+  private def branch(repo: Repo^, remoteRepository: FakeRemoteRepository): LocalBranch^ =
+    handedBy(repo, remoteRepository, handing(repo))
 
   /** `grit/w1` of `repo`'s clone, git run there, handed `secret` by `by`. */
-  private def handedBy(repo: Repo^, forge: FakeForge, by: Handing^): LocalBranch^ = {
+  private def handedBy(
+      repo: Repo^,
+      remoteRepository: FakeRemoteRepository,
+      by: Handing^
+  ): LocalBranch^ = {
     val inClone = new LocalProcesses(repo.source, repo.environment, Redaction.of(Map.empty))
-    new LocalBranch(remote(repo.origin), work("w1"), inClone, by, secret, forge)
+    new LocalBranch(remote(repo.origin), work("w1"), inClone, by, secret, remoteRepository)
   }
 
   private val commit = Seq("-c", "user.name=g", "-c", "user.email=g@example.invalid")
@@ -78,15 +82,15 @@ object LocalBranchTests extends TestSuite {
         val _ = git(repo, repo.source, "branch", "other")
         val _ = git(repo, repo.source, "tag", "v1")
         val _ = git(repo, repo.source, "config", "push.followTags", "true")
-        val forge = new FakeForge
-        val offered = branch(repo, forge).offer("Fix it", "Fixed.")
+        val remoteRepository = new FakeRemoteRepository
+        val offered = branch(repo, remoteRepository).offer("Fix it", "Fixed.")
         (
           offered,
           refs(repo, repo.origin),
           at(repo, repo.origin, "refs/heads/grit/w1") == at(repo, repo.source, "grit/w1"),
-          forge.opens.asScala.toVector
+          remoteRepository.opens.asScala.toVector
         ) ==> (
-          Right(URI.create("https://forge.invalid/pull/1")),
+          Right(URI.create("https://remote.invalid/pull/1")),
           Vector("refs/heads/grit/w1", "refs/heads/main"),
           true,
           Vector(("grit/w1", "Fix it", "Fixed."))
@@ -102,39 +106,39 @@ object LocalBranchTests extends TestSuite {
         val held = at(repo, repo.origin, "refs/heads/grit/w1")
         val _ = git(repo, repo.source, "branch", "-f", "grit/w1", "main")
         onBranch(repo, "rewritten")
-        val forge = new FakeForge
-        val offered = branch(repo, forge).offer("Fix it", "Fixed.")
+        val remoteRepository = new FakeRemoteRepository
+        val offered = branch(repo, remoteRepository).offer("Fix it", "Fixed.")
         (
           offered.left.map(_.message).left.exists(_.contains("Pushing grit/w1")),
           at(repo, repo.origin, "refs/heads/grit/w1"),
-          forge.opens.size
+          remoteRepository.opens.size
         ) ==> (true, held, 0)
       }
     }
     test("offered again while open, it pushes what was committed since and opens none") {
       inRepository { repo =>
         onBranch(repo, "first")
-        val forge = new FakeForge
-        val first = branch(repo, forge).offer("Fix it", "Fixed.")
+        val remoteRepository = new FakeRemoteRepository
+        val first = branch(repo, remoteRepository).offer("Fix it", "Fixed.")
         val _ = git(repo, repo.source, "checkout", "--quiet", "grit/w1")
         val _ = git(repo, repo.source, (commit ++ Seq("commit", "--allow-empty", "-qm", "more"))*)
-        val second = branch(repo, forge).offer("Fix it again", "Again.")
+        val second = branch(repo, remoteRepository).offer("Fix it again", "Again.")
         (
           first == second,
           at(repo, repo.origin, "refs/heads/grit/w1") == at(repo, repo.source, "grit/w1"),
-          forge.opens.size
+          remoteRepository.opens.size
         ) ==> (true, true, 1)
       }
     }
     test("a branch stands Unpushed, Open once offered, Pushed when its pull request closed") {
       inRepository { repo =>
         onBranch(repo, "first")
-        val forge = new FakeForge
-        val b = branch(repo, forge)
+        val remoteRepository = new FakeRemoteRepository
+        val b = branch(repo, remoteRepository)
         val before = b.stands
         val offered = right(b.offer("Fix it", "Fixed."))
         val open = b.stands
-        forge.close("grit/w1")
+        remoteRepository.close("grit/w1")
         val closed = b.stands
         val _ = git(repo, repo.source, "checkout", "--quiet", "grit/w1")
         val _ = git(repo, repo.source, (commit ++ Seq("commit", "--allow-empty", "-qm", "more"))*)
@@ -152,7 +156,7 @@ object LocalBranchTests extends TestSuite {
       inRepository { repo =>
         onBranch(repo, "first")
         val recording = new Recording(handing(repo))
-        val _ = right(handedBy(repo, new FakeForge, recording).offer("Fix it", "Fixed."))
+        val _ = right(handedBy(repo, new FakeRemoteRepository, recording).offer("Fix it", "Fixed."))
         val pushed = recording.argvs.asScala.toVector.headOption.map(_.args).getOrElse(Nil)
         val declared = repo.origin.toString
         (
@@ -227,7 +231,7 @@ object LocalBranchTests extends TestSuite {
         val _ = git(repo, copy, (commit ++ Seq("commit", "--allow-empty", "-qm", "in copy"))*)
         val elsewhere = Files.createDirectories(repo.root.resolveSibling("planted"))
         Files.writeString(copy.resolve(".git"), s"gitdir: $elsewhere\n")
-        val _ = right(branch(repo, new FakeForge).offer("Fix it", "Fixed."))
+        val _ = right(branch(repo, new FakeRemoteRepository).offer("Fix it", "Fixed."))
         at(repo, repo.origin, "refs/heads/grit/w1") ==> at(repo, repo.source, "grit/w1")
       }
     }
@@ -239,7 +243,7 @@ object LocalBranchTests extends TestSuite {
         Files.createDirectories(hook.getParent)
         Files.writeString(hook, s"#!/bin/sh\ntouch $ran\n")
         hook.toFile.setExecutable(true)
-        val offered = branch(repo, new FakeForge).offer("Fix it", "Fixed.")
+        val offered = branch(repo, new FakeRemoteRepository).offer("Fix it", "Fixed.")
         (offered.isRight, Files.exists(ran)) ==> (true, false)
       }
     }

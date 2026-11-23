@@ -118,20 +118,23 @@ object LocalToolsTests extends TestSuite {
   private def made(text: String): ujson.Value =
     ujson.Obj("path" -> "made.txt", "content" -> text)
 
-  /** The forge repository's place the fixture's runs offer their branches at. */
-  private val forgePlace = Place.under(Namespace.Service, Vector("github", "acme", "app"))
+  /** The remote repository's place the fixture's runs offer their branches at. */
+  private val remotePlace = Place.under(Namespace.Service, Vector("github", "acme", "app"))
 
-  /** `repo`'s runs pushed to its bare origin with a planted token, offered on `forge`. */
-  private def pushing(repo: GitFixture.Repo^, forge: GitFixture.FakeForge): Pushing^ = {
+  /** `repo`'s runs pushed to its bare origin with a planted token, offered on `remoteRepository`. */
+  private def pushing(
+      repo: GitFixture.Repo^,
+      remoteRepository: GitFixture.FakeRemoteRepository
+  ): Pushing^ = {
     val quiet = Redaction.of(Map.empty)
     Pushing
       .of(
         Remote.of(repo.origin.toString).fold(sys.error, identity),
         new LocalProcesses(repo.source, repo.environment, quiet),
         new LocalHanding(repo.source, repo.environment, quiet),
-        TestSecrets.of(Variable("GRIT_FORGE_TOKEN"), "ghs_plantedForgeToken123"),
-        forge,
-        forgePlace,
+        TestSecrets.of(Variable("GRIT_REMOTE_REPOSITORY_TOKEN"), "ghs_plantedRemoteToken123"),
+        remoteRepository,
+        remotePlace,
         "acme/app"
       ) match {
       case Right(p) => p
@@ -139,8 +142,11 @@ object LocalToolsTests extends TestSuite {
     }
   }
 
-  /** `body` given tools whose runs of the fixture's repository push to its origin on `forge`. */
-  private def pushingIn[A](repo: GitFixture.Repo^, forge: GitFixture.FakeForge)(
+  /** `body` given tools whose runs of the fixture's repository push to its origin on `remoteRepository`. */
+  private def pushingIn[A](
+      repo: GitFixture.Repo^,
+      remoteRepository: GitFixture.FakeRemoteRepository
+  )(
       body: (LocalTools^, WorkingCopies^) => A
   ): A = {
     val copies =
@@ -157,7 +163,7 @@ object LocalToolsTests extends TestSuite {
       Clock.system(),
       Fresh.random(),
       Some(copies),
-      Some(pushing(repo, forge))
+      Some(pushing(repo, remoteRepository))
     )
     try body(tools, copies)
     finally tools.close()
@@ -182,9 +188,9 @@ object LocalToolsTests extends TestSuite {
       "a run's offer_pull_request pushes its branch to the declared repository and answers its pull request"
     ) {
       GitFixture.inRepository { repo =>
-        val forge = new GitFixture.FakeForge
+        val remoteRepository = new GitFixture.FakeRemoteRepository
         val w1 = GitFixture.work("w1")
-        val said = pushingIn(repo, forge) { (tools, copies) =>
+        val said = pushingIn(repo, remoteRepository) { (tools, copies) =>
           copies
             .held(w1) { _ =>
               inRun(
@@ -194,17 +200,17 @@ object LocalToolsTests extends TestSuite {
                 w1,
                 "offer_pull_request",
                 offer,
-                _ => Some(forgePlace)
+                _ => Some(remotePlace)
               )
             }
             .left
             .map(_.message)
         }
         val local = GitFixture.git(repo, repo.source, "rev-parse", "grit/w1").output.text.trim
-        (said, originHead(repo) == Some(local), forge.opens.size) ==> (
+        (said, originHead(repo) == Some(local), remoteRepository.opens.size) ==> (
           Right(
             Outcome.Done(
-              "The branch is pushed; its pull request is open at https://forge.invalid/pull/1."
+              "The branch is pushed; its pull request is open at https://remote.invalid/pull/1."
             )
           ),
           true,
@@ -216,9 +222,9 @@ object LocalToolsTests extends TestSuite {
       "offer_pull_request told no destination, or its workspace, is misdirected and pushes nothing"
     ) {
       GitFixture.inRepository { repo =>
-        val forge = new GitFixture.FakeForge
+        val remoteRepository = new GitFixture.FakeRemoteRepository
         val w1 = GitFixture.work("w1")
-        val said = pushingIn(repo, forge) { (tools, copies) =>
+        val said = pushingIn(repo, remoteRepository) { (tools, copies) =>
           copies
             .held(w1) { _ =>
               def told(to: Place => Option[Place]): String =
@@ -239,7 +245,11 @@ object LocalToolsTests extends TestSuite {
             .left
             .map(_.message)
         }
-        (said, originHead(repo), forge.opens.size) ==> (Right(Vector("failed", "failed")), None, 0)
+        (said, originHead(repo), remoteRepository.opens.size) ==> (
+          Right(Vector("failed", "failed")),
+          None,
+          0
+        )
       }
     }
     test(
@@ -248,8 +258,9 @@ object LocalToolsTests extends TestSuite {
       GitFixture.inRepository { repo =>
         def names(set: Either[grit.core.tool.SetRefusal, grit.core.tool.ToolSet]) =
           set.toOption.toVector.flatMap(_.named(grit.tools.Versioning.Name)).map(_.name)
-        val (atDirectory, atRepository) = pushingIn(repo, new GitFixture.FakeForge) { (tools, _) =>
-          (names(tools.hosted), names(tools.hostedInRepository))
+        val (atDirectory, atRepository) = pushingIn(repo, new GitFixture.FakeRemoteRepository) {
+          (tools, _) =>
+            (names(tools.hosted), names(tools.hostedInRepository))
         }
         val unpushed = offering(writing) { tools => names(tools.hostedInRepository) }
         (atDirectory, atRepository, unpushed) ==> (

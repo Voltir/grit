@@ -239,14 +239,14 @@ object RepositoryLiveTests extends TestSuite {
         GitFixture.git(repo, clone, "push", "--quiet", "origin", "main")
         val copies =
           new WorkingCopies(GitFixture.repository, clone, repo.root, repo.processes, Clock.system())
-        val forge = new GitFixture.FakeForge
+        val remoteRepository = new GitFixture.FakeRemoteRepository
         val quiet = Redaction.of(Map.empty)
         val pushing = Pushing.of(
           right(Remote.of(repo.origin.toString)),
           new LocalProcesses(clone, repo.environment, quiet),
           new LocalHanding(clone, repo.environment, quiet),
-          TestSecrets.of(Variable("GRIT_FORGE_TOKEN"), "ghs_plantedForgeToken123"),
-          forge,
+          TestSecrets.of(Variable("GRIT_REMOTE_REPOSITORY_TOKEN"), "ghs_plantedRemoteToken123"),
+          remoteRepository,
           Place.under(Namespace.Service, Vector("github", "acme", "app")),
           "acme/app"
         ) match {
@@ -303,13 +303,15 @@ object RepositoryLiveTests extends TestSuite {
           first == second,
           calls._1 == calls._2,
           offered,
-          forge.opens.size,
+          remoteRepository.opens.size,
           GitFixture.git(repo, repo.origin, "rev-parse", "refs/heads/grit/w1").output.text.trim ==
             out(repo, clone, "rev-parse", "grit/w1")
         ) ==> (
           true,
           true,
-          Vector("The branch is pushed; its pull request is open at https://forge.invalid/pull/1."),
+          Vector(
+            "The branch is pushed; its pull request is open at https://remote.invalid/pull/1."
+          ),
           1,
           true
         )

@@ -231,7 +231,7 @@ object CoderNeedsTests extends TestSuite {
     ) {
       needs { n =>
         // The ssh on PATH reaches nothing; the configured one runs git's remote command against
-        // the bare origin beside the checkout, as a forge's server would.
+        // the bare origin beside the checkout, as a remote repository's server would.
         val _ =
           n.machine.write(n.machine.bin.resolve("ssh"), "#!/bin/sh\nexit 255\n", executable = true)
         val configured = n.machine.write(
@@ -257,7 +257,7 @@ object CoderNeedsTests extends TestSuite {
     ) {
       needs { n =>
         // The bare origin answers ls-remote; its receive-pack, which a dry-run push still opens,
-        // refuses as a forge refuses a credential without write access.
+        // refuses as a remote repository refuses a credential without write access.
         val refuse = n.machine.write(
           n.machine.root.resolve("refusing-receive-pack"),
           "#!/bin/sh\necho 'ERROR: Permission to r.git denied to someone.' >&2\nexit 1\n",

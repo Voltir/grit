@@ -2,8 +2,8 @@ package grit.core.host
 
 import java.net.URI
 
-/** A forge's pull requests for one repository. */
-trait Forge extends caps.SharedCapability {
+/** A repository a run's branch is pushed to, outside this machine, and its pull requests. */
+trait RemoteRepository extends caps.SharedCapability {
 
   /** A pull request from `branch` into the repository's default branch, opened with `title` and
     * `body`: its address.

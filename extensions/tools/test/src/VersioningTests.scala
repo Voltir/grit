@@ -21,13 +21,13 @@ import utest.*
 /** [[Versioning]]'s tool as the engine offers it: where a turn may reach it. */
 object VersioningTests extends TestSuite {
 
-  private val forge: Place = place("service:github/acme/app")
+  private val remotePlace: Place = place("service:github/acme/app")
 
   private val internal = Label.at(Level.Internal)
 
   private def entry: ToolSet.Entry =
     Versioning
-      .hosted(forge, "acme/app")
+      .hosted(remotePlace, "acme/app")
       .fold(why => throw new java.lang.AssertionError(why), _.entry)
 
   /** A transaction on a public floor, places labelled as `labels` say, any other as
@@ -54,18 +54,20 @@ object VersioningTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "offer_pull_request is offered after reading at the forge's label, withheld after reading above it"
+      "offer_pull_request is offered after reading at the remote repository's label, withheld after reading above it"
     ) {
       (
-        offered(Vector(forge -> internal), internal),
-        offered(Vector(forge -> Label.Public), internal)
+        offered(Vector(remotePlace -> internal), internal),
+        offered(Vector(remotePlace -> Label.Public), internal)
       ) ==> (true, false)
     }
-    test("offer_pull_request is withheld from a forge place the deployment leaves unmapped") {
+    test(
+      "offer_pull_request is withheld from a remote repository's place the deployment leaves unmapped"
+    ) {
       val unmapped = Labelled.Unmapped(Label.Public)
       (
         offered(Vector.empty, Label.Public, unmapped),
-        offered(Vector(forge -> Label.Public), Label.Public, unmapped)
+        offered(Vector(remotePlace -> Label.Public), Label.Public, unmapped)
       ) ==> (false, true)
     }
   }

@@ -5,7 +5,7 @@ import java.nio.file.{Files, Path}
 
 import scala.concurrent.duration.*
 
-import grit.core.host.{Argv, Forge, HostError, Processes, Ran, RelPath}
+import grit.core.host.{Argv, HostError, Processes, Ran, RelPath, RemoteRepository}
 import grit.core.place.{Repository, WorkName}
 import grit.host.checkout.{LocalProcesses, LocalTree, Redaction}
 
@@ -27,10 +27,10 @@ object GitFixture {
     val origin: Path = source.resolveSibling("origin.git")
   }
 
-  /** A forge that keeps its pull requests in memory, numbered from 1, each at
-    * `https://forge.invalid/pull/{n}`; one per branch is open until [[close]].
+  /** A remote repository that keeps its pull requests in memory, numbered from 1, each at
+    * `https://remote.invalid/pull/{n}`; one per branch is open until [[close]].
     */
-  final class FakeForge extends Forge {
+  final class FakeRemoteRepository extends RemoteRepository {
 
     /** Every pull request opened, in order: its branch, title and body. */
     val opens = new java.util.concurrent.CopyOnWriteArrayList[(String, String, String)]()
@@ -39,7 +39,7 @@ object GitFixture {
 
     def open(branch: String, title: String, body: String): Either[HostError, URI] = {
       val _ = opens.add((branch, title, body))
-      val at = URI.create(s"https://forge.invalid/pull/${opens.size}")
+      val at = URI.create(s"https://remote.invalid/pull/${opens.size}")
       val _ = openAt.put(branch, at)
       Right(at)
     }

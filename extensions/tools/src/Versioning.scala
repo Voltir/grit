@@ -19,8 +19,8 @@ import grit.core.tool.{
   Writing
 }
 
-/** The tool over a run's branch: `offer_pull_request`, the one path to the forge, and the only
-  * one that holds its credential (a [[Branch]]'s). It writes outside grit to the forge
+/** The tool over a run's branch: `offer_pull_request`, the one path to the remote repository, and the
+  * only one that holds its credential (a [[Branch]]'s). It writes outside grit to the remote
   * repository's place alone, so it is withheld where that place is not written to, and asks no
   * one first.
   */
@@ -31,15 +31,15 @@ object Versioning {
   /** `offer_pull_request`. */
   val Name: ToolName = ToolName("offer_pull_request")
 
-  /** `offer_pull_request` as the engine offers it, writing to `forge`, the place of the forge
+  /** `offer_pull_request` as the engine offers it, writing to `place`, the place of the remote
     * repository the model names `named` (its full name, `{owner}/{name}`): described, never
     * run. Rerun when its edge died before it answered, since offering twice pushes what was
     * committed and opens no second pull request. Why not: `named` is blank.
     */
-  def hosted(forge: Place, named: String): Either[String, Writing[OfferArgs, Place]] =
+  def hosted(place: Place, named: String): Either[String, Writing[OfferArgs, Place]] =
     for {
       writes <- Writes.of(
-        VectorMap(named -> forge),
+        VectorMap(named -> place),
         identity,
         s"The repository the pull request is opened in: $named."
       )
