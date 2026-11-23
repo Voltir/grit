@@ -161,6 +161,42 @@ object WorkingCopiesTests extends TestSuite {
       }
     }
 
+    test(
+      "the first call removes a copy holding changes never committed once unused past Unpublished, said first"
+    ) {
+      inRepository { repo =>
+        val clock = new SetClock(start)
+        val noted = scala.collection.mutable.ArrayBuffer.empty[String]
+        def copies(): WorkingCopies^ =
+          new WorkingCopies(
+            repository,
+            repo.source,
+            repo.root,
+            repo.processes,
+            clock,
+            None,
+            noted += _
+          )
+        val draft = made(copies(), "draft")
+        Files.writeString(draft.resolve("draft.txt"), "unsaved")
+        // The write stamps the copy with the machine's time; its last use is the clock's.
+        val _ = Files.setLastModifiedTime(draft, java.nio.file.attribute.FileTime.from(start))
+        clock.at = start.plusMillis(WorkingCopies.Unpublished.toMillis).minusSeconds(3600)
+        val _ = made(copies(), "a")
+        val before = present(repo)
+        clock.at = start.plusMillis(WorkingCopies.Unpublished.toMillis).plusSeconds(3600)
+        val _ = made(copies(), "b")
+        (before, present(repo), hasBranch(repo, repo.source, "grit/draft"), noted.toVector) ==> (
+          Vector("a", "draft"),
+          Vector("a", "b"),
+          true,
+          Vector(
+            s"[main] removing $draft, its changes never committed, unused past ${WorkingCopies.Unpublished}"
+          )
+        )
+      }
+    }
+
     test("the first call removes a directory left without its lock") {
       inRepository { repo =>
         val stray = Files.createDirectories(repo.root.resolve("grit").resolve("stray"))

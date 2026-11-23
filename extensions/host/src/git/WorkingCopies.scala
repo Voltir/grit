@@ -31,7 +31,8 @@ import grit.host.checkout.LocalTree
 /** Working copies of `repository`'s clone at `clone`, each at `root/{repository}/{work}` on the
   * branch `grit/{work}`, git run through `processes`. Its first call sweeps: every copy unused
   * for [[Kept]] that is neither held nor holding changes never committed is removed, its branch
-  * kept, and so is every directory there without its lock. With `target`, a new branch is cut
+  * kept, and so is every directory there without its lock; a copy holding such changes goes too
+  * once unused for [[Unpublished]], said through `note` first, unless held. With `target`, a new branch is cut
   * only when the clone's origin is `target`'s remote ([[Remote.fetchedBy]]); `Failed` otherwise,
   * naming both, no copy or branch made. With `target`, and the clone's origin its remote, the
   * sweep also deletes each local `grit/{work}` branch with no copy that is done with: one
@@ -292,6 +293,17 @@ final class WorkingCopies(
     (if (Files.exists(lock)) LocalTree.free(lock)(_ => ()) else LocalTree.removed(dir).isEmpty)
   }
 
+  /** Whether `name`'s copy was removed whatever it holds, said through `note` first: not when
+    * held, by this process or another.
+    */
+  private def discarded(name: String): Boolean = {
+    val lock = lockOf(dirOf(name))
+    !Holds.containsKey(lock) &&
+    LocalTree.free(lock)(dir =>
+      note(s"[main] removing $dir, its changes never committed, unused past $Unpublished")
+    )
+  }
+
   /** Whether `dir` holds nothing never committed: no directory, or git showing no change. */
   private def clean(dir: Path): Boolean =
     !isCopy(dir) || git(dir, "status", "--porcelain").exists(_.output.text.trim.isEmpty)
@@ -311,11 +323,14 @@ final class WorkingCopies(
   /** At this instance's first call, the sweep its doc names. */
   private def sweep(): Unit = if (!swept.getAndSet(true)) {
     val cutoff = clock.now().toEpochMilli - Kept.toMillis
+    val abandoned = clock.now().toEpochMilli - Unpublished.toMillis
     names().foreach { all =>
       val gone = all.toVector.filter { name =>
         val dir = dirOf(name)
-        if (Files.exists(lockOf(dir))) lastUsed(name) < cutoff && free(name)
-        else LocalTree.removed(dir).isEmpty
+        if (Files.exists(lockOf(dir))) {
+          val last = lastUsed(name)
+          (last < cutoff && free(name)) || (last < abandoned && discarded(name))
+        } else LocalTree.removed(dir).isEmpty
       }
       if (gone.nonEmpty) pruned()
     }
@@ -515,8 +530,9 @@ object WorkingCopies {
   /** 20: the most branches one sweep asks the remote repository about. */
   val SweepAsks: Int = 20
 
-  /** 90 days: how long a branch never offered, holding commits origin's default branch lacks,
-    * is kept after its last commit.
+  /** 90 days: how long work never offered is kept: a branch holding commits origin's default
+    * branch lacks, after its last commit; a copy holding changes never committed, after its last
+    * use.
     */
   val Unpublished: FiniteDuration = FiniteDuration(90, TimeUnit.DAYS)
 
