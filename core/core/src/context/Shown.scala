@@ -24,7 +24,8 @@ object Shown {
     * ("Someone" when `speakers` does not name its author); grit's post the conversation
     * begins with as one user message, [[PostedLead]] then the post as [[pasted]] shows it, so
     * no window opens with an assistant message; grit's continuation note as one user message,
-    * [[Continuing]] after a turn at its limit, [[checkFailed]] after a failed check;
+    * [[Continuing]] after a turn at its limit, [[checkFailed]] after a failed check, [[Unpushed]] or
+    * [[Unopened]] after a check passed with its branch not offered;
     * a closing entry as one user message, "[record] this conversation
     * so far, written by grit (closed {its UTC date}):", then its prose, its outcome, the
     * lines it resolved and how, and the balance's open lines, its standing lines (those
@@ -50,6 +51,8 @@ object Shown {
     case Payload.Continuation(_, _, WentOn.AtLimit) => Some(Message.User(Continuing))
     case Payload.Continuation(_, _, failed: WentOn.CheckFailed) =>
       Some(Message.User(checkFailed(failed)))
+    case Payload.Continuation(_, _, WentOn.Unpushed) => Some(Message.User(Unpushed))
+    case Payload.Continuation(_, _, WentOn.Unopened) => Some(Message.User(Unopened))
     case _ => None
   }
 
@@ -65,6 +68,35 @@ object Shown {
         "need, and do not redo what your last reply says is done."
     )
   )
+
+  /** grit's note a task's next turn begins with after its check passed and its branch was not
+    * offered ([[WentOn.Unpushed]]): grit's own words, fenced as its note.
+    */
+  val Unpushed: String = Fenced.noted(
+    Vector(
+      "Your last reply ended the turn, and the task's acceptance command passes, but your " +
+        "change has not been offered: either nothing is committed on your branch, or it holds " +
+        "commits its remote repository does not have.",
+      "Commit your change with git commit, then call offer_pull_request with a title and a " +
+        "body. " + Afresh
+    )
+  )
+
+  /** grit's note a task's next turn begins with after its check passed and its branch was
+    * pushed with no pull request open ([[WentOn.Unopened]]): grit's own words, fenced as its
+    * note.
+    */
+  val Unopened: String = Fenced.noted(
+    Vector(
+      "Your last reply ended the turn, and the task's acceptance command passes and your branch " +
+        "is pushed, but no pull request is open for it.",
+      "Call offer_pull_request with a title and a body. " + Afresh
+    )
+  )
+
+  private def Afresh: String =
+    "This part of the conversation starts afresh: it holds the task and " +
+      "your last reply, but not your earlier replies, your tool calls or their results."
 
   /** grit's note a task's next turn begins with after its acceptance command failed
     * ([[WentOn.CheckFailed]]): grit's own words, fenced as its note, then `failed`'s output

@@ -71,6 +71,19 @@ final class WorkingCopies(
     }
   }
 
+  /** `work`'s copy removed, its branch kept, unless it holds changes never committed or another
+    * process holds it.
+    */
+  def removed(work: WorkName): WorkingCopies.Removed = Made.synchronized {
+    val name = WorkName.value(work)
+    val dir = dirOf(name)
+    if (!clean(dir)) WorkingCopies.Removed.Uncommitted(dir)
+    else if (free(name)) {
+      pruned()
+      WorkingCopies.Removed.Gone
+    } else WorkingCopies.Removed.Held(dir)
+  }
+
   private def dirOf(name: String): Path = copies.resolve(name)
 
   /** `lock` held by this process, once more when it holds it already. */
@@ -258,6 +271,19 @@ final class WorkingCopies(
 }
 
 object WorkingCopies {
+
+  /** What came of removing a run's copy. */
+  enum Removed derives CanEqual {
+
+    /** It is gone, or there was none. */
+    case Gone
+
+    /** It is kept at `at`, as it holds changes never committed. */
+    case Uncommitted(at: Path)
+
+    /** It is kept at `at`, as another process holds it. */
+    case Held(at: Path)
+  }
 
   /** 8: the most copies of one repository. */
   val Most: Int = 8

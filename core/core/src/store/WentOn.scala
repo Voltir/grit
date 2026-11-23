@@ -13,6 +13,16 @@ object WentOn {
   /** The turn before ended at its limit without declaring its task done. */
   case object AtLimit extends WentOn
 
+  /** The turn before answered and the task's check passed, but its branch was not offered:
+    * nothing committed on it, or commits its remote repository lacks.
+    */
+  case object Unpushed extends WentOn
+
+  /** The turn before answered and the task's check passed, and its branch is pushed, but no
+    * pull request was opened from it.
+    */
+  case object Unopened extends WentOn
+
   /** The turn before ended with a reply and no request to go on, and the task's acceptance
     * command `command` then failed: `exit` its exit code, `None` when it ran past
     * [[CheckLongest]] and was stopped; `tail` the end of its output, as [[failed]] cuts it.
@@ -57,7 +67,7 @@ object WentOn {
     * [[Integrity.Member]], as a coding tool's result is.
     */
   def believed(reason: WentOn, task: Integrity): Integrity = reason match {
-    case AtLimit => task
+    case AtLimit | Unpushed | Unopened => task
     case _: CheckFailed => task.meet(Integrity.Member)
   }
 

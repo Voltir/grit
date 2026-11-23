@@ -19,6 +19,8 @@ object Replies {
       Some(s"── grit went on (turn $turn): the last turn reached its limit ──")
     case Payload.Continuation(_, turn, _: WentOn.CheckFailed) =>
       Some(s"── grit went on (turn $turn): the check failed ──")
+    case Payload.Continuation(_, turn, WentOn.Unpushed | WentOn.Unopened) =>
+      Some(s"── grit went on (turn $turn): the branch was not offered ──")
     case _ => None
   }
 

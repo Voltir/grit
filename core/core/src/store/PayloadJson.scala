@@ -35,6 +35,8 @@ object PayloadJson {
         ujson.Obj("kind" -> "continuation", "task" -> TurnSeq.value(task).toDouble, "turn" -> turn)
       reason match {
         case WentOn.AtLimit => ()
+        case WentOn.Unpushed => o("reason") = ujson.Obj("kind" -> "unpushed")
+        case WentOn.Unopened => o("reason") = ujson.Obj("kind" -> "unopened")
         case WentOn.CheckFailed(command, exit, tail) =>
           val r = ujson.Obj("kind" -> "check-failed", "command" -> command.text)
           exit.foreach(e => r("exit") = e)
@@ -530,6 +532,8 @@ object PayloadJson {
             tail <- str(o, "tail")
             failed <- WentOn.CheckFailed.read(command, exit, tail)
           } yield failed
+        case "unpushed" => Right(WentOn.Unpushed)
+        case "unopened" => Right(WentOn.Unopened)
         case other => Left(s"unknown continuation reason: $other")
       }
     } yield reason

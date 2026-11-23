@@ -1,11 +1,13 @@
 package grit.kit.work
 
+import java.net.URI
 import java.nio.file.{Files, Path}
 
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 
 import grit.core.clock.{Clock, Fresh}
+import grit.core.host.{Branch, HostError}
 import grit.core.id.{Sha256, SourceId, WorkflowId}
 import grit.core.inbox.TurnEnding
 import grit.core.place.{Repository, WorkName}
@@ -177,7 +179,7 @@ object WorkTests extends TestSuite {
       val tail = (11 to 30).map(n => s"\n  | l$n").mkString
       (
         Work.after("w2", TurnEnding.Answered, 2, 8, None, None),
-        Work.after("w2", TurnEnding.Answered, 2, 8, Some(Work.Verdict.Passed), Some(failed)),
+        Work.after("w2", TurnEnding.Answered, 2, 8, Some(Work.Verdict.Passed(None)), Some(failed)),
         Work.after("w2", TurnEnding.Answered, 2, 8, Some(Work.Verdict.Failed(failed)), None),
         Work.after(
           "w2",
@@ -227,6 +229,102 @@ object WorkTests extends TestSuite {
     }
 
     test(
+      "a passed check stops on an open or merged pull request, fails on a closed one, and goes on once for a branch not offered"
+    ) {
+      val at = URI.create("https://github.com/acme/app/pull/7")
+      def passed(stands: Branch.Stands, last: Option[WentOn] = None, turn: Int = 2) =
+        Work.after(
+          "w2",
+          TurnEnding.Answered,
+          turn,
+          8,
+          Some(Work.Verdict.Passed(Some(Right(stands)))),
+          last
+        )
+      (
+        passed(Branch.Stands.Open(at)),
+        passed(Branch.Stands.Merged(at)),
+        passed(Branch.Stands.Closed(at)),
+        passed(Branch.Stands.Unpushed),
+        passed(Branch.Stands.Pushed),
+        passed(Branch.Stands.Unpushed, Some(WentOn.Unpushed)),
+        passed(Branch.Stands.Pushed, Some(WentOn.Unpushed)),
+        passed(Branch.Stands.Unpushed, turn = 8),
+        Work.after(
+          "w2",
+          TurnEnding.Answered,
+          2,
+          8,
+          Some(Work.Verdict.Passed(Some(Left(HostError.Failed("unreachable"))))),
+          None
+        )
+      ) ==> (
+        Work.After.Offered(at, s"[main] w2: the check passed; its pull request is open: $at"),
+        Work.After.Offered(at, s"[main] w2: the check passed; its pull request was merged: $at"),
+        Work.After.Fail(
+          s"w2: the check passed, but its pull request $at was closed; grit does not open " +
+            "another. Run the task under a new --run name to offer the change again."
+        ),
+        Work.After.GoOn(
+          3,
+          WentOn.Unpushed,
+          "[main] w2: the check passed, but its branch is not pushed; going on in a fresh turn " +
+            "(turn 3 of at most 8)"
+        ),
+        Work.After.GoOn(
+          3,
+          WentOn.Unopened,
+          "[main] w2: the check passed, but no pull request is open for its branch; going on in " +
+            "a fresh turn (turn 3 of at most 8)"
+        ),
+        Work.After.Fail(
+          "w2: the check passed, but its branch is not pushed again after grit went on to ask " +
+            "for it; stopping, since another turn is unlikely to change it"
+        ),
+        Work.After.GoOn(
+          3,
+          WentOn.Unopened,
+          "[main] w2: the check passed, but no pull request is open for its branch; going on in " +
+            "a fresh turn (turn 3 of at most 8)"
+        ),
+        Work.After.Fail(
+          "w2: the check passed, but its branch is not pushed at turn 8, the most " +
+            "GRIT_WORK_TURNS allows"
+        ),
+        Work.After.Fail(
+          "w2: the check passed, but how its branch stands cannot be read: unreachable"
+        )
+      )
+    }
+
+    test(
+      "with no check, a turn that answered stops on its pull request open, fails on it closed, and never goes on"
+    ) {
+      val at = URI.create("https://github.com/acme/app/pull/7")
+      def unchecked(stands: Branch.Stands) =
+        Work.after(
+          "w2",
+          TurnEnding.Answered,
+          2,
+          8,
+          Some(Work.Verdict.Unchecked(Right(stands))),
+          None
+        )
+      (
+        unchecked(Branch.Stands.Open(at)),
+        unchecked(Branch.Stands.Closed(at)),
+        unchecked(Branch.Stands.Unpushed)
+      ) ==> (
+        Work.After.Offered(at, s"[main] w2: it answered; its pull request is open: $at"),
+        Work.After.Fail(
+          s"w2: it answered, but its pull request $at was closed; grit does not open another. " +
+            "Run the task under a new --run name to offer the change again."
+        ),
+        Work.After.Stop(None)
+      )
+    }
+
+    test(
       "a check runs in the task's directory: exit 0 passes; another exit, or past its time, fails with the end of its output"
     ) {
       val root = Files.createTempDirectory("grit-check").toRealPath()
@@ -239,7 +337,7 @@ object WorkTests extends TestSuite {
           check("echo started; sleep 5"),
           check("seq 1 20000; exit 1")
         ) ==> (
-          Work.Verdict.Passed,
+          Work.Verdict.Passed(None),
           Work.Verdict.Failed(
             TestWentOn.failed(
               "echo wrong in $(basename $PWD); exit 3",

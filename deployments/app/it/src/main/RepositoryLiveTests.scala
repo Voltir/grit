@@ -208,7 +208,7 @@ object RepositoryLiveTests extends TestSuite {
           Vector(false, false, false, false),
           "grit/w1",
           "change the readme",
-          Work.Verdict.Passed,
+          Work.Verdict.Passed(None),
           ""
         ),
         true,

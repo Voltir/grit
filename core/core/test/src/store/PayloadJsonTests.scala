@@ -132,6 +132,21 @@ object PayloadJsonTests extends TestSuite {
       PayloadJson.read(ujson.read(stored)) ==> Right(note)
     }
 
+    test(
+      "a continuation after a branch not offered is stored as unpushed or unopened, and read back"
+    ) {
+      val unpushed = Payload.Continuation(TurnSeq(7), 2, WentOn.Unpushed)
+      val unopened = Payload.Continuation(TurnSeq(7), 3, WentOn.Unopened)
+      val stored = Vector(
+        """{"kind":"continuation","task":7,"turn":2,"reason":{"kind":"unpushed"}}""",
+        """{"kind":"continuation","task":7,"turn":3,"reason":{"kind":"unopened"}}"""
+      )
+      (
+        Vector(unpushed, unopened).map(PayloadJson.write(_).render()),
+        stored.map(s => PayloadJson.read(ujson.read(s)))
+      ) ==> (stored, Vector(Right(unpushed), Right(unopened)))
+    }
+
     test("an occasion is stored by its brief, its document's version and its key, and read back") {
       val note = occasion
       val stored =

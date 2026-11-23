@@ -245,6 +245,27 @@ object WorkingCopiesTests extends TestSuite {
         ) ==> (true, false)
       }
     }
+    test("a run's copy is removed, its branch kept, unless it holds changes never committed") {
+      inRepository { repo =>
+        val copies = over(repo, new SetClock(start))
+        val done = made(copies, "fix-a")
+        val dirty = made(copies, "fix-b")
+        Files.writeString(dirty.resolve("README.md"), "changed\n")
+        (
+          copies.removed(work("fix-a")),
+          Files.exists(done),
+          hasBranch(repo, repo.source, "grit/fix-a"),
+          copies.removed(work("fix-b")),
+          Files.exists(dirty)
+        ) ==> (
+          WorkingCopies.Removed.Gone,
+          false,
+          true,
+          WorkingCopies.Removed.Uncommitted(dirty),
+          true
+        )
+      }
+    }
     test("when origin cannot be fetched, no copy and no branch are made") {
       inRepository { repo =>
         Files.move(repo.origin, repo.origin.resolveSibling("moved.git"))

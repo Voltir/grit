@@ -8,8 +8,9 @@ import scala.collection.mutable
 import grit.app.config.RepositoriesEnv
 import grit.core.clock.{Clock, Fresh}
 import grit.core.edge.Console
-import grit.core.place.Directory
+import grit.core.place.{Directory, Namespace, Place}
 import grit.core.recipe.TurnRecipe
+import grit.core.secret.{TestSecrets, Variable as SecretVariable}
 import grit.core.store.{Origin, WentOn}
 import grit.dbos.sql.{DbConfig, TestPostgres}
 import grit.host.checkout.{LocalRuns, Redaction}
@@ -17,7 +18,7 @@ import grit.host.git.{GitFixture, WorkingCopies}
 import grit.kit.deployment.{Deployment, Offered}
 import grit.kit.environment.Secrets
 import grit.kit.rehearse.Rehearsed
-import grit.kit.run.Kit
+import grit.kit.run.{Kit, Pushing}
 import grit.kit.work.Work
 
 import utest.*
@@ -195,12 +196,16 @@ object WorkLiveTests extends TestSuite {
         val ran = (
           working(root, config, deployment)(c =>
             checking(root)(r =>
-              Work.said(c, origin, "say hello", Work.DefaultTurns, None, r, first += _)
+              Work
+                .said(c, origin, "say hello", Work.DefaultTurns, None, r, () => None, first += _)
+                .map(_ => ())
             )
           ),
           working(root, config, deployment)(c =>
             checking(root)(r =>
-              Work.said(c, origin, "say hello", Work.DefaultTurns, None, r, second += _)
+              Work
+                .said(c, origin, "say hello", Work.DefaultTurns, None, r, () => None, second += _)
+                .map(_ => ())
             )
           )
         )
@@ -231,7 +236,9 @@ object WorkLiveTests extends TestSuite {
         def run(lines: mutable.ArrayBuffer[String]) =
           working(root, config, deployment)(c =>
             checking(root)(r =>
-              Work.said(c, origin, "say hello", Work.DefaultTurns, check, r, lines += _)
+              Work
+                .said(c, origin, "say hello", Work.DefaultTurns, check, r, () => None, lines += _)
+                .map(_ => ())
             )
           )
         val ran = (run(first), Files.readAllLines(root.resolve("runs")).size)
@@ -408,5 +415,157 @@ object WorkLiveTests extends TestSuite {
         }
       }
     }
+    test(
+      "a run whose branch was offered before it was killed, run again, prints its open pull request, opens none, and removes its copy"
+    ) {
+      checkout { root =>
+        GitFixture.inRepository { repo =>
+          val (ran, printed, remote) = pushed(root, repo, "work_offered_again", offerFirst = true)
+          (
+            ran,
+            printed
+              .filter(_.contains("pull request"))
+              .map(_.replaceFirst("^\\[main\\] \\S+:", "")),
+            remote.opens.size,
+            Files.exists(repo.root.resolve("grit").resolve("w1")),
+            GitFixture.hasBranch(repo, repo.source, "grit/w1")
+          ) ==> (
+            Right(()),
+            Vector(" the check passed; its pull request is open: https://remote.invalid/pull/1"),
+            1,
+            false,
+            true
+          )
+        }
+      }
+    }
+    test(
+      "a run whose check passes with its branch not offered goes on once with grit's note, then stops saying so"
+    ) {
+      checkout { root =>
+        GitFixture.inRepository { repo =>
+          val (ran, printed, remote) = pushed(root, repo, "work_not_offered", offerFirst = false)
+          (
+            ran.left.map(_.replaceFirst("^\\S+:", "")),
+            printed.exists(
+              _.endsWith(
+                "the check passed, but its branch is not pushed; going on in a fresh turn (turn 2 " +
+                  s"of at most ${Work.DefaultTurns})"
+              )
+            ),
+            remote.opens.size,
+            Files.exists(repo.root.resolve("grit").resolve("w1"))
+          ) ==> (
+            Left(
+              " the check passed, but its branch is not pushed again after grit went on to ask " +
+                "for it; stopping, since another turn is unlikely to change it"
+            ),
+            true,
+            0,
+            true
+          )
+        }
+      }
+    }
+  }
+
+  /** A run `w1` of `repo` said through the stub model, its check passing, its branch pushed to
+    * `repo`'s bare origin and offered on a fake remote repository; with `offerFirst`, the branch
+    * offered before the run, as a run killed after its offer left it. What it came to, what it
+    * printed, and the fake.
+    */
+  private def pushed(
+      root: Path,
+      repo: GitFixture.Repo^,
+      database: String,
+      offerFirst: Boolean
+  ): (Either[String, Unit], Vector[String], GitFixture.FakeRemoteRepository) = {
+    val config = TestPostgres.freshDatabase(database)
+    val deployment = deployed(root)
+    val secrets =
+      Secrets.of(ServedDeployment.env(config), deployment).fold(r => sys.error(r.message), identity)
+    val clock = Clock.system()
+    val remote = new GitFixture.FakeRemoteRepository(repo.origin.toString)
+    val target = GitFixture.targetOf(remote)
+    val copies =
+      new WorkingCopies(
+        GitFixture.repository,
+        repo.source,
+        repo.root,
+        repo.processes,
+        clock,
+        Some(target)
+      )
+    val pushing = Pushing.of(
+      repo.source,
+      target,
+      TestSecrets.of(SecretVariable("GRIT_REMOTE_REPOSITORY_TOKEN"), "ghs_plantedRemoteToken123"),
+      repo.environment,
+      Redaction.of(Map.empty),
+      Place.under(Namespace.Service, Vector("github", "acme", "app")),
+      "acme/app"
+    ) match {
+      case Right(p) => p
+      case Left(why) => throw new java.lang.AssertionError(why)
+    }
+    val run = GitFixture.work("w1")
+    if (offerFirst) {
+      val copy =
+        copies.opened(run).fold(e => throw new java.lang.AssertionError(e.message), identity)
+      val _ = GitFixture.git(
+        repo,
+        copy,
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@example.com",
+        "commit",
+        "--allow-empty",
+        "-qm",
+        "fix"
+      )
+      val _ = pushing.branch(run).offer("Fix", "Fixed.")
+    }
+    val check = right(WentOn.Command.of("test \"$(git rev-parse --abbrev-ref HEAD)\" = grit/w1"))
+    val asked = Work.Asked(
+      root.resolve("task.md"),
+      dry = false,
+      Some(check),
+      Some(Work.InRepository(GitFixture.repository, Some(run)))
+    )
+    val printed = mutable.ArrayBuffer.empty[String]
+    val ran = ChatEdges
+      .serving(
+        right(Directory.of(root.toString)),
+        root,
+        offered,
+        None,
+        Redaction.of(Map.empty),
+        clock,
+        Fresh.random(),
+        Some(copies),
+        Some(pushing)
+      )(here =>
+        Work.run(
+          asked,
+          "say hello",
+          Work.DefaultTurns,
+          Work.Under(
+            deployment,
+            secrets,
+            Work.Where.Copy(copies, run, Some(pushing)),
+            sys.env,
+            Redaction.of(Map.empty),
+            scala.concurrent.duration.Duration.Zero,
+            RepositoriesEnv.startedHere
+          ),
+          here,
+          clock,
+          Fresh.random(),
+          printed += _
+        )
+      )
+      .flatten
+    (ran, printed.toVector, remote)
   }
 }

@@ -379,6 +379,34 @@ object ShownTests extends TestSuite {
     }
 
     test(
+      "a branch not offered is noted in grit's words: not pushed, or pushed with no pull request open"
+    ) {
+      def shown(reason: WentOn) =
+        Shown.of(entry(Payload.Continuation(grit.core.id.TurnSeq.First, 2, reason)), Speakers.none)
+      (shown(WentOn.Unpushed), shown(WentOn.Unopened)) ==> (
+        Some(
+          Message.User(
+            "<grit_note>\nYour last reply ended the turn, and the task's acceptance command " +
+              "passes, but your change has not been offered: either nothing is committed on your " +
+              "branch, or it holds commits its remote repository does not have.\n\nCommit your " +
+              "change with git commit, then call offer_pull_request with a title and a body. " +
+              "This part of the conversation starts afresh: it holds the task and your last " +
+              "reply, but not your earlier replies, your tool calls or their results.\n</grit_note>"
+          )
+        ),
+        Some(
+          Message.User(
+            "<grit_note>\nYour last reply ended the turn, and the task's acceptance command " +
+              "passes and your branch is pushed, but no pull request is open for it.\n\nCall " +
+              "offer_pull_request with a title and a body. This part of the conversation starts " +
+              "afresh: it holds the task and your last reply, but not your earlier replies, your " +
+              "tool calls or their results.\n</grit_note>"
+          )
+        )
+      )
+    }
+
+    test(
       "a failed check's note is grit's words, then its output fenced as material under its command"
     ) {
       def note(exit: Option[Int]) = entry(

@@ -1,5 +1,6 @@
 package grit.kit.work
 
+import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 
@@ -8,7 +9,7 @@ import scala.concurrent.duration.FiniteDuration
 
 import grit.core.clock.{Clock, Fresh}
 import grit.core.edge.{Console, Reply, TurnStatus}
-import grit.core.host.{Clipped, HostError, Ran, RunId, RunStatus, Runs}
+import grit.core.host.{Branch, Clipped, HostError, Ran, RunId, RunStatus, Runs}
 import grit.core.id.{Sha256, SourceId, TurnRef, WorkflowId}
 import grit.core.identity.Account
 import grit.core.inbox.{InboxError, TurnEnding}
@@ -22,7 +23,7 @@ import grit.host.git.WorkingCopies
 import grit.kit.deployment.Deployment
 import grit.kit.environment.Secrets
 import grit.kit.rehearse.{RehearsalRunner, Rehearse, Rehearsed, Situation, StandIns}
-import grit.kit.run.Kit
+import grit.kit.run.{Kit, Pushing}
 import grit.std.either.Proven
 import grit.turn.TurnStream
 
@@ -118,11 +119,19 @@ object Work {
   def source(text: String, turn: Int): SourceId =
     if (turn <= 1) source(text) else SourceId(s"${SourceId.value(source(text))}:$turn")
 
-  /** What a task's acceptance command came to, run after a turn that answered. */
+  /** How a run's branch stood once its turn answered, or why that could not be read. */
+  type Stood = Either[HostError, Branch.Stands]
+
+  /** What a turn that answered came to: its task's acceptance command run, or, with none, how
+    * its run's branch stands.
+    */
   enum Verdict extends caps.Pure {
 
-    /** It exited 0: the task is done. */
-    case Passed
+    /** It exited 0, its run's branch then standing as `stands` says when the run pushes. */
+    case Passed(stands: Option[Stood])
+
+    /** There is no check, and its run's branch stands as `stands` says. */
+    case Unchecked(stands: Stood)
 
     /** It failed, as `failed` says. */
     case Failed(failed: WentOn.CheckFailed)
@@ -144,12 +153,19 @@ object Work {
 
     /** Stop and fail: `grit work` ends with `why`, its status 1. */
     case Fail(why: String)
+
+    /** Stop, after printing `line`: the task's pull request is open or merged at `at`, and its
+      * working copy is done with.
+      */
+    case Offered(at: URI, line: String)
   }
 
   /** [[After]] the turn `turn`, named `named`, ended as `ended`, of at most `cap`; `verdict`
-    * what its task's check came to, when it was checked, and `last` the check that failed
-    * after the turn before, when one did. A turn that answered goes on only when its check
-    * failed, below `cap`, with output other than `last`'s.
+    * what it came to when it answered, and `last` why the task went on after the turn before,
+    * when it did. A turn that answered goes on only below `cap`, for a reason other than
+    * `last`'s: when its check failed, or when its check passed with its branch unpushed or no
+    * pull request opened. With its pull request open or merged, it stops with that address;
+    * closed, or how its branch stands unread, it fails. With no check, it never goes on.
     */
   def after(
       named: String,
@@ -157,11 +173,18 @@ object Work {
       turn: Int,
       cap: Int,
       verdict: Option[Verdict],
-      last: Option[WentOn.CheckFailed]
+      last: Option[WentOn]
   ): After = (ended, verdict) match {
     case (TurnEnding.Otherwise, _) | (TurnEnding.Answered, None) => After.Stop(None)
-    case (TurnEnding.Answered, Some(Verdict.Passed)) =>
+    case (TurnEnding.Answered, Some(Verdict.Passed(None))) =>
       After.Stop(Some(s"[main] $named: the check passed; the task is done"))
+    case (TurnEnding.Answered, Some(Verdict.Passed(Some(stood)))) =>
+      offered(named, "the check passed", stood, turn, cap, last)
+    case (TurnEnding.Answered, Some(Verdict.Unchecked(stood))) =>
+      offered(named, "it answered", stood, turn, cap, last) match {
+        case After.GoOn(_, _, _) => After.Stop(None)
+        case other => other
+      }
     case (TurnEnding.Answered, Some(Verdict.Unrun(why))) =>
       After.Fail(s"the check could not run: $why")
     case (TurnEnding.Answered, Some(Verdict.Failed(failed))) if last.contains(failed) =>
@@ -191,6 +214,46 @@ object Work {
       )
   }
 
+  /** [[after]] a turn that answered, `so` what it came to, given its branch `stood`. */
+  private def offered(
+      named: String,
+      so: String,
+      stood: Stood,
+      turn: Int,
+      cap: Int,
+      last: Option[WentOn]
+  ): After = stood match {
+    case Right(Branch.Stands.Open(at)) =>
+      After.Offered(at, s"[main] $named: $so; its pull request is open: $at")
+    case Right(Branch.Stands.Merged(at)) =>
+      After.Offered(at, s"[main] $named: $so; its pull request was merged: $at")
+    case Right(Branch.Stands.Closed(at)) =>
+      After.Fail(
+        s"$named: $so, but its pull request $at was closed; grit does not open another. Run " +
+          "the task under a new --run name to offer the change again."
+      )
+    case Right(stands @ (Branch.Stands.Unpushed | Branch.Stands.Pushed)) =>
+      val (reason, how) =
+        if (stands == Branch.Stands.Unpushed) (WentOn.Unpushed, "its branch is not pushed")
+        else (WentOn.Unopened, "no pull request is open for its branch")
+      if (last.contains(reason))
+        After.Fail(
+          s"$named: $so, but $how again after grit went on to ask for it; stopping, since " +
+            "another turn is unlikely to change it"
+        )
+      else if (turn >= cap)
+        After.Fail(s"$named: $so, but $how at turn $turn, the most $TurnsVar allows")
+      else After.GoOn(turn + 1, reason, unoffered(named, so, how, turn + 1, cap))
+    case Left(why) =>
+      After.Fail(s"$named: $so, but how its branch stands cannot be read: ${why.message}")
+  }
+
+  /** What `grit work` prints when the turn named `named` came to `so` with its branch not
+    * offered, as `how` says, and the task goes on in turn `next` of at most `cap`.
+    */
+  private def unoffered(named: String, so: String, how: String, next: Int, cap: Int): String =
+    s"[main] $named: $so, but $how; going on in a fresh turn (turn $next of at most $cap)"
+
   /** `check` run with `sh -c` as one of `work`'s runs, at its root, and waited for until it
     * ends, killed with what it started at `within`: exit 0 passes; any other exit, or running
     * past `within`, fails, keeping the end of its output; [[Verdict.Unrun]] when it cannot
@@ -207,7 +270,7 @@ object Work {
       case Left(why) => Verdict.Unrun(why)
       case Right(argv) =>
         work.start(argv, within, within).flatMap((id, status) => ended(work, id, status)) match {
-          case Right((Some(0), _)) => Verdict.Passed
+          case Right((Some(0), _)) => Verdict.Passed(None)
           case Right((exit, output)) => Verdict.Failed(WentOn.failed(check, exit, output.text))
           case Left(refused) => Verdict.Unrun(refused.message)
         }
@@ -296,20 +359,30 @@ object Work {
     /** As the run `work` of `copies`' repository ([[Origin.Work]]), its check in that run's
       * working copy, held for the run ([[WorkingCopies.held]]).
       */
-    case Copy(copies: WorkingCopies^, work: WorkName)
+    case Copy(copies: WorkingCopies^, work: WorkName, pushing: Option[Pushing^] = None)
 
     /** The origin its text is said at. */
     def saidAt: Origin = this match {
       case At(origin, _) => origin
-      case Copy(copies, work) => Origin.Work(copies.repository, work)
+      case Copy(copies, work, _) => Origin.Work(copies.repository, work)
     }
 
-    /** `body` given the directory the check runs in: `root`, or the run's working copy, held
-      * while `body` runs; why not when the copy cannot be held.
+    /** How the run's branch stands, read when called; `None` when the run offers no branch,
+      * as one at a directory, or in a working copy that does not push.
       */
-    def within[A](body: Path => A): Either[HostError, A] = this match {
-      case At(_, root) => Right(body(root))
-      case Copy(copies, work) => copies.held(work)(body)
+    private def stands(): Option[Stood] = this match {
+      case Copy(_, work, Some(pushing)) => Some(pushing.branch(work).stands)
+      case _ => None
+    }
+
+    /** `body` given the directory the check runs in, `root` or the run's working copy, held
+      * while `body` runs, and how the run's branch stands, read when called (`None` when the run
+      * offers no branch: at a directory, or in a copy that does not push); why not when the copy
+      * cannot be held.
+      */
+    def within[A](body: (Path, () => Option[Stood]) => A): Either[HostError, A] = this match {
+      case At(_, root) => Right(body(root, () => stands()))
+      case Copy(copies, work, _) => copies.held(work)(body(_, () => stands()))
     }
   }
 
@@ -352,15 +425,35 @@ object Work {
   ): Either[String, Unit] = {
     // The same composition either way: only the last step differs.
     val origin = under.where.saidAt
-    def saidIn(console: Console^, root: Path): Either[String, Unit] = {
+    def saidIn(
+        console: Console^,
+        root: Path,
+        stands: () => Option[Stood]
+    ): Either[String, Option[URI]] = {
       val checks: LocalRuns^ = new LocalRuns(root, under.env, under.redaction, clock, fresh)
-      try said(console, origin, text, cap, asked.check, checks, print)
+      try said(console, origin, text, cap, asked.check, checks, stands, print)
       finally checks.close()
     }
     val step: Console^ ->{under, clock, fresh} Either[String, Unit] = console =>
       if (asked.dry)
         shown(under.secrets.database, under.deployment, origin, text, clock, print)
-      else under.where.within(saidIn(console, _)).left.map(_.message).flatten
+      else
+        under.where.within(saidIn(console, _, _)).left.map(_.message).flatten.map { offered =>
+          // Its pull request open or merged, the run's copy is done with; its branch stays.
+          (under.where, offered) match {
+            case (Where.Copy(copies, work, _), Some(_)) =>
+              copies.removed(work) match {
+                case WorkingCopies.Removed.Gone => ()
+                case WorkingCopies.Removed.Uncommitted(at) =>
+                  print(
+                    s"[main] its working copy holds changes never committed, so it is kept: $at"
+                  )
+                case WorkingCopies.Removed.Held(at) =>
+                  print(s"[main] another process holds its working copy, so it is kept: $at")
+              }
+            case _ => ()
+          }
+        }
     Kit.console(
       under.deployment,
       under.secrets,
@@ -394,8 +487,9 @@ object Work {
       cap: Int,
       check: Option[WentOn.Command],
       work: Runs^,
+      stands: () => Option[Stood],
       print: String -> Unit
-  ): Either[String, Unit] =
+  ): Either[String, Option[URI]] =
     console.inbox
       .ingest(origin, source(text), Message.User(text), Account.Local, None)
       .flatMap(turn => console.inbox.startTurn(turn).map(_ => turn)) match {
@@ -403,7 +497,7 @@ object Work {
       case Right(task) =>
         def started(next: Either[grit.core.inbox.InboxError, TurnRef]) =
           next.flatMap(t => console.inbox.startTurn(t).map(_ => t)).left.map(InboxError.told)
-        def go(turn: TurnRef, n: Int, last: Option[WentOn.CheckFailed]): Either[String, Unit] =
+        def go(turn: TurnRef, n: Int, last: Option[WentOn]): Either[String, Option[URI]] =
           awaited(console, turn, print).flatMap { outcome =>
             val named = WorkflowId.value(turn.workflowId)
             val ended = TurnEnding.of(outcome)
@@ -412,22 +506,35 @@ object Work {
               if (answered) checkedBefore(console, origin, source(text, n + 1))
               else Right(None)
             recorded.flatMap {
-              case Some((next, failed)) =>
-                print(wentOn(named, failed, n + 1, cap))
-                started(Right(next)).flatMap(go(_, n + 1, Some(failed)))
+              case Some((next, reason)) =>
+                print(wentOnAgain(named, reason, n + 1, cap))
+                started(Right(next)).flatMap(go(_, n + 1, Some(reason)))
               case None =>
-                val verdict = check.filter(_ => answered).map { c =>
-                  print(s"[main] $named ended its turn; checking: ${c.text}")
-                  checked(work, c)
-                }
+                val verdict =
+                  if (ended != TurnEnding.Answered) None
+                  else
+                    check match {
+                      case Some(c) =>
+                        print(s"[main] $named ended its turn; checking: ${c.text}")
+                        checked(work, c) match {
+                          case Verdict.Passed(_) => Some(Verdict.Passed(stands()))
+                          case other => Some(other)
+                        }
+                      case None => stands().map(Verdict.Unchecked(_))
+                    }
                 after(named, ended, n, cap, verdict, last) match {
-                  case After.Stop(line) => Right(line.foreach(print))
+                  case After.Stop(line) =>
+                    line.foreach(print)
+                    Right(None)
+                  case After.Offered(at, line) =>
+                    print(line)
+                    Right(Some(at))
                   case After.Fail(why) => Left(why)
                   case After.GoOn(next, reason, line) =>
                     print(line)
                     val failed = reason match {
-                      case f: WentOn.CheckFailed => Some(f)
                       case WentOn.AtLimit => None
+                      case other => Some(other)
                     }
                     started(
                       console.inbox.continued(
@@ -445,14 +552,29 @@ object Work {
         go(task, 1, None)
     }
 
-  /** The turn recorded at `origin` under `source` and the failed check it went on after, when
+  /** What `grit work` prints for a task that went on in turn `next` of at most `cap` for
+    * `reason`, read back as recorded: as when it first went on.
+    */
+  private def wentOnAgain(named: String, reason: WentOn, next: Int, cap: Int): String =
+    reason match {
+      case failed: WentOn.CheckFailed => wentOn(named, failed, next, cap)
+      case WentOn.Unpushed =>
+        unoffered(named, "the check passed", "its branch is not pushed", next, cap)
+      case WentOn.Unopened =>
+        unoffered(named, "the check passed", "no pull request is open for its branch", next, cap)
+      case WentOn.AtLimit =>
+        s"[main] $named reached its limit; going on in a fresh turn (turn $next of at most $cap)"
+    }
+
+  /** The turn recorded at `origin` under `source` and why the task went on to it after a turn
+    * that answered (a failed check, or a branch not offered), when
     * one is: a check a rerun need not run again. Why not: the store cannot be read.
     */
   private def checkedBefore(
       console: Console^,
       origin: Origin,
       source: SourceId
-  ): Either[String, Option[(TurnRef, WentOn.CheckFailed)]] =
+  ): Either[String, Option[(TurnRef, WentOn)]] =
     console.inbox.ingested(origin, source).left.map(InboxError.told).flatMap {
       case None => Right(None)
       case Some(next) =>
@@ -461,7 +583,7 @@ object Work {
           .left
           .map(e => s"unreadable: $e")
           .map(_.map(_.payload).collectFirst {
-            case Payload.Continuation(_, _, f: WentOn.CheckFailed) => (next, f)
+            case Payload.Continuation(_, _, r) if r != WentOn.AtLimit => (next, r)
           })
     }
 

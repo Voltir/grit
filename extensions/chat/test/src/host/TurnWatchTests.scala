@@ -8,7 +8,7 @@ import grit.core.edge.{RecordedStep, TurnStatus}
 import grit.core.id.{ConversationId, EntryId, EntrySeq, PeriodSeq, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{Balance, CloseReason, Closing, Flows, Probability}
-import grit.core.store.{Entry, Payload}
+import grit.core.store.{Entry, Payload, WentOn}
 import grit.core.visibility.Integrity
 
 import utest.*
@@ -133,7 +133,15 @@ object TurnWatchTests extends TestSuite {
         Instant.EPOCH,
         Integrity.Member
       )
-      Replies.wentOn(went) ==> Some("── grit went on (turn 3): the check failed ──")
+      (
+        Replies.wentOn(went),
+        Replies.wentOn(went.copy(payload = Payload.Continuation(TurnSeq(0), 3, WentOn.Unpushed))),
+        Replies.wentOn(went.copy(payload = Payload.Continuation(TurnSeq(0), 3, WentOn.Unopened)))
+      ) ==> (
+        Some("── grit went on (turn 3): the check failed ──"),
+        Some("── grit went on (turn 3): the branch was not offered ──"),
+        Some("── grit went on (turn 3): the branch was not offered ──")
+      )
     }
 
     test("the conversation so far arrives once, in order") {
