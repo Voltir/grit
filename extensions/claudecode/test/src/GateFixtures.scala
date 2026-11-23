@@ -14,9 +14,6 @@ import java.nio.file.{Files, Path}
   */
 final class GateFixtures(val machine: JoinFixtures) {
 
-  private def env(name: String): Path =
-    Path.of(sys.env.getOrElse(name, throw new java.lang.AssertionError(s"no $name")))
-
   /** The module graph the stub Mill shows: an `it` module over grit.dbos, another over grit.app,
     * which depends on grit.dbos, and grit.claudecode, which reaches neither.
     */
@@ -42,10 +39,14 @@ final class GateFixtures(val machine: JoinFixtures) {
     )
 
   locally {
-    val _ = machine.write(dir.resolve("scripts/check"), Files.readString(env("GRIT_CHECK")), true)
+    val _ = machine.write(
+      dir.resolve("scripts/check"),
+      Files.readString(Bash.envPath("GRIT_CHECK")),
+      true
+    )
     val _ = machine.write(
       dir.resolve("scripts/gate-stamp"),
-      Files.readString(env("GRIT_GATE_STAMP")),
+      Files.readString(Bash.envPath("GRIT_GATE_STAMP")),
       true
     )
     val graph = Graph.map(g => s"\"$g\"").mkString("[", ",", "]")

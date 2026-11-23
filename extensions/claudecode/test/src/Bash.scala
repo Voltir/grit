@@ -21,6 +21,12 @@ object Bash {
   /** The system's programs a test's bash may run: bash, jq, curl, git, python3 and coreutils. */
   val SystemPath: String = "/usr/local/bin:/usr/bin:/bin"
 
+  /** The file the environment variable `name` names, as Mill sets it for these tests; the test
+    * fails when it is unset.
+    */
+  def envPath(name: String): Path =
+    Path.of(sys.env.getOrElse(name, throw new java.lang.AssertionError(s"no $name")))
+
   /** bash with `args`, in `dir`, reading `input`, given `within` to end, else failing the test.
     * `env` gets `PATH` with `bin` first, `HOME`, and `GIT_CEILING_DIRECTORIES` as `HOME`'s parent
     * (a test's temporary root), so git never finds a repository above it, when it names none.

@@ -15,9 +15,6 @@ import utest.*
   */
 object CoderNeedsTests extends TestSuite {
 
-  private def env(name: String): Path =
-    Path.of(sys.env.getOrElse(name, throw new java.lang.AssertionError(s"no $name")))
-
   /** The fakes of a machine that lacks nothing, over `f`'s joined checkout. */
   private final class Needs(val f: HookFixtures) {
     val machine: JoinFixtures = f.machine
@@ -58,7 +55,7 @@ object CoderNeedsTests extends TestSuite {
     def ready(checkout: Path): Unit = {
       val _ = machine.write(
         checkout.resolve("scripts/scout"),
-        Files.readString(env("GRIT_SCOUT_SCRIPT")),
+        Files.readString(Bash.envPath("GRIT_SCOUT_SCRIPT")),
         executable = true
       )
       Fetched.foreach { tool =>
@@ -80,7 +77,7 @@ object CoderNeedsTests extends TestSuite {
         in,
         machine.home,
         machine.bin,
-        Seq(env("GRIT_CODER_NEEDS").toString),
+        Seq(Bash.envPath("GRIT_CODER_NEEDS").toString),
         env = Map("SCOUT" -> scout.toString) ++ more
       )
   }
