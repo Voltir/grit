@@ -27,6 +27,10 @@
 #   law   scripts/enola-law.sh.
 #   it    with --it: scripts/it __.it.testForked, every live suite rerun. With --it-reached:
 #         the `it` modules a change reaches (`reach`, below), or nothing when it reaches none.
+#         Each module's seconds of tests are printed, and the tier fails when the largest is
+#         over its budget (`it_budget`, below), as `it: tests passed; over budget, N s > B s`
+#         with its five slowest suites. GRIT_IT_BUDGET=<seconds> lowers the budget, never
+#         raises it.
 #   probes  the capture probes (a `probes` module beside `test`: suites compiling probe sources
 #         against their module with its own flags) that a change reaches (`reach`, below: a
 #         change touching capture syntax), or with --probes every one, __.probes.testCached.
@@ -121,6 +125,24 @@ if $only && { ! $lint || ! $unused || $it || $it_reached || $probes; }; then
   echo "check: --only-unused runs the lint tier alone; drop --no-lint, --no-unused, --it, --it-reached, --probes or --milestone" >&2
   exit 2
 fi
+
+# The integration tier's budget, in seconds of tests: the largest sum of one module's suite
+# times in its fresh reports, which is the tier's time while each module runs its suites one
+# after another and the modules run at once. Not the tier's wall clock, which also builds the
+# image, starts the server and may compile. One number for every machine: the slowest
+# measured runs these within a few percent of the fastest. Checked when the gate runs the tier
+# (--it, --it-reached, --milestone), never for a named module or suite. GRIT_IT_BUDGET may
+# lower it, never raise it: over budget is the signal that the tier has grown, and the
+# remedy is a cheaper suite, or a test moved to --milestone with its reason, not a larger
+# number.
+it_budget=300
+if [ -n "${GRIT_IT_BUDGET:-}" ]; then
+  if ! [[ $GRIT_IT_BUDGET =~ ^[0-9]+$ ]] || [ "$GRIT_IT_BUDGET" -gt "$it_budget" ]; then
+    echo "check: GRIT_IT_BUDGET=$GRIT_IT_BUDGET: it may only lower the integration budget, ${it_budget} s, to a whole number of seconds" >&2
+    exit 2
+  fi
+  it_budget=$GRIT_IT_BUDGET
+fi
 base=${CHECK_BASE-$(git merge-base HEAD main 2>/dev/null || true)}
 if [ -n "$base" ]; then
   base=$(git rev-parse --verify -q "$base^{commit}") || {
@@ -176,11 +198,21 @@ tier, log, rc, start, reports = sys.argv[1], sys.argv[2], int(sys.argv[3]), floa
 out = []
 passed = failed = 0
 counted = 0
+budget = int(os.environ["IT_BUDGET"]) if tier == "it" and os.environ.get("IT_BUDGET") else None
+spent = {}  # module -> seconds of its fresh suites
+suites = []  # (seconds, suite) of every fresh suite
 for path in reports:
     if not os.path.exists(path):
         continue
     fresh = os.path.getmtime(path) >= start
     root = ET.parse(path).getroot()
+    if fresh:
+        # out/<module as a path>/it/testForked.dest/test-report.xml
+        module = ".".join(path.split("/")[1:-2])
+        for suite in root.iter("testsuite"):
+            seconds = float(suite.get("time") or 0)
+            spent[module] = spent.get(module, 0.0) + seconds
+            suites.append((seconds, suite.get("name")))
     for case in root.iter("testcase"):
         bad = case.find("failure") if case.find("failure") is not None else case.find("error")
         if bad is None:
@@ -247,10 +279,20 @@ if timed_out:
     total = f"{tier}: TIMED OUT" + (f", {', '.join(parts)}" if parts else "")
 elif rc != 0 or failed or errors or warnings:
     total = f"{tier}: FAILED" + (f", {', '.join(parts)}" if parts else f", exit {rc}")
+elif budget is not None and spent and max(spent.values()) > budget:
+    worst = max(spent.values())
+    total = f"{tier}: tests passed; over budget, {worst:.0f} s > {budget} s"
 elif reports:
     total = f"{tier}: {passed} passed, 0 failed ({n(counted, 'module')})"
 else:
     total = f"{tier}: passed"
+if budget is not None and spent:
+    for module, seconds in sorted(spent.items(), key=lambda kv: -kv[1]):
+        print(f"{tier}: {module} {seconds:.0f} s of tests")
+    if total.endswith(f"> {budget} s"):
+        print(f"{tier}: the five slowest suites:")
+        for seconds, suite in sorted(suites, reverse=True)[:5]:
+            print(f"  {seconds:6.1f} s  {suite}")
 print(total)
 PY
 }
@@ -284,7 +326,7 @@ run_tier() { # tier outdir reports-file -- command...
   summary=$(summarise "$tier" "$log" "$rc" "$start" "${paths[@]}")
   printf '%s\n' "$summary"
   totals+=("$(tail -1 <<<"$summary")")
-  case ${totals[-1]} in *FAILED*|*"TIMED OUT"*) status=1 ;; esac
+  case ${totals[-1]} in *FAILED*|*"TIMED OUT"*|*"over budget"*) status=1 ;; esac
   [ "$rc" = 0 ] || status=1
 }
 
@@ -445,7 +487,7 @@ if [ ${#targets[@]} -eq 0 ]; then
     fi
     if [ ${#it_args[@]} -gt 0 ]; then
       modules_of it | while read -r m; do report_path "$m" it testForked; done >"$logs/it.reports"
-      run_tier it out "$logs/it.reports" -- scripts/it "${mill[@]:1}" "${it_args[@]}"
+      IT_BUDGET=$it_budget run_tier it out "$logs/it.reports" -- scripts/it "${mill[@]:1}" "${it_args[@]}"
     fi
 
     tui_args=$(sed -n 's/^tui //p' <<<"$reached")
