@@ -87,7 +87,7 @@ object TurnToolsTests extends TestSuite {
     val settling = settlingIn(new TestJot, entries)
     TurnTools.read(tools(ws), pending, Repairs.All, PublicReads, Integrity.Authority) match {
       case Left(outcome) =>
-        val unrun = Left(Integrity.Untrusted)
+        val unrun = TurnTools.Answered.Grit(Integrity.Untrusted)
         settling.answer(slot, id, pending.call.name, outcome, unrun, Instant.EPOCH)
       case Right(free: Bound.Free) => settling.run(slot, id, free, Integrity.Member, Instant.EPOCH)
       case Right(gated: Bound.Gated) =>
@@ -238,7 +238,7 @@ object TurnToolsTests extends TestSuite {
             ToolCallId("c"),
             hosted.shown,
             outcome,
-            Left(Integrity.Member),
+            TurnTools.Answered.Grit(Integrity.Member),
             Instant.EPOCH,
             text => hosted.logs(sentTo, text)
           )
@@ -275,7 +275,7 @@ object TurnToolsTests extends TestSuite {
           ToolCallId("c"),
           "issue_read",
           Outcome.Done("an issue", Some(Integrity.Authority)),
-          Right(github),
+          TurnTools.Answered.Edge(github.place, Integrity.Authority),
           Instant.EPOCH
         )
       hosted.map(_ => believed(entries, slot.resultId)) ==> Right(Some(Integrity.Outside))
@@ -288,7 +288,7 @@ object TurnToolsTests extends TestSuite {
           ToolCallId("c"),
           "read",
           Outcome.Done("a file"),
-          Left(Integrity.Untrusted),
+          TurnTools.Answered.Grit(Integrity.Untrusted),
           Instant.EPOCH
         )
         .map(_ => believed(other, otherSlot.resultId)) ==> Right(Some(Integrity.Untrusted))
@@ -328,7 +328,7 @@ object TurnToolsTests extends TestSuite {
               Vector(Provenance(grit, Integrity.Authority), Provenance(docs, Integrity.Member))
             )
           ),
-          Right(github),
+          TurnTools.Answered.Edge(github.place, Integrity.Authority),
           Instant.EPOCH
         )
         .map(_ => believed(entries, slot.resultId)) ==> Right(Some(Integrity.Outside))

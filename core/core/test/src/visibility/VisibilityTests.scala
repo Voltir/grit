@@ -421,6 +421,28 @@ object VisibilityTests extends TestSuite {
         ) ==> Right((Integrity.Outside, Integrity.Untrusted, Integrity.Authority))
     }
 
+    test(
+      "a result from a repository is believed at its tool's met with the cap there, at untrusted where none covers it; from elsewhere, at its tool's"
+    ) {
+      val capped = place("repository:grit")
+      Visibility
+        .of(
+          compartments,
+          RoomLabels.Public,
+          groups,
+          grants,
+          caps = Vector(Cap(capped, Integrity.Outside))
+        )
+        .map(v =>
+          (
+            v.believedAt(capped, Integrity.Member),
+            v.believedAt(place("repository:grit/fix-typo"), Integrity.Member),
+            v.believedAt(place("repository:docs"), Integrity.Member),
+            v.believedAt(place("fs:/work/grit"), Integrity.Member)
+          )
+        ) ==> Right((Integrity.Outside, Integrity.Outside, Integrity.Untrusted, Integrity.Member))
+    }
+
     test("a cap on a directory, a machine's, a direct message's room or everywhere is refused") {
       def declaring(at: Place) =
         Visibility.of(

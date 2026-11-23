@@ -6,7 +6,7 @@ import grit.core.approval.Approval
 import grit.core.flow.Mint
 import grit.core.id.{CallSlot, EntryId, EntrySeq, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.Message
-import grit.core.place.{Place, Service}
+import grit.core.place.Place
 import grit.core.session.Event.Unrecorded
 import grit.core.store.{
   Askers,
@@ -21,7 +21,7 @@ import grit.core.store.{
   Tx
 }
 import grit.core.tool.{Bound, Outcome, Repairs, ToolName, Toolbox}
-import grit.core.visibility.{Accounted, Integrity, Subject}
+import grit.core.visibility.{Integrity, Subject, Visibility}
 
 import TurnLoop.{Pending, Round}
 
@@ -177,8 +177,7 @@ object TurnTools {
     * after everything in the conversation, with the call as it is shown ([[Bound.shown]]).
     * One run here is believed at what its outcome says ([[Outcome.Done.integrity]]), else at
     * its tool's ([[Bound.Runs.output]], read at the turn's `level`: [[grit.core.tool.Believed.at]]); one
-    * answered, at `from`: what the service it went to declares of its outcome's items
-    * ([[grit.core.visibility.Visibility.believed]]), else the integrity given. A
+    * answered, as `from` says where it came from ([[Answered]]). A
     * result already kept is returned as it is, and nothing runs. Each fails only when `jot`
     * cannot read or write the store.
     *
@@ -206,7 +205,7 @@ object TurnTools {
         call: ToolCallId,
         named: String,
         outcome: Outcome,
-        from: Either[Integrity, Service],
+        from: Answered,
         at: Instant,
         logs: String -> Option[Unrecorded] = _ => None
     ): Either[TurnFailure, Settled] =
@@ -220,7 +219,7 @@ object TurnTools {
         slot: Slot,
         call: ToolCallId,
         named: String,
-        from: Either[Integrity, Service],
+        from: Answered,
         at: Instant,
         logs: String -> Option[Unrecorded] = _ => None
     )(
@@ -271,7 +270,7 @@ object TurnTools {
               keeping(slot.call).flatMap {
                 case done: Outcome.Done =>
                   val result = Payload.Result(done.result(call), keeping.shown)
-                  inserted(slot.turn, slot.resultId, result, believed.of(done), at, None)(None)
+                  inserted(slot.turn, slot.resultId, result, believed.of(done, _), at, None)(None)
                     .map(Keeps.Verdict.Commit(_))
                 case other => Right(Keeps.Verdict.Discard(other))
               }
@@ -338,7 +337,7 @@ object TurnTools {
                 case done: Outcome.Done => logged(done.text).map((_, done.text))
                 case _ => None
               }
-              keep(slot.turn, slot.resultId, result, believed.of(o), at, reason, logs)
+              keep(slot.turn, slot.resultId, result, believed.of(o, _), at, reason, logs)
                 .flatMap(settledBy)
             }
         }
@@ -376,7 +375,7 @@ object TurnTools {
         turn: TurnRef,
         id: EntryId,
         payload: Payload,
-        believed: Either[Integrity, (Service, Accounted)],
+        believed: Visibility -> Integrity,
         at: Instant,
         person: Option[(EntryId, Payload)],
         logs: Option[(Unrecorded, String)]
@@ -391,13 +390,13 @@ object TurnTools {
         turn: TurnRef,
         id: EntryId,
         payload: Payload,
-        believed: Either[Integrity, (Service, Accounted)],
+        believed: Visibility -> Integrity,
         at: Instant,
         person: Option[(EntryId, Payload)]
     )(logs: Option[(Unrecorded, String)])(using tx: Tx^): Either[StoreError, Entry] =
       for {
         next <- entries.lockNext(turn.conversationId)
-        output = believed.fold(i => i, Tx.visibility(tx).believed(_, _))
+        output = believed(Tx.visibility(tx))
         entry = Entry(id, turn.conversationId, turn.turnSeq, None, next.seq, payload, at, output)
         _ <- entries.insert(entry)
         _ <- person.fold[Either[StoreError, Unit]](Right(())) { (said, words) =>
@@ -439,23 +438,34 @@ object TurnTools {
         .flatMap(_.toRight(TurnFailure.Store(s"entry ${EntryId.value(id)} vanished")))
   }
 
-  /** How a call's result is believed: as answered (`From`, what the service it went to declares
-    * of its items, or the integrity given), or as one run here says (`Ran`, `output` when its
-    * outcome does not).
+  /** Where an answered call's result came from: grit's own words, believed at `integrity`
+    * (`Grit`); or the edge at `workspace`, its tool's results believed at `output` (`Edge`): at a
+    * service, what it declares of the result's items ([[Visibility.believed]]), elsewhere
+    * [[Visibility.believedAt]].
+    */
+  private[turn] enum Answered {
+    case Grit(integrity: Integrity)
+    case Edge(workspace: Place, output: Integrity)
+  }
+
+  /** How a call's result is believed: as answered (`From`), or as one run here says (`Ran`,
+    * `output` when its outcome does not).
     */
   private enum Belief {
-    case From(from: Either[Integrity, Service])
+    case From(from: Answered)
     case Ran(output: Integrity)
 
-    /** The integrity `o` is believed at, or the service it came from with what its extension
-      * read of its items.
-      */
-    def of(o: Outcome): Either[Integrity, (Service, Accounted)] = this match {
-      case From(from) => from.map((_, o.accounted))
+    /** The integrity `o` is believed at under `visibility`. */
+    def of(o: Outcome, visibility: Visibility): Integrity = this match {
+      case From(Answered.Grit(integrity)) => integrity
+      case From(Answered.Edge(workspace, output)) =>
+        workspace.service.fold(visibility.believedAt(workspace, output))(
+          visibility.believed(_, o.accounted)
+        )
       case Ran(output) =>
         o match {
-          case Outcome.Done(_, Some(integrity), _, _, _) => Left(integrity)
-          case _ => Left(output)
+          case Outcome.Done(_, Some(integrity), _, _, _) => integrity
+          case _ => output
         }
     }
   }

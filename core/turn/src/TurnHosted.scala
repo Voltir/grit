@@ -128,12 +128,14 @@ object TurnHosted {
           val (settling, at) = (r.settling, r.now())
           val (requests, askers) = (r.hosting.requests, r.hosting.askers)
           // An edge's answer is believed at what the service the call went to declares of its
-          // items; at no service (a directory, this machine), its tool's ([[Believed.at]]); the
-          // edge's integrity never. One no edge gave is grit's own words, believed at the
-          // turn's level as a refusal is; but a person's reason for declining is theirs, and
-          // believed as the edge's would be.
-          val from = h.place.flatMap(_.service).toRight(hosted.output.at(level))
-          val own = Left(level)
+          // items; at no service, its tool's ([[Believed.at]]), met at a repository with the
+          // cap there ([[Visibility.believedAt]]); the edge's integrity never. One no edge gave
+          // is grit's own words, believed at the turn's level as a refusal is; but a person's
+          // reason for declining is theirs, and believed as the edge's would be.
+          val output = hosted.output.at(level)
+          val from =
+            h.place.fold(TurnTools.Answered.Grit(output))(TurnTools.Answered.Edge(_, output))
+          val own = TurnTools.Answered.Grit(level)
           // An answered or rung call was dispatched, which only a call with a place is.
           val logs: String -> Option[Unrecorded] =
             text => h.place.flatMap(hosted.logs(_, text))

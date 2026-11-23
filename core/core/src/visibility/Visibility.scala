@@ -38,7 +38,18 @@ final case class Visibility private (
     * met with the cap at `room` ([[capOf]]), and `integrity` itself where no cap covers it.
     */
   def believedIn(room: Place, integrity: Integrity): Integrity =
-    capOf(room).fold(integrity)(integrity.meet)
+    capped(room, integrity, integrity)
+
+  /** What a result from `workspace` is believed at, its tool's being `output`: at a repository
+    * ([[Place.repository]]), `output` met with the cap there ([[capOf]]), [[Cap.Undeclared]]
+    * where none covers it; elsewhere `output`.
+    */
+  def believedAt(workspace: Place, output: Integrity): Integrity =
+    if (workspace.repository.isEmpty) output else capped(workspace, output, Cap.Undeclared)
+
+  /** `integrity` met with the cap at `place`, `uncapped` where no cap covers it. */
+  private def capped(place: Place, integrity: Integrity, uncapped: Integrity): Integrity =
+    capOf(place).fold(uncapped)(integrity.meet)
 
   /** What `service`'s results are believed at: the cap at its place ([[capOf]]), else
     * [[Cap.Undeclared]].

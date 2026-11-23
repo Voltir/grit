@@ -123,7 +123,16 @@ private[turn] final class Rounding[C^](
     rebinding(call.at).flatMap(b =>
       b.rebind(slot, call.pending, b.extracting(raise)) {
         case Left(outcome) =>
-          Some(settling.answer(slot, id, call.pending.call.name, outcome, Left(level), now()))
+          Some(
+            settling.answer(
+              slot,
+              id,
+              call.pending.call.name,
+              outcome,
+              TurnTools.Answered.Grit(level),
+              now()
+            )
+          )
         case Right(free: Bound.Free) => Some(settling.run(slot, id, free, level, now()))
         case Right(keeping: Bound.Keeping) =>
           Some(b.keepFrom(slot, id, keeping, level))

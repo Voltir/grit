@@ -70,6 +70,17 @@ object TurnHostedTests extends TestSuite {
 
   private val Done = "replied: reply:c1:0; summarised: summary:c1:0"
 
+  private val repository =
+    grit.core.place.Repository.of("grit").fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** A run of work in [[repository]], which is its workspace. */
+  private val run = Origin.Work(
+    repository,
+    grit.core.place.WorkName
+      .of("fix-typo")
+      .fold(e => throw new java.lang.AssertionError(e), identity)
+  )
+
   private val github: Service =
     Service.of("github").fold(e => throw new java.lang.AssertionError(e), identity)
 
@@ -283,14 +294,6 @@ object TurnHostedTests extends TestSuite {
     test(
       "a changing tool the engine does not describe, advertised at a run's repository, is requested with that repository as its destination"
     ) {
-      val repository =
-        grit.core.place.Repository
-          .of("grit")
-          .fold(e => throw new java.lang.AssertionError(e), identity)
-      val work =
-        grit.core.place.WorkName
-          .of("fix-typo")
-          .fold(e => throw new java.lang.AssertionError(e), identity)
       val entries = new InMemoryEntryStore
       val turn = say(entries, "fetch")
       val durable = new InMemoryDurable
@@ -308,13 +311,58 @@ object TurnHostedTests extends TestSuite {
           provider,
           edge,
           hosted = Vector.empty,
-          from = Origin.Work(repository, work)
+          from = run
         )
       ) ==> Done
       (edge.sent.map(q => (q.workspace, q.destination)), results(provider).map(_.content)) ==> (
         Vector((repository.place, Some(repository.place))),
         Vector("fetched")
       )
+    }
+
+    test(
+      "a result from a run's repository is believed at its tool's met with the cap there, and at untrusted where none is declared"
+    ) {
+      def believed(visibility: grit.core.visibility.Visibility): Option[Integrity] = {
+        val entries = new InMemoryEntryStore
+        val turn = say(entries, "fetch")
+        val durable = new InMemoryDurable
+        val trusted = fetchBelieved(Believed.At(Integrity.Member))
+        val edge = new Served(
+          new InMemoryEdges,
+          durable,
+          _ => Serve.Now(Outcome.Done("read")),
+          repository.place
+        )
+        edge.advertise(Vector(trusted))
+        val provider = model(("t1", "fetch", "a.txt"))
+        durable.run(turn.workflowId)(
+          hostedBody(
+            entries,
+            provider,
+            edge,
+            hosted = Vector(trusted),
+            from = run,
+            jot = new TestJot(visibility = visibility)
+          )
+        ) ==> Done
+        entries
+          .get(TurnTools.Slot(TestCallSlots.at(turn)).resultId)(using grit.dbos.sql.TestTx.fake)
+          .toOption
+          .flatten
+          .map(_.integrity)
+      }
+      val capped = grit.core.visibility.Visibility
+        .of(
+          grit.core.visibility.Compartments.Shipped,
+          grit.core.visibility.RoomLabels.Public,
+          Vector.empty,
+          Vector.empty,
+          caps = Vector(grit.core.visibility.Cap(repository.place, Integrity.Outside))
+        )
+        .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+      (believed(grit.core.visibility.Visibility.Shipped), believed(capped)) ==>
+        (Some(Integrity.Untrusted), Some(Integrity.Outside))
     }
 
     test(
