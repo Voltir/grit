@@ -170,6 +170,45 @@ final class LocalBranch(
         )
     }
 
+  /** The branch deleted on `to`, by lease: only while it is at `tip` there, as it is in the clone,
+    * whose branch is left. `Failed`, nothing deleted, when the clone's branch is not at `tip`, or
+    * `to` cannot be reached.
+    */
+  private[git] def retired(tip: String): Either[HostError, LocalBranch.Retired] =
+    head().flatMap { local =>
+      if (local != tip) Left(HostError.Failed(s"$branch is at $local in the clone, not $tip."))
+      else
+        handed("push", "--porcelain", s"--force-with-lease=$ref:$tip", to.written, s":$ref")
+          .flatMap { (ended: (Vector[String], Ran)) =>
+            val (lines, r) = ended
+            // git's porcelain status line for the ref, `<flag>\t<from>:<to>\t<summary>`, read
+            // under LC_ALL=C as measured on git 2.43: `-` deleted; `!` with `[rejected] (stale
+            // info)` when the remote's branch is not at `tip`, which is also how a branch it
+            // lacks answers; any other a refusal, its summary kept.
+            lines.map(l => Vector.from(l.split('\t'))).collectFirst {
+              case Vector(flag, refs, summary) if refs.endsWith(s":$ref") => (flag, summary)
+            } match {
+              case Some(("-", _)) => Right(LocalBranch.Retired.Deleted)
+              case Some(("!", "[rejected] (stale info)")) =>
+                remoteHead().flatMap {
+                  case None => Right(LocalBranch.Retired.Gone)
+                  case Some(at) if at != tip => Right(LocalBranch.Retired.Moved(at))
+                  case Some(_) =>
+                    Left(HostError.Failed(s"$branch at ${to.written} moved while it was deleted."))
+                }
+              case Some((_, summary)) => Right(LocalBranch.Retired.Refused(summary))
+              case None if r.exit == 0 =>
+                Right(LocalBranch.Retired.Refused(lines.mkString(" ")))
+              case None =>
+                Left(
+                  HostError.Failed(
+                    s"Deleting $branch at ${to.written} exited ${r.exit}: ${r.output.text}"
+                  )
+                )
+            }
+          }
+    }
+
   /** The commit `to` holds at the branch; `None` when it has no such branch. */
   private def remoteHead(): Either[HostError, Option[String]] =
     handed("ls-remote", to.written, ref).flatMap { (ended: (Vector[String], Ran)) =>
@@ -199,6 +238,24 @@ final class LocalBranch(
 }
 
 object LocalBranch {
+
+  /** What came of deleting a run's branch on its remote, the clone's branch left as it is. */
+  private[git] enum Retired derives CanEqual {
+
+    /** Deleted there, in one call to the remote. */
+    case Deleted
+
+    /** The remote had no such branch; two calls. */
+    case Gone
+
+    /** Kept: someone pushed to it, and it is at `at`; two calls. */
+    case Moved(at: String)
+
+    /** Kept: the remote declined to delete it, saying `why` (a protected branch, a token
+      * without the right); one call.
+      */
+    case Refused(why: String)
+  }
 
   /** Why `branch` is not offered again: its pull request at `at` was `how`, merged or closed. */
   private def ended(branch: String, at: URI, how: String): HostError =
@@ -236,6 +293,7 @@ object LocalBranch {
 
   private val HandedPath = """[A-Za-z0-9/._-]+""".r
 
-  /** git asking no one at a terminal. */
-  private val Quiet: Either[String, Variables] = Variables.of(Map("GIT_TERMINAL_PROMPT" -> "0"))
+  /** git asking no one at a terminal, and speaking its C locale, whose words [[retired]] reads. */
+  private val Quiet: Either[String, Variables] =
+    Variables.of(Map("GIT_TERMINAL_PROMPT" -> "0", "LC_ALL" -> "C"))
 }

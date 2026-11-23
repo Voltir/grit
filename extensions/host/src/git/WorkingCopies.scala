@@ -32,16 +32,18 @@ import grit.host.checkout.LocalTree
   * branch `grit/{work}`, git run through `processes`. Its first call sweeps: every copy unused
   * for [[Kept]] that is neither held nor holding changes never committed is removed, its branch
   * kept, and so is every directory there without its lock; a copy holding such changes goes too
-  * once unused for [[Unpublished]], said through `note` first, unless held. With `branches`, a new branch is cut
-  * only when the clone's origin is its target's remote ([[Remote.fetchedBy]]); `Failed` otherwise,
-  * naming both, no copy or branch made. With `branches`, and the clone's origin its remote, the
-  * sweep also deletes each local `grit/{work}` branch with no copy that is done with: one
-  * origin's default branch holds all of, with no call; else, asking its target's remote
-  * repository, oldest first and on from where the last sweep stopped, at most [[SweepAsks]]
-  * calls a sweep (so every branch is reached within ceil(branches / [[SweepAsks]]) sweeps), one
-  * whose pull request was merged or closed with the branch's tip its head, or one with none
-  * opened whose tip was committed past [[Unpublished]] ago, said through `note` first. The
-  * first answer the remote repository cannot give ends it; a branch there is never deleted.
+  * once unused for [[Unpublished]], said through `note` first, unless held. With `branches`, a
+  * new branch is cut only when the clone's origin is their target's remote
+  * ([[Remote.fetchedBy]]); `Failed` otherwise, naming both, no copy or branch made. With
+  * `branches`, and the clone's origin their remote, the sweep also deletes each `grit/{work}`
+  * branch with no copy that is done with, on the remote first and here once it is gone there,
+  * said through `note` first: one origin's default branch holds all of; one whose pull request
+  * was merged or closed with the branch's tip its head; one with none opened whose tip was
+  * committed past [[Unpublished]] ago. One someone pushed to since, or whose remote refuses
+  * its deletion, is kept, there and here, said. It goes oldest first, on from where the last
+  * sweep stopped, at most [[SweepAsks]] calls to the remote a sweep (so every branch is reached
+  * within ceil(branches / floor([[SweepAsks]] / 3)) sweeps); the first answer the remote cannot
+  * give ends it.
   */
 final class WorkingCopies(
     val repository: Repository,
@@ -335,32 +337,24 @@ final class WorkingCopies(
       if (gone.nonEmpty) pruned()
     }
     branches match {
-      case Some(b) => branchesSwept(b.target)
+      case Some(b) => branchesSwept(b)
       case None => ()
     }
   }
 
-  /** With `branches`, at the sweep, and only when the clone's origin is its target's remote: each
-    * local `grit/{work}` branch with no copy is deleted when it is done with. One origin's default
-    * branch holds all of is deleted with no call. Every other is asked of its target's remote
-    * repository, oldest first, starting after the branch the last sweep asked last, at most
-    * [[SweepAsks]] calls a sweep, so every such branch is reached within ceil(branches /
-    * [[SweepAsks]]) sweeps; it is deleted when its pull request was merged or closed with its
-    * head the branch's tip, or none was opened and its tip was committed more than
-    * [[Unpublished]] ago (said through `note` first, naming the branch and its tip). The first
-    * answer the remote repository cannot give ends it, nothing more deleted; a branch on the
-    * remote repository is never deleted.
+  /** At the sweep, with `branches`: the deletion of runs' branches the class's doc names. Each
+    * branch costs at most three calls, its pull request's read (none when origin's default holds
+    * all of it) and its deletion's one or two, and no deletion is begun without two left. The
+    * cursor moves past a branch once it is handled, so the one whose answer ended a sweep is the
+    * next sweep's first.
     */
-  private def branchesSwept(t: PushTarget^): Unit = {
+  private def branchesSwept(b: Branches^): Unit = {
     val origin = git(home, "remote", "get-url", "origin").toOption
       .map(_.output.text.linesIterator.nextOption().getOrElse("").trim)
-    if (origin.exists(t.remote.fetchedBy)) {
-      val default =
-        ran(home, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD").toOption
-          .collect { case (_, r) if r.exit == 0 => r.output.text.trim }
+    if (origin.exists(b.target.remote.fetchedBy)) {
       val cutoff = clock.now().getEpochSecond - Unpublished.toSeconds
       val held = names().getOrElse(Set.empty)
-      val branches = git(
+      val swept: Vector[(String, WorkName, String, Long)] = git(
         home,
         "for-each-ref",
         "--sort=committerdate",
@@ -370,52 +364,87 @@ final class WorkingCopies(
         .flatMap(_.output.text.linesIterator.toVector)
         .flatMap { line =>
           line.split(' ') match {
-            case Array(ref, tip, at)
-                if ref.startsWith("refs/heads/") && at.toLongOption.isDefined =>
-              Vector((ref.stripPrefix("refs/heads/"), tip, at.toLong))
+            case Array(ref, tip, at) if ref.startsWith("refs/heads/grit/") =>
+              val branch = ref.stripPrefix("refs/heads/")
+              (WorkName.of(branch.stripPrefix("grit/")).toOption, at.toLongOption) match {
+                case (Some(w), Some(seconds)) => Vector((branch, w, tip, seconds))
+                case _ => Vector.empty
+              }
             case _ => Vector.empty
           }
         }
-        .filterNot((branch, _, _) => held.contains(branch.stripPrefix("grit/")))
+        .filterNot((_, w, _, _) => held.contains(WorkName.value(w)))
       def deleted(branch: String): Unit = { val _ = git(home, "branch", "--quiet", "-D", branch) }
-      val (merged, asking) = branches.partition((branch, _, _) =>
-        default.exists(d =>
-          git(home, "rev-list", "--count", s"$d..refs/heads/$branch")
-            .exists(_.output.text.trim == "0")
-        )
-      )
-      merged.foreach((branch, _, _) => deleted(branch))
+      def handled(branch: String): Unit = { val _ = attempt(Files.writeString(cursor, branch)) }
       val after = attempt(Files.readString(cursor).trim).toOption
-      val from = asking.indexWhere(_._1 == after.getOrElse("")) + 1
-      @tailrec def each(left: List[(String, String, Long)], asked: Int): Unit = left match {
-        case (branch, tip, at) :: rest if asked < SweepAsks =>
-          t.repository.pullRequest(branch) match {
-            case Left(_) => ()
-            case Right(pull) =>
-              val _ = attempt(Files.writeString(cursor, branch))
-              val done = pull match {
-                case Some(RemoteRepository.PullRequest.Merged(_, head)) => head == tip
-                case Some(RemoteRepository.PullRequest.Closed(_, head)) => head == tip
-                case Some(RemoteRepository.PullRequest.Open(_)) => false
-                case None =>
-                  at < cutoff && {
+      val from = swept.indexWhere(_._1 == after.getOrElse("")) + 1
+      @tailrec def each(left: List[(String, WorkName, String, Long)], asked: Int): Unit =
+        left match {
+          case (branch, w, tip, at) :: rest =>
+            val one = b.of(w)
+            val here = s"[main] deleting $branch here and on its remote repository"
+            // What is said before deleting it, `None` when it is not done with, and the calls
+            // asked so far; `None` outside when the sweep ends here.
+            val judged: Option[(Option[String], Int)] =
+              if (one.ahead() == Right(false))
+                Some((Some(s"$here: origin's default branch holds all of it"), asked))
+              else if (asked >= SweepAsks) None
+              else
+                b.target.repository.pullRequest(branch) match {
+                  case Left(_) => None
+                  case Right(pull) =>
+                    val line = pull match {
+                      case Some(RemoteRepository.PullRequest.Merged(url, head)) if head == tip =>
+                        Some(s"$here: its pull request $url was merged at its tip")
+                      case Some(RemoteRepository.PullRequest.Closed(url, head)) if head == tip =>
+                        Some(s"$here: its pull request $url was closed at its tip")
+                      case None if at < cutoff =>
+                        Some(
+                          s"[main] deleting $branch, never offered, its last commit $tip " +
+                            s"made ${java.time.Instant.ofEpochSecond(at)}, past $Unpublished unpublished"
+                        )
+                      case _ => None
+                    }
+                    Some((line, asked + 1))
+                }
+            judged match {
+              case None => ()
+              case Some((None, spent)) =>
+                handled(branch)
+                each(rest, spent)
+              // A deletion takes at most two calls, and is begun only when both are left.
+              case Some((Some(line), spent)) if spent + 2 <= SweepAsks =>
+                note(line)
+                one.retired(tip) match {
+                  case Left(_) => ()
+                  case Right(LocalBranch.Retired.Deleted) =>
+                    deleted(branch)
+                    handled(branch)
+                    each(rest, spent + 1)
+                  case Right(LocalBranch.Retired.Gone) =>
+                    deleted(branch)
+                    handled(branch)
+                    each(rest, spent + 2)
+                  case Right(LocalBranch.Retired.Moved(moved)) =>
+                    note(s"[main] keeping $branch: its remote branch is at $moved, not $tip")
+                    handled(branch)
+                    each(rest, spent + 2)
+                  case Right(LocalBranch.Retired.Refused(why)) =>
                     note(
-                      s"[main] deleting $branch, never offered, its last commit $tip " +
-                        s"made ${java.time.Instant.ofEpochSecond(at)}, past $Unpublished unpublished"
+                      s"[main] keeping $branch: its remote repository refused the deletion: $why"
                     )
-                    true
-                  }
-              }
-              if (done) deleted(branch)
-              each(rest, asked + 1)
-          }
-        case _ => ()
-      }
-      each((asking.drop(from) ++ asking.take(from)).toList, 0)
+                    handled(branch)
+                    each(rest, spent + 1)
+                }
+              case Some(_) => ()
+            }
+          case Nil => ()
+        }
+      each((swept.drop(from) ++ swept.take(from)).toList, 0)
     }
   }
 
-  /** Where the sweep keeps the branch it asked last, beside the copies' directory. */
+  /** Where the sweep keeps the branch it handled last, beside the copies' directory. */
   private def cursor: Path = copies.resolveSibling(s"${repository.name}.swept")
 
   /** The clone's records of worktrees whose directory is gone, dropped. */
@@ -528,7 +557,9 @@ object WorkingCopies {
     case Held(at: Path)
   }
 
-  /** 20: the most branches one sweep asks the remote repository about. */
+  /** 20: the most calls one sweep makes to the remote repository, its pull-request reads and its
+    * branch deletions together.
+    */
   val SweepAsks: Int = 20
 
   /** 90 days: how long work never offered is kept: a branch holding commits origin's default

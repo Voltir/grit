@@ -449,10 +449,11 @@ object WorkingCopiesTests extends TestSuite {
       }
     }
     test(
-      "the sweep deletes a branch with no copy whose pull request was merged or closed at its tip, and keeps every other"
+      "the sweep deletes a branch with no copy whose pull request was merged or closed at its tip, on its remote first, said, and keeps every other"
     ) {
       inRepository { repo =>
         val remote = new FakeRemoteRepository(repo.origin.toString)
+        val noted = scala.collection.mutable.ArrayBuffer.empty[String]
         val merged = branched(repo, "merged", 1)
         val closed = branched(repo, "closed", 1)
         val _ = branched(repo, "past", 1)
@@ -467,14 +468,25 @@ object WorkingCopiesTests extends TestSuite {
         remote.close("grit/closed", closed)
         remote.close("grit/past", "0000000000000000000000000000000000000000")
         remote.close("grit/held", held)
-        val _ = made(swept(repo, remote, new SetClock(start)), "fresh")
+        val _ = made(swept(repo, remote, new SetClock(start), noted += _), "fresh")
         (
           Vector("merged", "closed", "past", "open", "held").filter(b =>
             hasBranch(repo, repo.source, s"grit/$b")
           ),
           hasBranch(repo, repo.source, "other"),
-          hasBranch(repo, repo.origin, "grit/merged")
-        ) ==> (Vector("past", "open", "held"), true, true)
+          hasBranch(repo, repo.origin, "grit/merged"),
+          noted.toVector.sorted
+        ) ==> (
+          Vector("past", "open", "held"),
+          true,
+          false,
+          Vector(
+            "[main] deleting grit/closed here and on its remote repository: its pull request " +
+              "https://remote.invalid/pull/2 was closed at its tip",
+            "[main] deleting grit/merged here and on its remote repository: its pull request " +
+              "https://remote.invalid/pull/1 was merged at its tip"
+          )
+        )
       }
     }
     test(
@@ -494,12 +506,16 @@ object WorkingCopiesTests extends TestSuite {
         (first, hasBranch(repo, repo.source, "grit/young"), noted.map(_.split(" made ").head)) ==> (
           (false, true),
           false,
-          Vector(s"[main] deleting grit/young, never offered, its last commit $young")
+          Vector(
+            // The first sweep's copy, unused past Kept by the second, its branch holding nothing.
+            "[main] deleting grit/a here and on its remote repository: origin's default branch holds all of it",
+            s"[main] deleting grit/young, never offered, its last commit $young"
+          )
         )
       }
     }
     test(
-      "the sweep stops at the first answer the remote repository cannot give, asks at most SweepAsks, and deletes nothing for another origin"
+      "the sweep stops at the first answer the remote repository cannot give, makes at most SweepAsks calls, deletions counted, and deletes nothing for another origin"
     ) {
       inRepository { repo =>
         val n = WorkingCopies.SweepAsks + 2
@@ -522,11 +538,162 @@ object WorkingCopiesTests extends TestSuite {
         val _ = git(repo, repo.source, "remote", "set-url", "origin", "/srv/elsewhere.git")
         val elsewhere = new FakeRemoteRepository(repo.origin.toString)
         val _ = swept(repo, elsewhere, new SetClock(start)).opened(work("c"))
+        // Each branch here costs three calls of SweepAsks: its pull request read, and its
+        // deletion, two calls where its remote lacks it; none is begun that could not end.
         (afterFailing, afterCounting, (left, elsewhere.asked.size)) ==> (
           (n - 1, 2),
-          (1, WorkingCopies.SweepAsks),
-          (1, 0)
+          (n - 7, 7),
+          (n - 7, 0)
         )
+      }
+    }
+    test(
+      "a branch never offered that origin's default holds, or past Unpublished, is deleted on its remote before here, said first; one its remote lacks is deleted here"
+    ) {
+      inRepository { repo =>
+        val remote = new FakeRemoteRepository(repo.origin.toString)
+        val noted = scala.collection.mutable.ArrayBuffer.empty[String]
+        val _ = git(repo, repo.source, "branch", "grit/held", "main")
+        val _ = git(repo, repo.source, "branch", "grit/lacking", "main")
+        val old =
+          dated(repo, "old", start.getEpochSecond - WorkingCopies.Unpublished.toSeconds - 3600)
+        val _ =
+          git(repo, repo.source, "push", "--quiet", repo.origin.toString, "grit/held", "grit/old")
+        val _ = made(swept(repo, remote, new SetClock(start), noted += _), "fresh")
+        (
+          Vector("held", "lacking", "old").filter(b => hasBranch(repo, repo.source, s"grit/$b")),
+          Vector("held", "old").filter(b => hasBranch(repo, repo.origin, s"grit/$b")),
+          noted.toVector.map(_.split(" made ").head).sorted
+        ) ==> (
+          Vector.empty,
+          Vector.empty,
+          Vector(
+            "[main] deleting grit/held here and on its remote repository: origin's default branch holds all of it",
+            "[main] deleting grit/lacking here and on its remote repository: origin's default branch holds all of it",
+            s"[main] deleting grit/old, never offered, its last commit $old"
+          )
+        )
+      }
+    }
+    test("a branch whose remote branch someone moved past its tip is kept, there and here, said") {
+      inRepository { repo =>
+        val remote = new FakeRemoteRepository(repo.origin.toString)
+        val noted = scala.collection.mutable.ArrayBuffer.empty[String]
+        val tip = branched(repo, "moved", 1)
+        val theirs = branched(repo, "theirs", 2)
+        val _ = git(repo, repo.source, "push", "--quiet", repo.origin.toString, "grit/moved")
+        val _ = remote.open("grit/moved", "Fix", "Fixed.")
+        remote.merge("grit/moved", tip)
+        val _ = git(
+          repo,
+          repo.source,
+          "push",
+          "--quiet",
+          "--force",
+          repo.origin.toString,
+          "grit/theirs:refs/heads/grit/moved"
+        )
+        val _ = git(repo, repo.source, "branch", "--quiet", "-D", "grit/theirs")
+        val _ = made(swept(repo, remote, new SetClock(start), noted += _), "fresh")
+        (
+          hasBranch(repo, repo.source, "grit/moved"),
+          git(repo, repo.origin, "rev-parse", "refs/heads/grit/moved").output.text.trim,
+          noted.toVector
+        ) ==> (
+          true,
+          theirs,
+          Vector(
+            "[main] deleting grit/moved here and on its remote repository: its pull request " +
+              "https://remote.invalid/pull/1 was merged at its tip",
+            s"[main] keeping grit/moved: its remote branch is at $theirs, not $tip"
+          )
+        )
+      }
+    }
+    test(
+      "a branch whose remote refuses its deletion is kept, there and here, said, and the sweep goes on"
+    ) {
+      inRepository { repo =>
+        val remote = new FakeRemoteRepository(repo.origin.toString)
+        val noted = scala.collection.mutable.ArrayBuffer.empty[String]
+        val a = dated(repo, "a", start.getEpochSecond - 2000)
+        val b = dated(repo, "b", start.getEpochSecond - 1000)
+        val _ = git(repo, repo.source, "push", "--quiet", repo.origin.toString, "grit/a", "grit/b")
+        for ((name, tip) <- Vector(("a", a), ("b", b))) {
+          val _ = remote.open(s"grit/$name", "Fix", "Fixed.")
+          remote.merge(s"grit/$name", tip)
+        }
+        // The bare origin's own hook, as a protected branch on a server declines.
+        val hook = repo.origin.resolve("hooks").resolve("update")
+        Files.writeString(hook, "#!/bin/sh\n[ \"$1\" = refs/heads/grit/a ] && exit 1\nexit 0\n")
+        val _ = hook.toFile.setExecutable(true)
+        val _ = made(swept(repo, remote, new SetClock(start), noted += _), "fresh")
+        (
+          Vector("a", "b").filter(n => hasBranch(repo, repo.source, s"grit/$n")),
+          Vector("a", "b").filter(n => hasBranch(repo, repo.origin, s"grit/$n")),
+          noted.toVector.filter(_.startsWith("[main] keeping"))
+        ) ==> (
+          Vector("a"),
+          Vector("a"),
+          Vector(
+            "[main] keeping grit/a: its remote repository refused the deletion: " +
+              "[remote rejected] (hook declined)"
+          )
+        )
+      }
+    }
+    test(
+      "a branch whose remote cannot be reached is kept here, and the next sweep deletes it there and here"
+    ) {
+      inRepository { repo =>
+        val remote = new FakeRemoteRepository(repo.origin.toString)
+        val _ = git(repo, repo.source, "branch", "grit/done", "main")
+        val _ = git(repo, repo.source, "push", "--quiet", repo.origin.toString, "grit/done")
+        val away = repo.origin.resolveSibling("away.git")
+        Files.move(repo.origin, away)
+        val _ = swept(repo, remote, new SetClock(start)).opened(work("a"))
+        val first = hasBranch(repo, repo.source, "grit/done")
+        Files.move(away, repo.origin)
+        val _ = made(swept(repo, remote, new SetClock(start)), "b")
+        (
+          first,
+          hasBranch(repo, repo.source, "grit/done"),
+          hasBranch(repo, repo.origin, "grit/done")
+        ) ==>
+          (true, false, false)
+      }
+    }
+    test(
+      "a sweep's deletions count against SweepAsks, and none is begun that could not end within it"
+    ) {
+      inRepository { repo =>
+        val remote = new FakeRemoteRepository(repo.origin.toString)
+        val n = WorkingCopies.SweepAsks + 5
+        val names = (1 to n).map(k => s"grit/d$k")
+        for (b <- names) { val _ = git(repo, repo.source, "branch", b, "main") }
+        val _ = git(repo, repo.source, ("push" +: "--quiet" +: repo.origin.toString +: names)*)
+        val _ = made(swept(repo, remote, new SetClock(start)), "fresh")
+        // One call each where the remote holds the branch, a deletion begun only with two left.
+        (
+          names.count(hasBranch(repo, repo.source, _)),
+          names.count(hasBranch(repo, repo.origin, _)),
+          remote.asked.size
+        ) ==> (n - (WorkingCopies.SweepAsks - 1), n - (WorkingCopies.SweepAsks - 1), 0)
+      }
+    }
+    test(
+      "a kept copy unheld, its run's branch holding nothing yet, keeps that branch here and on its remote"
+    ) {
+      inRepository { repo =>
+        val remote = new FakeRemoteRepository(repo.origin.toString)
+        val _ = made(over(repo, new SetClock(start)), "paused")
+        val _ = git(repo, repo.source, "push", "--quiet", repo.origin.toString, "grit/paused")
+        val _ = made(swept(repo, remote, new SetClock(start)), "fresh")
+        (
+          hasBranch(repo, repo.source, "grit/paused"),
+          hasBranch(repo, repo.origin, "grit/paused")
+        ) ==>
+          (true, true)
       }
     }
     test("the sweep asks oldest first, so a branch past SweepAsks unheld ones is reached at once") {
@@ -539,8 +706,9 @@ object WorkingCopiesTests extends TestSuite {
         val _ = remote.open("grit/old", "Fix", "Fixed.")
         remote.close("grit/old", oldest)
         val _ = swept(repo, remote, new SetClock(start)).opened(work("a"))
+        // Its deletion took two of SweepAsks: its remote lacks it.
         (hasBranch(repo, repo.source, "grit/old"), remote.asked.size, remote.asked.get(0)) ==>
-          (false, WorkingCopies.SweepAsks, "grit/old")
+          (false, WorkingCopies.SweepAsks - 2, "grit/old")
       }
     }
     test("each sweep asks on from where the last stopped, so every branch is reached within two") {
@@ -564,7 +732,7 @@ object WorkingCopiesTests extends TestSuite {
       "a branch origin's default holds all of is deleted without asking, and a tag of its name changes nothing"
     ) {
       inRepository { repo =>
-        val n = WorkingCopies.SweepAsks + 5
+        val n = 3
         for (k <- 1 to n) { val _ = git(repo, repo.source, "branch", s"grit/e$k", "main") }
         val _ = git(repo, repo.source, "tag", "grit/e1", "main")
         val remote = new FakeRemoteRepository(repo.origin.toString)

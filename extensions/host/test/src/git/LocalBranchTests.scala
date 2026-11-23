@@ -349,5 +349,118 @@ object LocalBranchTests extends TestSuite {
         (offered.isRight, Files.exists(ran)) ==> (true, false)
       }
     }
+    test(
+      "retired deletes the remote's branch at its tip, is Gone where the remote lacks it, and keeps one moved past it"
+    ) {
+      inRepository { repo =>
+        onBranch(repo, "fix")
+        val tip = at(repo, repo.source, "grit/w1")
+        val b = branch(repo, new FakeRemoteRepository(repo.origin.toString))
+        val _ = git(repo, repo.source, "push", "--quiet", repo.origin.toString, "grit/w1")
+        val deleted = b.retired(tip)
+        val afterDeleted = refs(repo, repo.origin)
+        val gone = b.retired(tip)
+        val _ = git(repo, repo.source, "checkout", "--quiet", "-b", "theirs", "grit/w1")
+        val _ = git(repo, repo.source, (commit ++ Seq("commit", "--allow-empty", "-qm", "theirs"))*)
+        val _ = git(repo, repo.source, "checkout", "--quiet", "main")
+        val theirs = at(repo, repo.source, "theirs")
+        val _ =
+          git(
+            repo,
+            repo.source,
+            "push",
+            "--quiet",
+            repo.origin.toString,
+            "theirs:refs/heads/grit/w1"
+          )
+        (
+          deleted,
+          afterDeleted,
+          gone,
+          b.retired(tip),
+          at(repo, repo.origin, "refs/heads/grit/w1")
+        ) ==> (
+          Right(LocalBranch.Retired.Deleted),
+          Vector("refs/heads/main"),
+          Right(LocalBranch.Retired.Gone),
+          Right(LocalBranch.Retired.Moved(theirs)),
+          theirs
+        )
+      }
+    }
+    test("retired is Refused, with the remote's reason, when the remote declines the deletion") {
+      inRepository { repo =>
+        onBranch(repo, "fix")
+        val tip = at(repo, repo.source, "grit/w1")
+        val _ = git(repo, repo.source, "push", "--quiet", repo.origin.toString, "grit/w1")
+        // The bare origin's own hook, as a server's protected branch declines.
+        val hook = repo.origin.resolve("hooks").resolve("update")
+        Files.writeString(hook, "#!/bin/sh\nexit 1\n")
+        val _ = hook.toFile.setExecutable(true)
+        (
+          branch(repo, new FakeRemoteRepository(repo.origin.toString)).retired(tip),
+          at(repo, repo.origin, "refs/heads/grit/w1")
+        ) ==> (Right(LocalBranch.Retired.Refused("[remote rejected] (hook declined)")), tip)
+      }
+    }
+    test(
+      "retired fails, deleting nothing, when the remote cannot be reached or the clone's branch is not at the tip"
+    ) {
+      inRepository { repo =>
+        onBranch(repo, "fix")
+        val tip = at(repo, repo.source, "grit/w1")
+        val _ = git(repo, repo.source, "push", "--quiet", repo.origin.toString, "grit/w1")
+        val b = branch(repo, new FakeRemoteRepository(repo.origin.toString))
+        val away = repo.origin.resolveSibling("away.git")
+        Files.move(repo.origin, away)
+        val unreachable = b.retired(tip)
+        Files.move(away, repo.origin)
+        val main = at(repo, repo.source, "main")
+        (
+          unreachable.isLeft,
+          b.retired(main).isLeft,
+          at(repo, repo.origin, "refs/heads/grit/w1")
+        ) ==> (true, true, tip)
+      }
+    }
+    test(
+      "the delete is handed the token as the push is, by the helper's file, hooks off, in git's C locale"
+    ) {
+      inRepository { repo =>
+        onBranch(repo, "fix")
+        val tip = at(repo, repo.source, "grit/w1")
+        val _ = git(repo, repo.source, "push", "--quiet", repo.origin.toString, "grit/w1")
+        val recording = new Recording(handing(repo))
+        val _ = right(
+          handedBy(repo, new FakeRemoteRepository(repo.origin.toString), recording).retired(tip)
+        )
+        val deleting = recording.argvs.asScala.toVector.headOption.map(_.args).getOrElse(Nil)
+        val declared = repo.origin.toString
+        (
+          deleting.exists(_.contains(token)),
+          deleting.take(6).map(_.takeWhile(_ != '!')),
+          deleting.drop(6),
+          recording.variables.asScala.toVector.map(_.get("LC_ALL"))
+        ) ==> (
+          false,
+          List(
+            "-c",
+            "credential.helper=",
+            "-c",
+            s"credential.$declared.helper=",
+            "-c",
+            "core.hooksPath=/dev/null"
+          ),
+          List(
+            "push",
+            "--porcelain",
+            s"--force-with-lease=refs/heads/grit/w1:$tip",
+            declared,
+            ":refs/heads/grit/w1"
+          ),
+          Vector(Some("C"))
+        )
+      }
+    }
   }
 }
