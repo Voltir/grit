@@ -335,9 +335,6 @@ object EdgeSessionsContract {
   /** A worktree on a machine, where every session and brief here is. */
   val Worktree: Place = Place.under(Namespace.Machine, Vector("desk", "/work/c"))
 
-  /** `id`'s edits at each of `seconds` after [[EdgeContracts.At]], each its own ordinal, at
-    * [[Worktree]], as `holder` when given.
-    */
   /** `id`'s end, `second` after [[EdgeContracts.At]], its ordinal `second`, at [[Worktree]]. */
   def ended(id: SessionId, second: Long): EdgeSessions.Batch =
     EdgeSessions.Batch(
@@ -357,6 +354,9 @@ object EdgeSessionsContract {
       )
     )
 
+  /** `id`'s edits at each of `seconds` after [[EdgeContracts.At]], each its own ordinal, at
+    * [[Worktree]], as `holder` when given.
+    */
   def batch(id: SessionId, holder: Option[ClaimHolder], seconds: Long*): EdgeSessions.Batch =
     EdgeSessions.Batch(
       id,
