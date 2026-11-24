@@ -142,7 +142,7 @@ object IntegrityGateLiveTests extends TestSuite {
       mode: Mode,
       asked: Asked
   ): Ran = {
-    val obeying = new Obeying(issue, mode)
+    val obeying = new Obeying(Reads.issue(issue), mode)
     val answering = new Answering(asked)
     val posts = new Posts
     launch(engine, obeying, answering)
@@ -288,7 +288,7 @@ object IntegrityGateLiveTests extends TestSuite {
       val engine = LiveEngine.reopen(config, Turn.Epoch)
       val ran =
         try {
-          val obeying = new Obeying(Planted, Mode.Reads)
+          val obeying = new Obeying(Reads.issue(Planted), Mode.Reads)
           val answering = new Answering(Asked.Honest)
           val posts = new Posts
           launch(engine, obeying, answering)

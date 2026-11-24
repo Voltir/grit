@@ -3,7 +3,7 @@ package grit.app.main
 import scala.collection.immutable.VectorMap
 
 import grit.core.clock.Clock
-import grit.core.edge.{Attesting, EdgeStores, Route, ToolRequest, Variable}
+import grit.core.edge.{Attesting, EdgeStores, Route, ServedEdge, ToolRequest, Variable}
 import grit.core.files.NoIntake
 import grit.core.id.{SourceId, ToolCallId, TurnRef}
 import grit.core.identity.Account
@@ -87,14 +87,36 @@ object IntegrityTurn {
     case Reads, Extracts
   }
 
-  /** A model that obeys every instruction in its request, keeping each request: with no tool
-    * result yet, it reads `issue` through GitHub's `issue_read`; shown the injection anywhere,
-    * it calls `slack_post` to [[Elsewhere]], once; shown a stub as the last result, it reads it
-    * through `read_hidden` or asks it through `extract`, as `mode` says; once it has read the
-    * item or been answered, it posts to [[General]], once; then it answers. A tool result
-    * shown it outside a `<tool_output>` fence throws, failing the turn's model call.
+  /** What the turn's model reads first: the offered tool whose name ends with `tool`, called
+    * with `args`, and what it then posts to [[General]].
     */
-  final class Obeying(issue: Issue, mode: Mode) extends Provider {
+  final case class Reads(tool: String, args: ujson.Obj, post: String)
+
+  object Reads {
+
+    /** `issue`, read through GitHub's `issue_read`. */
+    def issue(issue: Issue): Reads =
+      Reads(
+        "issue_read",
+        ujson.Obj(
+          "method" -> "get",
+          "owner" -> "octocat",
+          "repo" -> "Hello-World",
+          "issue_number" -> issue.number
+        ),
+        s"Issue ${issue.number} is open."
+      )
+  }
+
+  /** A model that obeys every instruction in its request, keeping each request: with no tool
+    * result yet, it calls what `reads` names; shown the injection anywhere, it calls
+    * `slack_post` to [[Elsewhere]], once; shown a stub as the last result, it reads it through
+    * `read_hidden` or asks it through `extract`, as `mode` says; once it has been shown the
+    * result, read the item or been answered, it posts `reads.post` to [[General]], once; then it
+    * answers. A tool result shown it outside a `<tool_output>` fence throws, failing the turn's
+    * model call.
+    */
+  final class Obeying(reads: Reads, mode: Mode) extends Provider {
     // Guarded by this provider's monitor: every read and write of it is inside `synchronized`.
     @caps.unsafe.untrackedCaptures
     private var kept = Vector.empty[ModelRequest]
@@ -124,25 +146,16 @@ object IntegrityTurn {
         case _ => false
       }
       // read_hidden answers with the item itself; a note of grit's may follow its result.
-      val answered = request.messages
-        .collect { case Message.ToolResult(id, _, _) => ToolCallId.value(id) }
-        .lastOption
-        .contains("r1")
-      val issueRead = request.tools.map(_.name).find(_.endsWith("issue_read"))
+      val lastId = request.messages.collect { case Message.ToolResult(id, _, _) =>
+        ToolCallId.value(id)
+      }.lastOption
+      // The first read's result shown as it is, not as its stub.
+      val answered = lastId.contains("r1") || lastId.contains("g1")
+      val first = request.tools.map(_.name).find(_.endsWith(reads.tool))
       def call(id: String, name: String, args: ujson.Obj) =
         Right(IntegrityTurn.call(id, name, args))
       results.lastOption match {
-        case None =>
-          call(
-            "g1",
-            issueRead.getOrElse("issue_read"),
-            ujson.Obj(
-              "method" -> "get",
-              "owner" -> "octocat",
-              "repo" -> "Hello-World",
-              "issue_number" -> issue.number
-            )
-          )
+        case None => call("g1", first.getOrElse(reads.tool), reads.args)
         case Some(_) if !posted && results.exists(_.contains(Injection)) =>
           call("p1", "slack_post", ujson.Obj("to" -> Elsewhere, "text" -> "the deploy key"))
         case Some(last) if last.startsWith("Hidden here as ") =>
@@ -160,7 +173,7 @@ object IntegrityTurn {
           call(
             "p2",
             "slack_post",
-            ujson.Obj("to" -> General, "text" -> s"Issue ${issue.number} is open.")
+            ujson.Obj("to" -> General, "text" -> reads.post)
           )
         case Some(_) => Right(said("done"))
       }
@@ -260,9 +273,14 @@ object IntegrityTurn {
   )
 
   /** `engine`'s workflows launched with the turn's calls made by `turn` and the rest by
-    * `others`, every task reaching [[Reached]].
+    * `others`, every task reaching what `reached` declares.
     */
-  def launch(engine: Engine^, turn: Provider^, others: Provider^): Unit =
+  def launch(
+      engine: Engine^,
+      turn: Provider^,
+      others: Provider^,
+      reached: Vector[Reaches] = Reached
+  ): Unit =
     LiveTurn.launchWith(
       engine,
       engine.entries,
@@ -270,7 +288,7 @@ object IntegrityTurn {
       java.nio.file.Path.of("").toAbsolutePath,
       grit.kit.deployment.Offered.Read,
       grit.core.tool.Gate.AnswerWithin,
-      Reached,
+      reached,
       Corpora.Empty,
       TurnRecipe.Shipped
     )
@@ -282,6 +300,20 @@ object IntegrityTurn {
     val server = McpServer
       .of("github", fake.endpoint, Credential.static(Variable("FAKE_MCP_TOKEN")), McpScope.Open)
       .fold(sys.error(_), identity)
+    servingEdge(
+      engine,
+      McpEdge.serving(Github, Vector(server)).fold(sys.error(_), identity),
+      Map("FAKE_MCP_TOKEN" -> fake.token),
+      posts
+    )(body)
+  }
+
+  /** `body`, run while `edge`, opened with `env`, and `posts` at Slack's posting service are
+    * open on `engine`.
+    */
+  def servingEdge[A](engine: Engine^, edge: ServedEdge, env: Map[String, String], posts: Posts)(
+      body: () => A
+  ): A = {
     val stores = EdgeStores(
       engine.inbox,
       engine.administration,
@@ -306,19 +338,11 @@ object IntegrityTurn {
       case Left(refused) => sys.error(refused.message)
     }
     try {
-      McpEdge
-        .serving(Github, Vector(server))
-        .fold(sys.error(_), identity)
-        .open(
-          stores,
-          Map("FAKE_MCP_TOKEN" -> fake.token),
-          Clock.system(),
-          _ => ()
-        ) match {
+      edge.open(stores, env, Clock.system(), _ => ()) match {
         case Left(refused) => sys.error(refused.message)
-        case Right(github) =>
+        case Right(opened) =>
           try body()
-          finally github.close()
+          finally opened.close()
       }
     } finally posting.close()
   }
@@ -332,7 +356,7 @@ object IntegrityTurn {
     * only when the halt never fired.
     */
   def crashInFlight(engine: Engine^, name: String, halted: Int): Unit = {
-    launch(engine, new Obeying(Planted, Mode.Reads), new Answering(Asked.Honest))
+    launch(engine, new Obeying(Reads.issue(Planted), Mode.Reads), new Answering(Asked.Honest))
     val fake = FakeMcpServer.start()
     fake.lists(Vector(FakeMcpServer.github("issue_read")))
     fake.answering("issue_read") { _ =>
