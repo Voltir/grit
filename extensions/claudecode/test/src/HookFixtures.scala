@@ -258,12 +258,19 @@ object HookFixtures {
     socket
   }
 
-  /** A port of this machine nothing listens on. */
-  def closedPort: Int = {
-    val socket = loopback(1)
-    try socket.getLocalPort
-    finally socket.close()
+  /** The socket holding [[closedPort]] for the tests' run: bound, never connected or listening.
+    * Never closed on purpose; the JVM's exit releases it.
+    */
+  private lazy val held: Socket = {
+    val socket = new Socket()
+    socket.bind(new InetSocketAddress("127.0.0.1", 0))
+    socket
   }
+
+  /** A port on 127.0.0.1 that refuses every connection and that nothing else binds while the
+    * tests run.
+    */
+  def closedPort: Int = held.getLocalPort
 
   /** `body` given the port of a listener that accepts every connection and never answers. */
   def silent[A](body: Int => A): A = holding((port, _) => body(port))
