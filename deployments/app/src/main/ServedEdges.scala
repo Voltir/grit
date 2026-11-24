@@ -208,14 +208,9 @@ private[main] object ServedEdges {
   ): Either[String, Option[Drive]] =
     if (!env.contains(DriveKeyVar)) Right(None)
     else {
-      val credential = Credential.serviceAccount(Variable(DriveKeyVar), DriveRest.ReadOnly)
       for {
         service <- DriveAt
-        self <- Credential
-          .account(credential, env, files)
-          .left
-          .map(_.message)
-          .flatMap(_.toRight(s"$DriveKeyVar names no service account"))
+        (credential, self) <- serviceAccount(DriveRest.ReadOnly, env, files)
         domain <- env
           .get(DriveDomainVar)
           .toRight(s"$DriveDomainVar is unset")
@@ -256,6 +251,23 @@ private[main] object ServedEdges {
     */
   private[main] final case class Console(edge: ServedEdge, reaches: Reaches) extends Beside
 
+  /** [[DriveKeyVar]]'s service account, its tokens for `scopes`, and the address it acts as; or
+    * why not, naming the variable: the key's file unread or not a service account's key.
+    */
+  private def serviceAccount(
+      scopes: Set[String],
+      env: Map[String, String],
+      files: KeyFiles
+  ): Either[String, (Credential, Email)] = {
+    val credential = Credential.serviceAccount(Variable(DriveKeyVar), scopes)
+    Credential
+      .account(credential, env, files)
+      .left
+      .map(_.message)
+      .flatMap(_.toRight(s"$DriveKeyVar names no service account"))
+      .map(credential -> _)
+  }
+
   /** The Search Console edge `grit serve` serves when `env` sets [[ConsoleSiteVar]]
     * ([[ConsoleEdge]], over [[ConsoleRest.ReadOnly]] alone, with [[DriveKeyVar]]'s key read from
     * `files`); `None` when it is unset. Why not, naming the variable: [[DriveKeyVar]] unset, the
@@ -270,16 +282,11 @@ private[main] object ServedEdges {
       case Some(_) if !env.contains(DriveKeyVar) =>
         Left(s"$ConsoleSiteVar is set, but $DriveKeyVar, whose service account reads it, is unset")
       case Some(raw) =>
-        val credential = Credential.serviceAccount(Variable(DriveKeyVar), ConsoleRest.ReadOnly)
         for {
           service <- ConsoleAt
           site <- SiteUrl.of(raw).left.map(why => s"$ConsoleSiteVar: $why")
           // Read at start, as Drive's is, so a key that cannot open stops `grit serve` here.
-          _ <- Credential
-            .account(credential, env, files)
-            .left
-            .map(_.message)
-            .flatMap(_.toRight(s"$DriveKeyVar names no service account"))
+          (credential, _) <- serviceAccount(ConsoleRest.ReadOnly, env, files)
           edge <- ConsoleEdge.serving(credential, service, site)
         } yield Some(Console(edge, Reaches(SlackRoot, service)))
     }
