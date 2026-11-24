@@ -1,6 +1,6 @@
 # 0036. Integrity is a Biba lattice beside confidentiality, a turn falls to the meet of what it read, and a gated tool takes only trusted arguments
 
-Status: accepted (2026-10-13); revised (2026-10-29)
+Status: accepted (2026-10-13); revised (2026-10-29, 2026-11-24)
 
 Context: ADRs 0030–0033 label what may be *read* (Bell–LaPadula). Nothing labelled what may be
 *believed*: text a turn reads from a tool, a web page or a guest can steer a write out of
@@ -31,7 +31,9 @@ Decision:
   extension reads each item's place and author (`Accounts`; a Drive file, its editors', ADR
   0039; a repository's file at a branch or tag, member, as only its writers push those), and
   the result takes the meet of each author's level and place's cap: untrusted if
-  unaccountable, its service's cap if unread (untrusted when none, as for a relay). What grit
+  unaccountable, its service's cap if unread (untrusted when none, as for a relay). A result
+  from a run's repository workspace (ADR 0017) takes its tool's level met with that
+  repository's cap, untrusted where none covers it (`Visibility.believedAt`). What grit
   writes takes its writer's current level.
 - **A turn's low-water mark.** A turn starts at its trigger's level and falls each round to
   the meet of all its model read; its output takes that level. The level is a
