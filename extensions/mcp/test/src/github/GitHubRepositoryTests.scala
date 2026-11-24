@@ -65,13 +65,23 @@ object GitHubRepositoryTests extends TestSuite {
     }
     test("an open pull request is the branch's over a newer closed one") {
       over { fake =>
-        val r = fake.repository()
-        val first = r.open("grit/w1", "Fix it", "Fixed.")
-        fake.close("grit/w1", "abc")
-        val second = r.open("grit/w1", "Fix it", "Again.")
-        (first == second, r.pullRequest("grit/w1")) ==> (
-          false,
-          second.map(at => Some(RemoteRepository.PullRequest.Open(at)))
+        // GitHub lists newest first: the closed pull request #2 ahead of the open #1.
+        def pull(n: Int, state: String): ujson.Value = {
+          val p = ujson.read(FakeGitHubServer.fixture("pull.json"))
+          p("number") = n
+          p("state") = state
+          p("html_url") = s"https://github.com/acme/app/pull/$n"
+          p("head")("ref") = "grit/w1"
+          p("head")("repo")("full_name") = "acme/app"
+          p
+        }
+        fake.answering(
+          "repos/acme/app/pulls",
+          200,
+          ujson.write(ujson.Arr(pull(2, "closed"), pull(1, "open")))
+        )
+        fake.repository().pullRequest("grit/w1") ==> Right(
+          Some(RemoteRepository.PullRequest.Open(URI.create("https://github.com/acme/app/pull/1")))
         )
       }
     }

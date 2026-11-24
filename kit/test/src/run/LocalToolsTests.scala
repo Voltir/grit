@@ -238,10 +238,25 @@ object LocalToolsTests extends TestSuite {
       GitFixture.inRepository { repo =>
         val remoteRepository = new GitFixture.FakeRemoteRepository(repo.origin.toString)
         val w1 = GitFixture.work("w1")
+        // The run's branch, one commit past main, so a push it were let make would reach origin.
+        val _ = GitFixture.git(repo, repo.source, "checkout", "--quiet", "-B", "grit/w1")
+        val _ = GitFixture.git(
+          repo,
+          repo.source,
+          "-c",
+          "user.name=t",
+          "-c",
+          "user.email=t@example.com",
+          "commit",
+          "--allow-empty",
+          "-qm",
+          "fix"
+        )
+        val _ = GitFixture.git(repo, repo.source, "checkout", "--quiet", "main")
         val said = pushingIn(repo, remoteRepository) { (tools, copies) =>
           copies
             .held(w1) { _ =>
-              def told(to: Place => Option[Place]): String =
+              def told(to: Place => Option[Place]): Outcome =
                 inRun(
                   tools,
                   GitFixture.repository,
@@ -250,17 +265,18 @@ object LocalToolsTests extends TestSuite {
                   "offer_pull_request",
                   offer,
                   to
-                ) match {
-                  case Outcome.Failed(_) => "failed"
-                  case other => other.toString
-                }
+                )
               Vector(told(_ => None), told(Some(_)))
             }
             .left
             .map(_.message)
         }
+        def misdirected(to: Option[Place]): Outcome =
+          CallError.Misdirected(right(ToolName.of("offer_pull_request")), to).outcome
         (said, originHead(repo), remoteRepository.opens.size) ==> (
-          Right(Vector("failed", "failed")),
+          Right(
+            Vector(misdirected(None), misdirected(Some(GitFixture.repository.place)))
+          ),
           None,
           0
         )

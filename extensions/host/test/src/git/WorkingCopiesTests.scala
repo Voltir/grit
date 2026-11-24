@@ -748,10 +748,16 @@ object WorkingCopiesTests extends TestSuite {
         Files.move(repo.origin, repo.origin.resolveSibling("moved.git"))
         val opened = over(repo, new SetClock(start)).opened(work("fix-a"))
         (
-          opened.left.map(_.message).left.exists(_.contains("fetch")),
+          opened.left.map(_.message).left.map { m =>
+            val said =
+              s"`git -C ${repo.source} fetch --quiet --no-tags origin` exited 128: fatal: " +
+                s"'${repo.origin}' does not appear to be a git repository"
+            // git's further lines (its advice) are its own, and differ between its versions.
+            m.startsWith(said)
+          },
           hasBranch(repo, repo.source, "grit/fix-a"),
           Files.exists(repo.root.resolve("grit").resolve("fix-a"))
-        ) ==> (true, false, false)
+        ) ==> (Left(true), false, false)
       }
     }
     test("a run's copy is made on grit/{work}, and the next opened gives the same copy back") {

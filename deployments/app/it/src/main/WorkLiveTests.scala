@@ -346,7 +346,7 @@ object WorkLiveTests extends TestSuite {
       }
     }
     test(
-      "a work run in a repository holds its own copy on grit/<run> while it runs, its check runs there, and leaves nothing uncommitted"
+      "a work run in a repository runs its check in its own copy on grit/<run>, and leaves it with nothing uncommitted"
     ) {
       checkout { root =>
         GitFixture.inRepository { repo =>

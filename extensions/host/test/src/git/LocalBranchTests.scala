@@ -124,10 +124,15 @@ object LocalBranchTests extends TestSuite {
         val remoteRepository = new FakeRemoteRepository(repo.origin.toString)
         val offered = branch(repo, remoteRepository).offer("Fix it", "Fixed.")
         (
-          offered.left.map(_.message).left.exists(_.contains("Pushing grit/w1")),
+          offered.left.map { e =>
+            // git's refusal, in its words; its advice after them differs between its versions.
+            val m = e.message
+            m.startsWith(s"Pushing grit/w1 to ${repo.origin} exited 1: ") &&
+            m.contains("[rejected]") && m.contains("grit/w1 -> grit/w1 (non-fast-forward)")
+          },
           at(repo, repo.origin, "refs/heads/grit/w1"),
           remoteRepository.opens.size
-        ) ==> (true, held, 0)
+        ) ==> (Left(true), held, 0)
       }
     }
     test("offered again while open, it pushes what was committed since and opens none") {
@@ -417,10 +422,19 @@ object LocalBranchTests extends TestSuite {
         Files.move(away, repo.origin)
         val main = at(repo, repo.source, "main")
         (
-          unreachable.isLeft,
-          b.retired(main).isLeft,
+          unreachable.left.map(
+            _.message.startsWith(
+              s"Deleting grit/w1 at ${repo.origin} exited 128: fatal: '${repo.origin}' does not " +
+                "appear to be a git repository"
+            )
+          ),
+          b.retired(main),
           at(repo, repo.origin, "refs/heads/grit/w1")
-        ) ==> (true, true, tip)
+        ) ==> (
+          Left(true),
+          Left(HostError.Failed(s"grit/w1 is at $tip in the clone, not $main.")),
+          tip
+        )
       }
     }
     test(
