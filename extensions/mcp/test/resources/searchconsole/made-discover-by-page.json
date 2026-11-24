@@ -1,0 +1,6 @@
+{
+  "rows": [
+    { "keys": ["https://www.example.com/guides/boots"], "clicks": 31, "impressions": 900, "ctr": 0.0344444444444444 }
+  ],
+  "responseAggregationType": "byPage"
+}

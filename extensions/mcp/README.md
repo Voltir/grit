@@ -15,9 +15,9 @@ It also holds the server's side of that wire, both eras of it (below, "Serving")
 request a client posted and writing its answer, pure, for an edge that serves grit's own tools
 over MCP; nothing here listens or runs a tool.
 
-It also holds one client that is not MCP's: Drive's REST API, until Drive's MCP server serves a
-service account (`drive`, below), sent through what Google's REST APIs share (`google`) with
-`client`'s credentials.
+It also holds two clients that are not MCP's: Drive's REST API, until Drive's MCP server serves a
+service account (`drive`, below), and Search Console's (`searchconsole`), each sent through what
+Google's REST APIs share (`google`) with `client`'s credentials.
 
 In dependency order:
 
@@ -87,12 +87,15 @@ In dependency order:
   not read it, Drive flagged it or will not export it) is answered as unread, saying why, and
   not as a failure, so a reader (the knowledge sync) tells it from Drive or the area failing. Imports `wire` and `client`; nothing else in mcp imports it
   (`mcp-generic-names-no-github`).
-- **`searchconsole`**: a site's search traffic as Search Console's v3 REST API answers it: a
-  property (`Site`, at its `Permission`), `Dates` (Pacific days the type has already held to
-  Google's limits), a `Grouping`, its one `Filter`, and the `Traffic` read. A grouping's rows
-  are believed at `Grouping.integrity`: what outsiders type (queries, pages) at Outside. Each
-  failure is a `ConsoleError`, its words for the model apart from the operator's. Nothing else
-  in mcp imports it.
+- **`searchconsole`**: a site's search traffic over Search Console's v3 REST API, read-only:
+  `ConsoleRest` lists the properties the account is a user of (`Site`, at its `Permission`) and
+  reads one's `Traffic` over `Dates` (Pacific days the type has already held to Google's
+  limits), each day's totals and the first day still early from a by-date request, and the top
+  rows by a `Grouping` from a second carrying the same `Filter`. Google ranks by clicks alone,
+  so rows ranked by impressions are re-ranked from a capped read, and say when that read came
+  back full. A grouping's rows are believed at `Grouping.integrity`: what outsiders type
+  (queries, pages) at Outside. Each failure is a `ConsoleError`, its words for the model apart
+  from the operator's. Imports `google` and `client`; nothing else in mcp imports it.
 - **`edge`**: `McpEdge`, the `ServedEdge` a deployment declares: it registers the service place,
   advertises there (with the instructions the deployment declared for the place, if any, as its
   Place layer), and runs each request by calling its server. A tool whose schema declares `to`

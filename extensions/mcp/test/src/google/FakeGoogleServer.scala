@@ -9,7 +9,7 @@ import grit.mcp.client.{Authorizer, Credential, KeyFiles}
 import com.sun.net.httpserver.{HttpExchange, HttpServer}
 
 /** A Google REST API in this JVM, on a loopback port, below `/api/`: each path answered as
-  * [[answering]] set it, 404 with no body until then, every request kept as [[Received]].
+  * [[answering]] or [[responding]] set it, 404 with no body until then, every request kept as [[Received]].
   */
 final class FakeGoogleServer private () {
 
@@ -22,7 +22,7 @@ final class FakeGoogleServer private () {
   private var kept = Vector.empty[FakeGoogleServer.Received]
 
   @caps.unsafe.untrackedCaptures
-  private var answers = Map.empty[String, (Int, Vector[Byte])]
+  private var answers = Map.empty[String, FakeGoogleServer.Received -> (Int, String)]
 
   private val http = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0)
   http.createContext("/api/", exchange => answer(exchange))
@@ -36,9 +36,13 @@ final class FakeGoogleServer private () {
 
   /** Requests for `path` below the base are answered `status` with `body` from now. */
   def answering(path: String, status: Int, body: String): Unit =
-    lock.synchronized {
-      answers = answers.updated(path, (status, body.getBytes(UTF_8).toVector))
-    }
+    responding(path)(_ => (status, body))
+
+  /** Requests for `path` below the base are answered as `answer` reads each, from now: for an
+    * API whose requests to one path differ by their body.
+    */
+  def responding(path: String)(answer: FakeGoogleServer.Received -> (Int, String)): Unit =
+    lock.synchronized { answers = answers.updated(path, answer) }
 
   /** Stops answering. */
   def stop(): Unit = http.stop(0)
@@ -53,10 +57,14 @@ final class FakeGoogleServer private () {
       contentType = Option(exchange.getRequestHeaders.getFirst("Content-Type")),
       body = new String(exchange.getRequestBody.readAllBytes(), UTF_8)
     )
-    val (status, bytes) = lock.synchronized {
+    val (status, body) = lock.synchronized {
       kept = kept :+ received
-      answers.getOrElse(path, (404, Vector.empty[Byte]))
+      answers.get(path) match {
+        case Some(answering) => answering(received)
+        case None => (404, "")
+      }
     }
+    val bytes = body.getBytes(UTF_8)
     exchange.sendResponseHeaders(status, if (bytes.isEmpty) -1L else bytes.length.toLong)
     val out = exchange.getResponseBody
     bytes.foreach(b => out.write(b.toInt))

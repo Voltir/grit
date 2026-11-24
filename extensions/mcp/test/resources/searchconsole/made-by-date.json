@@ -1,0 +1,9 @@
+{
+  "rows": [
+    { "keys": ["2026-11-22"], "clicks": 41, "impressions": 1830, "ctr": 0.0224043715846994, "position": 11.4 },
+    { "keys": ["2026-11-23"], "clicks": 57, "impressions": 2410, "ctr": 0.0236514522821577, "position": 10.2 },
+    { "keys": ["2026-11-24"], "clicks": 12, "impressions": 640, "ctr": 0.01875, "position": 10.9 }
+  ],
+  "responseAggregationType": "byProperty",
+  "metadata": { "firstIncompleteDate": "2026-11-23" }
+}
