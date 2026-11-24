@@ -55,15 +55,31 @@ trait ConsoleRestContract extends TestSuite {
     }
 
     test(
-      "a day's top queries are at most as many as asked, fall in clicks, and hold at most the days' impressions"
+      "a range's top queries by clicks are at most as many as asked, in Google's click order"
     ) {
       val t = traffic(today.minusDays(2), Grouping.Query, Rank.Clicks, 3)
-      (
-        t.rows.nonEmpty,
-        t.rows.size <= 3,
-        falling(t.rows.map(_.metrics.clicks)),
-        t.rows.map(_.metrics.impressions).sum <= t.days.map(_.metrics.impressions).sum
-      ) ==> (true, true, true, true)
+      (t.rows.nonEmpty, t.rows.size <= 3, falling(t.rows.map(_.metrics.clicks))) ==>
+        (true, true, true)
+    }
+
+    test("a range's top queries hold at most its days' impressions") {
+      val t = traffic(today.minusDays(2), Grouping.Query, Rank.Clicks, 3)
+      t.rows.map(_.metrics.impressions).sum <= t.days.map(_.metrics.impressions).sum ==> true
+    }
+
+    test("Discover by query is refused as asked") {
+      val refused = Dates
+        .of(today.minusDays(2), today, Grouping.Query, today)
+        .left
+        .map(why => new java.lang.AssertionError(why))
+        .fold(e => throw e, identity)
+      rest.traffic(site, refused, None, SearchType.Discover, Rank.Clicks, 3) match {
+        case Left(ConsoleError.Refused(_)) => ()
+        // The variant alone, so the failure prints no query.
+        case Left(ConsoleError.Google(failure)) =>
+          throw new java.lang.AssertionError(s"Google(${failure.productPrefix}), not Refused")
+        case Right(_) => throw new java.lang.AssertionError("answered, not Refused")
+      }
     }
 
     test("ranked by impressions, rows fall in impressions") {

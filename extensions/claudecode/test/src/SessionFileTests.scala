@@ -8,7 +8,7 @@ import scala.jdk.CollectionConverters.*
 import grit.commands.machine.ClaimHolders
 import grit.commands.routes.RouteFixtures.Machine
 import grit.core.claim.ClaimRole
-import grit.core.edge.ScriptedSessions
+import grit.core.edge.{ClosedPort, ScriptedSessions}
 import grit.core.either.Got.got
 import grit.core.id.DocKey
 import grit.core.place.Directory
@@ -289,7 +289,7 @@ object SessionFileTests extends TestSuite {
       HookFixtures { f =>
         val proc = faked(f)
         val down =
-          withProc(f, proc) + ("GRIT_EDGE" -> s"http://127.0.0.1:${HookFixtures.closedPort}")
+          withProc(f, proc) + ("GRIT_EDGE" -> s"http://127.0.0.1:${ClosedPort.port}")
         val _ = f.run("event", f.payload("post-tool-use-read.json").replace(First, "gone"), down)
         planted(f, "gone", pid = 4002)
         val before = f.recorded.size

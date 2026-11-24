@@ -15,7 +15,7 @@ import grit.commands.edge.{CommandsEdge, EdgeFixtures}
 import grit.commands.machine.ClaimHolders
 import grit.commands.routes.RouteFixtures.*
 import grit.core.clock.{Clock, SetClock}
-import grit.core.edge.{EdgeContracts, EdgeSessions, ScriptedSessions}
+import grit.core.edge.{ClosedPort, EdgeContracts, EdgeSessions, ScriptedSessions}
 import grit.core.either.Got.got
 import grit.core.host.Argv
 import grit.core.id.{AttesterName, ClaimHolder, EdgeName, Harness, SessionId}
@@ -151,7 +151,7 @@ final class HookFixtures(
 
   /** The environment Claude Code gives a hook in `proj`, aimed at a port nothing listens on. */
   def down: Map[String, String] =
-    claude + ("GRIT_EDGE" -> s"http://127.0.0.1:${HookFixtures.closedPort}")
+    claude + ("GRIT_EDGE" -> s"http://127.0.0.1:${ClosedPort.port}")
 
   /** A GET of `target` from the edge, as the edge answers it: its status line and body. */
   def get(target: String): (String, String) = EdgeFixtures.get(port, s"localhost:$port", target)
@@ -257,20 +257,6 @@ object HookFixtures {
     socket.bind(new InetSocketAddress("127.0.0.1", 0), backlog)
     socket
   }
-
-  /** The socket holding [[closedPort]] for the tests' run: bound, never connected or listening.
-    * Never closed on purpose; the JVM's exit releases it.
-    */
-  private lazy val held: Socket = {
-    val socket = new Socket()
-    socket.bind(new InetSocketAddress("127.0.0.1", 0))
-    socket
-  }
-
-  /** A port on 127.0.0.1 that refuses every connection and that nothing else binds while the
-    * tests run.
-    */
-  def closedPort: Int = held.getLocalPort
 
   /** `body` given the port of a listener that accepts every connection and never answers. */
   def silent[A](body: Int => A): A = holding((port, _) => body(port))

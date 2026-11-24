@@ -11,10 +11,12 @@ import grit.mcp.google.FakeGoogleServer
   *     until [[sharing]], then `made-sites`;
   *   - a query of [[FakeConsole.Sites]]' sites, path-encoded, grouped by date with
   *     `made-by-date`'s rows within the dates, oldest first, and its `firstIncompleteDate` only
-  *     when the data state is `all` and the date is within them; by query with
-  *     `made-by-query`, by hour (`hourly_all` alone) with `made-by-hour`'s hours within the
-  *     dates, and by page under Discover with `made-discover-by-page`, each cut to its
-  *     `rowLimit`; Discover by query, or any other grouping, 400 `badRequest`.
+  *     when the data state is `all` and the date is within them; by query, under any search
+  *     type but Discover, with `made-by-query`, by hour (`hourly_all` alone) with `made-by-hour`'s hours within the
+  *     dates, and by page under Discover with `made-discover-by-page`; by page, country or
+  *     device with the rows of its search type's fixture (Discover's or `made-by-query`) given
+  *     that grouping's keys in order, as many rows as it has keys; each cut to its `rowLimit`;
+  *     Discover by query, or any other question, 400 `badRequest`.
   *
   * Filters are carried, not applied: a request's body is what a test reads of them.
   */
@@ -65,6 +67,19 @@ object FakeConsole {
   val Sites: Vector[SiteUrl] =
     Vector("sc-domain:example.com", "https://www.example.com/").map(site)
 
+  /** `start` to `end` (YYYY-MM-DD) grouped `by`, a range a test names rightly, taken on
+    * 2026-11-24, the day [[clock]] reads.
+    */
+  def dates(start: String, end: String, by: Grouping): Dates =
+    Dates
+      .of(
+        java.time.LocalDate.parse(start),
+        java.time.LocalDate.parse(end),
+        by,
+        java.time.LocalDate.parse("2026-11-24")
+      )
+      .fold(e => throw new java.lang.AssertionError(e), identity)
+
   /** `raw` as a site, which a test names rightly. */
   def site(raw: String): SiteUrl =
     SiteUrl.of(raw).fold(e => throw new java.lang.AssertionError(e), identity)
@@ -83,6 +98,18 @@ object FakeConsole {
 
   private val Refused =
     """{"error":{"code":400,"message":"Request contains an invalid argument.","errors":[{"reason":"badRequest"}],"status":"INVALID_ARGUMENT"}}"""
+
+  /** The keys a grouping other than a fixture's own gives its rows, in order. */
+  private val Rekeyed: Map[String, Vector[String]] = Map(
+    "page" -> Vector(
+      "https://www.example.com/shoes/trail",
+      "https://www.example.com/",
+      "https://www.example.com/boots/waterproof",
+      "https://www.example.com/sale"
+    ),
+    "country" -> Vector("usa", "gbr", "can", "deu"),
+    "device" -> Vector("MOBILE", "DESKTOP", "TABLET")
+  )
 
   private def queried(q: ujson.Value): (Int, String) = {
     val o = q.obj
@@ -104,14 +131,22 @@ object FakeConsole {
         if (state == "all" && early >= start && early <= end)
           answer("metadata") = ujson.Obj("firstIncompleteDate" -> early)
         (200, ujson.write(answer))
-      case (Some("web"), Some("all"), Some(_), Some(_), Some(Vector("query"))) =>
-        (200, ujson.write(ujson.Obj("rows" -> ujson.Arr.from(rows("made-by-query").take(limit)))))
       case (Some("web"), Some("hourly_all"), Some(start), Some(end), Some(Vector("hour"))) =>
         val hours = within(rows("made-by-hour"), start, end).take(limit)
         (200, ujson.write(ujson.Obj("rows" -> ujson.Arr.from(hours))))
-      case (Some("discover"), Some("all"), Some(_), Some(_), Some(Vector("page"))) =>
-        val pages = rows("made-discover-by-page").take(limit)
-        (200, ujson.write(ujson.Obj("rows" -> ujson.Arr.from(pages))))
+      case (Some("discover"), _, _, _, Some(Vector("query"))) => (400, Refused)
+      case (Some(search), Some("all"), Some(_), Some(_), Some(Vector(by)))
+          if Rekeyed.contains(by) || by == "query" =>
+        val (made, own) =
+          if (search == "discover") ("made-discover-by-page", "page")
+          else ("made-by-query", "query")
+        val grouped =
+          if (by == own) rows(made)
+          else
+            rows(made).zip(Rekeyed.getOrElse(by, Vector.empty)).map { (r, key) =>
+              ujson.Obj.from(r.obj.toSeq :+ ("keys" -> ujson.Arr(key)))
+            }
+        (200, ujson.write(ujson.Obj("rows" -> ujson.Arr.from(grouped.take(limit)))))
       case _ => (400, Refused)
     }
   }

@@ -5,7 +5,7 @@ import java.net.{ServerSocket, URI}
 import scala.concurrent.duration.*
 
 import grit.core.clock.Clock
-import grit.core.edge.Variable
+import grit.core.edge.{ClosedPort, Variable}
 import grit.mcp.client.{Credential, FakeTokenServer, KeyFiles}
 
 import utest.*
@@ -74,10 +74,7 @@ object GoogleRestTests extends TestSuite {
       }
     }
 
-    test(
-      "401 is no token; 403 for a disabled API is off; a rate limit, 429 and 5xx busy; " +
-        "any other 403 and 404 hidden; any other status malformed, naming the API"
-    ) {
+    test("each failing status is read as the shared table's case for it, a 403 by its reason") {
       withFake { (fake, rest) =>
         def answered(status: Int, body: String) = {
           fake.answering("files", status, body)
@@ -142,9 +139,6 @@ object GoogleRestTests extends TestSuite {
 
     test("no answer within the timeout is unreachable, as is a port nothing listens on") {
       val silent = new ServerSocket(0)
-      val closed = new ServerSocket(0)
-      val closedPort = closed.getLocalPort
-      closed.close()
       try {
         val rest = new GoogleRest[Nothing](
           FakeGoogleServer.authorizer(),
@@ -154,7 +148,7 @@ object GoogleRestTests extends TestSuite {
         )
         def on(port: Int) =
           rest.text(GoogleRequest("Test", URI.create(s"http://127.0.0.1:$port/api/"), "files"))
-        (on(silent.getLocalPort), on(closedPort)) ==>
+        (on(silent.getLocalPort), on(ClosedPort.port)) ==>
           (
             Left(GoogleFailure.Unreachable("no answer within 200 milliseconds")),
             Left(GoogleFailure.Unreachable("ConnectException"))

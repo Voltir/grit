@@ -125,22 +125,23 @@ object ConsoleEdgeTests extends TestSuite {
   }
 
   val tests = Tests {
-    test(
-      "the edge is named for its service, needs its credential's variable, and is never asked; blank instructions or an API that is no URL are refused"
-    ) {
+    test("the edge is named for its service, needs its credential's variable, and is never asked") {
+      val edge =
+        right(ConsoleEdge.serving(credential, Search, FakeConsole.site("sc-domain:example.com")))
+      (edge.name, edge.needs, edge.asks) ==> (
+        EdgeName("search"),
+        Vector(Key),
+        ServedEdge.Asks.Never
+      )
+    }
+
+    test("blank instructions, or an API that is no URL, are refused saying which") {
       val site = FakeConsole.site("sc-domain:example.com")
-      val edge = right(ConsoleEdge.serving(credential, Search, site))
       (
-        edge.name,
-        edge.needs,
-        edge.asks,
         ConsoleEdge.serving(credential, Search, site, instructions = " ").map(_ => ()),
         ConsoleEdge.serving(credential, Search, site, api = "not a url").map(_ => ())
       ) ==> (
-        EdgeName("search"),
-        Vector(Key),
-        ServedEdge.Asks.Never,
-        PlaceFragments.declared(Search.place, " ").map(_ => ()),
+        Left("the instructions declared for service:search are blank"),
         Left("Search Console's API not a url is not an absolute URL")
       )
     }

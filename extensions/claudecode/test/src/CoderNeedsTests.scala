@@ -6,6 +6,7 @@ import scala.jdk.CollectionConverters.*
 
 import grit.commands.machine.MachineName
 import grit.commands.routes.RouteFixtures.Machine
+import grit.core.edge.ClosedPort
 
 import utest.*
 
@@ -285,7 +286,7 @@ object CoderNeedsTests extends TestSuite {
         val _ = n.machine.sh(alone, s"git remote add origin '${n.origin}'")
         n.ready(alone)
         val unjoined = n.run(in = alone)
-        val gone = HookFixtures.closedPort
+        val gone = ClosedPort.port
         val down = n.run(Map("GRIT_EDGE" -> s"http://127.0.0.1:$gone"))
         (unjoined.exit, unjoined.out, down.exit, down.out) ==> ((
           1,
@@ -333,7 +334,7 @@ object CoderNeedsTests extends TestSuite {
         // git says of it is curl's, so only coder-needs' own words around it are pinned.
         val _ = n.machine.sh(
           n.f.proj,
-          s"git config http.proxy http://127.0.0.1:${HookFixtures.closedPort}"
+          s"git config http.proxy http://127.0.0.1:${ClosedPort.port}"
         )
         val done = n.run()
         val refused = done.out.filter(line =>
@@ -377,7 +378,7 @@ object CoderNeedsTests extends TestSuite {
         val done = n.run(
           Map(
             "SCOUT" -> n.machine.root.resolve("nowhere/scout").toString,
-            "GRIT_EDGE" -> s"http://127.0.0.1:${HookFixtures.closedPort}"
+            "GRIT_EDGE" -> s"http://127.0.0.1:${ClosedPort.port}"
           )
         )
         (done.exit, done.out.map(_.split(' ').take(4).mkString(" "))) ==> ((

@@ -2,6 +2,7 @@ package grit.claudecode
 
 import scala.concurrent.duration.*
 
+import grit.core.edge.ClosedPort
 import grit.core.host.Argv
 
 import utest.*
@@ -26,7 +27,7 @@ object DownTests extends TestSuite {
       "with the edge's port closed, brief alone gives one line of context, each start role and holder ends at once, each saying so in one line"
     ) {
       HookFixtures { f =>
-        val edge = s"http://127.0.0.1:${HookFixtures.closedPort}"
+        val edge = s"http://127.0.0.1:${ClosedPort.port}"
         val env = f.claude + ("GRIT_EDGE" -> edge)
         val start = f.payload("session-start-startup.json")
         val (brief, briefMs) = f.timed("brief", start, env)

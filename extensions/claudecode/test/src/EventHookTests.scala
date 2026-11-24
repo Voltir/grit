@@ -5,7 +5,7 @@ import java.time.Instant
 
 import grit.commands.machine.ClaimHolders
 import grit.commands.routes.RouteFixtures.Machine
-import grit.core.edge.EdgeSessions
+import grit.core.edge.{ClosedPort, EdgeSessions}
 import grit.core.either.Got.got
 import grit.core.place.Directory
 import grit.core.session.{Event, Session}
@@ -433,7 +433,7 @@ object EventHookTests extends TestSuite {
       "with the edge's port closed, an event ends at once; it, a commit and a rewrite each say in one line what they kept"
     ) {
       HookFixtures { f =>
-        val edge = s"http://127.0.0.1:${HookFixtures.closedPort}"
+        val edge = s"http://127.0.0.1:${ClosedPort.port}"
         val (run, ms) =
           f.timed("event", f.payload("post-tool-use-read.json"), f.claude + ("GRIT_EDGE" -> edge))
         val made = Bash.run(
