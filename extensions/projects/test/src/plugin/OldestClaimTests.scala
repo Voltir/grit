@@ -9,8 +9,9 @@ import grit.projects.method.{Cover, MethodFixtures, RoleView}
 
 import utest.*
 
-/** `project_claim` given `oldest`: of a kind's artifacts in a state that no live claim holds or
-  * covers, the one that entered that state first, ties by number, claimed as a key would be.
+/** `project_claim` given `oldest`: of a kind's artifacts in a state that no live claim holds,
+  * nor, for a covering role, another holder's covers, the one that entered that state first, ties
+  * by number, claimed as a key would be.
   */
 object OldestClaimTests extends TestSuite {
 
@@ -142,7 +143,7 @@ object OldestClaimTests extends TestSuite {
         claimedKept("Claimed p/2 b (note, open) as builder for h1.")
     }
 
-    test("oldest skips an artifact under another holder's covering claim") {
+    test("oldest as a covering role skips an artifact under another holder's covering claim") {
       val projects = plugin()
       val store = Store(declared =
         Vector(
@@ -159,8 +160,56 @@ object OldestClaimTests extends TestSuite {
       keptAt(second(2), projects, store, "b", "note", "parent" -> "p/a")
       keptAt(second(3), projects, store, "c", "note")
       claimedAt(second(4), projects, store, "a", "h2", as = "manager")
-      oldest(projects, store, "note", "open") ==>
-        claimedKept("Claimed p/3 c (note, open) as builder for h1.")
+      oldest(projects, store, "note", "open", as = "manager") ==>
+        claimedKept("Claimed p/3 c (note, open) as manager for h1.")
+    }
+    test(
+      "oldest as a covering role under its own holder's cover is refused, as that holder works its cover"
+    ) {
+      val projects = plugin()
+      val store = Store(declared =
+        Vector(
+          method(roles =
+            Vector(
+              right(
+                RoleView.of(role("manager"), Set(note.name, change.name), 1, covers = Cover.Under)
+              ),
+              right(RoleView.of(role("builder"), Set(note.name, change.name), 1))
+            )
+          )
+        )
+      )
+      started(projects, store)
+      keptAt(second(1), projects, store, "a", "change")
+      keptAt(second(2), projects, store, "b", "note", "parent" -> "p/a")
+      claimedAt(second(3), projects, store, "a", "h1", as = "manager")
+      // One claim to a holder at a label: the cover no longer hides p/b, the holder's claim on p/a
+      // refuses it instead, in the words a claim by key would get.
+      oldest(projects, store, "note", "open", as = "manager") ==> CommandOutcome.Refused(
+        "h1 works p/1 a already, claimed since 2026-10-27T12:00:03Z; it lapses at " +
+          "2026-10-27T14:00:03Z unless they keep working; release it with project_release first"
+      )
+    }
+    test("oldest as a role that does not cover takes a checkpoint under a manager's milestone") {
+      val projects = plugin()
+      val store = Store(declared =
+        Vector(
+          method(roles =
+            Vector(
+              right(
+                RoleView.of(role("manager"), Set(note.name, change.name), 1, covers = Cover.Under)
+              ),
+              right(RoleView.of(role("coder"), Set(note.name, change.name), 2))
+            )
+          )
+        )
+      )
+      started(projects, store)
+      keptAt(second(1), projects, store, "milestone", "change")
+      keptAt(second(2), projects, store, "checkpoint", "note", "parent" -> "p/milestone")
+      claimedAt(second(3), projects, store, "milestone", "session-a", as = "manager")
+      oldest(projects, store, "note", "open", holder = "coder-opus", as = "coder") ==>
+        claimedKept("Claimed p/2 checkpoint (note, open) as coder for coder-opus.")
     }
 
     test(

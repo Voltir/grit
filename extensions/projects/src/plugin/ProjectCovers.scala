@@ -123,8 +123,9 @@ private[plugin] object ProjectCovers {
     project.artifacts.find(_.head.key == key).fold(key.value)(_.head.called)
 
   /** Of `entered`, artifacts of `project` each with when it entered its state, those no claim
-    * among `live` holds or covers, and on which a claim as `role` for `holder` is [[uncovered]]:
-    * the first to enter first, ties by number.
+    * among `live` holds and on which a claim as `role` for `holder` is [[uncovered]] (so a
+    * covering role skips what another holder's covering claim overlaps, and a role that does not
+    * cover skips nothing a cover is over): the first to enter first, ties by number.
     */
   private[plugin] def oldestFirst(
       method: Method,
@@ -136,11 +137,9 @@ private[plugin] object ProjectCovers {
       entered: Vector[(ArtifactKey, Instant)]
   ): Vector[ArtifactKey] = {
     val held = live.flatMap(c => ids.get(c.subject)).toSet
-    val covered = covering(method, live, ids).map(_.key)
     entered
       .filter((key, _) =>
-        !held(key) && !covered.exists(atOrAbove(project, _, key)) &&
-          uncovered(method, project, ids, live, key, role, holder).isRight
+        !held(key) && uncovered(method, project, ids, live, key, role, holder).isRight
       )
       .sortBy((key, when) => (when, key.number))
       .map(_._1)

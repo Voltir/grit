@@ -1,6 +1,6 @@
 # 0063. An artifact's id is a number its project mints, its name a handle, its order a rank among its siblings, and what it may sit under its method's
 
-Status: accepted (2026-11-18); revised (2026-11-19)
+Status: accepted (2026-11-18); revised (2026-11-19, 2026-11-24)
 
 Context: an artifact's key (ADR 0049) was a slug its first writer chose, `<project>/<local>`:
 identity, name and, through its words, a guess at order. A milestone kept the number it was
@@ -51,7 +51,9 @@ Decision:
 - **A claim may cover what sits under its artifact**, as its role's view says (`RoleView.covers`; a
   role with no view covers nothing). A covering claim is refused when another holder's is at, above
   or under it, and a keep is refused a parent that would make two overlap, both judged under the
-  project's lock.
+  project's lock. A cover refuses only another covering role: a role that covers nothing claims
+  under it, by key or by `oldest`, so a manager's claim on a milestone leaves its checkpoints to
+  its coders.
 - **A large artifact is split** (`project_split`): each `##` section becomes a `section` under it,
   at its label. `section` is the one kind name grit's code names; a method without it has no split.
 - **The export holds the id, handle and rank**, one file per artifact at its parents' numbers then

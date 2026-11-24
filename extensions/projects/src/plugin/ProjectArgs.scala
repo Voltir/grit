@@ -448,8 +448,9 @@ private[plugin] object ProjectArgs {
         */
       case Key(key: ArtifactRef, session: Option[SessionId])
 
-      /** Of `project`'s artifacts of `kind` in `state` that no live claim holds or covers, the
-        * one that entered `state` first, ties by number; worked by `session` as [[Key]]'s is.
+      /** Of `project`'s artifacts of `kind` in `state` that no live claim holds, nor, for a
+        * covering role, another holder's covers, the one that entered `state` first, ties by
+        * number; worked by `session` as [[Key]]'s is.
         */
       case Oldest(
           override val project: ProjectKey,
