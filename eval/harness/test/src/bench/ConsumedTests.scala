@@ -222,6 +222,23 @@ object ConsumedTests extends TestSuite {
     }
 
     test(
+      "a grit call of a model grit's rates do not price is priced as its line printed its provider's cost, never at zero; one that printed none is unpriced"
+    ) {
+      val at = "[provider] deepseek/deepseek-v4.1-flash-20260910 @ fireworks answered · in 900 · " +
+        "read 600 · write 0 · out 30"
+      val c = Consumed.ofTurn(
+        gritLines.take(2) ++ Vector(s"$at · 0.29¢", s"$at · cost unknown"),
+        gritTurn("SUCCESS"),
+        stopped = None
+      )
+      c.calls.map(k => (k.model, k.usage.costUsd, k.reported)) ==> Vector(
+        ("claude-haiku-5-5", Some(BigDecimal("0.00005375")), false),
+        ("deepseek/deepseek-v4.1-flash-20260910", Some(BigDecimal("0.0029")), true),
+        ("deepseek/deepseek-v4.1-flash-20260910", None, false)
+      )
+    }
+
+    test(
       "a grit turn's calls are its answered lines, side calls among them, priced by grit's rates"
     ) {
       val c = Consumed.ofTurn(gritLines, gritTurn("SUCCESS"), stopped = None)

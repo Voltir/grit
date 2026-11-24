@@ -48,6 +48,9 @@ object RigTests extends TestSuite {
   private val key = TestSecrets.of(Variable("ANTHROPIC_API_KEY"), "sk-ant-test-0123")
   private val cap =
     Caps.of("claude-haiku-5-5", None, "0.05", "4").getOrElse(throw new java.lang.AssertionError())
+  private val deepseek = Caps
+    .of("deepseek/deepseek-v4.1-flash-20260910", Some("fireworks"), "0.05", "4")
+    .getOrElse(throw new java.lang.AssertionError())
   private val checkout = rel("trial")
 
   /** The fake's run, its edit of `a.scala` writing `edited`, its stream's lines `lines`, and its
@@ -686,6 +689,75 @@ object RigTests extends TestSuite {
       }
     }
 
+    test(
+      "a grit coder whose call reported no cost is stopped at it, its trial kept not passed and its cost unknown, never zero"
+    ) {
+      withTask { f =>
+        val unpriced = gritLines.take(2) :+
+          ("[provider] deepseek/deepseek-v4.1-flash-20260910 @ fireworks answered · in 10 · " +
+            "read 0 · write 0 · out 20 · cost unknown")
+        gritTrial(f, GritFake(unpriced :+ "[provider] never read", hangs = true), deepseek).map {
+          t =>
+            (
+              t.trial.passed,
+              t.trial.usage.costUsd,
+              t.stopped,
+              t.lines.filter(_.startsWith("cost"))
+            )
+        } ==> Right(
+          (
+            false,
+            None,
+            Some(
+              "a call of deepseek/deepseek-v4.1-flash-20260910 reported no cost, so its cap could not hold"
+            ),
+            Vector(
+              "cost: unknown, 1 of 2 calls priced neither by grit's rates nor by their provider"
+            )
+          )
+        )
+      }
+    }
+
+    test(
+      "a grit trial names its pair, and whether its calls were priced by grit's rates or by the figure their provider reported"
+    ) {
+      def at(model: String) =
+        s"[provider] $model answered · in 10 · read 0 · write 0 · out 20 · "
+      val reported = Vector(
+        at("deepseek/deepseek-v4.1-flash-20260910 @ fireworks") + "0.29¢",
+        at("deepseek/deepseek-v4.1-flash-20260910 @ fireworks") + "0.0035¢"
+      )
+      val mixed = gritLines.take(2) ++ reported.take(1)
+      def printed(lines: Vector[String], caps: Caps) = withTask { f =>
+        gritTrial(f, GritFake(lines), caps).map(
+          _.lines
+            .filter(l => l.startsWith("cost") || l.startsWith("trial"))
+            .map(_.replaceAll("^trial: \\S+", "trial:"))
+        )
+      }
+      (printed(gritLines, cap), printed(reported, deepseek), printed(mixed, deepseek)) ==> (
+        Right(
+          Vector(
+            "trial: of fixture by anthropic/claude-haiku-5-5 @ api.anthropic.com, 3 s",
+            "cost: 0.0089¢ by grit's rates"
+          )
+        ),
+        Right(
+          Vector(
+            "trial: of fixture by deepseek/deepseek-v4.1-flash-20260910 @ fireworks, 3 s",
+            "cost: 0.29¢ as the provider reported each call, printed to two significant digits"
+          )
+        ),
+        Right(
+          Vector(
+            "trial: of fixture by deepseek/deepseek-v4.1-flash-20260910 @ fireworks, 3 s",
+            "cost: 0.3¢, 1 of 2 calls as their provider reported them, printed to two significant digits, the rest by grit's rates"
+          )
+        )
+      )
+    }
+
     test("a grit coder whose calls reach the cap is stopped, and its trial kept not passed") {
       withTask { f =>
         val dear = gritLines.take(2) :+
@@ -953,9 +1025,6 @@ object RigTests extends TestSuite {
       "an OpenRouter grit coder runs its pair's upstream in every role it sets, handed its key as OPENROUTER_API_KEY"
     ) {
       withTask { f =>
-        val deepseek = Caps
-          .of("deepseek/deepseek-v4.1-flash-20260910", Some("fireworks"), "0.05", "4")
-          .getOrElse(cap)
         gritTrial(f, GritFake(gritLines), deepseek).map { _ =>
           f.recorded("genv")
             .linesIterator
@@ -981,9 +1050,6 @@ object RigTests extends TestSuite {
 
     test("Claude Code is refused a pair not at the Anthropic API, and never starts") {
       withTask { f =>
-        val deepseek = Caps
-          .of("deepseek/deepseek-v4.1-flash-20260910", Some("fireworks"), "0.05", "4")
-          .getOrElse(cap)
         (trial(f, Fake("object A { val x = 1 }"), caps = deepseek), f.exists("argv")) ==> (
           Left(
             "Claude Code runs a Claude model at the Anthropic API, not deepseek/deepseek-v4.1-flash-20260910 @ fireworks"

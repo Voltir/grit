@@ -1,6 +1,6 @@
 package grit.core.provider
 
-import grit.core.message.{Tokens, Usage}
+import grit.core.message.{Cost, Tokens, Usage}
 import grit.core.model.{ModelId, ModelRef, Upstream}
 
 import utest.*
@@ -24,21 +24,42 @@ object CallLineTests extends TestSuite {
     }
 
     test(
-      "an answered line reads back as its model and its tokens, the cost left unread; any other line as none"
+      "an answered line reads back as its model, its tokens unpriced and the cost it printed apart; any other line as none"
     ) {
       val usage =
         Usage(Tokens(1200), Tokens(40), Tokens(1000), Some(BigDecimal("0.0002")), Tokens(150))
       (
         CallLine.read(CallLine.answered(ref, usage)),
-        CallLine.read(CallLine.answered(ref.copy(upstream = None), usage)),
+        CallLine.read(CallLine.answered(ref.copy(upstream = None), usage.copy(costUsd = None))),
         CallLine.read("[provider] anthropic/claude-haiku-5-5 called with 3 message(s)"),
         CallLine.read("[main] w -> done: hi")
       ) ==> (
-        Some(("anthropic/claude-haiku-5-5", usage.copy(costUsd = None))),
-        Some(("anthropic/claude-haiku-5-5", usage.copy(costUsd = None))),
+        Some(
+          ("anthropic/claude-haiku-5-5", usage.copy(costUsd = None), Some(BigDecimal("0.0002")))
+        ),
+        Some(("anthropic/claude-haiku-5-5", usage.copy(costUsd = None), None)),
         None,
         None
       )
+    }
+
+    test(
+      "the cost a line printed reads back within its rounding, and prints again as it was printed"
+    ) {
+      val usage = Usage(Tokens(10), Tokens(1), Tokens(0), None, Tokens(0))
+      // Cost.cents' own examples, and amounts either side of its switch at 10¢.
+      val amounts =
+        Vector("0.0029", "0.00003", "0.0124", "0.1256", "1.256", "0", "0.0995", "0.1049")
+          .map(BigDecimal(_))
+      amounts.map { usd =>
+        val back =
+          CallLine.read(CallLine.answered(ref, usage.copy(costUsd = Some(usd)))).flatMap(_.rounded)
+        (
+          usd,
+          back.map(b => Cost.cents(b) == Cost.cents(usd)),
+          back.map(b => b == 0 && usd == 0 || ((b - usd).abs / usd.max(b)) <= BigDecimal("0.05"))
+        )
+      } ==> amounts.map(usd => (usd, Some(true), Some(true)))
     }
 
     test(
@@ -53,8 +74,8 @@ object CallLineTests extends TestSuite {
       ) ==> (
         "[provider] anthropic/claude-haiku-5-5 @ api.anthropic.com answered · in 1200 · " +
           "read 1000 · write 150 · out 40 (thinking 31) · cost unknown",
-        Some(("anthropic/claude-haiku-5-5", usage)),
-        Some(("anthropic/claude-haiku-5-5", usage.copy(thinking = None)))
+        Some(("anthropic/claude-haiku-5-5", usage, None)),
+        Some(("anthropic/claude-haiku-5-5", usage.copy(thinking = None), None))
       )
     }
 

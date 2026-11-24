@@ -10,11 +10,13 @@ import grit.core.provider.CallLine
 import grit.models.{AnthropicJson, AnthropicRates}
 
 /** One model call of a run: its message id, the model that answered it, and what it consumed,
-  * priced by [[AnthropicRates]] (`costUsd` `None` for a model it has no rates for). Its usage is
-  * the one its message began with: input and cache final, output not, since a message's
-  * `output_tokens` grows as it streams.
+  * priced by [[AnthropicRates]], or when `reported`, a grit call of a model it has no rates for,
+  * by the cost its provider reported, as grit's line printed it ([[CallLine.read]]'s `rounded`);
+  * `costUsd` `None` when neither prices it. Its usage is the one its message began with: input
+  * and cache final, output not, since a message's `output_tokens` grows as it streams.
   */
-final case class Call(id: String, model: String, usage: Usage) extends caps.Pure
+final case class Call(id: String, model: String, usage: Usage, reported: Boolean = false)
+    extends caps.Pure
 
 /** The grit coder's task as its database recorded it: its conversation's id (its session), the
   * messages its last turn's last model call was sent, oldest first, the status DBOS gives its
@@ -141,12 +143,16 @@ object Consumed {
   val Edits: Set[String] = Set("Edit", "Write", "MultiEdit", "NotebookEdit")
 
   /** The calls of the grit coder whose output is `lines`: each line [[CallLine.answered]] wrote,
-    * in order, named `call-1` on, its model's `anthropic/` left off.
+    * in order, named `call-1` on, its model's `anthropic/` left off, priced as [[Call]] says.
     */
   def gritCalls(lines: Vector[String]): Vector[Call] =
-    lines.flatMap(CallLine.read).zipWithIndex.map { case ((model, usage), i) =>
+    lines.flatMap(CallLine.read).zipWithIndex.map { case ((model, usage, rounded), i) =>
       val m = model.stripPrefix("anthropic/")
-      Call(s"call-${i + 1}", m, Pricing.priced(usage, AnthropicRates.pricing(m)))
+      val id = s"call-${i + 1}"
+      AnthropicRates.pricing(m) match {
+        case Some(p) => Call(id, m, Pricing.priced(usage, Some(p)))
+        case None => Call(id, m, usage.copy(costUsd = rounded), reported = rounded.isDefined)
+      }
     }
 
   /** The tools of grit's that edit a file. */

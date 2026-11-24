@@ -58,8 +58,11 @@ alone), and its key (`ANTHROPIC_API_KEY` or `OPENROUTER_API_KEY`) handed through
 `scripts/eval` drops and makes afresh before each run (`--keep-coder` copies it as the run
 ends, for a report across its turns), and read back from there for the trial: the
 calls and bytes before its first edit, and each `run` that failed as a denial. Its calls are read
-from the line grit prints as each one answers, side calls among them, and priced by grit's rates,
-the one figure; the run is stopped once they reach the budget, so it can pass the budget by the
+from the line grit prints as each one answers, side calls among them, and priced by grit's rates
+where they have the model, else by the cost its provider reported as that line prints it (to two
+significant digits; the trial's report says which calls were); a call priced by neither stops the
+run, a trial not passed, its cost unknown rather than zero. The run is stopped once they reach the
+budget, so it can pass the budget by the
 call that reached it. A run whose turn did not succeed, or that the budget stopped, is a trial not
 passed, as is one whose processes (all those working in its checkout, the Mill daemon and its test
 JVMs among them) hold more than its memory budget (8 GB, `--max-memory-gb`) or leave the machine

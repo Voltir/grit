@@ -223,8 +223,8 @@ trait CoderTurns extends caps.SharedCapability {
 }
 
 /** A trial, the run's output it was read from, a line a message, the coder's diff from the task's
-  * base ([[Clone.changes]]), what that output gave, the task's checks as they ran after it, and
-  * the arm that ran it.
+  * base ([[Clone.changes]]), what that output gave, the task's checks as they ran after it, the
+  * arm that ran it, and the pair it ran on, whose upstream the trial does not record.
   */
 final case class Tried(
     trial: TrialRows.Trial,
@@ -233,19 +233,20 @@ final case class Tried(
     consumed: Consumed,
     checked: Checked,
     stopped: Option[String],
-    arm: Arm
+    arm: Arm,
+    pair: ModelRef
 ) extends caps.Pure {
 
-  /** What a person reads of it, a line each: its measures, each call's tokens, its cost in cents
-    * by grit's rates ([[Consumed.gritCost]]) and, for Claude Code's run, by Claude Code's own
-    * estimate, how the run ended, each denial, and each check; never the transcript's text.
+  /** What a person reads of it, a line each: its measures and its pair, each call's tokens, its
+    * cost as [[Tried.spending]] gives it, how the run ended, each denial, and each check; never
+    * the transcript's text.
     */
   def lines: Vector[String] = {
     def tokens(u: Usage) = s"${Tried.input(u)}, output ${Tokens.value(u.output)}"
     val t = trial
     Vector(
-      s"trial: ${t.session.local} of ${TrialRows.TaskName.value(t.task)} by " +
-        s"${ModelId.value(t.model)}, ${t.wall.toSeconds} s",
+      s"trial: ${t.session.local} of ${TrialRows.TaskName.value(t.task)} by $pair, " +
+        s"${t.wall.toSeconds} s",
       s"calls: ${t.calls}; before the first edit: " +
         t.callsBeforeEdit
           .zip(t.readBeforeEdit)
@@ -277,7 +278,9 @@ object Tried {
 
   /** What a person reads of what `consumed` spent, a line each: each call's tokens, then its cost
     * in cents by grit's rates ([[Consumed.gritCost]]) and, for a run `arm` is Claude Code's, by
-    * Claude Code's own estimate, then its thinking ([[thinking]]). Printed for a trial, and for a run refused one.
+    * Claude Code's own estimate; for grit's, how many of its calls were priced by the figure
+    * their provider reported ([[Call]]'s `reported`), to two significant digits, or by neither;
+    * then its thinking ([[thinking]]). Printed for a trial, and for a run refused one.
     */
   def spending(consumed: Consumed, arm: Arm): Vector[String] = {
     val grit = consumed.gritCost.fold(
@@ -287,7 +290,21 @@ object Tried {
     val claimed = consumed.ended.flatMap(_.claimedUsd).fold("unknown")(Cost.cents)
     consumed.calls.zipWithIndex.map((c, i) => s"call ${i + 1} ${c.id}: ${input(c.usage)}") :+
       (arm match {
-        case _: Arm.Grit => s"cost: $grit"
+        case _: Arm.Grit =>
+          val calls = consumed.calls
+          val unpriced = calls.count(_.usage.costUsd.isEmpty)
+          val reported = calls.count(_.reported)
+          val cents = Cost.cents(calls.flatMap(_.usage.costUsd).sum)
+          val printed = "printed to two significant digits"
+          if (unpriced > 0)
+            s"cost: unknown, $unpriced of ${calls.size} calls priced neither by grit's rates " +
+              "nor by their provider"
+          else if (reported == 0) s"cost: $grit"
+          else if (reported == calls.size)
+            s"cost: $cents as the provider reported each call, $printed"
+          else
+            s"cost: $cents, $reported of ${calls.size} calls as their provider reported them, " +
+              s"$printed, the rest by grit's rates"
         case _: Arm.ClaudeCode => s"cost: $grit, $claimed by Claude Code's"
       }) :+ thinking(consumed.calls)
   }
@@ -736,14 +753,22 @@ object Rig {
   private def holding(memory: Memory^, dir: RelPath, cap: MemoryCap): () => Option[String] =
     () => memory.held(dir).toOption.flatMap(MemoryCap.stops(cap))
 
-  /** Why a grit run whose output so far is `lines` is stopped under `cap`: its calls, priced by
-    * [[AnthropicRates]], cost its budget or more; `None` while they cost less.
+  /** Why a grit run whose output so far is `lines` is stopped under `cap`: a call priced neither
+    * by [[AnthropicRates]] nor by the cost its provider reported ([[Consumed.gritCalls]]), since
+    * the cap cannot hold past it; or its calls cost its budget or more. `None` while they cost
+    * less.
     */
   private def spent(cap: Caps)(lines: Vector[String]): Option[String] = {
-    val cost = Consumed.gritCalls(lines).flatMap(_.usage.costUsd).sum
-    Option.when(cost >= cap.maxBudgetUsd)(
-      s"its calls cost ${Cost.cents(cost)}, reaching its cap of ${Cost.cents(cap.maxBudgetUsd)}"
-    )
+    val calls = Consumed.gritCalls(lines)
+    val cost = calls.flatMap(_.usage.costUsd).sum
+    calls
+      .find(_.usage.costUsd.isEmpty)
+      .map(c => s"a call of ${c.model} reported no cost, so its cap could not hold")
+      .orElse(
+        Option.when(cost >= cap.maxBudgetUsd)(
+          s"its calls cost ${Cost.cents(cost)}, reaching its cap of ${Cost.cents(cap.maxBudgetUsd)}"
+        )
+      )
   }
 
   /** `env -i` and the variables grit runs with, as `name=value` arguments, as [[gritTrial]]
@@ -855,7 +880,7 @@ object Rig {
             )
             .left
             .map(refused => (Tried.spending(c.consumed, arm) :+ refused).mkString("\n"))
-        } yield Tried(trial, c.transcript, diff, c.consumed, checked, c.stopped, arm)
+        } yield Tried(trial, c.transcript, diff, c.consumed, checked, c.stopped, arm, cap.pair)
       )
     } yield tried
 

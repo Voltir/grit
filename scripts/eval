@@ -81,7 +81,9 @@
 #       ~/.cache/grit-bench/work/, its brief the standing text in <file> (required; a missing or
 #       blank file is refused), the rig's account of where it works and the task's brief, its turn
 #       kept in grit_bench_coder, dropped and made afresh first; its budget priced by grit's
-#       rates as each call answers, the run stopped once it is reached; --max-turns at least 2,
+#       rates as each call answers, or where they lack the model by the cost its provider
+#       reported (as grit's line prints it), the run stopped once it is reached or at a call
+#       priced by neither; --max-turns at least 2,
 #       its tool rounds; --max-tokens the most a reply writes (8192); --max-memory-gb the most
 #       its processes, all those working in its checkout, may hold together (8), the run stopped
 #       past it or when the machine has under 1 GB available, in the compile before grit and in

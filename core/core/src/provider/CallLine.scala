@@ -29,19 +29,21 @@ object CallLine {
   def called(ref: ModelRef, messages: Int): String =
     s"[provider] $ref called with $messages message(s)"
 
-  /** What a line [[answered]] wrote says: its pair's model id and its tokens, with no cost,
-    * since the line's cents are rounded for reading, and its thinking not reported when the
-    * line names none; `None` for any other line.
+  /** What a line [[answered]] wrote says: its pair's model id; its tokens, unpriced, their
+    * thinking not reported when the line names none; and `rounded`, the cost it printed, in USD,
+    * within [[Cost.cents]]' rounding of what the call cost, `None` for `cost unknown`. `None`
+    * for any other line.
     */
-  def read(line: String): Option[(model: String, usage: Usage)] =
+  def read(line: String): Option[(model: String, usage: Usage, rounded: Option[BigDecimal])] =
     line match {
       case Answered(ref, input, cacheRead, cacheWrite, output, rest) =>
         for {
-          thinking <- rest match {
-            case Thought(t) => t.toLongOption.map(n => Some(Tokens(n)))
-            case Unthought() => Some(None)
+          (thinking, cost) <- rest match {
+            case Thought(t, c) => t.toLongOption.map(n => (Some(Tokens(n)), c))
+            case Unthought(c) => Some((None, c))
             case _ => None
           }
+          rounded = printed(cost)
           i <- input.toLongOption
           r <- cacheRead.toLongOption
           w <- cacheWrite.toLongOption
@@ -55,7 +57,8 @@ object CallLine {
             None,
             Tokens(w),
             thinking
-          )
+          ),
+          rounded
         )
       case _ => None
     }
@@ -67,8 +70,20 @@ object CallLine {
     raw"\[provider\] (.+) answered · in (\d+) · read (\d+) · write (\d+) · out (\d+)( .*)".r
 
   /** After the output, its thinking, then the cost. */
-  private val Thought = raw" \(thinking (\d+)\) · .*".r
+  private val Thought = raw" \(thinking (\d+)\) · (.*)".r
 
   /** After the output, the cost alone: no thinking reported. */
-  private val Unthought = raw" · .*".r
+  private val Unthought = raw" · (.*)".r
+
+  /** The USD a cost [[spent]] wrote stands for, to [[Cost.cents]]' rounding; `None` for `cost
+    * unknown`, or any text `cents` does not write.
+    */
+  private def printed(cost: String): Option[BigDecimal] =
+    cost match {
+      case Cents(figure) => Some(BigDecimal(figure) / 100)
+      case _ => None
+    }
+
+  /** What [[Cost.cents]] writes: a plain decimal, its sign first, then `¢`. */
+  private val Cents = raw"(-?\d+(?:\.\d+)?)¢".r
 }
