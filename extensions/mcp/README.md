@@ -87,6 +87,12 @@ In dependency order:
   not read it, Drive flagged it or will not export it) is answered as unread, saying why, and
   not as a failure, so a reader (the knowledge sync) tells it from Drive or the area failing. Imports `wire` and `client`; nothing else in mcp imports it
   (`mcp-generic-names-no-github`).
+- **`searchconsole`**: a site's search traffic as Search Console's v3 REST API answers it: a
+  property (`Site`, at its `Permission`), `Dates` (Pacific days the type has already held to
+  Google's limits), a `Grouping`, its one `Filter`, and the `Traffic` read. A grouping's rows
+  are believed at `Grouping.integrity`: what outsiders type (queries, pages) at Outside. Each
+  failure is a `ConsoleError`, its words for the model apart from the operator's. Nothing else
+  in mcp imports it.
 - **`edge`**: `McpEdge`, the `ServedEdge` a deployment declares: it registers the service place,
   advertises there (with the instructions the deployment declared for the place, if any, as its
   Place layer), and runs each request by calling its server. A tool whose schema declares `to`
