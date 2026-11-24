@@ -1,6 +1,6 @@
 # 0031. A write out of grit names its place, every party grit sends to is cleared, and every model call goes to a cleared pair or is not made
 
-Status: accepted (2026-10-07); revised (2026-10-16)
+Status: accepted (2026-10-07); revised (2026-11-24)
 
 Context: ADR 0030 filters what a transaction reads of grit's own rows and floors what it
 writes there. Effects that leave grit (a post to another channel, a call to an outside
@@ -20,7 +20,10 @@ Decision:
 - **A write names its place.** A tool that writes outside grit declares its destinations as
   places, offered to the model by name in one argument core owns, `to` (`Writes.Field`). Core
   reads `to` against the declared names, and the edge's tool is told the checked destination,
-  never what the model sent.
+  never what the model sent. A tool that changes the workspace it runs at (`Hosted.changing`:
+  `write`, `edit`, `run` and `stop`) names that workspace as its destination, so each
+  change is checked as a write there (`ToolRequests.refusal`), and an edge runs it only there
+  (`Toolbox.requested`). `offer_pull_request` writes to the remote repository's place alone.
 - **No write down.** A turn writes only to a place whose label is set through grit or mapped
   explicitly by the deployment (ADR 0033), with declared compartments, at a label dominating
   its classification (`Tx.writesTo`). An unmapped place, and a quiet room, is written to by no

@@ -1,6 +1,6 @@
 # 0017. A tool call settles in its own step, a hosted one as a durable request to its workspace, and approval is a durable wait that fails closed
 
-Status: accepted (2026-09-27); revised (2026-11-06)
+Status: accepted (2026-09-27); revised (2026-11-24)
 
 Context: a turn's loop runs the tools its model calls. A step cut short by a crash runs again
 from the start, and its output is journaled. With one engine per database (ADR 0015), an
@@ -26,12 +26,13 @@ a store that cannot be written, or a provider that fails, fails the turn.
   first; a rerun that finds the marker and no result answers `Interrupted` without running it.
 - **A hosted tool** acts on a machine, so it is a request row (`grit.tool_requests`), keyed by
   its slot (`CallSlot.key`), addressed to a **workspace, never an edge**: the conversation's
-  directory, or a service place (ADR 0031) its deployment links it to (`WorksIn`). An edge
-  registers the places it hosts (`grit.edges`, `grit.edge_places`); `Edges.authorize`, when an
-  edge claims, is the one routing decision. A request, which records its principal (ADR 0068),
-  moves only by conditional updates. The claim is the attempt marker: an orphaned claim is
-  settled by the tool's declared `Retry` (`Rerun` claims it again; `Interrupt` answers
-  `Interrupted`), never by its gate. The edge writes the answer on the row and rings the turn;
+  directory, a service place (ADR 0031) its deployment links it to (`WorksIn`), or a run of
+  work's repository place (`Origin.Work`), served from that run's own working copy
+  (`Route.Repository`). An edge registers the places it hosts (`grit.edges`,
+  `grit.edge_places`); `Edges.authorize`, when an edge claims, is the one routing decision.
+  A request, which records its principal (ADR 0068), moves only by conditional updates.
+  The claim is the attempt marker: an orphaned claim is settled by the tool's declared `Retry`
+  (`Rerun` claims it again; `Interrupt` answers `Interrupted`), never by its gate. The edge writes the answer on the row and rings the turn;
   the turn reads it from the row in `call:n:j`, so a lost ring loses nothing. Unclaimed within
   `Calling.ServeWithin` (10 s), or unanswered within `RunWithin` more, the request is settled
   in a step of its own. The offer records what an edge advertises, so a replay rebuilds it
