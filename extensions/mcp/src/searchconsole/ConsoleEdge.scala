@@ -10,7 +10,7 @@ import grit.core.place.Service
 import grit.core.prompt.Fragment
 import grit.edge.desk.{PlaceFragments, Server}
 import grit.mcp.client.{Credential, KeyFiles}
-import grit.mcp.google.GoogleRest
+import grit.mcp.google.{GoogleFailure, GoogleRest}
 
 /** An edge serving one Search Console property's search traffic at its service's place. */
 object ConsoleEdge {
@@ -90,7 +90,7 @@ object ConsoleEdge {
         case Right(authorizer) =>
           val rest: ConsoleRest^{clock} = new ConsoleRest(api, authorizer, clock)
           rest.sites() match {
-            case Left(ConsoleError.NoToken(why)) =>
+            case Left(ConsoleError.Google(GoogleFailure.NoToken(why))) =>
               Left(EdgeRefusal.Refused(s"Search Console gave no access ($why); $check"))
             // The operator reads a refusal: its cause, and the model's words only where it has none.
             case Left(other) =>

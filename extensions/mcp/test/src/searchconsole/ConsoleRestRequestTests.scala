@@ -3,6 +3,7 @@ package grit.mcp.searchconsole
 import java.time.LocalDate
 
 import grit.core.clock.Clock
+import grit.mcp.google.GoogleFailure
 
 import utest.*
 
@@ -157,7 +158,7 @@ object ConsoleRestRequestTests extends TestSuite {
         off,
         off.left.map(_.message.contains("Someone who administers that project can turn on"))
       ) ==>
-        (Left(ConsoleError.Off), Left(true))
+        (Left(ConsoleError.Google(GoogleFailure.Off)), Left(true))
     }
 
     test("a 403 for a reason other than a limit is Hidden") {
@@ -166,7 +167,7 @@ object ConsoleRestRequestTests extends TestSuite {
         403,
         """{"error":{"code":403,"errors":[{"reason":"forbidden"}],"status":"PERMISSION_DENIED"}}"""
       )
-      read(Grouping.Query, site = prefix) ==> Left(ConsoleError.Hidden)
+      read(Grouping.Query, site = prefix) ==> Left(ConsoleError.Google(GoogleFailure.Hidden))
     }
   }
 }

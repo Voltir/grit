@@ -42,7 +42,9 @@ enum GoogleFailure derives CanEqual {
   /** No answer within the sender's timeout, or an I/O failure: `why`, never the request. */
   case Unreachable(why: String)
 
-  /** Any other status, or a body not JSON where JSON was asked for: `why`, naming the API. */
+  /** Any other status, or an answer its reader cannot read (not JSON, or JSON not of the API's
+    * shape): `why`.
+    */
   case Malformed(why: String)
 }
 

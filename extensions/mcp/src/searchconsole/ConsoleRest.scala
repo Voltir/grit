@@ -88,12 +88,7 @@ final class ConsoleRest(
   /** `answer`'s failure as Search Console's. */
   private def failed[A](answer: Either[GoogleFailure | ConsoleError, A]): Either[ConsoleError, A] =
     answer.left.map {
-      case GoogleFailure.NoToken(why) => ConsoleError.NoToken(why)
-      case GoogleFailure.Hidden => ConsoleError.Hidden
-      case GoogleFailure.Off => ConsoleError.Off
-      case GoogleFailure.Busy(status) => ConsoleError.Busy(status)
-      case GoogleFailure.Unreachable(why) => ConsoleError.Unreachable(why)
-      case GoogleFailure.Malformed(why) => ConsoleError.Malformed(why)
+      case shared: GoogleFailure => ConsoleError.Google(shared)
       case own: ConsoleError => own
     }
 }
@@ -118,6 +113,10 @@ object ConsoleRest {
   /** Search Console's own reading of a refusal, before the table its APIs share. */
   private val refined: (Int, Vector[String]) -> Option[ConsoleError] = (status, reasons) =>
     Option.when(status == 400)(ConsoleError.Refused(reasons))
+
+  /** An answer of a shape this reader does not read: `why`. */
+  private def malformed(why: String): ConsoleError =
+    ConsoleError.Google(GoogleFailure.Malformed(why))
 
   /** The body of a query over `dates` grouped `by`, its first `limit` rows. */
   private[searchconsole] def query(
@@ -185,11 +184,11 @@ object ConsoleRest {
   }
 
   private def sitesOf(v: ujson.Value): Either[ConsoleError, Vector[Site]] =
-    v.objOpt.toRight(ConsoleError.Malformed("sites: not an object")).flatMap { o =>
+    v.objOpt.toRight(ConsoleRest.malformed("sites: not an object")).flatMap { o =>
       // An account that is a user of no property is answered {}, with no list at all.
       o.get("siteEntry").fold(Right(Vector.empty)) { entries =>
         entries.arrOpt
-          .toRight(ConsoleError.Malformed("siteEntry: not a list"))
+          .toRight(ConsoleRest.malformed("siteEntry: not a list"))
           .map(_.toVector.flatMap { e =>
             val entry = e.objOpt
             entry
@@ -217,7 +216,7 @@ object ConsoleRest {
       case None => Right(Vector.empty)
       case Some(rows) =>
         rows.arrOpt
-          .toRight(ConsoleError.Malformed("rows: not a list"))
+          .toRight(ConsoleRest.malformed("rows: not a list"))
           .flatMap(_.toVector.foldLeft[Either[ConsoleError, Vector[Row]]](Right(Vector.empty)) {
             (acc, r) => acc.flatMap(kept => rowOf(r).map(kept :+ _))
           })
@@ -232,7 +231,7 @@ object ConsoleRest {
       impressions <- num("impressions")
       ctr <- num("ctr")
     } yield Row(key, Metrics(clicks.toLong, impressions.toLong, ctr, num("position"))))
-      .toRight(ConsoleError.Malformed("a row without keys, clicks, impressions or ctr"))
+      .toRight(ConsoleRest.malformed("a row without keys, clicks, impressions or ctr"))
   }
 
   private def daysOf(rows: Vector[Row]): Either[ConsoleError, Vector[Day]] =
@@ -241,7 +240,7 @@ object ConsoleRest {
         scala.util
           .Try(LocalDate.parse(r.key))
           .toOption
-          .toRight(ConsoleError.Malformed("a by-date row whose key is not a date"))
+          .toRight(ConsoleRest.malformed("a by-date row whose key is not a date"))
           .map(d => kept :+ Day(d, r.metrics))
       )
     }
@@ -256,6 +255,6 @@ object ConsoleRest {
         d.strOpt
           .flatMap(s => scala.util.Try(LocalDate.parse(s)).toOption)
           .map(Some(_))
-          .toRight(ConsoleError.Malformed("firstIncompleteDate: not a date"))
+          .toRight(ConsoleRest.malformed("firstIncompleteDate: not a date"))
     }
 }

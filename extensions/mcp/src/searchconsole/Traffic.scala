@@ -3,6 +3,8 @@ package grit.mcp.searchconsole
 import java.time.temporal.ChronoUnit
 import java.time.{Instant, LocalDate, ZoneId}
 
+import grit.mcp.google.GoogleFailure
+
 /** What a property's rows are grouped by. */
 enum Grouping derives CanEqual {
   case Query, Page, Country, Device, Date, Hour
@@ -148,45 +150,41 @@ final case class Traffic(
 
 /** Why Search Console could not be read. */
 enum ConsoleError derives CanEqual {
-  case NoToken(why: String)
 
-  /** The account may not read the site, or it does not exist (403, 404). */
-  case Hidden
-
-  /** Search Console's API is not enabled in the account's Google Cloud project. */
-  case Off
+  /** A failure Google's REST APIs share. */
+  case Google(failure: GoogleFailure)
 
   /** Google refused the question as asked (400): `reasons`, Google's. */
   case Refused(reasons: Vector[String])
 
-  case Busy(status: Int)
-  case Unreachable(why: String)
-  case Malformed(why: String)
-
   /** What the model is told. */
   def message: String = this match {
-    case NoToken(_) => "Search Console did not accept grit's access. Try again later."
-    case Hidden => "grit cannot read that property's Search Console data."
-    case Off =>
+    case Google(GoogleFailure.NoToken(_)) =>
+      "Search Console did not accept grit's access. Try again later."
+    case Google(GoogleFailure.Hidden) => "grit cannot read that property's Search Console data."
+    case Google(GoogleFailure.Off) =>
       "Search Console's API is not turned on in the Google Cloud project grit's service " +
         "account belongs to. Someone who administers that project can turn on the Google " +
         "Search Console API in its APIs & Services page; grit can read the site once it is on."
     case Refused(_) =>
       "Search Console refused that question as asked (Discover has no queries, for one). " +
         "Try another grouping, filter or search type."
-    case Busy(_) => "Search Console is busy. Try again in a minute."
-    case Unreachable(_) => "Search Console could not be reached. Try again later."
-    case Malformed(_) => "Search Console answered in a way grit could not read."
+    case Google(GoogleFailure.Busy(_)) => "Search Console is busy. Try again in a minute."
+    case Google(GoogleFailure.Unreachable(_)) =>
+      "Search Console could not be reached. Try again later."
+    case Google(GoogleFailure.Malformed(_)) =>
+      "Search Console answered in a way grit could not read."
   }
 
   /** What the operator's log is told, beside the model's words. */
   def logged: Option[String] = this match {
-    case NoToken(why) => Some(why)
-    case Hidden => None
-    case Off => Some("the Search Console API is not enabled in the account's project")
+    case Google(GoogleFailure.NoToken(why)) => Some(why)
+    case Google(GoogleFailure.Hidden) => None
+    case Google(GoogleFailure.Off) =>
+      Some("the Search Console API is not enabled in the account's project")
     case Refused(reasons) => Some(s"Search Console answered 400: ${reasons.mkString(", ")}")
-    case Busy(status) => Some(s"Search Console answered $status")
-    case Unreachable(why) => Some(why)
-    case Malformed(why) => Some(why)
+    case Google(GoogleFailure.Busy(status)) => Some(s"Search Console answered $status")
+    case Google(GoogleFailure.Unreachable(why)) => Some(why)
+    case Google(GoogleFailure.Malformed(why)) => Some(why)
   }
 }
