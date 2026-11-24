@@ -38,6 +38,26 @@ object ServeChoiceTests extends TestSuite {
       Left(EdgeRefusal.Refused("never opened here"))
   }
 
+  /** What the deployment `env` makes declares of `service` and the place `inside` it: whether
+    * that place is invited, the service's room label, the integrity its output is believed at,
+    * and its clearance.
+    */
+  private def declaredOf(service: String, inside: String)(env: Map[String, String]) = {
+    val at = Service.of(service).fold(sys.error, identity)
+    val within = Place.read(inside).fold(sys.error, identity)
+    Deploying
+      .deployment(env, Offered.Read, Vector(Quiet), Vector.empty, java.time.ZoneOffset.UTC)
+      .map { d =>
+        val v = d.visibility
+        (
+          v.invites(within),
+          Label.written(v.rooms.label(Room(at.place, None)).label),
+          Integrity.written(v.outputOf(at)),
+          Label.written(v.clearances.of(Party.Service(at)))
+        )
+      }
+  }
+
   val tests = Tests {
     test(
       "serving an edge caps a day at $1.00 when GRIT_DAILY_USD is unset; the chat does not"
@@ -487,7 +507,7 @@ object ServeChoiceTests extends TestSuite {
     }
 
     test(
-      "with GRIT_CONSOLE_SITE set, serve serves Search Console at service:search_console, reached from Slack's conversations; the key unset, the site no property's name, or the key's file missing or no service account's is refused naming its variable; unset, no edge"
+      "GRIT_CONSOLE_SITE is served as Search Console at service:search_console, reached from Slack, when its key opens; otherwise refused naming the variable at fault"
     ) {
       def served(env: Map[String, String]) =
         ServedEdges
@@ -536,22 +556,9 @@ object ServeChoiceTests extends TestSuite {
     }
 
     test(
-      "with GRIT_CONSOLE_SITE set, the deployment invites service:search_console, labels it internal, believes it at member and clears Search Console for its top label; unset, none of these"
+      "with GRIT_CONSOLE_SITE set, the deployment declares service:search_console an internal service read at member; unset, nothing of it"
     ) {
-      val console = Service.of("search_console").fold(sys.error, identity)
-      val inside = Place.read("service:search_console/property").fold(sys.error, identity)
-      def declared(env: Map[String, String]) =
-        Deploying
-          .deployment(env, Offered.Read, Vector(Quiet), Vector.empty, java.time.ZoneOffset.UTC)
-          .map { d =>
-            val v = d.visibility
-            (
-              v.invites(inside),
-              Label.written(v.rooms.label(Room(console.place, None)).label),
-              Integrity.written(v.outputOf(console)),
-              Label.written(v.clearances.of(Party.Service(console)))
-            )
-          }
+      val declared = declaredOf("search_console", "service:search_console/property")
       (declared(ConsoleEnv), declared(Map.empty)) ==> (
         // The shipped compartments' top: every level, and what no one has labelled yet.
         Right((true, "internal", "member", "restricted+unmapped")),
@@ -560,22 +567,9 @@ object ServeChoiceTests extends TestSuite {
     }
 
     test(
-      "with GRIT_DRIVE_SA_KEY set, the deployment invites service:drive, labels it internal, believes it at member and clears Drive for its top label; unset, none of these"
+      "with GRIT_DRIVE_SA_KEY set, the deployment declares service:drive an internal service read at member; unset, nothing of it"
     ) {
-      val drive = Service.of("drive").fold(sys.error, identity)
-      val folder = Place.read("service:drive/folder").fold(sys.error, identity)
-      def declared(env: Map[String, String]) =
-        Deploying
-          .deployment(env, Offered.Read, Vector(Quiet), Vector.empty, java.time.ZoneOffset.UTC)
-          .map { d =>
-            val v = d.visibility
-            (
-              v.invites(folder),
-              Label.written(v.rooms.label(Room(drive.place, None)).label),
-              Integrity.written(v.outputOf(drive)),
-              Label.written(v.clearances.of(Party.Service(drive)))
-            )
-          }
+      val declared = declaredOf("drive", "service:drive/folder")
       (declared(DriveEnv), declared(Map.empty)) ==> (
         // The shipped compartments' top: every level, and what no one has labelled yet.
         Right((true, "internal", "member", "restricted+unmapped")),

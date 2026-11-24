@@ -556,9 +556,7 @@ object RichText extends Renderer[Vector[Post]] {
     names +: cells
   }
 
-  /** A table's rows of text as plain lines, cells split by ` | `, unpadded: its plain text,
-    * which no long cell widens.
-    */
+  /** A table's rows of text as plain lines, cells split by ` | `, unpadded: its plain text. */
   private def lines(rows: Vector[Vector[Text[Nothing]]]): String =
     rows.map(_.map(_.plain).mkString(" | ")).mkString("\n")
 

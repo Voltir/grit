@@ -171,7 +171,7 @@ object DatabaseToolsTests extends TestSuite {
     }
 
     test(
-      "a query's rows are a table, a row a line, its pipes escaped and a line break a space, NULL written NULL, empty and null text in quotes"
+      "a query's rows are a table, each value written so it reads as itself and ends no cell"
     ) {
       val rows = Rows(
         Vector("id", "external_id"),

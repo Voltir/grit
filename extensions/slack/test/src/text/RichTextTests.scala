@@ -200,8 +200,7 @@ object RichTextTests extends TestSuite {
     }
 
     test(
-      "a table is Slack's table block: its names a bold first row, each cell as it prints, " +
-        "an empty one a space, a column of numbers right-aligned and one of words wrapped"
+      "a table is Slack's table block, its names a bold first row and each cell as it prints"
     ) {
       only(
         Doc(

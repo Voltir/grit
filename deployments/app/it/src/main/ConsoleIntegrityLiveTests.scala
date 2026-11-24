@@ -201,16 +201,15 @@ object ConsoleIntegrityLiveTests extends TestSuite {
     test(
       "under the service's member cap, an answer by query, as one by date, reaches the turn at member, shown, and the post after it goes through"
     ) {
+      ofConsole(declared) ==> ofConsole(deployed)
       (
-        ofConsole(declared) == ofConsole(deployed),
         ran("by_query", ujson.Obj("by" -> "query"), "trail running shoes"),
         ran(
           "by_date",
           ujson.Obj("by" -> "date", "start" -> "2026-11-22", "end" -> "2026-11-24"),
-          "2026-11-23"
+          "| 2026-11-23 (early) | 57 | 2410"
         )
       ) ==> (
-        true,
         (
           true,
           Vector(true, true, true, true),
