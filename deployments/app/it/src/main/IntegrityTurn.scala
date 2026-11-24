@@ -304,16 +304,21 @@ object IntegrityTurn {
       engine,
       McpEdge.serving(Github, Vector(server)).fold(sys.error(_), identity),
       Map("FAKE_MCP_TOKEN" -> fake.token),
-      posts
+      posts,
+      Clock.system()
     )(body)
   }
 
-  /** `body`, run while `edge`, opened with `env`, and `posts` at Slack's posting service are
-    * open on `engine`.
+  /** `body`, run while `edge`, opened with `env` and reading `clock`, and `posts` at Slack's
+    * posting service are open on `engine`.
     */
-  def servingEdge[A](engine: Engine^, edge: ServedEdge, env: Map[String, String], posts: Posts)(
-      body: () => A
-  ): A = {
+  def servingEdge[A](
+      engine: Engine^,
+      edge: ServedEdge,
+      env: Map[String, String],
+      posts: Posts,
+      clock: Clock^
+  )(body: () => A): A = {
     val stores = EdgeStores(
       engine.inbox,
       engine.administration,
@@ -338,7 +343,7 @@ object IntegrityTurn {
       case Left(refused) => sys.error(refused.message)
     }
     try {
-      edge.open(stores, env, Clock.system(), _ => ()) match {
+      edge.open(stores, env, clock, _ => ()) match {
         case Left(refused) => sys.error(refused.message)
         case Right(opened) =>
           try body()

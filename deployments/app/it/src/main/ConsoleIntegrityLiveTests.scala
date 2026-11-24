@@ -119,14 +119,16 @@ object ConsoleIntegrityLiveTests extends TestSuite {
       v.rooms.label(Room(Console.place, None)).label
     )
 
-  /** What a turn reading `args` came to: whether each request offered `slack_post`, the
+  /** What a turn reading `args` came to: whether the answer it read holds `held` (a row of the
+    * fixture's, not a refusal), whether each request offered `slack_post`, the
     * channels posted, what its `slack_post` call was answered, and each item `gate:1` decided
     * on, as the integrity it recorded and the item's fate.
     */
   private def ran(
       name: String,
-      args: ujson.Obj
-  ): (Vector[Boolean], Vector[String], Option[String], Vector[(String, String)]) = {
+      args: ujson.Obj,
+      held: String
+  ): (Boolean, Vector[Boolean], Vector[String], Option[String], Vector[(String, String)]) = {
     val config = TestPostgres.freshDatabase(s"console_integrity_$name")
     val engine = LiveEngine.open(config, Turn.Epoch, visibility = declared)
     val fake = FakeConsole.start()
@@ -151,11 +153,17 @@ object ConsoleIntegrityLiveTests extends TestSuite {
           api = fake.api.toString
         )
       )
-      val turn = servingEdge(engine, edge, Map(Variable.value(Key) -> tokens.keyFile()), posts) {
-        () =>
-          val turn = IntegrityTurn.ask(engine, name, Request)
-          val _ = engine.awaitTurn(turn)
-          turn
+      // Today is the fixtures' last day, so the by-date range below stays one Dates takes.
+      val turn = servingEdge(
+        engine,
+        edge,
+        Map(Variable.value(Key) -> tokens.keyFile()),
+        posts,
+        FakeConsole.clock()
+      ) { () =>
+        val turn = IntegrityTurn.ask(engine, name, Request)
+        val _ = engine.awaitTurn(turn)
+        turn
       }
       val results = engine.db
         .read(Subject.Turn(turn))(engine.entries.list(turn.conversationId))
@@ -177,6 +185,7 @@ object ConsoleIntegrityLiveTests extends TestSuite {
         .map(d => (d("item")("integrity").str, d("fate")("kind").str))
         .distinct
       (
+        results.get("g1").exists(_.contains(held)),
         obeying.requests.map(_.tools.exists(_.name == "slack_post")),
         posts.ran.flatMap(_.destination).map(_.written),
         results.get("p2"),
@@ -194,14 +203,16 @@ object ConsoleIntegrityLiveTests extends TestSuite {
     ) {
       (
         ofConsole(declared) == ofConsole(deployed),
-        ran("by_query", ujson.Obj("by" -> "query")),
+        ran("by_query", ujson.Obj("by" -> "query"), "trail running shoes"),
         ran(
           "by_date",
-          ujson.Obj("by" -> "date", "start" -> "2026-11-22", "end" -> "2026-11-24")
+          ujson.Obj("by" -> "date", "start" -> "2026-11-22", "end" -> "2026-11-24"),
+          "2026-11-23"
         )
       ) ==> (
         true,
         (
+          true,
           Vector(true, true, true, true),
           Vector(),
           Some(
@@ -211,6 +222,7 @@ object ConsoleIntegrityLiveTests extends TestSuite {
           Vector("outside" -> "hidden")
         ),
         (
+          true,
           Vector(true, true, true, true),
           Vector("slack:T0NEUTRAL/C0GENERAL"),
           Some("Posted in slack:T0NEUTRAL/C0GENERAL."),

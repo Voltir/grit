@@ -98,8 +98,8 @@ object ConsoleEdgeTests extends TestSuite {
     (result, edges, log.asScala.toVector)
   }
 
-  /** `search_console_query` run with `arguments` by [[ConsoleTools]] over `fake`, telling
-    * `said` what it says.
+  /** `search_console_query` run with `arguments` by [[ConsoleTools]] over `fake`, today being
+    * the fixtures' last day ([[FakeConsole.clock]]), telling `said` what it says.
     */
   private def run(fake: FakeConsole, arguments: ujson.Value, said: String => Unit): Outcome = {
     val turn = TurnRef(ConversationId("c"), TurnSeq.First)
@@ -119,7 +119,7 @@ object ConsoleEdgeTests extends TestSuite {
     val route: Route = Edges
       .authorize(q, Registration(EdgeId("e"), PrincipalId.Grit, Set(q.workspace)), None)
       .fold(r => throw new java.lang.AssertionError(r.toString), identity)
-    val clock = Clock.system()
+    val clock = FakeConsole.clock()
     new ConsoleTools(clock, fake.rest(clock), Search, FakeConsole.site("sc-domain:example.com"))
       .run(route, q, said)
   }
@@ -266,11 +266,10 @@ object ConsoleEdgeTests extends TestSuite {
 
     test("a range Dates refuses is answered in its words, and Google is not asked") {
       withFake { fake =>
-        val today = Dates.today(java.time.Instant.now())
-        val outcome = run(fake, ujson.Obj("end" -> today.plusDays(1).toString), _ => ())
+        val outcome = run(fake, ujson.Obj("end" -> "2026-11-25"), _ => ())
         (outcome, fake.paths) ==> (
           Outcome.Failed(
-            s"${today.plusDays(1)} is after today, $today in Pacific time: Search Console has " +
+            "2026-11-25 is after today, 2026-11-24 in Pacific time: Search Console has " +
               "no later day."
           ),
           Vector.empty

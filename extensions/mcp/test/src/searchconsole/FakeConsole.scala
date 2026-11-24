@@ -2,7 +2,7 @@ package grit.mcp.searchconsole
 
 import java.nio.charset.StandardCharsets.UTF_8
 
-import grit.core.clock.Clock
+import grit.core.clock.{Clock, SetClock}
 import grit.mcp.google.FakeGoogleServer
 
 /** Search Console's v3 API over a [[FakeGoogleServer]], as its reference says it answers:
@@ -55,6 +55,11 @@ final class FakeConsole private (google: FakeGoogleServer) {
 object FakeConsole {
 
   def start(): FakeConsole = new FakeConsole(FakeGoogleServer.start())
+
+  /** Noon in Pacific time on 2026-11-24, the last day the fixtures hold: a clock their answers
+    * stay true at, whatever the real date.
+    */
+  def clock(): SetClock = new SetClock(java.time.Instant.parse("2026-11-24T20:00:00Z"))
 
   /** The sites it answers queries of. */
   val Sites: Vector[SiteUrl] =
