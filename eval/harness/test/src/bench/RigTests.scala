@@ -47,7 +47,7 @@ object RigTests extends TestSuite {
   private val env = Map("ANTHROPIC_API_KEY" -> "sk-ant-test-0123")
   private val key = TestSecrets.of(Variable("ANTHROPIC_API_KEY"), "sk-ant-test-0123")
   private val cap =
-    Caps.of("claude-haiku-5-5", "0.05", "4").getOrElse(throw new java.lang.AssertionError())
+    Caps.of("claude-haiku-5-5", None, "0.05", "4").getOrElse(throw new java.lang.AssertionError())
   private val checkout = rel("trial")
 
   /** The fake's run, its edit of `a.scala` writing `edited`, its stream's lines `lines`, and its
@@ -302,13 +302,14 @@ object RigTests extends TestSuite {
   private def trial(
       f: Fixture^,
       fake: Fake,
-      quiet: FiniteDuration = Rig.Quiet
+      quiet: FiniteDuration = Rig.Quiet,
+      caps: Caps = cap
   ): Either[String, Tried] =
     Rig.trial(f.work, f.handing, stepping())(
       f.origin,
       f.task,
       f.arm(fake),
-      cap,
+      caps,
       key,
       checkout,
       quiet,
@@ -911,10 +912,91 @@ object RigTests extends TestSuite {
       }
     }
 
+    test(
+      "caps name a Claude model at the Anthropic API, or an OpenRouter model at the upstream given; anything else is refused naming both forms"
+    ) {
+      def pair(model: String, upstream: Option[String]) =
+        Caps.of(model, upstream, "0.05", "4").map(c => (c.pair.toString, c.claudeModel, c.key))
+      (
+        pair("claude-haiku-5-5", None),
+        pair("deepseek/deepseek-v4.1-flash-20260910", Some("fireworks")),
+        pair("deepseek/deepseek-v4.1-flash-20260910", None),
+        pair("Deepseek flash", Some("fireworks")),
+        pair("deepseek/deepseek-v4.1-flash-20260910", Some("Fire Works"))
+      ) ==> (
+        Right(
+          (
+            "anthropic/claude-haiku-5-5 @ api.anthropic.com",
+            Some("claude-haiku-5-5"),
+            Variable("ANTHROPIC_API_KEY")
+          )
+        ),
+        Right(
+          (
+            "deepseek/deepseek-v4.1-flash-20260910 @ fireworks",
+            None,
+            Variable("OPENROUTER_API_KEY")
+          )
+        ),
+        Left(
+          "the model deepseek/deepseek-v4.1-flash-20260910 is not a Claude model's id, as claude-haiku-5-5, " +
+            "and names no upstream, as an OpenRouter model's does (deepseek/deepseek-v4.1-flash-20260910 at fireworks)"
+        ),
+        Left(
+          "the model Deepseek flash is not an OpenRouter model's id, as deepseek/deepseek-v4.1-flash-20260910"
+        ),
+        Left("the upstream Fire Works is not an OpenRouter upstream's slug, as fireworks")
+      )
+    }
+
+    test(
+      "an OpenRouter grit coder runs its pair's upstream in every role it sets, handed its key as OPENROUTER_API_KEY"
+    ) {
+      withTask { f =>
+        val deepseek = Caps
+          .of("deepseek/deepseek-v4.1-flash-20260910", Some("fireworks"), "0.05", "4")
+          .getOrElse(cap)
+        gritTrial(f, GritFake(gritLines), deepseek).map { _ =>
+          f.recorded("genv")
+            .linesIterator
+            .filter(l =>
+              l.contains("_API_KEY=") || l.contains("_PROVIDER=") || l.contains("MODEL=")
+            )
+            .toVector
+        } ==> Right(
+          Vector(
+            "GRIT_DREAM_MODEL=deepseek/deepseek-v4.1-flash-20260910",
+            "GRIT_DREAM_PROVIDER=fireworks",
+            "GRIT_LIGHT_MODEL=deepseek/deepseek-v4.1-flash-20260910",
+            "GRIT_LIGHT_PROVIDER=fireworks",
+            "GRIT_MODEL=deepseek/deepseek-v4.1-flash-20260910",
+            "GRIT_PROVIDER=fireworks",
+            "GRIT_STRONG_MODEL=deepseek/deepseek-v4.1-flash-20260910",
+            "GRIT_STRONG_PROVIDER=fireworks",
+            "OPENROUTER_API_KEY=sk-ant-test-0123"
+          )
+        )
+      }
+    }
+
+    test("Claude Code is refused a pair not at the Anthropic API, and never starts") {
+      withTask { f =>
+        val deepseek = Caps
+          .of("deepseek/deepseek-v4.1-flash-20260910", Some("fireworks"), "0.05", "4")
+          .getOrElse(cap)
+        (trial(f, Fake("object A { val x = 1 }"), caps = deepseek), f.exists("argv")) ==> (
+          Left(
+            "Claude Code runs a Claude model at the Anthropic API, not deepseek/deepseek-v4.1-flash-20260910 @ fireworks"
+          ),
+          false
+        )
+      }
+    }
+
     test("grit is refused fewer than 2 turns, a model with no rates, and the operator's database") {
       withTask { f =>
-        val oneTurn = Caps.of("claude-haiku-5-5", "0.05", "1").getOrElse(cap)
-        val unpriced = Caps.of("claude-unknown-9", "0.05", "4").getOrElse(cap)
+        val oneTurn = Caps.of("claude-haiku-5-5", None, "0.05", "1").getOrElse(cap)
+        val unpriced = Caps.of("claude-unknown-9", None, "0.05", "4").getOrElse(cap)
         val passed = Variables.of(Map.empty).getOrElse(throw new java.lang.AssertionError())
         def database(url: String) =
           Standing

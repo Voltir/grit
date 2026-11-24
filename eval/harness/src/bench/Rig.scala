@@ -13,24 +13,40 @@ import grit.core.clock.Clock
 import grit.core.host.{Argv, Handing, Memory, Processes, Ran, RelPath, Variables}
 import grit.core.id.{Harness, SessionId}
 import grit.core.message.{Cost, Tokens, Usage}
-import grit.core.model.{Grade, ModelId}
-import grit.core.secret.Secret
+import grit.core.model.{Grade, ModelId, ModelRef, Upstream}
+import grit.core.secret.{Secret, Variable}
 import grit.dbos.internal.TrialRows
 import grit.dbos.sql.DbConfig
 import grit.kit.environment.DotEnv
-import grit.models.{AnthropicRates, ModelRole}
+import grit.models.{AnthropicProvider, AnthropicRates, ModelRole, OpenRouterConfig}
 
-/** What one run may spend: its model, by the Anthropic API's id for it (`claude-haiku-5-5`); the
-  * most it may spend, in USD, which a run can pass (Claude Code's run, by Claude Code's own
-  * estimate; grit's, priced by its pin's pricing, the seed's ([[grit.models.AnthropicRates]]), as each call answers and stopped
+/** What one run may spend: its pair, a Claude model at the Anthropic API or an OpenRouter model
+  * at one upstream; the most it may spend, in USD, which a run can pass (Claude Code's run, by
+  * Claude Code's own estimate; grit's, each call priced by [[grit.models.AnthropicRates]] where
+  * it has the model, else by the cost its provider reported, as each call answers, and stopped
   * once its calls reach it, so by at most the call that reached it and one then in flight); and
   * its most turns (grit's tool rounds).
   */
-final case class Caps private (model: ModelId, maxBudgetUsd: BigDecimal, maxTurns: Int)
-    extends caps.Pure {
+final case class Caps private (
+    model: ModelId,
+    upstream: Upstream,
+    maxBudgetUsd: BigDecimal,
+    maxTurns: Int
+) extends caps.Pure {
 
-  /** The model as `claude --model` takes it, its `anthropic/` left off. */
-  def claudeModel: String = Caps.anthropicId(model)
+  def pair: ModelRef = ModelRef(model, Some(upstream))
+
+  /** The model as `claude --model` takes it, its `anthropic/` left off; `None` for a pair not at
+    * the Anthropic API, which Claude Code cannot run.
+    */
+  def claudeModel: Option[String] =
+    Option.when(upstream == Upstream.AnthropicApi)(Caps.anthropicId(model))
+
+  /** The variable holding the key its pair is called with: `ANTHROPIC_API_KEY` at the Anthropic
+    * API, else `OPENROUTER_API_KEY`.
+    */
+  def key: Variable =
+    if (upstream == Upstream.AnthropicApi) AnthropicProvider.KeyVar else OpenRouterConfig.KeyVar
 }
 
 object Caps {
@@ -40,21 +56,46 @@ object Caps {
     */
   def anthropicId(model: ModelId): String = ModelId.value(model).stripPrefix("anthropic/")
 
-  /** The caps of these, or why not: a model not `claude-` and a model id's letters, a budget not a
-    * decimal above 0, or turns not a whole number of at least 1.
+  /** The caps of these, or why not: with no upstream, a model not a Claude model's id, which runs
+    * at the Anthropic API (`claude-haiku-5-5`); with one, a model not an OpenRouter model's id
+    * (`deepseek/deepseek-v4.1-flash-20260910`) or an upstream not an OpenRouter slug
+    * (`fireworks`); a budget not a decimal above 0; or turns not a whole number of at least 1.
     */
-  def of(model: String, maxBudgetUsd: String, maxTurns: String): Either[String, Caps] =
+  def of(
+      model: String,
+      upstream: Option[String],
+      maxBudgetUsd: String,
+      maxTurns: String
+  ): Either[String, Caps] = {
+    val OpenRouterExample = "deepseek/deepseek-v4.1-flash-20260910"
     for {
-      m <- Option
-        .when(model.startsWith("claude-"))(model)
-        .flatMap(m => ModelId.of(s"anthropic/$m"))
-        .toRight(s"the model $model is not a Claude model's id, as claude-haiku-5-5")
+      m <- upstream match {
+        case None =>
+          Option
+            .when(model.startsWith("claude-"))(model)
+            .flatMap(m => ModelId.of(s"anthropic/$m"))
+            .map(id => (id, Upstream.AnthropicApi))
+            .toRight(
+              s"the model $model is not a Claude model's id, as claude-haiku-5-5, and names no " +
+                s"upstream, as an OpenRouter model's does ($OpenRouterExample at fireworks)"
+            )
+        case Some(slug) =>
+          for {
+            id <- ModelId
+              .of(model)
+              .toRight(s"the model $model is not an OpenRouter model's id, as $OpenRouterExample")
+            u <- Upstream
+              .of(slug)
+              .toRight(s"the upstream $slug is not an OpenRouter upstream's slug, as fireworks")
+          } yield (id, u)
+      }
       b <- maxBudgetUsd.toDoubleOption
         .filter(_ > 0)
         .map(_ => BigDecimal(maxBudgetUsd))
         .toRight(s"the budget $maxBudgetUsd is not an amount of USD above 0")
       t <- maxTurns.toIntOption.filter(_ >= 1).toRight(s"the turns $maxTurns are not 1 or more")
-    } yield Caps(m, b, t)
+    } yield Caps(m._1, m._2, b, t)
+  }
 }
 
 /** The most memory a coder's processes may hold together while it runs, in bytes, and the least
@@ -375,7 +416,8 @@ object Rig {
     * against the known diff, `claude` handed `key` for its `apiKeyHelper` to read. A run a cap
     * stopped, or that ended in error,
     * is a trial not passed; a run that writes nothing for `quiet` is stopped and its trial kept
-    * the same way; one that wrote no session is a `Left`. `output`, the run's log, is begun
+    * the same way; one that wrote no session is a `Left`, as is a `cap` whose pair is not at the
+    * Anthropic API, before anything runs. `output`, the run's log, is begun
     * afresh; whatever happens, what the coder left in the checkout ([[Clone.left]]) is added to
     * it, and then the checkout is removed.
     */
@@ -389,36 +431,42 @@ object Rig {
       quiet: FiniteDuration,
       output: Path
   ): Either[String, Tried] =
-    tried(work)(repository, task, arm, cap, dir, output, () => None) { checkout =>
-      for {
-        streamed <- configured { variables =>
-          handing
-            .started(dir, key, variables) { file =>
-              for {
-                _ <- Either.cond(!file.contains("'"), (), s"$file cannot be quoted")
-                argv <- Watched.limited(
-                  Longest,
-                  arm.claude +: arguments(arm, cap, task, s"cat '$file'")*
+    cap.claudeModel
+      .toRight(s"Claude Code runs a Claude model at the Anthropic API, not ${cap.pair}")
+      .flatMap { model =>
+        tried(work)(repository, task, arm, cap, dir, output, () => None) { checkout =>
+          for {
+            streamed <- configured { variables =>
+              handing
+                .started(dir, key, variables) { file =>
+                  for {
+                    _ <- Either.cond(!file.contains("'"), (), s"$file cannot be quoted")
+                    argv <- Watched.limited(
+                      Longest,
+                      arm.claude +: arguments(arm, model, cap, task, s"cat '$file'")*
+                    )
+                  } yield argv
+                }(s =>
+                  timed(clock)(Watched.ran(s, quiet, Longest + 2.minutes, _ => None, () => None))
                 )
-              } yield argv
-            }(s => timed(clock)(Watched.ran(s, quiet, Longest + 2.minutes, _ => None, () => None)))
-            .left
-            .map(e => s"claude did not run: ${e.message}")
+                .left
+                .map(e => s"claude did not run: ${e.message}")
+            }
+            (Watched.Read(lines, ended, stopped), wall) = streamed
+            consumed <- Consumed.of(lines, checkout)
+            local <- consumed.session.toRight(neverStarted(ended))
+            _ <- Either.cond(
+              consumed.apiKeySource.contains("apiKeyHelper"),
+              (),
+              consumed.apiKeySource.fold("claude's init line names no apiKeySource") { source =>
+                s"claude used $source, not its apiKeyHelper"
+              }
+            )
+            harness <- Harness.of("claude-code")
+            session <- SessionId.of(harness, local)
+          } yield Coded(session, consumed, lines, wall, stopped)
         }
-        (Watched.Read(lines, ended, stopped), wall) = streamed
-        consumed <- Consumed.of(lines, checkout)
-        local <- consumed.session.toRight(neverStarted(ended))
-        _ <- Either.cond(
-          consumed.apiKeySource.contains("apiKeyHelper"),
-          (),
-          consumed.apiKeySource.fold("claude's init line names no apiKeySource") { source =>
-            s"claude used $source, not its apiKeyHelper"
-          }
-        )
-        harness <- Harness.of("claude-code")
-        session <- SessionId.of(harness, local)
-      } yield Coded(session, consumed, lines, wall, stopped)
-    }
+      }
 
   /** The grit coder, as `arm` runs `grit work` under `cap`, on `task` in a new checkout at `dir`
     * of the repository at `repository`, as [[trial]] runs Claude Code's: the checks run after it,
@@ -428,9 +476,9 @@ object Rig {
     * so, grit never started. Its brief is `arm`'s standing text, [[GritPreamble]] and the task's
     * brief, in a file of its own outside the checkout;
     * grit starts from an empty environment, but for `arm`'s passed variables and those that
-    * point it at its database, the model `cap` names in every role at the Anthropic API, its
+    * point it at its database, `cap`'s pair in every role it sets ([[Caps.pair]]), its
     * allowlisted tools and scout, `cap`'s turns as its rounds, the linear assembler, `arm`'s
-    * settings ([[Arm.Settings]]), and `key` as `ANTHROPIC_API_KEY`, read from its file. A run whose calls reach `cap`'s budget is
+    * settings ([[Arm.Settings]]), and `key` as [[Caps.key]] names it, read from its file. A run whose calls reach `cap`'s budget is
     * stopped, a trial not passed, as is one whose processes, all those working in the checkout
     * ([[Memory.held]]), hold more than `memoryCap` allows or leave the machine under its floor
     * ([[MemoryCap.stops]]), or one whose turn did not succeed; that budget holds for the compile
@@ -438,7 +486,7 @@ object Rig {
     * turn of it, is read from `turns` once it has ended. A command it left running dies with it, and its Mill daemon is
     * shut down. What grit wrote to its output, then the tail of its errors, is written to
     * `output` once it has ended, whatever becomes of the trial. `Left` for fewer than 2 turns, or
-    * a model [[AnthropicRates]] has no rates for, before anything runs; when `memory` cannot be
+    * a model at the Anthropic API [[AnthropicRates]] has no rates for, before anything runs; when `memory` cannot be
     * read in the checkout, before its compile starts; when `output` cannot be
     * written or its turn cannot be read; or when the trial row refuses the run, its
     * [[Tried.spending]] lines first.
@@ -486,7 +534,7 @@ object Rig {
                 Watched.limited(
                   Longest,
                   gritEnvironment(arm, cap) ++
-                    Vector("sh", "-c", Handed, "sh", file, arm.launcher, "work", brief)*
+                    Vector("sh", "-c", handed(cap.key), "sh", file, arm.launcher, "work", brief)*
                 )
               }(s =>
                 timed(clock)(
@@ -658,8 +706,9 @@ object Rig {
       .map(e => s"grit's output was not written to $output: ${e.getClass.getName}")
       .map(_ => ())
 
-  /** `Right` when grit can run under `cap`: at least 2 turns, and a model whose calls
-    * [[AnthropicRates]] prices, since the cap is kept by that price.
+  /** `Right` when grit can run under `cap`: at least 2 turns, and at the Anthropic API a model
+    * whose calls [[AnthropicRates]] prices, since the cap is kept by that price; elsewhere each
+    * call is priced as it answers, by the cost its provider reported ([[spent]]).
     */
   private def gritCapped(cap: Caps): Either[String, Unit] =
     for {
@@ -668,11 +717,10 @@ object Rig {
         (),
         s"grit takes at least 2 turns, its first call and one after a tool's; not ${cap.maxTurns}"
       )
-      _ <- Either.cond(
-        AnthropicRates.pricing(cap.claudeModel).isDefined,
-        (),
-        s"grit's rates price no model ${cap.claudeModel}, so its cap could not stop it"
-      )
+      _ <- cap.claudeModel
+        .filter(AnthropicRates.pricing(_).isEmpty)
+        .map(m => s"grit's rates price no model $m, so its cap could not stop it")
+        .toLeft(())
     } yield ()
 
   /** `run`'s result, and how long it took by `clock`. */
@@ -703,7 +751,7 @@ object Rig {
     */
   private def gritEnvironment(arm: Arm.Grit, cap: Caps): Vector[String] = {
     val model = ModelId.value(cap.model)
-    val upstream = "api.anthropic.com"
+    val upstream = Upstream.value(cap.upstream)
     val roles = Vector(Grade.Standard, Grade.Light, Grade.Strong).flatMap { g =>
       Vector(ModelRole.Turn.modelVar(g) -> model, ModelRole.Turn.upstreamVar(g) -> upstream)
     } ++ Vector(ModelRole.Dream.modelVar -> model, ModelRole.Dream.upstreamVar -> upstream)
@@ -730,11 +778,13 @@ object Rig {
       s.workTurns.map(n => "GRIT_WORK_TURNS" -> n.toString)
 
   /** The script `sh -c` runs to start grit with its key: the key read from the file its first
-    * argument names into `ANTHROPIC_API_KEY`, then the rest of its arguments run in its place,
-    * so the key is in no program's arguments.
+    * argument names into `key`, then the rest of its arguments run in its place, so the key is in
+    * no program's arguments.
     */
-  private val Handed: String =
-    """ANTHROPIC_API_KEY="$(cat "$1")"; export ANTHROPIC_API_KEY; shift; exec "$@""""
+  private def handed(key: Variable): String = {
+    val k = Variable.value(key)
+    s"""$k="$$(cat "$$1")"; export $k; shift; exec "$$@""""
+  }
 
   /** `use` of the absolute path of a file holding the grit coder's brief for `task`: `arm`'s
     * standing text, [[GritPreamble]] and the task's brief. The file is in a directory only this
@@ -896,11 +946,12 @@ object Rig {
       finally walk.close()
     }
 
-  /** `claude`'s arguments for `task` under `cap`, its program left off; `helper` its
-    * `apiKeyHelper`.
+  /** `claude`'s arguments for `task` under `cap`, its program left off; `model` its model, as
+    * `claude --model` takes it; `helper` its `apiKeyHelper`.
     */
   private def arguments(
       arm: Arm.ClaudeCode,
+      model: String,
       cap: Caps,
       task: BenchTask,
       helper: String
@@ -942,7 +993,7 @@ object Rig {
       "--agent",
       Coder,
       "--model",
-      cap.claudeModel,
+      model,
       "--max-budget-usd",
       cap.maxBudgetUsd.toString,
       "--max-turns",

@@ -53,7 +53,8 @@
 #       run prints the same after its trial.
 #
 #   scripts/eval bench --task <name> --known
-#   scripts/eval bench --task <name> --model <id> --max-budget-usd <usd> --max-turns <n>
+#   scripts/eval bench --task <name> --model <id> [--upstream <slug>] --max-budget-usd <usd>
+#                      --max-turns <n>
 #                      [--harness claude-code
 #                       | --harness grit --standing <file> [--max-tokens <n>]
 #                                        [--max-memory-gb <n>] [--window-tokens <n>]
@@ -62,11 +63,14 @@
 #       checkout of its own holding only its base's history. With --known, the task's own
 #       commits through its checks, which must pass; nothing is kept.
 #       Otherwise a coder runs the task headless under the caps, all three required: <id> the
-#       Anthropic API's model id (claude-haiku-5-5); --max-budget-usd the most a run may spend,
+#       Anthropic API's model id (claude-haiku-5-5), or with --upstream an OpenRouter model id
+#       served by that upstream alone (deepseek/deepseek-v4.1-flash-20260910 --upstream
+#       fireworks; grit only); --max-budget-usd the most a run may spend,
 #       which it can pass; --max-turns its turns. The trial, its transcript and its diff are kept in
 #       grit_bench (created when missing) and .local/bench/blobs/grit_bench/, and printed:
 #       tokens per call with cache reads and writes, grit's cost (beside Claude Code's, for its
-#       runs), how the run ended, its denials and its checks. The key is ANTHROPIC_API_KEY, from
+#       runs), how the run ended, its denials and its checks. The key is ANTHROPIC_API_KEY
+#       (OPENROUTER_API_KEY with --upstream), from
 #       the environment over GRIT_ENV_FILE (the main checkout's .env when unset); a run refuses
 #       to start without it. Every run's checkout is removed as it ends; its log,
 #       <checkout>.log beside it, keeps the coder's commits and its diff (to 200 KB), and only
@@ -174,7 +178,7 @@ bench() {
       --max-memory-gb) [ $# -ge 2 ] || usage; memory=$2; shift 2 ;;
       --standing) [ $# -ge 2 ] || usage; standing=$2; shift 2 ;;
       --window-tokens | --work-turns) [ $# -ge 2 ] || usage; settings+=("$1" "$2"); shift 2 ;;
-      --task | --model | --max-budget-usd | --max-turns) [ $# -ge 2 ] || usage; rest+=("$1" "$2"); shift 2 ;;
+      --task | --model | --upstream | --max-budget-usd | --max-turns) [ $# -ge 2 ] || usage; rest+=("$1" "$2"); shift 2 ;;
       *) usage ;;
     esac
   done

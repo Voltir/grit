@@ -42,7 +42,8 @@ import Engines.*
 private[main] object BenchCommands {
 
   /** `bench --tasks <dir> --task <name> --repository <path> --work <dir>`, then either `--known
-    * true`, or `--model <id> --max-budget-usd <usd> --max-turns <n> --scout <program>` and a
+    * true`, or `--model <id> [--upstream <slug>] --max-budget-usd <usd> --max-turns <n> --scout
+    * <program>` ([[Caps.of]]) and a
     * harness: `--harness claude-code` (the default) with `--claude <program> --agent <file>`, or
     * `--harness grit` with `--grit <launcher> --java-home <dir> --standing <file> --coder-url
     * <jdbc> --max-tokens <n> [--max-memory-gb <n>] [--window-tokens <n>] [--work-turns <n>]` (8
@@ -51,7 +52,7 @@ private[main] object BenchCommands {
     * `<name>` of `<dir>` ([[BenchTask.of]], its `task.json` and `brief.md`), in a checkout under `<work>` named for it and `clock`'s now, of the repository
     * at `<path>`. With `--known`, its own commits through its checks ([[Rig.known]]). With `--dry
     * true` and grit, what grit's first call would send ([[Rig.dry]]), printed whole, nothing
-    * kept, no key read. Otherwise a coder run under the caps, the key `ANTHROPIC_API_KEY` from
+    * kept, no key read. Otherwise a coder run under the caps, the key [[Caps.key]] names from
     * the environment ([[DotEnv.loadDefault]]): Claude Code's ([[Rig.trial]], the agent's prompt
     * the file `<file>`), or grit's ([[Rig.gritTrial]]: its standing text the file `<file>`, its turn kept in the database at `<jdbc>` and read back from there), kept with its
     * transcript and its diff in the database at `--url <jdbc>` and the blobs at `--blobs <dir>`
@@ -104,7 +105,7 @@ private[main] object BenchCommands {
             model <- need(f, "model")
             budget <- need(f, "max-budget-usd")
             turns <- need(f, "max-turns")
-            cap <- Caps.of(model, budget, turns)
+            cap <- Caps.of(model, f.get("upstream"), budget, turns)
             scout <- need(f, "scout")
             output = root.resolve(s"${RelPath.value(dir)}.log")
             _ <- f.getOrElse("harness", "claude-code") match {
@@ -175,7 +176,7 @@ private[main] object BenchCommands {
                       Rig.dry(work)(repository, task, arm, cap, dir).map(println)
                     else
                       for {
-                        key <- Secret.read(env, AnthropicProvider.KeyVar).left.map(_.message)
+                        key <- Secret.read(env, cap.key).left.map(_.message)
                         coderDb <- DbConfig.fromEnv(Map(DbConfig.UrlVar -> url)).left.map(_.message)
                         _ = println(s"the run's log: $output")
                         _ <- kept(f, env, clock)(() =>
