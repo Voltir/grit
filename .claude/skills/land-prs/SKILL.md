@@ -28,10 +28,10 @@ local branch holding commits origin lacks.
 ## Steps
 
 1. **Ready.** When `<lander>` does not exist: `git -C <top> fetch origin`, then `git -C <top>
-   worktree add --detach <lander> origin/main`, and each of `tools/enola`, `tools/scalafmt` and
-   `tools/shellcheck` it lacks fetched into it, `bash <lander>/scripts/fetch-<tool>.sh` (they are
-   per checkout, and the gate needs them); a fetch that fails stops, in its own words. Then each
-   must hold, or say which does not and stop:
+   worktree add --detach <lander> origin/main`. Either way, each of `tools/enola`,
+   `tools/scalafmt` and `tools/shellcheck` it lacks is fetched into it, `bash
+   <lander>/scripts/fetch-<tool>.sh` (they are per checkout, and the gate needs them); a fetch
+   that fails stops, in its own words. Then each must hold, or say which does not and stop:
    - `git -C <lander> status --porcelain` prints nothing, and `git -C <lander> symbolic-ref -q
      HEAD` fails (it is detached): a landing stopped part-way leaves it otherwise.
    - `env -u GITHUB_TOKEN -u GH_TOKEN gh auth status --hostname github.com` exits 0.
@@ -40,27 +40,38 @@ local branch holding commits origin lacks.
    `key` `grit/landing`, `role` `lander` and that holder, giving no `session`. Refused, naming a
    holder and when it lapses: another session is landing; stop, quoting it. What the claim is:
    [the landing mechanism](artifact:grit/628).
-3. **Fetch.** `git -C <lander> fetch origin`. Note each pull request's branch as fetched,
+3. **Fetch.** Note the lander worktree's commit, `<was>` (`git -C <lander> rev-parse HEAD`), then
+   `git -C <lander> fetch origin`. Note each pull request's branch as fetched,
    `<fetched>` (`git -C <lander> rev-parse origin/<branch>`): the lease its push in step 6 names.
-4. **Stack**, in the lander, each pull request in order:
+4. **Stack**, in the lander worktree, each pull request in order:
    1. `gh pr view <n> --json headRefName,baseRefName,state`. It must read `OPEN`, or stop naming
       it. Where `baseRefName` is not `main`, `gh pr edit <n> --base main`: a pull request reads
       merged when its head reaches its own base.
    2. A local `<branch>` that is not an ancestor of `origin/<branch>` (`git merge-base
       --is-ancestor <branch> origin/<branch>` fails) holds commits origin lacks: stop, naming it.
+      A `<branch>` checked out in another worktree (`git worktree list --porcelain` names it on a
+      `branch refs/heads/<branch>` line) cannot be checked out here: stop, naming that worktree,
+      whose session detaches it.
    3. `git checkout -B <branch> origin/<branch>`, then `git rebase <onto>`, `<onto>` being
       `origin/main` for the first and the branch before it for each after. On a conflict, stop,
       naming the pull request.
 
-   The last branch's head is `<head>`.
-5. **Gate**, in the lander. When `<head>` is `origin/<last branch>` (the rebase moved nothing) and
+   The last branch's head is `<head>`. A tool whose pin moved between `<was>` and `<head>` is
+   fetched again, so the gate grades with the pinned binary: `bash
+   <lander>/scripts/fetch-<tool>.sh` for each `<tool>` of `enola`, `scalafmt` and `shellcheck` for
+   which `git -C <lander> diff --quiet <was> <head> -- scripts/fetch-<tool>.sh` fails, and for
+   `scalafmt` when the same is true of `.scalafmt.conf`. A fetch that fails stops, in its own
+   words.
+5. **Gate**, in the lander worktree. When `<head>` is `origin/<last branch>` (the rebase moved nothing) and
    `scripts/gate-stamp --check <head>` exits 0, it was gated and stamped as it stands: go to
    step 8. Otherwise `CHECK_BASE=$(git merge-base HEAD origin/main) scripts/check --it-reached`,
-   then `./mill shutdown`. If the check fails, stop, quoting its failing lines.
+   then `./mill shutdown`. If the check fails, stop, quoting its failing lines. A tier that timed
+   out while another build ran on the machine is no verdict: rerun the gate once it is alone
+   (machine capacity: [grit/693](artifact:grit/693)).
 6. **Push the branches.** For each branch whose head is not its `<fetched>`: `git -C <lander> push
    --force-with-lease=<branch>:<fetched> origin <branch>`. These are feature branches; `main` is
    never pushed this way. Refused: stop, in git's words.
-7. **Stamp.** `scripts/gate-stamp <head>` in the lander. Refused by gh (a line `gh refused the
+7. **Stamp.** `scripts/gate-stamp <head>` in the lander worktree. Refused by gh (a line `gh refused the
    post: …`): the gate's record is still there, so fix gh and rerun this step alone. Any other
    refusal: stop, in its words.
 8. **Move main.** When the gate ran past the claim's `lapses` (`project_claims`), release
