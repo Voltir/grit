@@ -50,6 +50,11 @@ In dependency order:
   call to the asking conversation's directory (`McpServer.directoryArgument`): it is left out
   of each listed schema, and a call that gives it, or comes from a conversation working in no
   directory, is not sent. Imports `wire` and `scope`.
+- **`google`**: what Google's REST APIs share, for a reader of one beside MCP: `GoogleRest`
+  sends a `GoogleRequest` (a GET, or a POST of JSON) with `client`'s token, and reads its
+  status by the table they share (`GoogleFailure`) after the API's own refinement of it. A
+  streamed body is never held whole; an error's is read to `GoogleRest.MaxRead`. Imports
+  `client`.
 - **`github`** — GitHub's side of a scope: `GitHubScope`, a repository or an owner as the
   `Bound` GitHub's tools name it, and a scope within them whose search tools are held by the
   repository each result names; and `GitHubItems`, repositories and owners as places under the
