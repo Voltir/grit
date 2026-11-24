@@ -1,6 +1,6 @@
 # 0049. A project's method is versioned data whose checks are compiled in, and a project is one value held to its export by a round-trip law
 
-Status: accepted (2026-10-27); revised (2026-11-19)
+Status: accepted (2026-10-27); revised (2026-11-19, 2026-11-24)
 
 Context: the projects plugin keeps a project's artifacts (a change, a design, a task) and moves
 each from state to state as the project's methodology allows. Methodologies differ by team and
@@ -17,9 +17,9 @@ change over time, and a project must keep the rules it was started under. Turned
 Decision:
 
 - **A methodology is versioned data** (`Method`): its kinds of artifact, each kind's states,
-  end states and sections, the transitions between states, who may make each (`Movers`), and
-  what each role is shown (`RoleView`). `Method.of` refuses an inconsistent method, every
-  reason at once.
+  end states, sections and the states that release the next sibling, the transitions between
+  states, who may make each (`Movers`), and what each role is shown (`RoleView`). `Method.of`
+  refuses an inconsistent method, every reason at once.
 - **Its checks are compiled in.** A transition names its checks; each is a pure
   `TransitionCheck` the deployment compiles, judging one artifact over its project's heads. What
   a transition does besides moving is grit's (`TransitionAction`, a closed set), never a

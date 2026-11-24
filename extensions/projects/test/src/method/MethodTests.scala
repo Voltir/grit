@@ -146,6 +146,43 @@ object MethodTests extends TestSuite {
       )
     }
 
+    test(
+      "a kind releasing a state it does not declare, or one of its ends, is refused, naming it"
+    ) {
+      val releasing =
+        change.copy(releases = Set(state("shipped"), state("done"), state("building")))
+      val made =
+        Method.of(method, 1, Vector(releasing, note), transitions, views, TransitionChecks.all)
+      assert(
+        made == Left(
+          Vector(
+            ReleaseIsEnd(change.name, state("done")),
+            ReleaseUndeclared(change.name, state("shipped"))
+          )
+        )
+      )
+    }
+    test(
+      "a kind releasing nothing digests as before kinds could release, and releasing changes it"
+    ) {
+      // Pinned as it was before a kind could release a state: the same pin as above, so every
+      // project pinned to a method without releases keeps its pin.
+      def digest(releases: Set[String]) =
+        Method
+          .of(
+            method,
+            1,
+            Vector(change.copy(releases = releases.map(state)), note),
+            transitions,
+            views,
+            TransitionChecks.all
+          )
+          .map(_.digest.hex)
+      val released = digest(Set("building"))
+      (digest(Set.empty), released == digest(Set.empty), released.isRight) ==> (
+        (Right("f49dd63d8bcf94b8f37cf4b2ed0768c1945cc7381a6f6fe43523eb29c597c1c8"), false, true)
+      )
+    }
     test("a kind's nesting changes the digest, and the order of the kinds it names does not") {
       def digest(nesting: Nesting) =
         Method

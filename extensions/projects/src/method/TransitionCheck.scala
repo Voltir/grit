@@ -69,8 +69,34 @@ object TransitionChecks {
     }
   }
 
+  /** `predecessor-released`: every artifact of its kind under its parent (or, with none, under
+    * none) listed before it ([[ArtifactHead.ranked]]) is in an end state of its kind or one its kind
+    * releases ([[ArtifactKind.released]]).
+    */
+  object PredecessorReleased extends Builtin("predecessor-released") {
+    def holds(
+        judged: Artifact,
+        heads: Vector[ArtifactHead],
+        kinds: Vector[ArtifactKind]
+    ): Either[String, Unit] = {
+      val me = judged.head
+      val holding = heads
+        .filter(h =>
+          h.key != me.key && h.kind == me.kind && h.parent == me.parent &&
+            ArtifactHead.ranked.lt(h, me) && !ArtifactKind.released(kinds, h)
+        )
+        .sorted(using ArtifactHead.ranked)
+      if (holding.isEmpty) Right(())
+      else
+        Left(
+          s"listed before it and still holding it: ${holding.map(h => s"${h.called} (${StateName.value(h.state)})").mkString(", ")}"
+        )
+    }
+  }
+
   /** Every check grit compiles in, each at version 1. */
-  val all: Vector[TransitionCheck] = Vector(ChildrenEnded, CitedAccepted, SectionsPresent)
+  val all: Vector[TransitionCheck] =
+    Vector(ChildrenEnded, CitedAccepted, PredecessorReleased, SectionsPresent)
 
   sealed abstract class Builtin(named: String) extends TransitionCheck {
     val name: CheckName = CheckName.builtin(named)

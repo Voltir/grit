@@ -188,8 +188,8 @@ final case class Method private (
   /** The digest of its data and of each check's name and version: equal for equal methods,
     * whatever order their kinds, transitions, role views, states and checks are declared in. A
     * view carrying nothing, covering nothing or claimed in nothing, a role anyone may hold, a
-    * transition anyone makes,
-    * or a kind that may sit anywhere, adds nothing to the digest.
+    * transition anyone makes, a kind that may sit anywhere, or a kind releasing no state, adds
+    * nothing to the digest.
     */
   def digest: Sha256 = {
     def field(s: String): String = s"${s.length}:$s"
@@ -206,7 +206,8 @@ final case class Method private (
           case Nesting.Anywhere => ""
           case Nesting.Root => field("root")
           case Nesting.Under(under) => field("under") + names(under.map(KindName.value))
-        })
+        }) + (if (k.releases.isEmpty) ""
+              else field("releases") + names(k.releases.map(StateName.value)))
       } ++ transitions.map { t =>
         "transition " + Vector(
           field(KindName.value(t.kind)),
@@ -253,7 +254,8 @@ object Method {
 
   /** These as a method, or every reason not ([[MethodRefusal]]): a version under 1; a kind, state,
     * role or check named twice; an end state, a transition (its action's kind among them), a role
-    * view or a kind's nesting naming a kind or state not declared; a transition from an end state;
+    * view or a kind's nesting naming a kind or state not declared; a kind releasing a state it does
+    * not declare, or one of its ends; a transition from an end state;
     * a check not in `compiled`; a state its kind's first cannot reach; a view claimed in a state
     * its kind does not declare.
     */
@@ -276,7 +278,12 @@ object Method {
             k.ends.toVector
               .sortBy(StateName.value)
               .filterNot(k.all.contains)
-              .map(UndeclaredState(k.name, _))
+              .map(UndeclaredState(k.name, _)) ++
+            k.releases.toVector.sortBy(StateName.value).flatMap { s =>
+              if (!k.all.contains(s)) Vector(ReleaseUndeclared(k.name, s))
+              else if (k.ends(s)) Vector(ReleaseIsEnd(k.name, s))
+              else Vector.empty
+            }
         } ++
         twice(views.map(_.role)).map(RoleTwice(_)) ++
         checksTwice(compiled) ++
@@ -429,6 +436,12 @@ enum MethodRefusal extends caps.Pure {
 
   /** An end state or a transition names a state its kind does not declare. */
   case UndeclaredState(kind: KindName, state: StateName)
+
+  /** A kind releases a state it does not declare. */
+  case ReleaseUndeclared(kind: KindName, state: StateName)
+
+  /** A kind releases one of its end states, which release already. */
+  case ReleaseIsEnd(kind: KindName, state: StateName)
 
   /** A transition leaves an end state. */
   case FromEnd(kind: KindName, state: StateName)

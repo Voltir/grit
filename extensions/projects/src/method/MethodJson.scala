@@ -42,6 +42,8 @@ object MethodJson {
             o("nesting") =
               ujson.Obj(UnderNesting -> strings(under.toVector.map(KindName.value).sorted))
         }
+        if (k.releases.nonEmpty)
+          o("releases") = strings(k.releases.toVector.map(StateName.value).sorted)
         o
       }),
       "transitions" -> ujson.Arr.from(method.transitions.map { t =>
@@ -236,7 +238,8 @@ object MethodJson {
               s"""{"$UnderNesting": [kinds]}"""
           )
       }
-    } yield ArtifactKind(name, first, states, ends.toSet, sections, nesting)
+      releases <- names(f, "releases")(StateName.of)
+    } yield ArtifactKind(name, first, states, ends.toSet, sections, nesting, releases.toSet)
 
   private def transition(f: Fields): Either[String, Transition] =
     for {
@@ -368,6 +371,10 @@ object MethodJson {
     case MethodRefusal.UndeclaredState(kind, state) => s"kind $kind declares no state $state"
     case MethodRefusal.FromEnd(kind, state) =>
       s"a transition of kind $kind leaves its end state $state"
+    case MethodRefusal.ReleaseUndeclared(kind, state) =>
+      s"kind $kind releases state $state, which it does not declare"
+    case MethodRefusal.ReleaseIsEnd(kind, state) =>
+      s"kind $kind releases state $state, which is already one of its ends"
     case MethodRefusal.NotCompiled(check) => s"check $check is not compiled"
     case MethodRefusal.Unreachable(kind, state) =>
       s"state $state of kind $kind is reached by no transition from its first"

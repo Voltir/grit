@@ -214,6 +214,32 @@ object MethodJsonTests extends TestSuite {
         )
       )
     }
+    test(
+      "a kind's releases are written sorted and only when it has some, and read back under an equal digest"
+    ) {
+      def releasing(releases: Set[String]) = right(
+        Method
+          .of(
+            method,
+            1,
+            Vector(change.copy(releases = releases.map(state)), note),
+            transitions,
+            views,
+            TransitionChecks.all
+          )
+          .left
+          .map(_.mkString("; "))
+      )
+      def round(m: Method) = {
+        val json = MethodJson.written(m, Vector.empty)
+        val back = MethodJson.read(json, TransitionChecks.all).map(_.method.digest)
+        (json("kinds")(0).obj.get("releases"), back == Right(m.digest))
+      }
+      (round(releasing(Set.empty)), round(releasing(Set("proposed", "building")))) ==> (
+        (None, true),
+        (Some(ujson.Arr(ujson.Str("building"), ujson.Str("proposed"))), true)
+      )
+    }
     test("a view's covers is written only when true, and read back under an equal digest") {
       val m = right(
         MethodJson.read(declared(), TransitionChecks.all).left.map(_.mkString("; "))

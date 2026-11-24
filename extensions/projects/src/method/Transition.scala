@@ -5,7 +5,8 @@ import grit.projects.artifact.ArtifactHead
 import grit.projects.name.{CheckName, Handle, KindName, RoleName, StateName}
 
 /** A kind of artifact: the state each starts in, its other states, those of them it ends in,
-  * the `##` sections its body must hold, and what it may sit under.
+  * the `##` sections its body must hold, what it may sit under, and the states, besides its ends,
+  * in which an artifact of the kind no longer holds back the sibling listed after it (`releases`).
   */
 final case class ArtifactKind(
     name: KindName,
@@ -13,7 +14,8 @@ final case class ArtifactKind(
     states: Vector[StateName],
     ends: Set[StateName],
     sections: Vector[String],
-    nesting: Nesting = Nesting.Anywhere
+    nesting: Nesting = Nesting.Anywhere,
+    releases: Set[StateName] = Set.empty
 ) extends caps.Pure {
 
   /** `first`, then `states`. */
@@ -25,6 +27,12 @@ object ArtifactKind {
   /** Whether `head` is in an end state of its kind among `kinds`; false for a kind none is. */
   def ends(kinds: Vector[ArtifactKind], head: ArtifactHead): Boolean =
     kinds.exists(k => k.name == head.kind && k.ends(head.state))
+
+  /** Whether `head` no longer holds back the sibling listed after it: its state is an end or a
+    * release of its kind among `kinds`; false for a kind none is.
+    */
+  def released(kinds: Vector[ArtifactKind], head: ArtifactHead): Boolean =
+    kinds.exists(k => k.name == head.kind && (k.ends(head.state) || k.releases(head.state)))
 }
 
 /** What an artifact of a kind may sit under: any artifact or none, none, or an artifact of one
