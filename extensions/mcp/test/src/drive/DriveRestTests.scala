@@ -2,6 +2,7 @@ package grit.mcp.drive
 
 import grit.core.files.{Kind, Unread}
 import grit.core.identity.Email
+import grit.mcp.google.GoogleRest
 
 import utest.*
 
@@ -356,10 +357,10 @@ object DriveRestTests extends TestSuite {
     test("an answer longer than MaxRead keeps only its first whole lines within it") {
       withFake { (fake, rest) =>
         val line = "text text text text text text text\n"
-        fake.answering("files/file-1/export", 200, line * (DriveRest.MaxRead / line.length + 10))
+        fake.answering("files/file-1/export", 200, line * (GoogleRest.MaxRead / line.length + 10))
         // One byte a character: the most whole lines within MaxRead bytes.
         rest.file(file1).flatMap(rest.text).map(t => (t.length, t.endsWith("\n"))) ==>
-          Right(((DriveRest.MaxRead / line.length) * line.length, true))
+          Right(((GoogleRest.MaxRead / line.length) * line.length, true))
       }
     }
 

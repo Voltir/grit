@@ -1,17 +1,11 @@
 package grit.mcp.drive
 
-import java.io.IOException
 import java.net.URI
-import java.net.URLEncoder
-import java.net.http.{HttpClient, HttpRequest, HttpResponse, HttpTimeoutException}
-import java.nio.charset.StandardCharsets.UTF_8
-
-import scala.concurrent.duration.*
-import scala.jdk.DurationConverters.*
 
 import grit.core.clock.Clock
 import grit.core.files.{FileError, Unread}
 import grit.mcp.client.Authorizer
+import grit.mcp.google.{GoogleFailure, GoogleRequest, GoogleRest}
 
 /** Why a request to Drive answered nothing grit reads. */
 enum DriveError derives CanEqual {
@@ -27,7 +21,7 @@ enum DriveError derives CanEqual {
   /** Drive answered 429, a 5xx, or 403 for a rate or quota limit: try again later. */
   case Busy(status: Int)
 
-  /** Drive could not be reached in [[DriveRest.Timeout]]: `why`, never the request. */
+  /** Drive could not be reached in [[GoogleRest.Timeout]]: `why`, never the request. */
   case Unreachable(why: String)
 
   /** Drive's answer was not in the form it documents: `why`, for the operator's log alone. */
@@ -106,11 +100,11 @@ enum DriveError derives CanEqual {
 
 /** Drive's v3 REST API at `api`, and the Slides API at `slides` for a deck's own answer,
   * read-only, over every drive shared with the account `authorizer` authorises, each request
-  * carrying a token got at `clock`'s time and timing out after [[DriveRest.Timeout]].
+  * carrying a token got at `clock`'s time and timing out after [[GoogleRest.Timeout]].
   */
 final class DriveRest(api: URI, slides: URI, authorizer: Authorizer, clock: Clock) {
 
-  private val http = HttpClient.newBuilder().connectTimeout(DriveRest.Timeout.toJava).build()
+  private val google = new GoogleRest[DriveError](authorizer, clock, DriveRest.refined)
 
   /** The first page, at most [[DriveRest.PageSize]], of files in every drive shared with the
     * account whose text holds `text`, within the folder `folder` when given, none in the trash.
@@ -170,7 +164,7 @@ final class DriveRest(api: URI, slides: URI, authorizer: Authorizer, clock: Cloc
     ).flatMap(a => DriveJson.grants(a).left.map(DriveError.Malformed(_)))
 
   /** `file`'s text, a leading byte-order mark dropped: a Doc as markdown, a Sheet's first sheet
-    * as CSV, a file whose type is `text/` anything as it is; its first [[DriveRest.MaxRead]] bytes when longer.
+    * as CSV, a file whose type is `text/` anything as it is; its first [[GoogleRest.MaxRead]] bytes when longer.
     * [[DriveError.Unreadable]] for any other type, a folder's included, and for a file Drive
     * will not export ("this file").
     */
@@ -218,7 +212,7 @@ final class DriveRest(api: URI, slides: URI, authorizer: Authorizer, clock: Cloc
             slides,
             s"presentations/$id",
             Vector("fields" -> DriveRest.DeckFields),
-            Some(DriveError.SlidesOff)
+            DriveError.SlidesOff
           )(body)
         case DriveExport.Word | DriveExport.Excel | DriveExport.Pdf =>
           streamed(api, s"files/$id/export", Vector("mimeType" -> as.mimeType))(body)
@@ -226,23 +220,17 @@ final class DriveRest(api: URI, slides: URI, authorizer: Authorizer, clock: Cloc
   }
 
   /** `body` over the body of a GET of `path` below `base` with `query` when it answers 200;
-    * otherwise its failure, as [[DriveError]] says, an API not enabled as `off` when given.
+    * otherwise its failure, as [[DriveError]] says, an API not enabled as `off`.
     */
   private def streamed[A](
       base: URI,
       path: String,
       query: Vector[(String, String)],
-      off: Option[DriveError] = None
+      off: DriveError = DriveError.Hidden
   )(
       body: java.io.InputStream^ => A
   ): Either[DriveError, A] =
-    send(base, path, query) { (status, in) =>
-      if (status != 200)
-        DriveRest
-          .answered(status, DriveRest.bodyText(in), off)
-          .flatMap(_ => Left(DriveError.Malformed(s"Drive answered $status")))
-      else Right(body(in))
-    }
+    failed(google.streamed(request(base, path, query))(body), off)
 
   /** Whether the account's token is taken: one search of one file. */
   private[drive] def reachable(): Either[DriveError, Unit] =
@@ -257,57 +245,34 @@ final class DriveRest(api: URI, slides: URI, authorizer: Authorizer, clock: Cloc
     ).map(_ => ())
 
   private def json(path: String, query: Vector[(String, String)]): Either[DriveError, ujson.Value] =
-    get(path, query).flatMap(body =>
-      scala.util
-        .Try(ujson.read(body))
-        .toOption
-        .toRight(DriveError.Malformed("an answer that is not JSON"))
+    failed(google.json(request(api, path, query)))
+
+  /** The body of a GET of `path` with `query`, as [[DriveError]] says. */
+  private def get(path: String, query: Vector[(String, String)]): Either[DriveError, String] =
+    failed(google.text(request(api, path, query)))
+
+  private def request(base: URI, path: String, query: Vector[(String, String)]): GoogleRequest =
+    // Only files' requests take supportsAllDrives; drives.list documents no such parameter.
+    GoogleRequest(
+      "Drive",
+      base,
+      path,
+      if (path.startsWith("files")) query :+ ("supportsAllDrives" -> "true") else query
     )
 
-  /** The body of a GET of `path` with `query`, and `supportsAllDrives` for a file's, as
-    * [[DriveError]] says.
-    */
-  private def get(path: String, query: Vector[(String, String)]): Either[DriveError, String] =
-    send(api, path, query)((status, in) => DriveRest.answered(status, DriveRest.bodyText(in)))
-
-  /** A GET of `path` below `base` with `query`, and `supportsAllDrives` for a file's, its
-    * answer's status and body handed to `read`; the body closed after. A failure to reach
-    * Google, or of `read`'s own I/O, as [[DriveError.Unreachable]].
-    */
-  private def send[A](base: URI, path: String, query: Vector[(String, String)])(
-      read: (Int, java.io.InputStream) => Either[DriveError, A]
-  ): Either[DriveError, A] =
-    authorizer
-      .bearer(clock)
-      .left
-      .map(miss => DriveError.NoToken(miss.why))
-      .flatMap { bearer =>
-        // Only files' requests take supportsAllDrives; drives.list documents no such parameter.
-        val all = if (path.startsWith("files")) query :+ ("supportsAllDrives" -> "true") else query
-        val encoded = all
-          .map((k, v) => s"$k=${URLEncoder.encode(v, UTF_8).replace("+", "%20")}")
-          .mkString("&")
-        val request = HttpRequest
-          .newBuilder(base.resolve(s"$path?$encoded"))
-          .timeout(DriveRest.Timeout.toJava)
-          .header("Authorization", s"Bearer ${bearer.value}")
-          .GET()
-          .build()
-        try {
-          val response = http.send(request, HttpResponse.BodyHandlers.ofInputStream())
-          val in = response.body()
-          try read(response.statusCode, in)
-          finally in.close()
-        } catch {
-          case _: HttpTimeoutException =>
-            Left(DriveError.Unreachable(s"no answer within ${DriveRest.Timeout}"))
-          // Its class alone: an I/O error's message may name the request.
-          case e: IOException => Left(DriveError.Unreachable(e.getClass.getSimpleName))
-          case _: InterruptedException =>
-            Thread.currentThread().interrupt()
-            Left(DriveError.Unreachable("interrupted"))
-        }
-      }
+  /** `answer`'s failure as Drive's, an API not enabled as `off`. */
+  private def failed[A](
+      answer: Either[GoogleFailure | DriveError, A],
+      off: DriveError = DriveError.Hidden
+  ): Either[DriveError, A] = answer.left.map {
+    case GoogleFailure.NoToken(why) => DriveError.NoToken(why)
+    case GoogleFailure.Hidden => DriveError.Hidden
+    case GoogleFailure.Off => off
+    case GoogleFailure.Busy(status) => DriveError.Busy(status)
+    case GoogleFailure.Unreachable(why) => DriveError.Unreachable(why)
+    case GoogleFailure.Malformed(why) => DriveError.Malformed(why)
+    case own: DriveError => own
+  }
 }
 
 object DriveRest {
@@ -335,9 +300,6 @@ object DriveRest {
   /** The scope grit's token asks for: reading every file shared with the account. */
   val ReadOnly: Set[String] = Set("https://www.googleapis.com/auth/drive.readonly")
 
-  /** How long one request may take: 60 seconds. */
-  val Timeout: FiniteDuration = 60.seconds
-
   /** The most hits a search reads: 20. */
   val PageSize: Int = 20
 
@@ -350,47 +312,11 @@ object DriveRest {
   /** The most grants read of a file: 100, one page; a file shared more widely is read as not. */
   val GrantsMost: Int = 100
 
-  /** The most bytes of an answer read: 1 MiB, far past what the model is shown. */
-  val MaxRead: Int = 1024 * 1024
-
-  /** The 403 reasons Drive gives for a rate or quota limit. */
-  private val Limits: Set[String] =
-    Set("userRateLimitExceeded", "rateLimitExceeded", "dailyLimitExceeded", "quotaExceeded")
-
-  /** `in`'s first [[MaxRead]] bytes as text; when cut there, its whole lines. */
-  private def bodyText(in: java.io.InputStream): String = {
-    val bytes = in.readNBytes(MaxRead)
-    val text = new String(bytes, UTF_8)
-    // A body cut at MaxRead ends partway through a line: keep its whole lines.
-    if (bytes.length < MaxRead) text else text.take(text.lastIndexOf('\n') + 1)
-  }
-
-  /** The reasons Google gives for a 403 when the API asked is not enabled for the project: the
-    * newer form's, and the older one's.
-    */
-  private val Disabled: Set[String] = Set("SERVICE_DISABLED", "accessNotConfigured")
-
-  /** `status` and `body` as a request's answer; a 403 for an API not enabled as `off`, when
-    * given, else as any other 403.
-    */
-  private def answered(
-      status: Int,
-      body: String,
-      off: Option[DriveError] = None
-  ): Either[DriveError, String] = {
-    def reasons = scala.util.Try(ujson.read(body)).toOption.toVector.flatMap(DriveJson.reasons)
-    status match {
-      case 200 => Right(body)
-      case 401 => Left(DriveError.NoToken("Drive refused the token it was given"))
-      case 403 if off.nonEmpty && reasons.exists(Disabled) => off.toLeft(body)
-      case 403 if reasons.exists(Limits) => Left(DriveError.Busy(status))
-      case 403 if reasons.contains("fileNotExportable") => Left(DriveError.Unreadable("this file"))
-      case 403 if reasons.contains("cannotDownloadAbusiveFile") => Left(DriveError.Flagged)
-      case 403 if reasons.contains("exportSizeLimitExceeded") => Left(DriveError.ExportTooLarge)
-      case 403 | 404 => Left(DriveError.Hidden)
-      case 429 => Left(DriveError.Busy(status))
-      case s if s >= 500 => Left(DriveError.Busy(status))
-      case s => Left(DriveError.Malformed(s"Drive answered $s"))
-    }
-  }
+  /** Drive's own reading of a refusal, before the table its APIs share. */
+  private val refined: (Int, Vector[String]) -> Option[DriveError] = (status, reasons) =>
+    if (status != 403) None
+    else if (reasons.contains("fileNotExportable")) Some(DriveError.Unreadable("this file"))
+    else if (reasons.contains("cannotDownloadAbusiveFile")) Some(DriveError.Flagged)
+    else if (reasons.contains("exportSizeLimitExceeded")) Some(DriveError.ExportTooLarge)
+    else None
 }

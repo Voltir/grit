@@ -16,7 +16,8 @@ request a client posted and writing its answer, pure, for an edge that serves gr
 over MCP; nothing here listens or runs a tool.
 
 It also holds one client that is not MCP's: Drive's REST API, until Drive's MCP server serves a
-service account (`drive`, below), reusing `client`'s credentials.
+service account (`drive`, below), sent through what Google's REST APIs share (`google`) with
+`client`'s credentials.
 
 In dependency order:
 

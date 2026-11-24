@@ -1,6 +1,7 @@
 package grit.mcp.drive
 
 import grit.core.identity.{Domain, Email}
+import grit.mcp.google.GoogleRest
 
 import utest.*
 
@@ -218,8 +219,8 @@ object DriveJsonTests extends TestSuite {
 
     test("an error answer's reasons are read in order") {
       (
-        DriveJson.reasons(Recorded.json("error-export-folder")),
-        DriveJson.reasons(Recorded.json("error-no-file"))
+        GoogleRest.reasons(Recorded.json("error-export-folder")),
+        GoogleRest.reasons(Recorded.json("error-no-file"))
       ) ==>
         (Vector("fileNotExportable"), Vector("notFound"))
     }

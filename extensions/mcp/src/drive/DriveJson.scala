@@ -141,21 +141,6 @@ object DriveJson {
       }
     } yield Option.unless(o.contains("nextPageToken"))(read)
 
-  /** The reasons an error answer gives, in order: Drive's (`error.errors[].reason`), then
-    * Google's newer form's (`error.details[].reason`); none when it names none.
-    */
-  def reasons(answer: ujson.Value): Vector[String] = {
-    val error = answer.objOpt.flatMap(_.get("error")).flatMap(_.objOpt)
-    Vector("errors", "details").flatMap(key =>
-      error
-        .flatMap(_.get(key))
-        .flatMap(_.arrOpt)
-        .toVector
-        .flatten
-        .flatMap(_.objOpt.flatMap(_.get("reason")).flatMap(_.strOpt))
-    )
-  }
-
   private def grant(answer: ujson.Value): Either[String, Grant] = {
     def str(k: String, what: String) = Fields(what, answer).str(k)
     for {
