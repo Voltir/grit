@@ -78,6 +78,13 @@ object Markdown {
       .fold(_ => "", c => write(Doc(Vector(Block.Chart(c)))))
   }
 
+  /** What a model is told of when to write a table, in words for any edge. */
+  val tableGuide: String =
+    "When your reply sets several things side by side on the same measures, such as the " +
+      "rows of a tool's results, write them as a table rather than as a list: a header row " +
+      "naming the measures, then one row for each thing, so a reader compares them down each " +
+      "column. Where a few of the numbers compare, a chart may go with the table."
+
   /** What a model is told of when and how to write a chart, in words for any edge, which shows
     * it [[chartExample]] beside them.
     */

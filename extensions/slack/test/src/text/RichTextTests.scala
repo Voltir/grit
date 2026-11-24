@@ -527,8 +527,10 @@ object RichTextTests extends TestSuite {
       }
     }
 
-    test("what Slack is told ends with when to write a chart") {
-      assert(RichText.Shown.endsWith("\n\n" + Markdown.chartGuide))
+    test("what Slack is told ends with when to write a table, then when to write a chart") {
+      assert(
+        RichText.Shown.endsWith("\n\n" + Markdown.tableGuide + "\n\n" + Markdown.chartGuide)
+      )
     }
 
     test("a mention is a user element between literal text, and a mention in the plain text") {

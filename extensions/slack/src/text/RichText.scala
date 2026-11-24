@@ -66,7 +66,8 @@ object RichText extends Renderer[Vector[Post]] {
     * writes it: one line for each kind of block and mark [[render]] draws, a markdown example
     * and how Slack shows it (a heading as a bold line, a table as a Slack table, a chart as
     * a Slack chart, a list or quote inside a quote as its plain text), then when to write a
-    * chart ([[Markdown.chartGuide]]). The same text on every call.
+    * table ([[Markdown.tableGuide]]) and a chart ([[Markdown.chartGuide]]). The same text on
+    * every call.
     */
   val Shown: String =
     told
@@ -74,7 +75,7 @@ object RichText extends Renderer[Vector[Post]] {
       .mkString(
         "How Slack shows the markdown you write, an example of each kind:\n\n",
         "\n\n",
-        "\n\n" + Markdown.chartGuide
+        "\n\n" + Markdown.tableGuide + "\n\n" + Markdown.chartGuide
       )
 
   /** Each example's markdown, and how Slack shows it: [[shows]] of the block or mark it parses
