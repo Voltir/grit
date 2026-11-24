@@ -994,7 +994,8 @@ object RigTests extends TestSuite {
         pair("deepseek/deepseek-v4.1-flash-20260910", Some("fireworks")),
         pair("deepseek/deepseek-v4.1-flash-20260910", None),
         pair("Deepseek flash", Some("fireworks")),
-        pair("deepseek/deepseek-v4.1-flash-20260910", Some("Fire Works"))
+        pair("deepseek/deepseek-v4.1-flash-20260910", Some("Fire Works")),
+        pair("deepseek/deepseek-v4.1-flash-20260910", Some("api.anthropic.com"))
       ) ==> (
         Right(
           (
@@ -1017,7 +1018,11 @@ object RigTests extends TestSuite {
         Left(
           "the model Deepseek flash is not an OpenRouter model's id, as deepseek/deepseek-v4.1-flash-20260910"
         ),
-        Left("the upstream Fire Works is not an OpenRouter upstream's slug, as fireworks")
+        Left("the upstream Fire Works is not an OpenRouter upstream's slug, as fireworks"),
+        Left(
+          "the upstream api.anthropic.com is the Anthropic API, named by giving a Claude model's id, " +
+            "as claude-haiku-5-5, and no upstream"
+        )
       )
     }
 

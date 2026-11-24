@@ -60,7 +60,8 @@ ends, for a report across its turns), and read back from there for the trial: th
 calls and bytes before its first edit, and each `run` that failed as a denial. Its calls are read
 from the line grit prints as each one answers, side calls among them, and priced by grit's rates
 where they have the model, else by the cost its provider reported as that line prints it (to two
-significant digits; the trial's report says which calls were); a call priced by neither stops the
+significant digits; the trial's report says which calls were; a provider that prints `0¢` is
+priced at zero, as it reported); a call priced by neither stops the
 run, a trial not passed, its cost unknown rather than zero. The run is stopped once they reach the
 budget, so it can pass the budget by the
 call that reached it. A run whose turn did not succeed, or that the budget stopped, is a trial not

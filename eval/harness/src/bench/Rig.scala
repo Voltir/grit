@@ -87,6 +87,12 @@ object Caps {
             u <- Upstream
               .of(slug)
               .toRight(s"the upstream $slug is not an OpenRouter upstream's slug, as fireworks")
+            _ <- Either.cond(
+              u != Upstream.AnthropicApi,
+              (),
+              s"the upstream $slug is the Anthropic API, named by giving a Claude model's id, as " +
+                "claude-haiku-5-5, and no upstream"
+            )
           } yield (id, u)
       }
       b <- maxBudgetUsd.toDoubleOption
@@ -94,7 +100,8 @@ object Caps {
         .map(_ => BigDecimal(maxBudgetUsd))
         .toRight(s"the budget $maxBudgetUsd is not an amount of USD above 0")
       t <- maxTurns.toIntOption.filter(_ >= 1).toRight(s"the turns $maxTurns are not 1 or more")
-    } yield Caps(m._1, m._2, b, t)
+      (id, u) = m
+    } yield Caps(id, u, b, t)
   }
 }
 

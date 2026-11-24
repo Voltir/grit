@@ -54,12 +54,17 @@ object CallLineTests extends TestSuite {
       amounts.map { usd =>
         val back =
           CallLine.read(CallLine.answered(ref, usage.copy(costUsd = Some(usd)))).flatMap(_.rounded)
-        (
-          usd,
-          back.map(b => Cost.cents(b) == Cost.cents(usd)),
-          back.map(b => b == 0 && usd == 0 || ((b - usd).abs / usd.max(b)) <= BigDecimal("0.05"))
-        )
-      } ==> amounts.map(usd => (usd, Some(true), Some(true)))
+        (usd, back, back.map(b => Cost.cents(b) == Cost.cents(usd)))
+      } ==> Vector(
+        ("0.0029", "0.0029"),
+        ("0.00003", "0.00003"),
+        ("0.0124", "0.012"),
+        ("0.1256", "0.13"),
+        ("1.256", "1.26"),
+        ("0", "0"),
+        ("0.0995", "0.1"),
+        ("0.1049", "0.1")
+      ).map((usd, back) => (BigDecimal(usd), Some(BigDecimal(back)), Some(true)))
     }
 
     test(
