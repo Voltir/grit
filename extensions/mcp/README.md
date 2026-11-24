@@ -98,9 +98,10 @@ In dependency order:
   place for the one property the deployment declares (the model never names it), refused at open,
   naming the account's address, unless the account reads that property. `ConsoleTools.answer`
   states the totals, each day of a short range, which days are early, and when the rows hold a
-  share, leave rare queries out, are fewer than Google has, or were re-ranked; each row is its
-  own part at the service's place, a query's or page's key written as a JSON string so no quote
-  or line break in it reads as grit's. A row is Google's count over many searches, with no one
+  share, leave rare queries out, are fewer than Google has, or were re-ranked, then a markdown
+  table's header; each row is its own part at the service's place, one line of that table, a
+  query's or page's key written as a JSON string so no quote or line break in it reads as
+  grit's, and a pipe in it escaped so it ends no cell. A row is Google's count over many searches, with no one
   author to read (ADR 0036): it vouches nothing, and is believed at the cap the deployment
   declares at the service's place. A deployment serves it by `ConsoleEdge.serving` with a
   `Credential.serviceAccount` made for `ConsoleRest.ReadOnly` alone, so its token reads nothing

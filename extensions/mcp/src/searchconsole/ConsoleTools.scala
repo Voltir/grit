@@ -25,6 +25,8 @@ import grit.core.tool.{
 }
 import grit.core.visibility.{Integrity, Provenance, Readers, ResultPart}
 import grit.edge.desk.{Run, Tools}
+import grit.prose.form.{Block, Cell, Column, Doc, Text}
+import grit.prose.markdown.Markdown
 
 /** The requests a Search Console edge is sent: [[ConsoleTools.Query]] of the one property
   * `site`, read over `rest` with today's Pacific date from `clock`, answered as
@@ -282,8 +284,10 @@ object ConsoleTools {
     * by date, whose rows are its days), which days are early, the filter, the share of
     * impressions the rows hold (not by page, date or hour), that Google leaves rare queries out
     * (by query, when the rows add up to less), that it has more rows (when there are as many as
-    * asked) and that a re-ranking is partial; then each row its own part at `service`'s place,
-    * believed at the cap declared there, a query's or page's key written as a JSON string.
+    * asked) and that a re-ranking is partial, ending with a markdown table's header when there
+    * are rows; then each row its own part at `service`'s place, believed at the cap declared
+    * there, one line of that table: its key (a query's or page's written as a JSON string),
+    * clicks, impressions, click-through and, when any row has one, average position.
     */
   def answer(service: Service, site: SiteUrl, asked: Asked, traffic: Traffic): Outcome.Done = {
     val by = asked.dates.by
@@ -325,7 +329,7 @@ object ConsoleTools {
               s"(${math.round(shown * 100.0 / impressions)}%)"
           else ""
         if (alone) s"The top $one by $ranked, below$held."
-        else s"The top ${traffic.rows.size} $many by $ranked, one a line below$held."
+        else s"The top ${traffic.rows.size} $many by $ranked, one a row of the table below$held."
       }
     val hidden =
       if (by == Grouping.Query && traffic.rows.nonEmpty && shown < impressions)
@@ -350,12 +354,24 @@ object ConsoleTools {
             "clicks may be missing."
         )
       else Vector.empty
+    val positioned = traffic.rows.exists(_.metrics.position.nonEmpty)
+    val columns =
+      (Vector(one.capitalize, "Clicks", "Impressions", "Click-through") ++
+        Option.when(positioned)("Average position")).map(c => Column(Text.plain(c)))
+    // Lines as Markdown writes a table's, so a pipe in a cell is escaped and a line break is a
+    // space: each row is one line, and no cell ends early.
+    def table(rows: Vector[Vector[String]]): Vector[String] =
+      Markdown
+        .write(Doc(Vector(Block.table(columns, rows.map(_.map(c => Cell.Words(Text.plain(c))))))))
+        .split("\n")
+        .toVector
+    val header = if (traffic.rows.isEmpty) Vector.empty else table(Vector.empty)
     val head = (Vector(
       s"${searched(asked.search)} for ${SiteUrl.value(site)}, ${asked.dates.start} to " +
         s"${asked.dates.end}, Pacific time: $clicks clicks and $impressions impressions in all."
     ) ++ asked.filter.map(f =>
       s"Only searches ${counted(f)} are counted, in the totals and the rows alike."
-    ) ++ daily ++ fresh ++ Vector(top) ++ hidden ++ more ++ partial).mkString("\n")
+    ) ++ daily ++ fresh ++ Vector(top) ++ hidden ++ more ++ partial ++ header).mkString("\n")
     // What searchers typed, and the pages a site holds, are JSON strings, so no quote or line
     // break in them reads as grit's.
     val quoted = by match {
@@ -375,7 +391,7 @@ object ConsoleTools {
         // it is believed at (Visibility.believed meets the two).
         Provenance(service.place, Integrity.Authority),
         Readers.AtPlace,
-        s"$key${marked(day)}: ${numbers(r.metrics)}"
+        table(Vector(s"$key${marked(day)}" +: numbers(r.metrics, positioned))).drop(2).mkString(" ")
       )
     }
     val trimmed = Trimmed.of(head, parts)
@@ -419,8 +435,13 @@ object ConsoleTools {
       s"whose $field $how ${ujson.write(ujson.Str(Filter.Expression.value(expression)))}"
   }
 
-  private def numbers(m: Metrics): String =
-    s"${m.clicks} clicks, ${m.impressions} impressions, " +
-      "%.1f%% click-through".formatLocal(Locale.ROOT, m.ctr * 100) +
-      m.position.fold("")(p => ", average position %.1f".formatLocal(Locale.ROOT, p))
+  /** A row's cells after its key: clicks, impressions, click-through, and its average position
+    * when `positioned` (empty when it has none).
+    */
+  private def numbers(m: Metrics, positioned: Boolean): Vector[String] =
+    Vector(
+      m.clicks.toString,
+      m.impressions.toString,
+      "%.1f%%".formatLocal(Locale.ROOT, m.ctr * 100)
+    ) ++ Option.when(positioned)(m.position.fold("")("%.1f".formatLocal(Locale.ROOT, _)))
 }

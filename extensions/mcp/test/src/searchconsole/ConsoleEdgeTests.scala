@@ -244,7 +244,8 @@ object ConsoleEdgeTests extends TestSuite {
         val busy = run(fake, ujson.Obj(), line => { val _ = said.add(line) })
         (
           answered match {
-            case d: Outcome.Done => d.parts.map(_.map(p => (p.item, p.text.takeWhile(_ != ':'))))
+            case d: Outcome.Done =>
+              d.parts.map(_.map(p => (p.item, p.text.stripPrefix("| ").takeWhile(_ != '|').trim)))
             case other => throw new java.lang.AssertionError(other.toString)
           },
           busy,
