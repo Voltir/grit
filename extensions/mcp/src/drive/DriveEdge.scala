@@ -8,6 +8,7 @@ import grit.core.id.EdgeName
 import grit.core.prompt.Fragment
 import grit.edge.desk.{PlaceFragments, Server}
 import grit.mcp.client.{Credential, KeyFiles}
+import grit.mcp.google.GoogleRest
 
 /** An edge serving Drive's files at its service's place (ADR 0017). */
 object DriveEdge {
@@ -46,19 +47,12 @@ object DriveEdge {
       instructions: String = Instructions,
       api: String = DriveRest.Api,
       slides: String = DriveRest.Slides
-  ): Either[String, ServedEdge] = {
-    def absolute(what: String, url: String): Either[String, URI] =
-      scala.util
-        .Try(URI.create(url))
-        .toOption
-        .filter(_.isAbsolute)
-        .toRight(s"$what $url is not an absolute URL")
+  ): Either[String, ServedEdge] =
     for {
-      at <- absolute("Drive's API", api)
-      decks <- absolute("The Slides API", slides)
+      at <- GoogleRest.base("Drive's API", api)
+      decks <- GoogleRest.base("The Slides API", slides)
       declared <- PlaceFragments.declared(reading.service.place, instructions)
     } yield new Edge(credential, reading, at, decks, declared)
-  }
 
   /** The edge [[serving]] describes; `declared`, the Place layer it advertises. */
   private final class Edge(

@@ -54,8 +54,8 @@ In dependency order:
 - **`google`**: what Google's REST APIs share, for a reader of one beside MCP: `GoogleRest`
   sends a `GoogleRequest` (a GET, or a POST of JSON) with `client`'s token, and reads its
   status by the table they share (`GoogleFailure`) after the API's own refinement of it. A
-  streamed body is never held whole; an error's is read to `GoogleRest.MaxRead`. Imports
-  `client`.
+  streamed body is never held whole; an error's is read to `GoogleRest.MaxRead`.
+  `GoogleRest.base` checks an API's base URL for each edge. Imports `client`.
 - **`github`** — GitHub's side of a scope: `GitHubScope`, a repository or an owner as the
   `Bound` GitHub's tools name it, and a scope within them whose search tools are held by the
   repository each result names; and `GitHubItems`, repositories and owners as places under the
@@ -85,7 +85,7 @@ In dependency order:
   Drive's text of it. The area keeps the file under the call, so a call run again answers the
   same handle, which `file_read` reads further. A file refused for its own sake (a format would
   not read it, Drive flagged it or will not export it) is answered as unread, saying why, and
-  not as a failure, so a reader (the knowledge sync) tells it from Drive or the area failing. Imports `wire` and `client`; nothing else in mcp imports it
+  not as a failure, so a reader (the knowledge sync) tells it from Drive or the area failing. Imports `google` and `client`; nothing else in mcp imports it
   (`mcp-generic-names-no-github`).
 - **`searchconsole`**: a site's search traffic over Search Console's v3 REST API, read-only:
   `ConsoleRest` lists the properties the account is a user of (`Site`, at its `Permission`) and
@@ -95,7 +95,13 @@ In dependency order:
   so rows ranked by impressions are re-ranked from a capped read, and say when that read came
   back full. A grouping's rows are believed at `Grouping.integrity`: what outsiders type
   (queries, pages) at Outside. Each failure is a `ConsoleError`, its words for the model apart
-  from the operator's. Imports `google` and `client`; nothing else in mcp imports it.
+  from the operator's. `ConsoleEdge` serves one tool, `search_console_query`, at the service's
+  place for the one property the deployment declares (the model never names it), refused at open,
+  naming the account's address, unless the account reads that property. `ConsoleTools.answer`
+  states the totals, each day of a short range, which days are early, and when the rows hold a
+  share, leave rare queries out, are fewer than Google has, or were re-ranked; each row is its
+  own part at its grouping's integrity, an outsider's key written as a JSON string. Imports
+  `google` and `client`; nothing else in mcp imports it.
 - **`edge`**: `McpEdge`, the `ServedEdge` a deployment declares: it registers the service place,
   advertises there (with the instructions the deployment declared for the place, if any, as its
   Place layer), and runs each request by calling its server. A tool whose schema declares `to`

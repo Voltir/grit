@@ -137,6 +137,14 @@ object GoogleRest {
   def apply(authorizer: Authorizer, clock: Clock): GoogleRest[Nothing]^{clock} =
     new GoogleRest[Nothing](authorizer, clock, (_, _) => None)
 
+  /** `url` as an API's base, or why not, naming `what`: not an absolute URL. */
+  def base(what: String, url: String): Either[String, URI] =
+    scala.util
+      .Try(URI.create(url))
+      .toOption
+      .filter(_.isAbsolute)
+      .toRight(s"$what $url is not an absolute URL")
+
   /** How long one request may take: 60 seconds. */
   val Timeout: FiniteDuration = 60.seconds
 

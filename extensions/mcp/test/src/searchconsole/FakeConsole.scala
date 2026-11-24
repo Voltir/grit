@@ -32,6 +32,12 @@ final class FakeConsole private (google: FakeGoogleServer) {
   /** From now, `sites` answers `made-sites`. */
   def sharing(): Unit = google.answering("sites", 200, FakeConsole.text("made-sites"))
 
+  /** The API's base, as [[ConsoleEdge.serving]] takes it. */
+  def api: java.net.URI = google.base
+
+  /** From now, `sites` is answered `status` with `body`. */
+  def answeringSites(status: Int, body: String): Unit = google.answering("sites", status, body)
+
   /** From now, every query of `site` is answered `status` with `body`. */
   def failing(site: SiteUrl, status: Int, body: String): Unit =
     google.answering(FakeConsole.queryPath(site), status, body)
