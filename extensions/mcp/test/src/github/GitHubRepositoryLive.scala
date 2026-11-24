@@ -72,7 +72,12 @@ object GitHubRepositoryLive {
             val token = sys.env.getOrElse(Variable.value(Token), "")
             def raw(path: String, name: String): Option[ujson.Value] = {
               val request = HttpRequest
-                .newBuilder(URI.create(s"${GitHubRepository.Api}repos/$full/$path"))
+                .newBuilder(
+                  // GitHub answers the repository's own path with a trailing `/` as Not Found.
+                  URI.create(
+                    s"${GitHubRepository.Api}repos/$full${if (path.isEmpty) "" else s"/$path"}"
+                  )
+                )
                 .header("Authorization", s"Bearer $token")
                 .header("Accept", "application/vnd.github+json")
                 .header("X-GitHub-Api-Version", GitHubRepository.ApiVersion)
