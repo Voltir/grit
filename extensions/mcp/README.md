@@ -100,8 +100,11 @@ In dependency order:
   naming the account's address, unless the account reads that property. `ConsoleTools.answer`
   states the totals, each day of a short range, which days are early, and when the rows hold a
   share, leave rare queries out, are fewer than Google has, or were re-ranked; each row is its
-  own part at its grouping's integrity, an outsider's key written as a JSON string. Imports
-  `google` and `client`; nothing else in mcp imports it.
+  own part at its grouping's integrity, an outsider's key written as a JSON string. A deployment
+  serves it by `ConsoleEdge.serving` with a `Credential.serviceAccount` made for
+  `ConsoleRest.ReadOnly` alone, so its token reads nothing else, and declares a cap at the
+  service's place, which a row's own integrity still meets (the reference deployment's is
+  member; `ServedEdges.console`). Imports `google` and `client`; nothing else in mcp imports it.
 - **`edge`**: `McpEdge`, the `ServedEdge` a deployment declares: it registers the service place,
   advertises there (with the instructions the deployment declared for the place, if any, as its
   Place layer), and runs each request by calling its server. A tool whose schema declares `to`

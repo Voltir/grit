@@ -12,10 +12,11 @@ import grit.mcp.drive.{DriveEdge, DriveReading, DriveRest}
 import grit.mcp.edge.McpEdge
 import grit.mcp.github.GitHubItems
 import grit.mcp.scope.McpScope
+import grit.mcp.searchconsole.{ConsoleEdge, ConsoleRest, SiteUrl}
 import grit.slack.edge.{Conversations, ReplyNote, SlackCommand}
 
 /** The edges `grit serve` serves besides Slack's events: Slack's command and reply note, and
-  * GitHub's and Drive's tools.
+  * GitHub's, Drive's and Search Console's tools.
   */
 private[main] object ServedEdges {
 
@@ -174,15 +175,24 @@ private[main] object ServedEdges {
     * GitHub's), and how a command names its folders.
     */
   private[main] final case class Drive(edge: ServedEdge, reaches: Reaches, names: PlaceNames)
+      extends Beside
 
-  /** The links `grit serve` declares, from what it serves of GitHub and Drive: the
-    * conversations working in a service, and those reaching one beside it.
+  /** What `grit serve` serves that every Slack conversation's turns addressed to grit reach,
+    * beside the service the conversation works in.
+    */
+  private[main] sealed trait Beside {
+    def edge: ServedEdge
+    def reaches: Reaches
+  }
+
+  /** The links `grit serve` declares: the conversations working in GitHub's service, and those
+    * reaching each of `beside`.
     */
   private[main] def links(
       github: Option[Github],
-      drive: Option[Drive]
+      beside: Vector[Beside]
   ): (Vector[WorksIn], Vector[Reaches]) =
-    (github.map(_.worksIn).toVector, drive.map(_.reaches).toVector)
+    (github.map(_.worksIn).toVector, beside.map(_.reaches))
 
   /** The Drive edge `grit serve` serves when `env` sets [[DriveKeyVar]] ([[DriveEdge]], over
     * Drive's read-only scope): the files of every shared drive shared with the key's service
@@ -231,5 +241,46 @@ private[main] object ServedEdges {
       } yield Some(
         Drive(edge, Reaches(SlackRoot, service), reading.names)
       )
+    }
+
+  /** The variable naming the Search Console property `grit serve` serves, as Google names it;
+    * unset, no Search Console edge. Read with [[DriveKeyVar]]'s service account.
+    */
+  private[main] val ConsoleSiteVar = "GRIT_CONSOLE_SITE"
+
+  /** The service Search Console is served at: `service:search_console`. */
+  private[main] val ConsoleAt: Either[String, Service] = Service.of("search_console")
+
+  /** What `grit serve` serves of Search Console: its edge, and the link that offers its tool to
+    * every Slack conversation's turns addressed to grit.
+    */
+  private[main] final case class Console(edge: ServedEdge, reaches: Reaches) extends Beside
+
+  /** The Search Console edge `grit serve` serves when `env` sets [[ConsoleSiteVar]]
+    * ([[ConsoleEdge]], over [[ConsoleRest.ReadOnly]] alone, with [[DriveKeyVar]]'s key read from
+    * `files`); `None` when it is unset. Why not, naming the variable: [[DriveKeyVar]] unset, the
+    * site not a property's name, or the key's file unread or not a service account's key.
+    */
+  private[main] def console(
+      env: Map[String, String],
+      files: KeyFiles
+  ): Either[String, Option[Console]] =
+    env.get(ConsoleSiteVar) match {
+      case None => Right(None)
+      case Some(_) if !env.contains(DriveKeyVar) =>
+        Left(s"$ConsoleSiteVar is set, but $DriveKeyVar, whose service account reads it, is unset")
+      case Some(raw) =>
+        val credential = Credential.serviceAccount(Variable(DriveKeyVar), ConsoleRest.ReadOnly)
+        for {
+          service <- ConsoleAt
+          site <- SiteUrl.of(raw).left.map(why => s"$ConsoleSiteVar: $why")
+          // Read at start, as Drive's is, so a key that cannot open stops `grit serve` here.
+          _ <- Credential
+            .account(credential, env, files)
+            .left
+            .map(_.message)
+            .flatMap(_.toRight(s"$DriveKeyVar names no service account"))
+          edge <- ConsoleEdge.serving(credential, service, site)
+        } yield Some(Console(edge, Reaches(SlackRoot, service)))
     }
 }

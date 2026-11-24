@@ -467,20 +467,96 @@ object ServeChoiceTests extends TestSuite {
     }
 
     test(
-      "serving GitHub and Drive, a Slack conversation works in GitHub and its addressed turns reach Drive beside it"
+      "serving GitHub, Drive and Search Console, a Slack conversation works in GitHub and its addressed turns reach Drive and Search Console beside it"
     ) {
       val conversation = Place.under(Namespace.Slack, Vector("T0123", "C0456"))
       val served = for {
         github <- ServedEdges.github(Map("GITHUB_MCP_TOKEN" -> "never-read"))
         drive <- ServedEdges.drive(DriveEnv, KeyFiles.Local)
+        console <- ServedEdges.console(ConsoleEnv, KeyFiles.Local)
       } yield {
-        val (worksIn, reaches) = ServedEdges.links(github, drive)
+        val (worksIn, reaches) = ServedEdges.links(github, drive.toVector ++ console)
         (
           WorksIn.of(worksIn, conversation).map(_.place.written),
           Reaches.of(reaches, conversation).map(_.place.written)
         )
       }
-      served ==> Right((Some("service:github"), Vector("service:drive")))
+      served ==> Right(
+        (Some("service:github"), Vector("service:drive", "service:search_console"))
+      )
+    }
+
+    test(
+      "with GRIT_CONSOLE_SITE set, serve serves Search Console at service:search_console, reached from Slack's conversations; the key unset, the site no property's name, or the key's file missing or no service account's is refused naming its variable; unset, no edge"
+    ) {
+      def served(env: Map[String, String]) =
+        ServedEdges
+          .console(env, KeyFiles.Local)
+          .map(
+            _.map(c =>
+              (
+                EdgeName.value(c.edge.name),
+                c.edge.needs,
+                c.reaches.within.written,
+                c.reaches.service.place.written
+              )
+            )
+          )
+      val notServiceAccount = java.nio.file.Files.createTempFile("grit-user-key-", ".json")
+      notServiceAccount.toFile.deleteOnExit()
+      val _ = java.nio.file.Files.writeString(notServiceAccount, """{"type":"authorized_user"}""")
+      (
+        served(ConsoleEnv),
+        served(ConsoleEnv - "GRIT_DRIVE_SA_KEY"),
+        served(ConsoleEnv + ("GRIT_CONSOLE_SITE" -> "example.com")),
+        served(ConsoleEnv + ("GRIT_DRIVE_SA_KEY" -> "/nonexistent/grit-key.json")),
+        served(ConsoleEnv + ("GRIT_DRIVE_SA_KEY" -> notServiceAccount.toString)),
+        served(ConsoleEnv - "GRIT_CONSOLE_SITE")
+      ) ==> (
+        Right(
+          Some(
+            (
+              "search_console",
+              Vector(Variable("GRIT_DRIVE_SA_KEY")),
+              "slack:",
+              "service:search_console"
+            )
+          )
+        ),
+        Left(
+          "GRIT_CONSOLE_SITE is set, but GRIT_DRIVE_SA_KEY, whose service account reads it, is unset"
+        ),
+        Left(
+          "GRIT_CONSOLE_SITE: example.com is neither sc-domain: and a host nor an http(s) URL ending in /"
+        ),
+        Left("GRIT_DRIVE_SA_KEY: no file is at its path"),
+        Left("GRIT_DRIVE_SA_KEY: its JSON names no client_email"),
+        Right(None)
+      )
+    }
+
+    test(
+      "with GRIT_CONSOLE_SITE set, the deployment invites service:search_console, labels it internal, believes it at member and clears Search Console for its top label; unset, none of these"
+    ) {
+      val console = Service.of("search_console").fold(sys.error, identity)
+      val inside = Place.read("service:search_console/property").fold(sys.error, identity)
+      def declared(env: Map[String, String]) =
+        Deploying
+          .deployment(env, Offered.Read, Vector(Quiet), Vector.empty, java.time.ZoneOffset.UTC)
+          .map { d =>
+            val v = d.visibility
+            (
+              v.invites(inside),
+              Label.written(v.rooms.label(Room(console.place, None)).label),
+              Integrity.written(v.outputOf(console)),
+              Label.written(v.clearances.of(Party.Service(console)))
+            )
+          }
+      (declared(ConsoleEnv), declared(Map.empty)) ==> (
+        // The shipped compartments' top: every level, and what no one has labelled yet.
+        Right((true, "internal", "member", "restricted+unmapped")),
+        Right((false, "public", "untrusted", "public"))
+      )
     }
 
     test(
@@ -539,5 +615,11 @@ object ServeChoiceTests extends TestSuite {
     "GRIT_CLAIMED_DOMAINS" -> "example.com",
     "GRIT_DRIVE_DOMAIN" -> "example.com",
     "GRIT_DRIVE_WRITERS" -> "bot@vendor.example"
+  )
+
+  /** Search Console declared: a property, read with Drive's key. */
+  private lazy val ConsoleEnv: Map[String, String] = Map(
+    "GRIT_DRIVE_SA_KEY" -> DriveKey,
+    "GRIT_CONSOLE_SITE" -> "sc-domain:example.com"
   )
 }

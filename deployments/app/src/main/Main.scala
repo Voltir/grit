@@ -128,7 +128,13 @@ import Backfills.*
   *     `GRIT_DRIVE_SA_KEY` set, the path of a service account's key file, it also serves
   *     Drive's files at `service:drive` ([[drive]]), offered to every Slack conversation's
   *     turns addressed to grit, its folders named in the slash command by their links; it
-  *     refuses to start when the key's file cannot be read or Drive refuses the key.
+  *     refuses to start when the key's file cannot be read or Drive refuses the key. With
+  *     `GRIT_CONSOLE_SITE` set, a Search Console property as Google names it
+  *     (`sc-domain:example.com` or `https://www.example.com/`), it also serves that property's
+  *     search traffic at `service:search_console` ([[console]]), offered as Drive's is and read
+  *     with `GRIT_DRIVE_SA_KEY`'s service account, which an owner adds to the property as a
+  *     Restricted user; it refuses to start when that key is unset or cannot be read, or the
+  *     account cannot read the property.
   *   - **`backfill` alone, or with `--yes`: `grit backfill`**, run before `grit serve` on its
   *     database ([[Kit.catchUp]], [[SlackEdge.backfill]]; ADR 0020): what each channel its bot is in said over
   *     the last `GRIT_BACKFILL_DAYS` (default 2) that grit has not recorded, heard at the time
@@ -258,6 +264,9 @@ object Main {
     val githubEdge = if (serving) exitOnLeft(github(env)) else None
     // And Drive's, when GRIT_DRIVE_SA_KEY is set, its folders named in Slack's commands.
     val driveEdge = if (serving) exitOnLeft(drive(env, KeyFiles.Local)) else None
+    // And Search Console's, when GRIT_CONSOLE_SITE names a property.
+    val consoleEdge = if (serving) exitOnLeft(console(env, KeyFiles.Local)) else None
+    val beside: Vector[Beside] = driveEdge.toVector ++ consoleEdge
     val edges: Vector[ServedEdge] =
       // Slack's slash command, GRIT_SLACK_COMMAND, as registered for its app.
       (if (slack)
@@ -271,13 +280,13 @@ object Main {
              exitOnLeft(slackConversations(env))
            )
          )
-       else Vector.empty) ++ githubEdge.map(_.edge) ++ driveEdge.map(_.edge)
+       else Vector.empty) ++ githubEdge.map(_.edge) ++ beside.map(_.edge)
     // Days begin at this machine's midnight (OpenRouter's own daily figure is UTC's).
     // Serving Slack, the workspace its bot token is installed in is trusted to say who its
     // people are.
     val slackIn =
       if (slack) Some(exitOnLeft(SlackEdge.installedIn(env).left.map(_.message))) else None
-    val (worksIn, reaches) = links(githubEdge, driveEdge)
+    val (worksIn, reaches) = links(githubEdge, beside)
     val deployment =
       exitOnLeft(
         Deploying.deployment(

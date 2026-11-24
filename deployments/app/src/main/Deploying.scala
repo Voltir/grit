@@ -56,7 +56,9 @@ private[main] object Deploying {
     * administrators are those `GRIT_ADMINS` names there ([[visibility]]). With
     * [[DriveKeyVar]] set, `service:drive` is shared ([[visibility]]), its results are believed
     * up to member, and Drive is cleared for the top label, since its files are already
-    * Google's. With [[ChatEdges.ScoutVar]] set, every conversation in a directory reaches
+    * Google's. With [[ConsoleSiteVar]] set, `service:search_console` is shared and cleared for
+    * the top label as Drive is, and believed up to member: a query's or page's row keeps its own
+    * outside ([[grit.core.visibility.Visibility.believed]]). With [[ChatEdges.ScoutVar]] set, every conversation in a directory reaches
     * `service:scout` and its results are believed up to member, since scout reports what the
     * compiler read of that conversation's own checkout. The first
     * variable malformed, or the deployment refused, is the failure.
@@ -100,14 +102,20 @@ private[main] object Deploying {
       scout <- ChatEdges.ScoutAt
       // With scout declared, every directory reaches it, its results believed at member.
       scouting = env.contains(ChatEdges.ScoutVar)
+      console <- ConsoleAt
+      // Serving Search Console, the same; a query's or page's row keeps its own outside.
+      consoling = env.contains(ConsoleSiteVar)
       visible <- visibility(
         named,
         slackIn,
         cleared(models) ++
-          Option.when(driving)(Cleared(Party.Service(drive), Compartments.Shipped.top)),
+          Option.when(driving)(Cleared(Party.Service(drive), Compartments.Shipped.top)) ++
+          Option.when(consoling)(Cleared(Party.Service(console), Compartments.Shipped.top)),
         capped ++ Option.when(driving)(Cap(drive.place, Integrity.Member)) ++
+          Option.when(consoling)(Cap(console.place, Integrity.Member)) ++
           Option.when(scouting)(Cap(scout.place, Integrity.Member)),
-        Option.when(driving)(drive.place).toVector
+        Option.when(driving)(drive.place).toVector ++
+          Option.when(consoling)(console.place)
       )
       plugins <- pluginChoice(env, visible, zone, Formatted)
       deployment <- Deployment
