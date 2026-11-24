@@ -170,7 +170,9 @@ object DatabaseToolsTests extends TestSuite {
       )
     }
 
-    test("a query's rows are a table, NULL written NULL, empty and null text in quotes") {
+    test(
+      "a query's rows are a table, a row a line, its pipes escaped and a line break a space, NULL written NULL, empty and null text in quotes"
+    ) {
       val rows = Rows(
         Vector("id", "external_id"),
         Vector(
@@ -178,7 +180,8 @@ object DatabaseToolsTests extends TestSuite {
           Vector(Some("3"), None),
           Vector(Some("4"), Some("")),
           Vector(Some("5"), Some("Null")),
-          Vector(Some("6"), Some("a|b"))
+          Vector(Some("6"), Some("a|b")),
+          Vector(Some("7"), Some("one | 2 |\n| three"))
         ),
         None
       )
@@ -189,7 +192,8 @@ object DatabaseToolsTests extends TestSuite {
           || 3 | NULL |
           || 4 | '' |
           || 5 | 'Null' |
-          || 6 | a\|b |""".stripMargin
+          || 6 | a\|b |
+          || 7 | one \| 2 \| \| three |""".stripMargin
     }
 
     test("a query with no rows says so under its columns; one with no result, that") {
