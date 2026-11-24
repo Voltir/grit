@@ -29,7 +29,9 @@ Decision:
   deployment caps (`Cap`) what is said at a place and every place within it no deeper cap
   covers: a room, service or repository. A tool result is believed per item: its service's
   extension reads each item's place and author (`Accounts`; a Drive file, its editors', ADR
-  0039; a repository's file at a branch or tag, member, as only its writers push those), and
+  0039; a repository's file at a branch or tag, member, as only its writers push those; a
+  Search Console row, unread, at its service's cap, as Google's counts over many searches have
+  no one author), and
   the result takes the meet of each author's level and place's cap: untrusted if
   unaccountable, its service's cap if unread (untrusted when none, as for a relay). A result
   from a run's repository workspace (ADR 0017) takes its tool's level met with that

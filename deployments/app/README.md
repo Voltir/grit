@@ -42,7 +42,8 @@ In dependency order:
     `https://www.example.com/`), its search traffic at `service:search_console`
     (`ServedEdges.console`), read with `GRIT_DRIVE_SA_KEY`'s service account, which an owner
     adds to the property as a Restricted user. `service:search_console` is shared and capped
-    at member: a query's or a page's row is still believed at outside.
+    at member, which every row is believed at: Google's counts over many searches have no one
+    author.
   - `grit backfill`: the Slack edge's catch-up over the last `GRIT_BACKFILL_DAYS`.
   - Both trust Slack to say who the people of the workspace its bot token is installed in are,
     and no one otherwise, and end what the deployment's identities no longer trust as they

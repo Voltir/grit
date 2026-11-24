@@ -57,8 +57,8 @@ private[main] object Deploying {
     * [[DriveKeyVar]] set, `service:drive` is shared ([[visibility]]), its results are believed
     * up to member, and Drive is cleared for the top label, since its files are already
     * Google's. With [[ConsoleSiteVar]] set, `service:search_console` is shared and cleared for
-    * the top label as Drive is, and believed up to member: a query's or page's row keeps its own
-    * outside ([[grit.core.visibility.Visibility.believed]]). With [[ChatEdges.ScoutVar]] set, every conversation in a directory reaches
+    * the top label as Drive is, and its rows believed at member, a row being Google's count over
+    * many searches with no one author. With [[ChatEdges.ScoutVar]] set, every conversation in a directory reaches
     * `service:scout` and its results are believed up to member, since scout reports what the
     * compiler read of that conversation's own checkout. The first
     * variable malformed, or the deployment refused, is the failure.
@@ -103,7 +103,7 @@ private[main] object Deploying {
       // With scout declared, every directory reaches it, its results believed at member.
       scouting = env.contains(ChatEdges.ScoutVar)
       console <- ConsoleAt
-      // Serving Search Console, the same; a query's or page's row keeps its own outside.
+      // Serving Search Console, the same: the cap alone decides what its rows are believed at.
       consoling = env.contains(ConsoleSiteVar)
       visible <- visibility(
         named,

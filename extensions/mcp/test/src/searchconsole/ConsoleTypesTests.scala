@@ -1,12 +1,8 @@
 package grit.mcp.searchconsole
 
-import grit.core.visibility.Integrity
-
 import utest.*
 
-/** What [[SiteUrl]] and [[Filter.Expression]] take and refuse, and what a grouping's rows are
-  * believed at.
-  */
+/** What [[SiteUrl]] and [[Filter.Expression]] take and refuse. */
 object ConsoleTypesTests extends TestSuite {
 
   val tests = Tests {
@@ -31,17 +27,6 @@ object ConsoleTypesTests extends TestSuite {
         Left("https://www.example.com does not end in /, as a URL-prefix property does"),
         Left("https:/// names no host"),
         Left("example.com is neither sc-domain: and a host nor an http(s) URL ending in /")
-      )
-    }
-
-    test("query and page rows are believed at Outside, the others at Member") {
-      Grouping.values.toVector.map(g => g -> g.integrity) ==> Vector(
-        Grouping.Query -> Integrity.Outside,
-        Grouping.Page -> Integrity.Outside,
-        Grouping.Country -> Integrity.Member,
-        Grouping.Device -> Integrity.Member,
-        Grouping.Date -> Integrity.Member,
-        Grouping.Hour -> Integrity.Member
       )
     }
 

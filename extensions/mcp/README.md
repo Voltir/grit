@@ -93,18 +93,18 @@ In dependency order:
   limits), each day's totals and the first day still early from a by-date request, and the top
   rows by a `Grouping` from a second carrying the same `Filter`. Google ranks by clicks alone,
   so rows ranked by impressions are re-ranked from a capped read, and say when that read came
-  back full. A grouping's rows are believed at `Grouping.integrity`: what outsiders type
-  (queries, pages) at Outside. Each failure is a `ConsoleError`, its words for the model apart
+  back full. Each failure is a `ConsoleError`, its words for the model apart
   from the operator's. `ConsoleEdge` serves one tool, `search_console_query`, at the service's
   place for the one property the deployment declares (the model never names it), refused at open,
   naming the account's address, unless the account reads that property. `ConsoleTools.answer`
   states the totals, each day of a short range, which days are early, and when the rows hold a
   share, leave rare queries out, are fewer than Google has, or were re-ranked; each row is its
-  own part at its grouping's integrity, an outsider's key written as a JSON string. A deployment
-  serves it by `ConsoleEdge.serving` with a `Credential.serviceAccount` made for
-  `ConsoleRest.ReadOnly` alone, so its token reads nothing else, and declares a cap at the
-  service's place, which a row's own integrity still meets (the reference deployment's is
-  member; `ServedEdges.console`). Imports `google` and `client`; nothing else in mcp imports it.
+  own part at the service's place, a query's or page's key written as a JSON string so no quote
+  or line break in it reads as grit's. A row is Google's count over many searches, with no one
+  author to read (ADR 0036): it vouches nothing, and is believed at the cap the deployment
+  declares at the service's place. A deployment serves it by `ConsoleEdge.serving` with a
+  `Credential.serviceAccount` made for `ConsoleRest.ReadOnly` alone, so its token reads nothing
+  else, and declares that cap (the reference deployment's is member; `ServedEdges.console`). Imports `google` and `client`; nothing else in mcp imports it.
 - **`edge`**: `McpEdge`, the `ServedEdge` a deployment declares: it registers the service place,
   advertises there (with the instructions the deployment declared for the place, if any, as its
   Place layer), and runs each request by calling its server. A tool whose schema declares `to`

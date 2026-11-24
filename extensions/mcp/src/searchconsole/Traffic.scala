@@ -3,19 +3,9 @@ package grit.mcp.searchconsole
 import java.time.temporal.ChronoUnit
 import java.time.{Instant, LocalDate, ZoneId}
 
-import grit.core.visibility.Integrity
-
 /** What a property's rows are grouped by. */
 enum Grouping derives CanEqual {
   case Query, Page, Country, Device, Date, Hour
-
-  /** What a row grouped so is believed at: Outside for text outsiders write (query, page),
-    * Member otherwise.
-    */
-  def integrity: Integrity = this match {
-    case Query | Page => Integrity.Outside
-    case Country | Device | Date | Hour => Integrity.Member
-  }
 }
 
 enum Rank derives CanEqual {

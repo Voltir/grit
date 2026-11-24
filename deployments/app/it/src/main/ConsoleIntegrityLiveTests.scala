@@ -34,8 +34,8 @@ import utest.*
   * [[ConsoleEdge]], over a [[FakeConsole]], under the reference deployment's declarations for
   * [[ServedEdges.ConsoleSiteVar]] ([[Deploying.deployment]]), and is then asked to post to Slack,
   * its model obeying [[IntegrityTurn.Obeying]] and reading whatever is hidden from it. A row
-  * of what outsiders type is believed at outside under the service's member cap, so the
-  * turn's post is refused; a by-date answer is believed at member, and posts.
+  * is believed at the service's cap, whatever it is grouped by: under the member cap an answer
+  * by query, as one by date, is shown, and the post after it goes through.
   */
 object ConsoleIntegrityLiveTests extends TestSuite {
   import IntegrityTurn.*
@@ -199,7 +199,7 @@ object ConsoleIntegrityLiveTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "an answer by query is believed at outside under the member cap: hidden, and once read its post is refused; one by date is believed at member, shown, and posts"
+      "under the service's member cap, an answer by query, as one by date, reaches the turn at member, shown, and the post after it goes through"
     ) {
       (
         ofConsole(declared) == ofConsole(deployed),
@@ -214,12 +214,9 @@ object ConsoleIntegrityLiveTests extends TestSuite {
         (
           true,
           Vector(true, true, true, true),
-          Vector(),
-          Some(
-            "You can't post to channels right now, because of something you read; nothing was done, " +
-              "so answer without it."
-          ),
-          Vector("outside" -> "hidden")
+          Vector("slack:T0NEUTRAL/C0GENERAL"),
+          Some("Posted in slack:T0NEUTRAL/C0GENERAL."),
+          Vector("member" -> "lowered")
         ),
         (
           true,

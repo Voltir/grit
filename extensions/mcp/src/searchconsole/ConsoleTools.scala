@@ -283,8 +283,7 @@ object ConsoleTools {
     * impressions the rows hold (not by page, date or hour), that Google leaves rare queries out
     * (by query, when the rows add up to less), that it has more rows (when there are as many as
     * asked) and that a re-ranking is partial; then each row its own part at `service`'s place,
-    * vouched at its grouping's [[Grouping.integrity]], an outsider's key written as a JSON
-    * string.
+    * believed at the cap declared there, a query's or page's key written as a JSON string.
     */
   def answer(service: Service, site: SiteUrl, asked: Asked, traffic: Traffic): Outcome.Done = {
     val by = asked.dates.by
@@ -357,17 +356,24 @@ object ConsoleTools {
     ) ++ asked.filter.map(f =>
       s"Only searches ${counted(f)} are counted, in the totals and the rows alike."
     ) ++ daily ++ fresh ++ Vector(top) ++ hidden ++ more ++ partial).mkString("\n")
-    val outsiders = by.integrity == Integrity.Outside
+    // What searchers typed, and the pages a site holds, are JSON strings, so no quote or line
+    // break in them reads as grit's.
+    val quoted = by match {
+      case Grouping.Query | Grouping.Page => true
+      case Grouping.Country | Grouping.Device | Grouping.Date | Grouping.Hour => false
+    }
     val parts = traffic.rows.map { r =>
-      // What outsiders wrote is a JSON string, so no quote or line break in it reads as grit's.
-      val key = if (outsiders) ujson.write(ujson.Str(r.key)) else r.key
+      val key = if (quoted) ujson.write(ujson.Str(r.key)) else r.key
       val day = by match {
         case Grouping.Date | Grouping.Hour =>
           scala.util.Try(LocalDate.parse(r.key.take(10))).toOption
         case Grouping.Query | Grouping.Page | Grouping.Country | Grouping.Device => None
       }
       ResultPart(
-        Provenance(service.place, by.integrity),
+        // A row is Google's count over many searches, with no one author to vouch for: it
+        // vouches nothing below the top, so the cap at the service's place alone decides what
+        // it is believed at (Visibility.believed meets the two).
+        Provenance(service.place, Integrity.Authority),
         Readers.AtPlace,
         s"$key${marked(day)}: ${numbers(r.metrics)}"
       )
