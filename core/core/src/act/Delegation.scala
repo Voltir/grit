@@ -3,7 +3,7 @@ package grit.core.act
 import grit.core.agent.Subagent
 import grit.core.id.TurnRef
 import grit.core.message.{Cost, SpendCap}
-import grit.core.place.Repository
+import grit.core.place.{Place, Repository}
 import grit.core.store.Origin
 import grit.core.visibility.{Integrity, Label}
 
@@ -26,7 +26,7 @@ object Delegation {
       origin: Origin,
       spent: Cost
   ): Either[Refused, TurnRef -> Acting] = {
-    val believed = parent.integrity.meet(brief)
+    val believed = Delegation.believed(parent, brief)
     for {
       _ <- Either.cond(believed.dominates(as.requires), (), Refused.Below(as.requires, believed))
       _ <- Either.cond(room.dominates(parentAt), (), Refused.Above(parentAt, room))
@@ -41,6 +41,9 @@ object Delegation {
         believed
       )
   }
+
+  /** What a child `parent` briefs at `brief` is believed at: the meet of the two. */
+  def believed(parent: Acting, brief: Integrity): Integrity = parent.integrity.meet(brief)
 
   /** Why a child may not be made under its parent. */
   enum Refused extends caps.Pure {
@@ -65,6 +68,9 @@ object Delegation {
       * (`Cost.AtLeast`), so what is left is unknown.
       */
     case OverCap(asked: SpendCap, cap: SpendCap, spent: Cost)
+
+    /** Its room is a direct message's, or a thread in one: no child is made within one. */
+    case Direct(room: Place)
   }
 
   private def working(tools: Subagent.Tools, origin: Origin): Either[Refused, Unit] =

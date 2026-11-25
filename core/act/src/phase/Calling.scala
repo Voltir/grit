@@ -295,7 +295,7 @@ object Calling {
       case Left(e) => Left(faults.store(e.toString))
     }
 
-  private def bounded(bound: Option[Label])(using Tx^): Either[StoreError, Unit] =
+  private[phase] def bounded(bound: Option[Label])(using Tx^): Either[StoreError, Unit] =
     bound.fold(Right(()))(Tx.within(_))
 
   /** `o` as this transaction reads it, or why not: what it kept is above `bound` or the floor. */

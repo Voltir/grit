@@ -12,7 +12,11 @@ their own names and recorded forms. It names core alone, and grit.prose, which c
   `Classifying` (a judgment's answers, retried on the same waits), `Shaping` (a JSON ask: a
   reply that does not read is told why and asked again, as often as its caller allows) and
   `Calling` (a hosted call: its gate, its request to the live edge serving its place, the wait
-  for that edge and a person's approval when gated, each a flow, and the answer read).
+  for that edge and a person's approval when gated, each a flow, and the answer read), and
+  `Spawning` (a child turn: narrowed in its parent's transaction, recorded and started once,
+  waited for, its reply read at its parent's subject). `Calling` takes its callers' codecs
+  because each caller records its failures in a form of its own; `Spawning` has no failure
+  type to vary, so it records in its own forms, one home for each step's bytes.
 
 - **`moves`**: `DurableMoves`, a planner's `Moves` and a keeping job's `Keeping` over the phases,
   made through a program's `Steps`, so a run's history is read by running its planner again.

@@ -19,7 +19,7 @@ import grit.core.id.{
 }
 import grit.core.identity.{Account, Principal, TestAccounts}
 import grit.core.job.{InFlight, InMemorySchedules, LastRun, Slot, Starting}
-import grit.core.message.{AssistantBlock, Cost, Message, SpendCap}
+import grit.core.message.{AssistantBlock, Cost, Message, SpendCap, Tokens, Usage}
 import grit.core.occasion.{Occasion, OccasionKey}
 import grit.core.place.Place
 import grit.core.speech.{InMemorySpeechStore, Reach}
@@ -124,6 +124,13 @@ final class InMemoryInbox(
   /** Each spawned child that rang its parent, with that parent, in order: once per child. */
   @caps.unsafe.untrackedCaptures
   var returns = Vector.empty[(TurnRef, TurnRef)]
+
+  /** Records a call of `turn` that cost `usd` dollars now, as its turn would. */
+  def charge(turn: TurnRef, usd: BigDecimal): Unit = {
+    val entry = grit.core.id.EntryId(s"spent:${ledger.rows.size}")
+    val usage = Usage(Tokens(1), Tokens(1), Tokens.Zero, Some(usd))
+    val _ = inTx(ledger.record(entry, turn, turn.workflowId, "m", None, None, usage, Tokens(1)))
+  }
 
   /** Ends `turn` with `reply` (written as its reply entry) and `outcome`. */
   def finish(turn: TurnRef, reply: Option[Message.Assistant], outcome: String): Unit = inTx {

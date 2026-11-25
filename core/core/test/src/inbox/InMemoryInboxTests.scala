@@ -48,14 +48,7 @@ object InMemoryInboxTests extends InboxContract {
       visibility
     )
     val inbox = InMemoryInbox.fresh(budget, visibility, voucher.principal)
-    def spendIn(turn: TurnRef, usd: BigDecimal): Unit = {
-      val entry = EntryId(s"spent:${inbox.ledger.rows.size}")
-      val usage = Usage(Tokens(1), Tokens(1), Tokens.Zero, Some(usd))
-      val _ =
-        inbox.ledger.record(entry, turn, turn.workflowId, "m", None, None, usage, Tokens(1))(using
-          TestTx.fake
-        )
-    }
+    def spendIn(turn: TurnRef, usd: BigDecimal): Unit = inbox.charge(turn, usd)
     def spend(usd: BigDecimal): Unit =
       spendIn(TurnRef(ConversationId("elsewhere"), TurnSeq.First), usd)
     def written(origin: Origin): Vector[(Payload, Option[String])] =
