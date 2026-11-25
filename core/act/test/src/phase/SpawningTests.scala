@@ -282,9 +282,9 @@ object SpawningTests extends TestSuite {
     }
 
     test(
-      "a ring sent before the wait wakes the first rung with its child's ending, and the reply is read once"
+      "a ring sent before the wait wakes the first rung with its child's ending, taken though its end is not yet recorded, and the reply is read once"
     ) {
-      val w = new World(does = Vector(replied("Found it.")))
+      val w = new World(does = Vector(replied("Found it.")), endsLate = true)
       val (turn, origin) = w.parent("rung")
       val got = w.spawn(request(turn, origin))
       val received = w.durable.history(turn.workflowId).collect {
@@ -297,17 +297,6 @@ object SpawningTests extends TestSuite {
           "DBOS.recv" -> InMemoryDurable.Outcome.Output("answered"),
           "DBOS.sleep" -> InMemoryDurable.Outcome.Output("300000")
         )
-      )
-    }
-
-    test(
-      "a child that rings before its end is recorded is taken at its ring's ending, never waited for again"
-    ) {
-      val w = new World(does = Vector(replied("Found it.")), endsLate = true)
-      val (turn, origin) = w.parent("rung-early")
-      (w.spawn(request(turn, origin)), w.recorded(turn)) ==> (
-        Vector("Replied(c2, Found it.@member, Exact(0.01))"),
-        Vector("narrow:0:0", "spawn:0:0", "read:0:0")
       )
     }
 
@@ -350,7 +339,7 @@ object SpawningTests extends TestSuite {
     }
 
     test(
-      "a child's end and spend decide what it comes to, and its read replays"
+      "a child ended at its limit or spent to its cap is Limited, one ended otherwise or replying nothing Failed, a replying one Replied, and each read replays"
     ) {
       val w = new World(does =
         Vector(
