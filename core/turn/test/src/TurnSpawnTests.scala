@@ -58,6 +58,31 @@ object TurnSpawnTests extends TestSuite {
       }
     inbox.started = Vector(parent)
 
+    // Written and read only on the test's own thread, through the rings the turn makes.
+    @caps.unsafe.untrackedCaptures
+    var rang = 0
+
+    /** The inbox, each ring it is asked for counted in [[rang]], kept or not. */
+    private val counted: grit.core.inbox.SpawnInbox^ = new grit.core.inbox.SpawnInbox {
+      def spawned(
+          origin: Origin.Spawned,
+          agent: grit.core.id.AgentType,
+          brief: String,
+          spendCap: grit.core.message.SpendCap,
+          believed: Integrity,
+          classification: Label,
+          by: grit.core.identity.Account
+      ) = inbox.spawned(origin, agent, brief, spendCap, believed, classification, by)
+      def ended(child: grit.core.id.TurnRef) = inbox.ended(child)
+      def reply(child: grit.core.id.TurnRef)(using grit.core.store.Tx^) = inbox.reply(child)
+      def spent(turn: grit.core.id.TurnRef)(using grit.core.store.Tx^) = inbox.spent(turn)
+      def granted(parent: grit.core.id.TurnRef)(using grit.core.store.Tx^) = inbox.granted(parent)
+      def returned(child: grit.core.id.TurnRef, ending: TurnEnding) = {
+        rang += 1
+        inbox.returned(child, ending)
+      }
+    }
+
     /** The turn's body over these stores, offered `subagents`, its model `provider`. */
     def body(subagents: Spawnable, provider: Scripted)(id: grit.core.id.WorkflowId)(using
         grit.core.durable.Durable^
@@ -70,7 +95,7 @@ object TurnSpawnTests extends TestSuite {
         subagents,
         from,
         conversations = conversations,
-        spawns = inbox
+        spawns = counted
       )(id)
   }
 
@@ -189,15 +214,11 @@ object TurnSpawnTests extends TestSuite {
       val task = first.flatMap(_.messages.drop(1).headOption)
       (
         task,
-        first.exists(
-          _.system.contains(
-            "This run does one task for another conversation. That task follows grit's note " +
-              "at the start of your messages. Your last reply is passed back to that " +
-              "conversation when the run ends, and nobody can answer a question here, so do " +
-              "not ask one: finish the task, then say what you did and what you found."
-          )
-        ),
-        first.exists(_.system.contains("In this run you are called Coder."))
+        first.map(
+          _.system.linesIterator
+            .filter(l => l.startsWith("This run does") || l.startsWith("In this run"))
+            .toVector
+        )
       ) ==> (
         Some(
           Message.User(
@@ -206,13 +227,20 @@ object TurnSpawnTests extends TestSuite {
               "Fix the typo in README.md."
           )
         ),
-        true,
-        true
+        Some(
+          Vector(
+            "This run does one task for another conversation. That task follows grit's note " +
+              "at the start of your messages. Your last reply is passed back to that " +
+              "conversation when the run ends, and nobody can answer a question here, so do " +
+              "not ask one: finish the task, then say what you did and what you found.",
+            "In this run you are called Coder."
+          )
+        )
       )
     }
 
     test(
-      "every call a child makes is recorded priced, its classifier's, its query's and its task's among them, so its spend is exact"
+      "every call a child makes is recorded at its price, its classifier's, its query's and its task's among them"
     ) {
       val entries = new InMemoryEntryStore
       val turn = spawn(entries, SubagentFixtures.scholar, "Find the release date.")
@@ -237,21 +265,25 @@ object TurnSpawnTests extends TestSuite {
       given grit.core.store.Tx = grit.dbos.sql.TestTx.fake
       val rows = ledger.of(turn.workflowId).fold(e => sys.error(e.toString), identity)
       (
-        rows.map(r => grit.core.id.EntryId.value(r.entry) -> r.usage.costUsd.isDefined),
-        ledger.conversation(turn.conversationId).map(s => SubagentFixtures.spendCap.admits(s.cost))
+        rows.map(r => grit.core.id.EntryId.value(r.entry) -> r.usage.costUsd),
+        ledger.conversation(turn.conversationId).map(_.cost)
       ) ==> (
+        // The task's ask as HardInvestigation prices it, the classifier's as PricedClassifier
+        // does, and every model call as `calling`.
         Vector(
-          "route:c1:0" -> true,
-          "move:c1:0:needs" -> true,
-          "move:c1:0:query" -> true,
-          "reply:c1:0" -> true,
-          "summary:c1:0" -> true
+          "route:c1:0" -> Some(BigDecimal("0.0000252")),
+          "move:c1:0:needs" -> Some(BigDecimal("0.00001")),
+          "move:c1:0:query" -> Some(BigDecimal("0.001")),
+          "reply:c1:0" -> Some(BigDecimal("0.001")),
+          "summary:c1:0" -> Some(BigDecimal("0.001"))
         ),
-        Right(true)
+        Right(grit.core.message.Cost.Exact(BigDecimal("0.0030352")))
       )
     }
 
-    test("a child's calls are made under its type's pin, not its deployment's turn pin") {
+    test(
+      "every round a child calls is made under its type's pin, not its deployment's turn pin, and its summary under the deployment's"
+    ) {
       val entries = new InMemoryEntryStore
       val turn = spawn(entries, SubagentFixtures.coder, "Fix the typo.")
       val durable = new InMemoryDurable
@@ -259,7 +291,8 @@ object TurnSpawnTests extends TestSuite {
       durable.run(turn.workflowId)(
         spawnedBody(
           entries,
-          model(),
+          // Two rounds, so a later round's pin is seen too.
+          model("t1" -> "read_file"),
           edgeAt(durable, repository),
           new Files(Map.empty),
           coders,
@@ -267,7 +300,9 @@ object TurnSpawnTests extends TestSuite {
           seen = seen
         )
       )
-      seen.pins.headOption.map(_.assignment) ==> Some(SubagentFixtures.pins.first.assignment)
+      // Each round's call under its type's pin; its summary, as every turn's, under the deployment's.
+      val typed = SubagentFixtures.pins.first.assignment.ref.toString
+      seen.pins.map(_.assignment.ref.toString) ==> Vector(typed, typed, "test/summary")
     }
 
     test(
@@ -289,8 +324,7 @@ object TurnSpawnTests extends TestSuite {
           db = grit.core.act.MovesFixtures.FakeDb(Clearance.of(internal), clearing(internal))
         )
       )
-      (provider.requests.size, ran.startsWith("failed: Uncleared("), TurnEnding.of(ran)) ==>
-        (0, true, TurnEnding.Otherwise)
+      (provider.requests.size, ran) ==> (0, "failed: Uncleared(internal)")
     }
 
     test(
@@ -317,13 +351,14 @@ object TurnSpawnTests extends TestSuite {
       given grit.core.store.Tx = grit.dbos.sql.TestTx.fake
       (
         ran,
-        TurnEnding.of(ran),
         provider.requests.size,
         ledger.conversation(turn.conversationId).map(s => SubagentFixtures.spendCap.admits(s.cost))
-      ) ==> ("failed: OverCap(SpendCap(0.05))", TurnEnding.Otherwise, 2, Right(false))
+      ) ==> ("failed: OverCap(SpendCap(0.05))", 2, Right(false))
     }
 
-    test("a child that fails rings its parent with its ending, once however often it is rerun") {
+    test(
+      "a child that fails rings its parent with its ending, asking again on each rerun and kept once"
+    ) {
       val w = new Ringing(spawnedFrom(repository))
       // Its type is not declared: it fails at its first step.
       val turn = spawn(w.entries, SubagentFixtures.coder, "Fix the typo.")
@@ -333,9 +368,10 @@ object TurnSpawnTests extends TestSuite {
       val ran = durable.run(turn.workflowId)(body)
       val rerun =
         new InMemoryDurable().replay(turn.workflowId, durable.history(turn.workflowId))(body)
-      (ran, rerun, w.inbox.returns) ==> (
+      (ran, rerun, w.rang, w.inbox.returns) ==> (
         "failed: Undeclared(coder)",
         Right("failed: Undeclared(coder)"),
+        2,
         Vector((w.parent, turn, TurnEnding.Otherwise))
       )
     }
@@ -430,10 +466,9 @@ object TurnSpawnTests extends TestSuite {
       )
       (
         ran,
-        TurnEnding.of(ran),
         provider.requests.size,
         durable.history(turn.workflowId).map(_.name).contains(Turn.Step.Offer)
-      ) ==> ("failed: Undeclared(coder)", TurnEnding.Otherwise, 0, false)
+      ) ==> ("failed: Undeclared(coder)", 0, false)
     }
 
     test(
