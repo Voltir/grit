@@ -46,12 +46,14 @@
 #       many of its tool calls name a file the digest lists; each redrawn request is written
 #       message by message. Then, printed and written, stubbing results simulated over each
 #       turn (grit.eval.harness.sent.Stubbing): before each call, the turn's own results of
-#       read-only tools older than the last <rounds> rounds (--keep, 3 when not given), of
-#       <tokens> estimated tokens or more (--floor, 2000), that nothing the model wrote since
-#       points at, replaced by a stub. A line a call (its input; D, what would be stubbed; T,
+#       read-only tools older than the last <rounds> rounds (--keep), of <tokens> estimated
+#       tokens or more (--floor), that nothing the model wrote since points at, replaced by a
+#       stub; Stubbing.Rule.Default where not given. A line a call (its input; D, what would be stubbed; T,
 #       the tail rewritten; whether the pressure and priced triggers fire), then a line each
 #       for stubbing at every call, at the limit and when priced: what it drops of the
-#       results, its regret in hindsight, and its input and cost against the recorded ones.
+#       results, its regret in hindsight (stubbed results a later call repeats, and those
+#       later output points at with no repeat before), and its input and cost against the
+#       recorded ones.
 #       No model is called.
 #
 #   scripts/eval bench --summary
@@ -165,6 +167,8 @@ context() {
     esac
   done
   [ -n "$from" ] || usage
+  [ ${#stub[@]} -eq 0 ] || [ -n "$conversation" ] || {
+    echo "eval: --keep and --floor take --conversation" >&2; exit 2; }
   exists "$from" || { echo "eval: no database $from" >&2; exit 1; }
   local out="$main/.local/eval/review/context-$id.md" url="jdbc:postgresql://localhost:5432/$from"
   if [ -n "$conversation" ]; then

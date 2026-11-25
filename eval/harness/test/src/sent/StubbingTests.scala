@@ -9,7 +9,8 @@ import grit.core.provider.{ModelRequest, ToolSchema}
 import utest.*
 
 /** Stubbing results over a recorded turn ([[Stubbing]]): which of its own results the rule
-  * stubs and why it keeps the others, and which stubbings hindsight regrets.
+  * stubs and why it keeps the others, when each trigger stubs, what a stubbing rewrites, and
+  * which stubbings hindsight regrets.
   */
 object StubbingTests extends TestSuite {
 
@@ -36,6 +37,9 @@ object StubbingTests extends TestSuite {
   /** A long result of plain words, which no later output can point at. */
   private val plain: String = "plain words of a long file that nobody names again\n" * 8
 
+  /** A line of [[plain]], long enough to point at its results when repeated whole. */
+  private val plainLine: String = plain.linesIterator.toVector.headOption.getOrElse("")
+
   private val rule: Stubbing.Rule = Stubbing.Rule.of(1, Tokens(10)).getOrElse(Stubbing.Rule.Default)
 
   /** The turn's first five rounds, its window one message: a read stubbed (round 0), an edit
@@ -55,32 +59,51 @@ object StubbingTests extends TestSuite {
     result("c4", "done")
   )
 
+  /** [[five]] with the read stubbed six times as long, most of each request. */
+  private val heavy: Vector[Message] = five.updated(2, result("c0", plain * 6))
+
   private def request(messages: Vector[Message]): ModelRequest =
     ModelRequest("s", messages, offered)
 
-  /** [[five]], then a sixth round reading again with `shown`, and `answer`. */
-  private def turn(shown: String, answer: Message.Assistant): Stubbing.Recorded = {
-    val six = five ++ Vector(calling("c5", "read", "path" -> "a"), result("c5", "again"))
-    Stubbing.Recorded(
-      Vector(
-        Stubbing.Sent(request(five), Tokens(1000), None),
-        Stubbing.Sent(request(six), Tokens(1100), None)
-      ),
-      Some(answer),
-      1,
-      Set("read", "search"),
-      Map(ToolCallId("c0") -> "read a", ToolCallId("c5") -> shown),
-      None,
-      None
+  private def sent(messages: Vector[Message], input: Long, cacheRead: Long): Stubbing.Sent =
+    Stubbing.Sent(request(messages), Tokens(input), Tokens(cacheRead), None)
+
+  private def recorded(
+      calls: Vector[Stubbing.Sent],
+      answer: Message.Assistant,
+      shown: Map[ToolCallId, String] = Map(ToolCallId("c0") -> "read a"),
+      limit: Option[Tokens] = None,
+      pricing: Option[Pricing] = None
+  ): Stubbing.Recorded =
+    Stubbing.Recorded(calls, Some(answer), 1, Set("read", "search"), shown, limit, pricing)
+
+  /** `start`, then a sixth round reading again with `shown`, and `answer`; each call read
+    * `cached` of its input from the cache.
+    */
+  private def turn(
+      shown: String,
+      answer: Message.Assistant,
+      start: Vector[Message] = five,
+      input: Long = 1000,
+      cached: Long = 1000
+  ): Stubbing.Recorded = {
+    val six = start ++ Vector(calling("c5", "read", "path" -> "a"), result("c5", "again"))
+    recorded(
+      Vector(sent(start, input, math.min(cached, input)), sent(six, input + 100, cached)),
+      answer,
+      Map(ToolCallId("c0") -> "read a", ToolCallId("c5") -> shown)
     )
   }
 
-  private def regretted(t: Stubbing.Recorded): Option[(Int, Int)] =
-    Stubbing
-      .replay(rule, t, estimator)
-      .outcomes
-      .find(_.trigger == Stubbing.Trigger.Each)
-      .map(o => o.stubbed -> o.regretted)
+  private def outcome(t: Stubbing.Recorded, trigger: Stubbing.Trigger): Option[Stubbing.Outcome] =
+    Stubbing.replay(rule, t, estimator).outcomes.find(_.trigger == trigger)
+
+  /** At every call: results stubbed, of them repeated, and of them pointed at unrepeated. */
+  private def regret(t: Stubbing.Recorded): Option[(Int, Int, Int)] =
+    outcome(t, Stubbing.Trigger.Each).map(o => (o.stubbed, o.repeated, o.pointed))
+
+  private def rates(input: String, write: String, read: String): Option[Pricing] =
+    Rates.of(BigDecimal(input), BigDecimal(write), BigDecimal(read), 5).toOption.map(Pricing.flat)
 
   val tests = Tests {
     test(
@@ -96,29 +119,65 @@ object StubbingTests extends TestSuite {
         ("c4", 4, Some(Stubbing.Kept.Recent))
       )
     }
-    test("a stubbing is regretted when a later call repeats it, the same tool and shown line") {
-      regretted(turn("read a", said("fixed"))) ==> Some(1 -> 1)
+    test("a stubbing a later call repeats, the same tool and shown line, counts as repeated") {
+      regret(turn("read a", said("fixed"))) ==> Some((1, 1, 0))
     }
-    test("a stubbing is regretted when later output points at it") {
-      regretted(turn("read again", said(plain.linesIterator.toVector.headOption.getOrElse("")))) ==>
-        Some(1 -> 1)
+    test("a stubbing later output points at, no repeat made before, counts as pointed at") {
+      regret(turn("read again", said(plainLine))) ==> Some((1, 0, 1))
     }
-    test("the report says, stubbing at every call, what it dropped of the results and its input") {
-      // A million tokens: 1 USD uncached, 1.25 written, 0.1 read. The tail of 699 rewritten
-      // costs 699 * 1.15, the 380 stubbed from both calls save 380 * 0.1: 0.2¢ becomes 0.2766¢.
-      val priced = turn("read a", said("fixed")).copy(
-        calls = turn("read a", said("fixed")).calls.map(_.copy(cost = Some(BigDecimal("0.001")))),
-        pricing = Rates.of(1, BigDecimal("1.25"), BigDecimal("0.1"), 5).toOption.map(Pricing.flat)
+    test("a stubbing pointed at only after a call repeated it is not pointed at unrepeated") {
+      regret(turn("read a", said(plainLine))) ==> Some((1, 1, 0))
+    }
+    test("a stubbing no later call repeats nor output points at is neither") {
+      regret(turn("read again", said("fixed"))) ==> Some((1, 0, 0))
+    }
+    test("a stubbing rewrites the part of its tail its call read from the cache, no more") {
+      // The tail is 699: read whole, the stubbing rewrites it; 900 of 1000 read, the newest
+      // 100 were sent uncached anyway; nothing read, nothing more is sent uncached.
+      Vector(1000L, 900L, 0L).map(cached =>
+        outcome(turn("read again", said("fixed"), cached = cached), Stubbing.Trigger.Each)
+          .map(o => Tokens.value(o.rewrote))
+      ) ==> Vector(Some(699L), Some(599L), Some(0L))
+    }
+    test("a second stubbing rewrites from its own first stub on, not the first stubbing's") {
+      // Round 5 reads a long file the call after round 6 stubs, c0 stubbed two calls before.
+      // The second tail is c5's stub, c6's call and its result, scaled to the call's input;
+      // c0's stub lies before it and shortens it by nothing.
+      val six = five ++ Vector(calling("c5", "read", "path" -> "d"), result("c5", plain))
+      val seven = six ++ Vector(calling("c6", "read", "path" -> "e"), result("c6", "x"))
+      val t = recorded(
+        Vector(sent(five, 1000, 1000), sent(six, 1100, 1100), sent(seven, 1200, 1200)),
+        said("fixed")
       )
-      val lines = Stubbing.lines(Stubbing.replay(rule, priced, estimator))
-      lines.find(_.startsWith("  at every call")) ==> Some(
-        "  at every call: 1 stubbing rewriting 699, 1 result, 80 of 347 result tokens dropped " +
-          "(23.1%), 1 regretted (100.0%); input 2100 recorded, 1720 simulated; " +
-          "cost 0.2¢ recorded, 0.28¢ simulated"
-      )
+      outcome(t, Stubbing.Trigger.Each).map(o => (o.stubbings, Tokens.value(o.rewrote))) ==>
+        Some((2, 699L + 87L))
     }
-    test("a stubbing no later call repeats nor output points at is not regretted") {
-      regretted(turn("read again", said("fixed"))) ==> Some(1 -> 0)
+    test("the pressure trigger stubs at a call whose input meets the limit, freeing a quarter") {
+      // The first call's input, 1000, is under the limit; the second's meets it.
+      val t = turn("read again", said("fixed"), start = heavy).copy(limit = Some(Tokens(1100)))
+      outcome(t, Stubbing.Trigger.Pressure).map(o => (o.stubbings, o.stubbed)) ==> Some((1, 1))
+    }
+    test("the priced trigger stubs where D, 20k or more, over T pays back within four calls") {
+      // At 0.15 uncached and 0.03 read, D must reach T.
+      val t = turn("read again", said("fixed"), start = heavy, input = 200000, cached = 200000)
+        .copy(pricing = rates("0.15", "0.15", "0.03"))
+      outcome(t, Stubbing.Trigger.Priced).map(o => (o.stubbings, o.stubbed)) ==> Some((1, 1))
+    }
+    test("the report says, stubbing at every call, what it dropped and both regrets") {
+      // A million tokens: 1 USD uncached, 1.25 written, 0.1 read. Of the tail of 699, the 599
+      // read from the cache are rewritten, at 1.15; the 380 stubbed from both calls save 0.1:
+      // 0.2¢ becomes 0.265¢.
+      val base = turn("read a", said("fixed"), cached = 900)
+      val priced = base.copy(
+        calls = base.calls.map(_.copy(cost = Some(BigDecimal("0.001")))),
+        pricing = rates("1", "1.25", "0.1")
+      )
+      Stubbing.lines(Stubbing.replay(rule, priced, estimator)).find(_.startsWith("  at every")) ==>
+        Some(
+          "  at every call: 1 stubbing rewriting 599, 1 result, 80 of 347 result tokens dropped " +
+            "(23.1%); 1 repeated (100.0%), 0 pointed at unrepeated (0.0%); input 2100 recorded, " +
+            "1720 simulated; cost 0.2¢ recorded, 0.27¢ simulated"
+        )
     }
   }
 }

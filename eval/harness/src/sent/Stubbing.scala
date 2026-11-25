@@ -26,7 +26,6 @@ object Stubbing {
       else if (Tokens.value(floor) < 0) Left(s"floor is below 0: ${Tokens.value(floor)}")
       else Right(Rule(keep, floor))
 
-    /** The last 3 rounds kept, and results under 2,000 tokens. */
     val Default: Rule = Rule(3, Tokens(2000))
   }
 
@@ -44,7 +43,10 @@ object Stubbing {
     /** It is under [[Rule.floor]]. */
     case Small
 
-    /** The model's output since points at a line of it ([[Referenced]]). */
+    /** The model's output since points at a line of it ([[Referenced]]). A name counts only
+      * where it is new, so of a file read twice, output pointing at it credits the first
+      * copy alone, and the second is never pointed at.
+      */
     case Pointed
   }
 
@@ -79,11 +81,15 @@ object Stubbing {
     }
   }
 
-  /** One recorded call: its `request`, the `input` its provider counted, and what it cost in
-    * USD, `None` when unpriced.
+  /** One recorded call: its `request`, the `input` its provider counted, of it the prefix read
+    * from the cache (`cacheRead`), and what it cost in USD, `None` when unpriced.
     */
-  final case class Sent(request: ModelRequest, input: Tokens, cost: Option[BigDecimal])
-      extends caps.Pure
+  final case class Sent(
+      request: ModelRequest,
+      input: Tokens,
+      cacheRead: Tokens,
+      cost: Option[BigDecimal]
+  ) extends caps.Pure
 
   /** A recorded turn as [[replay]] reads it: its `calls`, oldest first, each request appending
     * to the one before; its `answer`; the message its own begin at (`own`), after its window's;
@@ -108,7 +114,9 @@ object Stubbing {
     def of(sent: TurnSent): Recorded =
       Recorded(
         sent.requests.flatMap((_, reply, request) =>
-          sent.row(reply).map(r => Sent(request, r.usage.input, r.usage.costUsd))
+          sent
+            .row(reply)
+            .map(r => Sent(request, r.usage.input, r.usage.cacheRead, r.usage.costUsd))
         ),
         sent.answer.map(_.message),
         sent.calls.window.size,
@@ -125,10 +133,10 @@ object Stubbing {
   final case class Price(write: BigDecimal, read: BigDecimal) extends caps.Pure {
 
     /** The share of a tail the dropped tokens must reach for a stubbing to pay back within
-      * [[Horizon]] calls: (w − r) / (r · H).
+      * [[Horizon]] calls: (w − r) / (r · H); `None` when reads are free, so none pays back.
       */
-    def payback: BigDecimal =
-      if (read <= 0) BigDecimal(Long.MaxValue) else (write - read) / (read * Horizon)
+    def payback: Option[BigDecimal] =
+      Option.when(read > 0)((write - read) / (read * Horizon))
   }
 
   object Price {
@@ -166,9 +174,9 @@ object Stubbing {
     case Priced
   }
 
-  /** Call `round` of a turn with nothing stubbed before it: its `input` as counted; `dropped`
+  /** Call `round` (from 0) of a turn with nothing stubbed before it: its `input` as counted; `dropped`
     * (D), what the rule would stub then, each result less its stub; `tail` (T), the request
-    * from the first of them on, stubs in place, the cache rewrite a stubbing costs; both in
+    * from the first of them on, stubs in place, sent again uncached; both in
     * the provider's tokens (the estimate times the call's input over its request's estimate);
     * `pressed`, when its input is at or over the limit, the share of the limit D is; and
     * whether the priced trigger fires.
@@ -182,14 +190,16 @@ object Stubbing {
       priced: Boolean
   ) extends caps.Pure
 
-  /** The turn stubbed at each `trigger`: `stubbings` made, the tails they `rewrote` in the
-    * cache in all (each its call's T, in the provider's tokens), `stubbed` results in all, `dropped`
-    * tokens of them less their stubs, of `results`, all the turn's own results (both by the
-    * estimate); of those stubbed, the `regretted`, which a later call repeats (the same tool,
-    * the same shown line) or later output points at; the calls' `input` in all, less what was
-    * stubbed before each, against `recordedInput`; and its `cost`, the recorded one less each
-    * call's stubbed tokens at the read rate, plus each stubbing's tail at the write rate less
-    * the read rate, against `recordedCost`, both `None` when a call is unpriced.
+  /** The turn stubbed at each `trigger`: `stubbings` made; what they `rewrote` in the cache in
+    * all, of each stubbing's T the part its call read from the cache (the rest it sent uncached
+    * anyway), in the provider's tokens; `stubbed` results in all, `dropped` tokens of them less
+    * their stubs, of `results`, all the turn's own results (both by the estimate); of those
+    * stubbed, the `repeated`, which a later call repeats (the same tool, the same shown line),
+    * and the `pointed`, at which later output points with no repeat made before it, the
+    * stubbings hindsight regrets; the calls' `input` in all, less what was stubbed before each,
+    * against `recordedInput`; and its `cost`, the recorded one less each call's stubbed tokens
+    * at the read rate, plus what each stubbing rewrote at the write rate less the read rate,
+    * against `recordedCost`, both `None` when a call is unpriced.
     */
   final case class Outcome(
       trigger: Trigger,
@@ -198,7 +208,8 @@ object Stubbing {
       stubbed: Int,
       dropped: Tokens,
       results: Tokens,
-      regretted: Int,
+      repeated: Int,
+      pointed: Int,
       input: Tokens,
       recordedInput: Tokens,
       cost: Option[BigDecimal],
@@ -295,7 +306,7 @@ object Stubbing {
 
   private def priced(at: Step, price: Price): Boolean =
     at.dropped >= Tokens.value(PricedFloor) && at.tail > 0 &&
-      BigDecimal(at.dropped) / BigDecimal(at.tail) >= price.payback
+      price.payback.exists(BigDecimal(at.dropped) / BigDecimal(at.tail) >= _)
 
   private def price(turn: Recorded, sent: Sent): Price =
     turn.pricing.fold(Price.AnthropicRatio)(p => Price.of(p.at(sent.input)))
@@ -336,20 +347,27 @@ object Stubbing {
           s.saved ++ at.chosen.map(j => j.result.call -> at.saving.getOrElse(j.result.call, 0L))
         else s.saved
       val dropped = scaled(saved.values.sum)
+      // Of the tail, what the call read from the cache: the rest, its newest messages, it sent
+      // uncached anyway, and a call whose cache missed rewrites nothing more.
+      val rewrite =
+        if (!fires) 0L
+        else
+          math.max(
+            0L,
+            math.min(at.tail, Tokens.value(sent.cacheRead) + at.tail - Tokens.value(sent.input))
+          )
       val rates = turn.pricing.map(p => Price.of(p.at(sent.input)))
       val cost = for {
         sum <- s.cost
         recorded <- sent.cost
         r <- rates
-      } yield {
-        val rewrite = if (fires) BigDecimal(at.tail) * (r.write - r.read) else BigDecimal(0)
-        sum + recorded + (rewrite - BigDecimal(dropped) * r.read) / Million
-      }
+      } yield sum + recorded +
+        (BigDecimal(rewrite) * (r.write - r.read) - BigDecimal(dropped) * r.read) / Million
       State(
         stubbed,
         saved,
         s.stubbings + (if (fires) 1 else 0),
-        s.rewritten + (if (fires) at.tail else 0L),
+        s.rewritten + rewrite,
         s.input + Tokens.value(sent.input) - dropped,
         cost
       )
@@ -357,21 +375,33 @@ object Stubbing {
     val last = turn.calls.lastOption.map(_.request)
     val finalRead =
       last.fold(Vector.empty[Referenced.Result])(r => Referenced.results(r, turn.answer, estimator))
-    val pointed = finalRead.filter(_.pointed > 0).map(_.call).toSet
     val own = finalRead.filter(_.at >= turn.own)
+    val lastRound = last.fold(0)(r => roundsOf(r.messages, turn.own).lastOption.getOrElse(0))
+    // Each reply's round, and the results output up to it points at: a call's request holds
+    // the replies before its round, and the answer is the reply to the last call.
+    val pointedBy: Vector[(Int, Set[ToolCallId])] =
+      turn.calls.map { c =>
+        roundsOf(c.request.messages, turn.own).lastOption.getOrElse(0) - 1 ->
+          Referenced.results(c.request, None, estimator).filter(_.pointed > 0).map(_.call).toSet
+      } :+ (lastRound -> finalRead.filter(_.pointed > 0).map(_.call).toSet)
     val made = last.fold(Vector.empty[(ToolCallId, String, Int)])(r =>
       calls(r.messages, turn.own) ++ turn.answer.toVector.flatMap(a =>
-        a.blocks.collect { case AssistantBlock.ToolCall(id, n, _) =>
-          (id, n, roundsOf(r.messages, turn.own).lastOption.getOrElse(0))
-        }
+        a.blocks.collect { case AssistantBlock.ToolCall(id, n, _) => (id, n, lastRound) }
       )
     )
     val toolOf = made.map((id, n, _) => id -> n).toMap
-    val regretted = end.stubbed.count { (id, at) =>
-      pointed.contains(id) || made.exists((other, n, round) =>
-        other != id && round >= at && toolOf.get(id).contains(n) &&
-          turn.shown.get(id).exists(sh => turn.shown.get(other).contains(sh))
-      )
+    def repeatedAt(id: ToolCallId, at: Int): Option[Int] =
+      made.collect {
+        case (other, n, round)
+            if other != id && round >= at && toolOf.get(id).contains(n) &&
+              turn.shown.get(id).exists(sh => turn.shown.get(other).contains(sh)) =>
+          round
+      }.minOption
+    def pointedAt(id: ToolCallId, at: Int): Option[Int] =
+      pointedBy.collectFirst { case (round, ids) if round >= at && ids.contains(id) => round }
+    val repeated = end.stubbed.count((id, at) => repeatedAt(id, at).nonEmpty)
+    val pointed = end.stubbed.count { (id, at) =>
+      pointedAt(id, at).exists(p => !repeatedAt(id, at).exists(_ < p))
     }
     Outcome(
       trigger,
@@ -380,7 +410,8 @@ object Stubbing {
       end.stubbed.size,
       Tokens(end.saved.values.sum),
       Tokens(own.map(r => Tokens.value(r.cost)).sum),
-      regretted,
+      repeated,
+      pointed,
       Tokens(end.input),
       Tokens(turn.calls.map(c => Tokens.value(c.input)).sum),
       end.cost,
@@ -407,13 +438,14 @@ object Stubbing {
         s" rewriting ${Tokens.value(o.rewrote)}"
       val results = if (o.stubbed == 1) "1 result" else s"${o.stubbed} results"
       val freed = share(Tokens.value(o.dropped), Tokens.value(o.results))
-      val regret = share(o.regretted.toLong, o.stubbed.toLong)
+      val repeated = share(o.repeated.toLong, o.stubbed.toLong)
+      val pointed = share(o.pointed.toLong, o.stubbed.toLong)
       val recorded = o.recordedCost.fold("unpriced")(Cost.cents)
       val simulated = o.cost.fold("unpriced")(Cost.cents)
       val cost = s"cost $recorded recorded, $simulated simulated"
       s"  ${triggered(o.trigger)}: $stubbings, $results, ${Tokens.value(o.dropped)} of " +
-        s"${Tokens.value(o.results)} result tokens dropped ($freed), ${o.regretted} regretted " +
-        s"($regret); input ${Tokens.value(o.recordedInput)} recorded, " +
+        s"${Tokens.value(o.results)} result tokens dropped ($freed); ${o.repeated} repeated " +
+        s"($repeated), ${o.pointed} pointed at unrepeated ($pointed); input ${Tokens.value(o.recordedInput)} recorded, " +
         s"${Tokens.value(o.input)} simulated; $cost"
     }
     def of(kept: Option[Kept]): String = {

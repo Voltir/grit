@@ -39,7 +39,9 @@ private[main] object ContextCommands {
       full: Boolean,
       clock: Clock^
   ): Either[String, Unit] =
-    if (f.contains("entry")) heardContext(f)
+    if (!f.contains("conversation") && (f.contains("keep") || f.contains("floor")))
+      Left("--keep and --floor take --conversation")
+    else if (f.contains("entry")) heardContext(f)
     else if (f.contains("conversation")) conversationContext(f, full, clock)
     else turnContext(f, full)
 
@@ -110,7 +112,10 @@ private[main] object ContextCommands {
         val recorded = Stubbing.Recorded.of(t)
         val limit = t.limit.fold("none")(l => Tokens.value(l).toString)
         val priced = t.pricing.fold("unpriced, at Anthropic's ratios")(_ => "priced by its pin")
-        s"turn ${TurnSeq.value(t.turn.turnSeq)}: ${recorded.calls.size} calls, limit $limit, $priced" +:
+        val unrowed = t.requests.size - recorded.calls.size
+        val heading = s"turn ${TurnSeq.value(t.turn.turnSeq)}: ${recorded.calls.size} calls, " +
+          s"$unrowed without a ledger row, limit $limit, $priced"
+        heading +:
           Stubbing.lines(Stubbing.replay(rule, recorded, CharEstimate))
       }
       _ <- mkdirs(out.getParent)
