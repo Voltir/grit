@@ -46,7 +46,7 @@ private[main] object BenchCommands {
 
   /** `bench --tasks <dir> --task <name> --repository <path> --work <dir>`, then either `--known
     * true`, or `--model <id> [--upstream <slug>] --max-budget-usd <usd> --max-rounds <n> --scout
-    * <program>` ([[Caps.read]], `<n>` a turn's rounds) and a
+    * <program>` ([[caps]], `<n>` a turn's rounds) and a
     * harness: `--harness claude-code` (the default) with `--claude <program> --agent <file>`, or
     * `--harness grit` with `--grit <launcher> --java-home <dir> --standing <file> --coder-url
     * <jdbc> --max-tokens <n> [--max-memory-gb <n>] [--window-tokens <n>] [--work-turns <n>]
@@ -78,6 +78,23 @@ private[main] object BenchCommands {
       trials <- opened(config)(Bench.trials(_)(Subject.Public))
     } yield PerPass.lines(trials).foreach(println)
 
+  /** The caps `--model`, `--upstream` (optional), `--max-budget-usd` and `--max-rounds` give
+    * ([[Caps.of]]); a required one missing is refused naming it, and `--max-turns`, the old name
+    * of `--max-rounds`, is refused naming that.
+    */
+  private[main] def caps(f: Map[String, String]): Either[String, Caps] =
+    for {
+      _ <- Either.cond(
+        !f.contains("max-turns"),
+        (),
+        "--max-turns is now --max-rounds, the rounds of a turn"
+      )
+      model <- need(f, "model")
+      budget <- need(f, "max-budget-usd")
+      rounds <- need(f, "max-rounds")
+      cap <- Caps.of(model, f.get("upstream"), budget, rounds)
+    } yield cap
+
   private def run(f: Map[String, String], clock: Clock^): Either[String, Unit] =
     for {
       name <- need(f, "task")
@@ -106,7 +123,7 @@ private[main] object BenchCommands {
           }
         else
           for {
-            cap <- Caps.read(f)
+            cap <- caps(f)
             scout <- need(f, "scout")
             output = root.resolve(s"${RelPath.value(dir)}.log")
             _ <- f.getOrElse("harness", "claude-code") match {

@@ -36,8 +36,8 @@ settings the rig passes load, and a call no rule allows is refused and recorded 
 (`Rig.Allowed`: reads and edits, scout, `./mill`, `scripts/check`, and git's `add`, `commit`,
 `status`, `diff` and `log`). The model, Claude Code's budget and its rounds are required on every
 run; `--max-rounds` reaches Claude Code as its own `--max-turns`, whose "agentic turn" is a round,
-so the run makes at most that many model calls. The baseline is therefore Claude Code under grit's rule, not Claude Code as a person runs it
-with its own settings, and commands that only read (`ls`, `cat`, `grep`) still run without a rule.
+so the run makes at most that many model calls. The baseline is therefore Claude Code under grit's
+rule, not Claude Code as a person runs it with its own settings, and commands that only read (`ls`, `cat`, `grep`) still run without a rule.
 The run is billed to the Anthropic API key the rig passes, priced by grit's own rates beside
 Claude Code's estimate. A run a cap stopped is a trial not passed.
 
@@ -56,10 +56,11 @@ one; its Mill daemon stays warm for the coder. grit starts from an empty environ
 (`Rig.gritTrial`), its tools the allowlisted coding set and scout, the run's pair in every role it sets
 (a Claude model at the Anthropic API, or with `--upstream` an OpenRouter model at that upstream
 alone), and its key (`ANTHROPIC_API_KEY` or `OPENROUTER_API_KEY`) handed through a file.
-`--max-rounds` is each turn's tool rounds (`GRIT_TOOL_ROUNDS`, at least 2), so a turn makes about
-one model call more than it, over up to `--work-turns` turns (`Work.DefaultTurns` unset): the cap
-bounds a turn, not the trial.`--effort` sets the reasoning effort its turn's standard rung and its dreaming ask (`GRIT_EFFORT`
-and `GRIT_DREAM_EFFORT`, which the turn's summary, query and heard roles follow); unset, the
+`--max-rounds` is each turn's tool rounds (`GRIT_TOOL_ROUNDS`, at least 2): a turn's loop makes at
+most one model call more than it, or more than twice it when routed hard (`Router.HardCalls`),
+over up to `--work-turns` turns (`Work.DefaultTurns` unset); summary, query, heard and dreaming
+calls come on top. The cap bounds a turn, not the trial. `--effort` sets the reasoning effort its
+turn's standard rung and its dreaming ask (`GRIT_EFFORT` and `GRIT_DREAM_EFFORT`, which the turn's summary, query and heard roles follow); unset, the
 catalog's holds, and the seed asks none. The effort a call asks is not always the one set: a turn
 routed to its strong or light rung asks that rung's, and the route's allotment can raise or lower
 it (`Allotment.Reasoning`); a pin asking none at the Anthropic API is sent

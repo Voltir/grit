@@ -82,8 +82,10 @@
 #       served by that upstream alone (deepseek/deepseek-v4.1-flash-20260910 --upstream
 #       fireworks; grit only); --max-budget-usd the most a run may spend,
 #       which it can pass; --max-rounds a turn's rounds (--max-turns, its old name, is refused):
-#       Claude Code makes at most that many model calls in the run, a grit trial about one more
-#       in each turn, over up to --work-turns turns (Work.DefaultTurns unset).
+#       Claude Code makes at most that many model calls in the run; for grit, a turn's loop
+#       makes at most one model call more than it, or more than twice it when routed hard
+#       (Router.HardCalls), over up to --work-turns turns (Work.DefaultTurns unset); summary,
+#       query, heard and dreaming calls come on top.
 #       The trial, its transcript and its diff are kept in
 #       grit_bench (created when missing) and .local/bench/blobs/grit_bench/, and printed:
 #       for grit's runs, the grade, effort, window and input limit its turn ran under (in its log too),
@@ -102,7 +104,8 @@
 #       kept in grit_bench_coder, dropped and made afresh first; its budget priced by grit's
 #       rates as each call answers, or where they lack the model by the cost its provider
 #       reported (as grit's line prints it), the run stopped once it is reached or at a call
-#       priced by neither; --max-rounds at least 2, as GRIT_TOOL_ROUNDS; --max-tokens the most a reply writes (8192); --max-memory-gb the most
+#       priced by neither; --max-rounds at least 2, as GRIT_TOOL_ROUNDS; --max-tokens the most a
+#       reply writes (8192); --max-memory-gb the most
 #       its processes, all those working in its checkout, may hold together (MemoryCap.Default), the run stopped
 #       past it or when the machine has under 1 GB available, in the compile before grit and in
 #       the checks alike. --window-tokens and --work-turns set grit's GRIT_WINDOW_TOKENS and GRIT_WORK_TURNS;
@@ -207,7 +210,7 @@ bench() {
       --window-tokens | --work-turns | --effort) [ $# -ge 2 ] || usage; settings+=("$1" "$2"); shift 2 ;;
       --task | --model | --upstream | --max-budget-usd | --max-rounds) [ $# -ge 2 ] || usage; rest+=("$1" "$2"); shift 2 ;;
       # Refused here, before the grit arm drops its coder's database, as the harness refuses it
-      # too (Caps.read).
+      # too (BenchCommands.caps).
       --max-turns) echo "scripts/eval: --max-turns is now --max-rounds, the rounds of a turn" >&2; exit 2 ;;
       *) usage ;;
     esac

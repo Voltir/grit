@@ -1105,23 +1105,6 @@ object RigTests extends TestSuite {
     }
 
     test(
-      "caps are read from their flags, rounds from --max-rounds; --max-turns is refused naming it"
-    ) {
-      val flags = Map("model" -> "claude-haiku-5-5", "max-budget-usd" -> "0.05")
-      (
-        Caps.read(flags.updated("max-rounds", "6")).map(_.maxRounds),
-        Caps.read(flags.updated("max-turns", "6")),
-        Caps.read(flags.updated("max-rounds", "6").updated("max-turns", "6")),
-        Caps.read(flags)
-      ) ==> (
-        Right(6),
-        Left("--max-turns is now --max-rounds, the rounds of a turn"),
-        Left("--max-turns is now --max-rounds, the rounds of a turn"),
-        Left("--max-rounds is required")
-      )
-    }
-
-    test(
       "an OpenRouter grit coder runs its pair's upstream in every role it sets, handed its key as OPENROUTER_API_KEY"
     ) {
       withTask { f =>

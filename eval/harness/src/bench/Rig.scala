@@ -103,25 +103,6 @@ object Caps {
       (id, u) = m
     } yield Caps(id, u, b, r)
   }
-
-  /** The caps `--model`, `--upstream` (optional), `--max-budget-usd` and `--max-rounds` give, by
-    * flag name without its `--` ([[of]]); a required one missing is refused naming it, and
-    * `--max-turns`, the old name of `--max-rounds`, is refused naming that.
-    */
-  def read(flags: Map[String, String]): Either[String, Caps] = {
-    def need(k: String) = flags.get(k).toRight(s"--$k is required")
-    for {
-      _ <- Either.cond(
-        !flags.contains("max-turns"),
-        (),
-        "--max-turns is now --max-rounds, the rounds of a turn"
-      )
-      model <- need("model")
-      budget <- need("max-budget-usd")
-      rounds <- need("max-rounds")
-      cap <- of(model, flags.get("upstream"), budget, rounds)
-    } yield cap
-  }
 }
 
 /** The most memory a coder's processes may hold together while it runs, in bytes, and the least
