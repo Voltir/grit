@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.approval.Approval
 import grit.core.flow.Mint
-import grit.core.id.{CallSlot, EntryId, EntrySeq, ToolCallId, TurnRef, WorkflowId}
+import grit.core.id.{AgentType, CallSlot, EntryId, EntrySeq, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.Message
 import grit.core.place.Place
 import grit.core.session.Event.Unrecorded
@@ -94,19 +94,27 @@ object TurnTools {
       * it `asks`.
       */
     case Hosted(tool: ToolName, asks: Boolean, place: Option[Place])
+
+    /** Run as a child turn of the type `agent`, briefed `task`, through its own steps
+      * ([[grit.act.phase.Spawning]]): what its call bound to ([[Bound.Delegating]]), kept as
+      * the round read it, since a spawn's request is made on the wire, never by reading the
+      * call again.
+      */
+    case Delegating(agent: AgentType, task: String)
   }
 
   object Kind {
 
     /** The kind of `read`, what [[read]] gave, a hosted tool's place as `placeOf` says. */
     def of(
-        read: Either[Outcome, (Bound.Runs | Bound.Hosted | Bound.Keeping)^],
+        read: Either[Outcome, (Bound.Runs | Bound.Hosted | Bound.Keeping | Bound.Delegating)^],
         placeOf: ToolName -> Option[Place]
     ): Kind = read match {
       case Left(_) => Refused
       case Right(_: Bound.Free) | Right(_: Bound.Keeping) => Free
       case Right(_: Bound.Gated) => Gated
       case Right(h: Bound.Hosted) => Hosted(h.tool, h.ask.nonEmpty, placeOf(h.tool))
+      case Right(d: Bound.Delegating) => Delegating(d.agent, d.task)
     }
   }
 
@@ -158,7 +166,7 @@ object TurnTools {
       repairs: Repairs,
       reads: Reads^,
       at: Integrity
-  ): Either[Outcome, (Bound.Runs | Bound.Hosted | Bound.Keeping)^{C, reads}] =
+  ): Either[Outcome, (Bound.Runs | Bound.Hosted | Bound.Keeping | Bound.Delegating)^{C, reads}] =
     pending match {
       case Pending.Refused(_, refused) => Left(refused)
       case Pending.Run(call) =>
@@ -168,6 +176,7 @@ object TurnTools {
           case Right(runs: Bound.Runs) => Right(runs)
           case Right(hosted: Bound.Hosted) => Right(hosted)
           case Right(keeping: Bound.Keeping) => Right(keeping)
+          case Right(delegating: Bound.Delegating) => Right(delegating)
         }
     }
 

@@ -1051,6 +1051,33 @@ object TurnFixtures {
     }
   }
 
+  /** A type answering from the docs service, its pins of two grades so its task is asked. */
+  val scholars: Spawnable = {
+    def rung(g: grit.core.model.Grade, model: String) =
+      grit.core.model.Rung(g, Assignment(pair(model, None), 100, None))
+    val ladder = grit.core.model.Ladder
+      .of(
+        Vector(
+          rung(grit.core.model.Grade.Standard, "test/child-standard"),
+          rung(grit.core.model.Grade.Strong, "test/child-strong")
+        )
+      )
+      .fold(why => throw new java.lang.AssertionError(why), identity)
+    val pins = Catalog.of(Policy(ladder, ladder, ladder, ladder, ladder), Vector.empty).pin.turn
+    val scholar = grit.core.agent.Subagent
+      .of(
+        grit.core.agent.SubagentFixtures.scholar,
+        grit.core.agent.SubagentFixtures.persona,
+        pins,
+        grit.core.agent.SubagentFixtures.services,
+        grit.core.agent.SubagentFixtures.spendCap,
+        Integrity.Member
+      )
+      .flatMap(s => grit.core.agent.Subagents.of(Vector(s)))
+      .fold(why => throw new java.lang.AssertionError(why), identity)
+    Spawnable.of(scholar, _ => Vector.empty)
+  }
+
   /** A coding type of [[grit.core.agent.SubagentFixtures]], its coding tools `fetch` alone. */
   val coders: Spawnable = Spawnable.of(
     grit.core.agent.Subagents
@@ -1086,7 +1113,8 @@ object TurnFixtures {
     * were made under kept in `seen`, each recorded in `ledger`; its classifier `classifier`,
     * its root's task asked through `routing`, and its window drawn with a query written when
     * `queries` ([[QueryWriting]]); its conversation kept in `conversations`, its ring sent to
-    * `spawns`, its pinned profiles kept in `profiles`.
+    * `spawns`, its pinned profiles kept in `profiles`, its messages' authors read from
+    * `principals`.
     */
   def spawnedBody(
       entries: EntryStore,
@@ -1106,7 +1134,8 @@ object TurnFixtures {
       queries: Boolean = false,
       conversations: InMemoryConversationStore = new InMemoryConversationStore,
       spawns: grit.core.inbox.SpawnInbox^ = grit.core.inbox.InMemoryInbox.fresh(),
-      profiles: ModelProfileStore = profilesKept()
+      profiles: ModelProfileStore = profilesKept(),
+      principals: InMemoryPrincipals = new InMemoryPrincipals
   )(id: WorkflowId)(using Durable^): String = {
     conversations.findOrCreate(from, Account.Local, Label.Public)(using TestTx.fake)
     Turn.body(
@@ -1116,7 +1145,7 @@ object TurnFixtures {
           ledger,
           CharEstimate,
           profiles,
-          new InMemoryPrincipals,
+          principals,
           new InMemoryDocuments,
           new InMemoryPieces,
           unheld()

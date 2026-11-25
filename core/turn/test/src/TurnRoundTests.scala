@@ -97,6 +97,16 @@ object TurnRoundTests extends TestSuite {
       Right(TurnTools.Settled(call.slot.resultId, call.kind == TurnTools.Kind.Refused))
     def decide(call: TurnRound.Call, approval: Approval): Either[TurnFailure, TurnTools.Settled] =
       Left(TurnFailure.Store("nothing is gated"))
+    private val spawns: grit.core.inbox.SpawnInbox^ = grit.core.inbox.InMemoryInbox.fresh()
+    def spawning: grit.act.phase.SpawnEnv^{this} = grit.act.phase.SpawnEnv(
+      spawns,
+      grit.core.agent.Subagents.empty,
+      new grit.core.store.InMemoryConversationStore
+    )
+    def delegated(
+        call: TurnRound.Call,
+        came: grit.act.phase.Delegated
+    ): Either[TurnFailure, TurnTools.Settled] = Left(TurnFailure.Store("nothing delegates"))
     def settling: TurnTools.Settling^{this} = settlingIn(jot, entries)
     def now(): Instant = Instant.EPOCH
     def hosting: TurnHosting = TurnFixtures.hosting()

@@ -29,7 +29,16 @@ import grit.lifecycle.settle.{Settle, SettleEnv, SettleRecords}
 import grit.lifecycle.stitch.{Stitch, StitchEnv}
 import grit.lifecycle.triage.{Triage, TriageEnv, TriageRecords}
 import grit.models.{StubClassifier, StubModels, StubProvider}
-import grit.turn.{Turn, TurnEnv, TurnHosting, TurnLoop, TurnRecords, TurnSessions, TurnTooling}
+import grit.turn.{
+  Spawnable,
+  Turn,
+  TurnEnv,
+  TurnHosting,
+  TurnLoop,
+  TurnRecords,
+  TurnSessions,
+  TurnTooling
+}
 
 /** The real turn over a live engine, with the stub provider, for the end-to-end tests: a
   * TUI session in the checkout the engine was launched over, whose coding tools an edge in
@@ -98,7 +107,7 @@ object LiveTurn {
     * shapes it by the sources of `knowledge`; a message said to grit that the recipe weighs
     * is asked of the stub classifier. Its turns' sessions work as the holder `holder` names.
     * With `copies` and `run`, the session is that run of `copies`' repository, served by the
-    * same edge in the run's working copy.
+    * same edge in the run's working copy. A turn may hand a task to a run of `subagents`' types.
     */
   def launchIn(
       engine: Engine^,
@@ -113,7 +122,8 @@ object LiveTurn {
       holder: Origin -> Option[ClaimHolder] = _ => None,
       copies: Option[WorkingCopies^] = None,
       run: Option[WorkName] = None,
-      pushing: Option[Pushing^] = None
+      pushing: Option[Pushing^] = None,
+      subagents: Spawnable = Spawnable.empty
   ): Unit =
     launchWith(
       engine,
@@ -128,7 +138,8 @@ object LiveTurn {
       holder,
       copies,
       run,
-      pushing
+      pushing,
+      subagents
     )
 
   /** As [[launchIn]], every model call made through `models`. */
@@ -145,7 +156,8 @@ object LiveTurn {
       holder: Origin -> Option[ClaimHolder] = _ => None,
       copies: Option[WorkingCopies^] = None,
       run: Option[WorkName] = None,
-      pushing: Option[Pushing^] = None
+      pushing: Option[Pushing^] = None,
+      subagents: Spawnable = Spawnable.empty
   ): Unit = {
     // One Mentions weighs a said root before its offer and asks its task questions in route.
     val mentions =
@@ -341,7 +353,8 @@ object LiveTurn {
         answerWithin,
         reaches = reaches,
         recipe = recipe,
-        knowledge = knowledge
+        knowledge = knowledge,
+        subagents = subagents
       )
     )
     // This process's edge, serving the checkout as grit's own does, and a run's working copy.

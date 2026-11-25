@@ -144,6 +144,25 @@ object Turn {
       */
     val Wait: String = "call:wait"
 
+    /** The family of `call:n:j:narrow`, a call that hands its task to a child: its parent's
+      * transaction deciding whether the child may be made ([[grit.act.phase.Spawning]]).
+      */
+    val Narrow: String = "call:narrow"
+
+    /** The family of `call:n:j:spawn`, that call's child recorded and started. */
+    val Spawn: String = "call:spawn"
+
+    /** The family of `call:n:j:await`, that call's wait for its child's ring: not a step the
+      * turn records, but DBOS's [[StepRecord.Received]], which [[named]] gives this name.
+      */
+    val Await: String = "call:await"
+
+    /** The family of `call:n:j:ended`, that call's child's end read after a wait passed. */
+    val Ended: String = "call:ended"
+
+    /** The family of `call:n:j:read`, that call's child's reply and spend read once it ended. */
+    val Read: String = "call:read"
+
     /** The step `name` stands for among [[all]], the assembly's asks ([[Needs]],
       * [[NeedsRecord]], [[Query]], [[QueryRecord]], [[Relevance]], [[RelevanceRecord]]) and the
       * tool loop's families
@@ -174,23 +193,32 @@ object Turn {
         case Some(Loop.Dispatch(_, _)) => Some(Dispatch)
         case Some(Loop.Expire(_, _)) => Some(Expire)
         case Some(Loop.Abandon(_, _)) => Some(Abandon)
+        case Some(Loop.Narrow(_, _)) => Some(Narrow)
+        case Some(Loop.Spawn(_, _)) => Some(Spawn)
+        case Some(Loop.Await(_, _)) => Some(Await)
+        case Some(Loop.Ended(_, _)) => Some(Ended)
+        case Some(Loop.Read(_, _)) => Some(Read)
         case None => Option.when(all.contains(name))(name)
       }
 
     /** The names of `recorded`, the steps a turn recorded in order, as a watcher is shown
       * them: a [[StepRecord.Received]] that ends the wait after `call:n:j:approve` is
-      * `call:n:j:wait`; every other name is as recorded.
+      * `call:n:j:wait`, and one after `call:n:j:spawn` or `call:n:j:ended`, `call:n:j:await`;
+      * every other name is as recorded.
       */
     def named(recorded: Vector[String]): Vector[String] =
       recorded
-        .foldLeft((Vector.empty[String], Option.empty[Loop.Approve])) { case ((out, asked), name) =>
-          (Loop.of(name), asked) match {
-            case (Some(ask: Loop.Approve), _) => (out :+ name, Some(ask))
-            case (_, Some(Loop.Approve(n, j))) if name == StepRecord.Received =>
-              (out :+ Loop.Wait(n, j).name, None)
-            case _ if family(name).nonEmpty => (out :+ name, None)
-            case _ => (out :+ name, asked)
-          }
+        .foldLeft((Vector.empty[String], Option.empty[TurnRound.Names.Step])) {
+          case ((out, waits), name) =>
+            (Loop.of(name), waits) match {
+              case (Some(ask: Loop.Approve), _) =>
+                (out :+ name, Some(Loop.Wait(ask.round, ask.index)))
+              case (Some(Loop.Spawn(n, j)), _) => (out :+ name, Some(Loop.Await(n, j)))
+              case (Some(Loop.Ended(n, j)), _) => (out :+ name, Some(Loop.Await(n, j)))
+              case (_, Some(wait)) if name == StepRecord.Received => (out :+ wait.name, None)
+              case _ if family(name).nonEmpty => (out :+ name, None)
+              case _ => (out :+ name, waits)
+            }
         }
         ._1
   }

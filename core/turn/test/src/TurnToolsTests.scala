@@ -94,6 +94,7 @@ object TurnToolsTests extends TestSuite {
         settling.decide(slot, id, gated, approval, Integrity.Member, Instant.EPOCH)
       case Right(_: Bound.Hosted) => Left(TurnFailure.Model("no hosted tools here"))
       case Right(_: Bound.Keeping) => Left(TurnFailure.Model("no keeping tools here"))
+      case Right(_: Bound.Delegating) => Left(TurnFailure.Model("no delegating tools here"))
     }
   }
 

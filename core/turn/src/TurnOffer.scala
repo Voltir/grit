@@ -234,7 +234,7 @@ object TurnOffer {
         whole.offerable(sends, at).map(_.writes.map(_.to)) == Some(whole.writes.map(_.to))
       }
       engines = (own.conversing.names ++ own.tools.names ++ own.operator.names ++
-        own.administering.names ++ own.hosted.map(_.name)).toSet
+        own.administering.names ++ own.hosted.map(_.name) ++ Vector(TurnDelegate.Name)).toSet
       advertised = served.tools
         .filterNot(e => engines.contains(e.name))
         .flatMap(_.offerable(sends, at))
@@ -260,8 +260,16 @@ object TurnOffer {
       }
       offeredReaching = offeredReached.map((service, set, _) => (service, set))
       administers = administering(root, conversation.origin)
-      whole <- setOf(own, conversation.origin, administers, hosted, reaching).map(_._2)
-      offered <- setOf(own, conversation.origin, administers, offeredHosted, offeredReaching)
+      delegate <- delegating(own, root, conversation.origin, first, principals)
+      whole <- setOf(own, conversation.origin, administers, delegate, hosted, reaching).map(_._2)
+      offered <- setOf(
+        own,
+        conversation.origin,
+        administers,
+        delegate,
+        offeredHosted,
+        offeredReaching
+      )
       (hostedSet, set) = offered
       _ <- hosting.toolSets.keep(set)
       _ <- if (whole.id == set.id) Right(()) else hosting.toolSets.keep(whole)
@@ -371,9 +379,33 @@ object TurnOffer {
       case Audience.Operator | Audience.Nobody | Audience.Person => false
     })
 
+  /** The `delegate` tool a turn rooted at `root`, whose first entry is `first`, from `origin`, is
+    * offered over `tooling`'s subagents ([[TurnDelegate.tool]]): only when it declares some, the
+    * turn is put to or heard by grit (never an occasion's, nor a spawned child's), its room is no
+    * direct message's, and a person's account wrote its first entry, as
+    * [[grit.core.inbox.SpawnInbox.spawned]] requires; that last read only when the rest hold.
+    */
+  private def delegating[C^](
+      tooling: TurnTooling[C]^,
+      root: Root,
+      origin: Origin,
+      first: Option[grit.core.store.Entry],
+      principals: Principals
+  )(using Tx^): Either[StoreError, Option[Tool.Offered]] = {
+    val rooted = root match {
+      case Root.Addressed | Root.ByName | Root.Heard | Root.Named => true
+      case Root.Occasion | Root.Spawned(_) => false
+    }
+    (TurnDelegate.tool(tooling.subagents), first) match {
+      case (Some(tool), Some(entry)) if rooted && !origin.room.direct =>
+        principals.authors(Vector(entry.id)).map(by => Option.when(by.contains(entry.id))(tool))
+      case _ => Right(None)
+    }
+  }
+
   /** The hosted tools of a turn from `origin` as a set, and its whole set: `hosted`, then the
     * tools of `reaching` that [[Hosted.advertised]] offers, then `tooling`'s conversing tools
-    * unless its recipe briefs the turn for one task, then its own, then its
+    * unless its recipe briefs the turn for one task, then its own, then `delegate`, then its
     * operator tools for the operator, then its administering tools when `administers`. Why not,
     * naming a name two of them share.
     */
@@ -381,6 +413,7 @@ object TurnOffer {
       tooling: TurnTooling[C]^,
       origin: Origin,
       administers: Boolean,
+      delegate: Option[Tool.Offered],
       hosted: Vector[Tool.Offered],
       reaching: Vector[(Service, ToolSet)]
   ): Either[StoreError, (ToolSet, ToolSet)] =
@@ -392,6 +425,7 @@ object TurnOffer {
           case Briefing.Conversing => Toolbox.joined(tooling.conversing, tooling.tools)
           case Briefing.Tasked => Right(tooling.tools)
         })
+          .flatMap(own => Toolbox.of[{}](delegate.toVector*).flatMap(d => Toolbox.joined(own, d)))
           .flatMap(every =>
             if (origin.audience.operator) Toolbox.joined(every, tooling.operator) else Right(every)
           )
@@ -441,7 +475,10 @@ object TurnOffer {
         .tool(entry.name)
         .orElse(tooling.tools.tool(entry.name))
         .orElse(tooling.operator.tool(entry.name))
-        .orElse(tooling.administering.tool(entry.name)) match {
+        .orElse(tooling.administering.tool(entry.name))
+        .orElse[Tool.Offered^{C}](
+          TurnDelegate.tool(tooling.subagents).filter(_ => entry.name == TurnDelegate.Name)
+        ) match {
         case Some(own) => own
         case None =>
           tooling.hosted.find(_.name == entry.name) match {

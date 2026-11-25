@@ -3,7 +3,7 @@ package grit.turn
 import java.time.Instant
 
 import grit.act.phase.Gated as CallGate
-import grit.act.phase.{Asking, Calling, Shaped, Shaping}
+import grit.act.phase.{Asking, Calling, Delegated, Shaped, Shaping, SpawnEnv}
 import grit.core.act.{Allowance, Extraction, Posed}
 import grit.core.approval.Approval
 import grit.core.context.{CarriedWindow, Window}
@@ -148,6 +148,26 @@ private[turn] final class Rounding[C^](
       case _ => None
     }.flatten)
 
+  def spawning: SpawnEnv^{this} =
+    SpawnEnv(env.spawns, tooling.subagents.declared, env.hosting.conversations)
+
+  def delegated(call: TurnRound.Call, came: Delegated): Either[TurnFailure, TurnTools.Settled] =
+    rebinding(call.at).flatMap(_.rebind(call.slot, call.pending, Extract.Unasked) {
+      case Right(delegating: Bound.Delegating) =>
+        val believed = TurnDelegate.believed(came, call.at.level)
+        Some(
+          settling.answer(
+            call.slot,
+            call.id,
+            delegating.shown,
+            TurnDelegate.answer(delegating.agent, came),
+            TurnTools.Answered.Grit(believed),
+            now()
+          )
+        )
+      case _ => None
+    }.flatten)
+
   def settling: TurnTools.Settling^{this} =
     new TurnTools.Settling(
       tooling.jot,
@@ -226,7 +246,7 @@ private[turn] final class Rounding[C^](
     def rebind[A, X^](slot: TurnTools.Slot, pending: Pending, answer: Extract.Answer^{X})(
         as: Either[
           Outcome,
-          (Bound.Runs | Bound.Hosted | Bound.Keeping)^{C, env, tooling, reads, X}
+          (Bound.Runs | Bound.Hosted | Bound.Keeping | Bound.Delegating)^{C, env, tooling, reads, X}
         ] ->{Rounding.this} Option[A]
     ): Either[TurnFailure, A] =
       as(bound[X](pending, answer)).toRight(
@@ -243,7 +263,10 @@ private[turn] final class Rounding[C^](
     def bound[X^](
         pending: Pending,
         answer: Extract.Answer^{X}
-    ): Either[Outcome, (Bound.Runs | Bound.Hosted | Bound.Keeping)^{C, env, tooling, reads, X}] =
+    ): Either[
+      Outcome,
+      (Bound.Runs | Bound.Hosted | Bound.Keeping | Bound.Delegating)^{C, env, tooling, reads, X}
+    ] =
       read[X](pending, answer) match {
         case Right(asks: Bound.Gated) => gated(asks).toLeft(asks)
         case Right(asks: Bound.Hosted) => gated(asks).toLeft(asks)
@@ -261,7 +284,10 @@ private[turn] final class Rounding[C^](
     private def read[X^](
         pending: Pending,
         answer: Extract.Answer^{X}
-    ): Either[Outcome, (Bound.Runs | Bound.Hosted | Bound.Keeping)^{C, env, tooling, reads, X}] = {
+    ): Either[
+      Outcome,
+      (Bound.Runs | Bound.Hosted | Bound.Keeping | Bound.Delegating)^{C, env, tooling, reads, X}
+    ] = {
       val box: Toolbox[caps.CapSet^{C, env, X}] =
         if (!tools.set.mayGate) tools
         else {

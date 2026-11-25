@@ -411,12 +411,20 @@ private[turn] object TurnJournal {
         "asks" -> asks,
         "place" -> place.fold[ujson.Value](ujson.Null)(p => ujson.Str(p.written))
       )
+    case TurnTools.Kind.Delegating(agent, task) =>
+      ujson.Obj("delegating" -> AgentType.value(agent), "task" -> task)
   }
 
   private def readKind(v: ujson.Value): Either[String, TurnTools.Kind] = v match {
     case ujson.Str("refused") => Right(TurnTools.Kind.Refused)
     case ujson.Str("free") => Right(TurnTools.Kind.Free)
     case ujson.Str("gated") => Right(TurnTools.Kind.Gated)
+    case ujson.Obj(o) if o.contains("delegating") =>
+      for {
+        name <- o.get("delegating").flatMap(_.strOpt).toRight("kind: no agent")
+        agent <- AgentType.of(name).left.map(e => s"kind: $e")
+        task <- o.get("task").flatMap(_.strOpt).toRight("kind: no task")
+      } yield TurnTools.Kind.Delegating(agent, task)
     case ujson.Obj(o) =>
       for {
         name <- o.get("hosted").flatMap(_.strOpt).toRight("kind: no hosted tool")

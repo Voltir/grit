@@ -1,6 +1,6 @@
 package grit.turn
 
-import grit.core.agent.{Subagent, SubagentFixtures, Subagents}
+import grit.core.agent.{SubagentFixtures, Subagents}
 import grit.core.document.InMemoryDocuments
 import grit.core.durable.{InMemoryDurable, StepRecord}
 import grit.core.edge.InMemoryEdges
@@ -8,7 +8,6 @@ import grit.core.files.InMemoryPieces
 import grit.core.id.ToolCallId
 import grit.core.inbox.TurnEnding
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.model.{Assignment, Catalog, Grade, Ladder, Policy, Rung}
 import grit.core.place.Place
 import grit.core.store.{
   InMemoryConversationStore,
@@ -128,29 +127,6 @@ object TurnSpawnTests extends TestSuite {
     val edge = new Served(new InMemoryEdges, durable, _ => Serve.Now(Outcome.Done("read")), at)
     edge.advertise(hostedTools)
     edge
-  }
-
-  /** A type answering from the docs service, its pins of two grades so its task is asked. */
-  private val scholars: Spawnable = {
-    def rung(g: Grade, model: String) = Rung(g, Assignment(pair(model, None), 100, None))
-    val ladder = Ladder
-      .of(
-        Vector(rung(Grade.Standard, "test/child-standard"), rung(Grade.Strong, "test/child-strong"))
-      )
-      .fold(why => throw new java.lang.AssertionError(why), identity)
-    val pins = Catalog.of(Policy(ladder, ladder, ladder, ladder, ladder), Vector.empty).pin.turn
-    val scholar = Subagent
-      .of(
-        SubagentFixtures.scholar,
-        SubagentFixtures.persona,
-        pins,
-        SubagentFixtures.services,
-        SubagentFixtures.spendCap,
-        Integrity.Member
-      )
-      .flatMap(s => Subagents.of(Vector(s)))
-      .fold(why => throw new java.lang.AssertionError(why), identity)
-    Spawnable.of(scholar, _ => Vector.empty)
   }
 
   /** The stub classifier's answers, each call priced. */

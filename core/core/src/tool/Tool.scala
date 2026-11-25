@@ -1,6 +1,6 @@
 package grit.core.tool
 
-import grit.core.id.CallSlot
+import grit.core.id.{AgentType, CallSlot}
 import grit.core.message.AssistantBlock
 import grit.core.model.ArgRepair
 import grit.core.place.Place
@@ -135,6 +135,9 @@ final class Tool[A] private[tool] (
             new Bound.Reading(spec.name, line, ask, output, run)
           case keeping: Tool.Keeping[A] =>
             new Bound.Keeping(spec.name, line, output, at => keeping(args, at, stamped))
+          case delegating: Tool.Delegating[A] =>
+            val (agent, task) = delegating(args)
+            new Bound.Delegating(spec.name, line, agent, task)
         })
     }
 }
@@ -186,8 +189,9 @@ object Tool {
     )
   }
 
-  /** How a tool runs: told its call ([[Plain]]), handed reads too ([[Reading]]), or told its
-    * call's stamp and run in its turn's transaction ([[Keeping]]).
+  /** How a tool runs: told its call ([[Plain]]), handed reads too ([[Reading]]), told its
+    * call's stamp and run in its turn's transaction ([[Keeping]]), or not here at all, its call
+    * read as the type and task of a run its turn starts ([[Delegating]]).
     */
   private[tool] sealed trait Run[A]
 
@@ -204,6 +208,10 @@ object Tool {
   ) extends Run[A] {
     def apply(args: A, at: CallSlot, stamped: Integrity)(using Tx^): Either[StoreError, Outcome] =
       run(args, at, stamped)
+  }
+
+  private[tool] final class Delegating[A](as: A -> (AgentType, String)) extends Run[A] {
+    def apply(args: A): (AgentType, String) = as(args)
   }
 
   /** A tool whatever its arguments' type, as a [[Toolbox]] holds it. */
@@ -388,6 +396,22 @@ object Hosted {
       run: (A, CallSlot, Integrity) => (Tx^) ?=> Either[StoreError, Outcome]
   ): Tool[A]^{run} =
     new Tool(spec, Gate.Free, shown, new Tool.Keeping(run), Tool.Aim.Nowhere, requires, output)
+
+  /** A tool that hands a task to a run its turn starts, described by `spec` and `shown`, each
+    * call read as that run's type and task by `as` ([[Bound.Delegating]]); it requires nothing
+    * and never asks first. Nothing here runs it: its turn settles its calls, and an edge does
+    * not run it.
+    */
+  def delegating[A](spec: ToolSpec[A], shown: A -> String)(as: A -> (AgentType, String)): Tool[A] =
+    new Tool(
+      spec,
+      Gate.Free,
+      shown,
+      new Tool.Delegating(as),
+      Tool.Aim.Nowhere,
+      Integrity.Untrusted,
+      Believed.Own
+    )
 
   /** A tool an edge runs that writes outside grit to one of `writes`' destinations, described
     * by `spec`, `gate` and `shown`, requiring what its shape does ([[ToolSet.Entry.byShape]]);

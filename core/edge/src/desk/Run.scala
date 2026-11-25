@@ -50,7 +50,8 @@ object Run {
         case Right(gated: Bound.Gated) =>
           if (request.permit == Permit.Approved) gated(Approval.Approved, request.slot)
           else Outcome.Failed(s"${ToolName.value(request.tool)} asks first here; it did not run.")
-        case Right(_: Bound.Hosted) | Right(_: Bound.Reading) | Right(_: Bound.Keeping) =>
+        case Right(_: Bound.Hosted) | Right(_: Bound.Reading) | Right(_: Bound.Keeping) |
+            Right(_: Bound.Delegating) =>
           Outcome.Failed(s"${ToolName.value(request.tool)} is not run here; it did not run.")
       }
     }

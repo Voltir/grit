@@ -58,6 +58,9 @@ enum Tag(val name: String, val kind: Tag.Kind) extends caps.Pure {
 
   /** What a conversation has done with its tools, as grit logged it. */
   case SessionLog extends Tag("session_log", Tag.Kind.Material)
+
+  /** What a run grit started for one task replied. */
+  case Reply extends Tag("reply", Tag.Kind.Material)
 }
 
 object Tag {

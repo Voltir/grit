@@ -5,12 +5,12 @@ import java.time.Instant
 import scala.concurrent.duration.FiniteDuration
 import scala.jdk.DurationConverters.ScalaDurationOps
 
-import grit.act.phase.Calling
-import grit.core.act.{Extraction, Gates}
+import grit.act.phase.{Calling, Delegated, SpawnEnv, SpawnSteps, Spawning}
+import grit.core.act.{Acting, ActsFor, Allowance, Extraction, Gates}
 import grit.core.approval.Approval
 import grit.core.durable.{Flow, Observed, Step, StepName}
 import grit.core.edge.Permit
-import grit.core.id.{EntryId, ToolCallId, TurnRef}
+import grit.core.id.{AgentType, EntryId, ToolCallId, TurnRef}
 import grit.core.message.Message
 import grit.core.place.Place
 import grit.core.store.{EntryStore, Tx}
@@ -79,6 +79,17 @@ private[turn] object TurnRound {
       * ([[TurnTools.Settling.decide]]).
       */
     def decide(call: Call, approval: Approval): Either[TurnFailure, Settled]
+
+    /** Where a call's child is recorded, started, ended and read, among the types the turn's
+      * deployment declares ([[Spawning.spawn]]).
+      */
+    def spawning: SpawnEnv^{this}
+
+    /** The `call:n:j` body of `call`, which handed its task to a child that came to `came`:
+      * answered unrun as [[TurnDelegate.answer]] says, a reply believed at the child's
+      * integrity met with the turn's level, anything else at the turn's level.
+      */
+    def delegated(call: Call, came: Delegated): Either[TurnFailure, Settled]
 
     /** Where the calls' results are kept. */
     def settling: TurnTools.Settling^{this}
@@ -199,14 +210,21 @@ private[turn] object TurnRound {
       extends OfCall {
     def id: ToolCallId = pending.call.id
 
-    /** Which steps settle it, by its kind: its own step (`Left`), its own step once a person
-      * approves it (`Right(Left)`), or an edge's (`Right(Right)`).
+    /** Which steps settle it, by its kind: its own step (`Left(Left)`), a child's steps then its
+      * own (`Left(Right)`), its own step once a person approves it (`Right(Left)`), or an
+      * edge's (`Right(Right)`).
       */
-    def routing: Either[Call, Either[Call, Hosting]] = kind match {
-      case Kind.Refused | Kind.Free => Left(this)
+    def routing: Either[Either[Call, Delegation], Either[Call, Hosting]] = kind match {
+      case Kind.Refused | Kind.Free => Left(Left(this))
+      case Kind.Delegating(agent, task) => Left(Right(Delegation(this, agent, task)))
       case Kind.Gated => Right(Left(this))
       case Kind.Hosted(tool, asks, place) => Right(Right(Hosting(this, tool, asks, place)))
     }
+  }
+
+  /** `call`, which hands `task` to a child of the type `agent`. */
+  final case class Delegation(call: Call, agent: AgentType, task: String) extends OfCall {
+    def slot: Slot = call.slot
   }
 
   /** `call`, of a hosted tool `tool` at `place`, which `asks` a person first or not. */
@@ -240,6 +258,17 @@ private[turn] object TurnRound {
     /** A person's time to answer about a call: a wait's label, never recorded. */
     val answer: StepName[OfCall] = StepName.keyed[OfCall]("call")(c => Step.Wait(n(c), j(c)).key)
 
+    /** The steps of a call that spawns a child ([[Spawning.spawn]]), its wait for the child's
+      * ring, `call:n:j:await`, a label never recorded.
+      */
+    def spawning[I <: OfCall]: SpawnSteps[I] = SpawnSteps[I](
+      StepName.keyed[OfCall]("call")(c => Step.Narrow(n(c), j(c)).key),
+      StepName.keyed[OfCall]("call")(c => Step.Spawn(n(c), j(c)).key),
+      StepName.keyed[OfCall]("call")(c => Step.Await(n(c), j(c)).key),
+      StepName.keyed[OfCall]("call")(c => Step.Ended(n(c), j(c)).key),
+      StepName.keyed[OfCall]("call")(c => Step.Read(n(c), j(c)).key)
+    )
+
     /** A step of the loop, by its round `round` and, for one of a call, the call's `index`. */
     enum Step {
       case Ask(round: Int)
@@ -252,6 +281,11 @@ private[turn] object TurnRound {
       case Dispatch(round: Int, index: Int)
       case Expire(round: Int, index: Int)
       case Abandon(round: Int, index: Int)
+      case Narrow(round: Int, index: Int)
+      case Spawn(round: Int, index: Int)
+      case Await(round: Int, index: Int)
+      case Ended(round: Int, index: Int)
+      case Read(round: Int, index: Int)
 
       /** The name this step is recorded under, or a wait labelled. */
       def name: String = s"$family:$key"
@@ -274,6 +308,11 @@ private[turn] object TurnRound {
         case Dispatch(n, j) => s"$n:$j:dispatch"
         case Expire(n, j) => s"$n:$j:expire"
         case Abandon(n, j) => s"$n:$j:abandon"
+        case Narrow(n, j) => s"$n:$j:narrow"
+        case Spawn(n, j) => s"$n:$j:spawn"
+        case Await(n, j) => s"$n:$j:await"
+        case Ended(n, j) => s"$n:$j:ended"
+        case Read(n, j) => s"$n:$j:read"
       }
     }
 
@@ -296,6 +335,11 @@ private[turn] object TurnRound {
               case "dispatch" => Some(Dispatch(n, j))
               case "expire" => Some(Expire(n, j))
               case "abandon" => Some(Abandon(n, j))
+              case "narrow" => Some(Narrow(n, j))
+              case "spawn" => Some(Spawn(n, j))
+              case "await" => Some(Await(n, j))
+              case "ended" => Some(Ended(n, j))
+              case "read" => Some(Read(n, j))
               case _ => None
             }
           case _ => None
@@ -569,10 +613,55 @@ private[turn] object TurnRound {
       .map((c, answer) => answer.map(Decided(c, _)))
       .andThen(Flow.step(decided).right[TurnFailure].map(_.flatten))
     val routed = Flow.branch((c: Call) => c.routing)(
-      Flow.step(here),
+      Flow.either(Flow.step(here), delegating),
       Flow.either(gated, TurnHosted.settle)
     )
     routed.decided((c, settled) => stalling(c.at)(settled.map(_ => ())))
+  }
+
+  /** A call that hands its task to a child: its child spawned and waited for as
+    * [[Spawning.spawn]] says, by its parent acting for the turn's asker, admitted, at the turn's
+    * gates and believed at the turn's level, its brief believed so too and read within the
+    * turn's route; then what it came to answered in `call:n:j`.
+    */
+  private def delegating: Flow[Env, Delegation, Nothing, Either[TurnFailure, Settled]] = {
+    val requested = Flow.fromEither[Delegation, Either[TurnFailure, Settled], Requested](d =>
+      requestOf(d).map(Requested(d, _)).toRight(Left(TurnFailure.Store(Unrequested)))
+    )
+    val answered = Step[Env, Came, Either[TurnFailure, Settled]](Names.call)(r =>
+      c => r.delegated(c.asked.delegation.call, c.came)
+    )
+    val spawned = Spawning
+      .spawn[Requested](Names.spawning[Requested], _.request)
+      .over[Env](r => r.spawning)
+      .keeping
+      .map(Came(_, _))
+    Flow
+      .attempt(requested.andThen(spawned).andThen(Flow.step(answered)))
+      .map(_.merge)
+  }
+
+  /** `d`'s request; `None` only when its slot is not of its turn, which a slot made of the
+    * turn's own ref never is.
+    */
+  private def requestOf(d: Delegation): Option[Spawning.Request] = {
+    val (at, l) = (d.call.at, d.call.at.looping)
+    val parent = Acting(l.turn, ActsFor.Asker, Allowance.Admitted, l.gates, at.level)
+    Spawning.Request.of(d.slot.call, parent, d.agent, d.task, at.level, l.routed.bound)
+  }
+
+  /** Why a call that spawns is failed when its request cannot be made. */
+  private val Unrequested: String = "a spawn's call is not of its own turn"
+
+  /** `delegation`'s call, asked of a child as `request`. */
+  private final case class Requested(delegation: Delegation, request: Spawning.Request)
+      extends OfCall {
+    def slot: Slot = delegation.slot
+  }
+
+  /** What `asked`'s child came to. */
+  private final case class Came(asked: Requested, came: Delegated) extends OfCall {
+    def slot: Slot = asked.slot
   }
 
   /** `failed`'s failure as the loop's stall, where `at` says. */

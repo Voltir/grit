@@ -53,7 +53,7 @@ import grit.core.store.{
   UsageLedger,
   VoiceStore
 }
-import grit.core.tool.{Gate, Tool, ToolSets, Toolbox}
+import grit.core.tool.{Gate, Tool, ToolName, ToolSets, Toolbox}
 import grit.core.triage.{Corpora, Tags, TriageStore, Weighing}
 
 /** What a turn works with besides its `Durable` and its [[TurnTooling]]: its [[TurnRecords]]
@@ -314,10 +314,11 @@ final case class TurnTooling[C^](
   }
 }
 
-/** A deployment's subagents as its turns run them: each type, with the hosted tools a child of
-  * it is offered ([[Spawnable.of]]).
+/** A deployment's subagents as its turns run them, `declared`: each type, with the hosted tools
+  * a child of it is offered ([[Spawnable.of]]).
   */
-final case class Spawnable private (byType: Map[AgentType, Spawnable.Child]) extends caps.Pure {
+final case class Spawnable private (declared: Subagents, byType: Map[AgentType, Spawnable.Child])
+    extends caps.Pure {
   def apply(agent: AgentType): Option[Spawnable.Child] = byType.get(agent)
 }
 
@@ -342,32 +343,44 @@ object Spawnable {
     }
   }
 
-  val empty: Spawnable = Spawnable(Map.empty)
+  val empty: Spawnable = Spawnable(Subagents.empty, Map.empty)
 
   /** Each of `subagents`, a coding type offered the hosted tools `coding` describes for its
     * allowlist.
     */
   def of(subagents: Subagents, coding: Allowlist -> Vector[Tool.Offered]): Spawnable =
-    Spawnable(subagents.byType.map { (agent, s) =>
-      agent -> Child(
-        s,
-        s.tools match {
-          case Subagent.Tools.Coding(_, _, allowlist) => coding(allowlist)
-          case Subagent.Tools.Services(_) => Vector.empty
-        }
-      )
-    })
+    Spawnable(
+      subagents,
+      subagents.byType.map { (agent, s) =>
+        agent -> Child(
+          s,
+          s.tools match {
+            case Subagent.Tools.Coding(_, _, allowlist) => coding(allowlist)
+            case Subagent.Tools.Services(_) => Vector.empty
+          }
+        )
+      }
+    )
 }
 
 object TurnTooling {
 
   /** Why `own` cannot be a turn's tools beside those every turn adds: it names `topic`,
-    * read_hidden or extract; `None` when it can. A deployment asks it where it builds its
-    * tools, so a clash fails at its start rather than on every turn.
+    * read_hidden, extract or delegate ([[TurnDelegate]]); `None` when it can. A deployment
+    * asks it where it builds its tools, so a clash fails at its start rather than on every turn.
     */
   def reserving[C^](own: Toolbox[C]): Option[String] =
     // An addressed turn's offer adds every reserved tool, topic among them.
-    TurnShown.offered(own, None, TurnOffer.Root.Addressed).left.toOption.map(TurnFailure.reason)
+    TurnShown
+      .offered(own, None, TurnOffer.Root.Addressed)
+      .left
+      .toOption
+      .map(TurnFailure.reason)
+      .orElse(
+        own
+          .tool(TurnDelegate.Name)
+          .map(_ => s"${ToolName.value(TurnDelegate.Name)} is grit's own tool's name")
+      )
 
   /** What a turn rooted at `root` is offered from: for [[TurnOffer.Root.Spawned]], its type's
     * persona, services and hosted tools, briefed for one task ([[TurnRecipe.Tasked]]), with

@@ -4,7 +4,7 @@ import scala.concurrent.duration.FiniteDuration
 
 import grit.core.approval.Approval
 import grit.core.flow.{Tainted, Trusted}
-import grit.core.id.CallSlot
+import grit.core.id.{AgentType, CallSlot}
 import grit.core.message.AssistantBlock
 import grit.core.model.NameRepair
 import grit.core.place.Place
@@ -225,6 +225,17 @@ object Bound {
       */
     def apply(at: CallSlot)(using Tx^): Either[StoreError, Outcome] = run(at)
   }
+
+  /** A call that hands `task` to a run of the type `agent` ([[Hosted.delegating]]): nothing here
+    * runs it, but its turn, which starts that run and keeps what it came to; an edge answers that
+    * it is not run there.
+    */
+  final class Delegating private[tool] (
+      val tool: ToolName,
+      val shown: String,
+      val agent: AgentType,
+      val task: String
+  ) extends Bound
 
   private object Reading {
 
