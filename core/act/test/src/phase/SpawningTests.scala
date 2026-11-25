@@ -69,13 +69,18 @@ object SpawningTests extends TestSuite {
 
   /** The in-memory inbox under `visibility`, or `stored` when given, while the parent's
     * transactions run under `visibility`; its children doing as `does` says in the order they are
-    * made, and the first read of a child's end dying when `crashAtEnded`.
+    * made, each ending child ringing with what `ringing` makes of its outcome (its ending's word,
+    * as a child's turn rings), and the first read of a child's end dying when `crashAtEnded`;
+    * when `endsLate`, every read of a child's end finds it running, as its workflow's status does
+    * between its ring and its return.
     */
   private final class World(
       visibility: Visibility = Visibility.Shipped,
       does: Vector[Does] = Vector.empty,
       crashAtEnded: Boolean = false,
-      stored: Option[Visibility] = None
+      stored: Option[Visibility] = None,
+      ringing: String -> String = outcome => TurnEnding.word(TurnEnding.of(outcome)),
+      endsLate: Boolean = false
   ) {
     val inbox: InMemoryInbox = InMemoryInbox.fresh(visibility = stored.getOrElse(visibility))
     val durable: InMemoryDurable =
@@ -109,7 +114,7 @@ object SpawningTests extends TestSuite {
               case Does.Ends(reply, outcome, usd) =>
                 inbox.charge(c, usd)
                 inbox.finish(c, reply.map(Message.said(_, "m")), outcome)
-                durable.send(origin.parent.workflowId, SpawnInbox.topic(c), "rang")
+                durable.send(origin.parent.workflowId, SpawnInbox.topic(c), ringing(outcome))
             }
           }
           c
@@ -117,12 +122,14 @@ object SpawningTests extends TestSuite {
       }
       def ended(child: TurnRef): Either[InboxError, Option[TurnEnding]] =
         if (crashing) { crashing = false; throw new InMemoryDurable.Crash }
+        else if (endsLate) Right(None)
         else inbox.ended(child)
       def reply(child: TurnRef)(using Tx^): Either[StoreError, SpawnReply] = inbox.reply(child)
       def spent(turn: TurnRef)(using Tx^): Either[StoreError, Cost] = inbox.spent(turn)
       def granted(parent: TurnRef)(using Tx^): Either[StoreError, Vector[SpendCap]] =
         inbox.granted(parent)
-      def returned(child: TurnRef): Either[InboxError, Unit] = inbox.returned(child)
+      def returned(child: TurnRef, ending: TurnEnding): Either[InboxError, Unit] =
+        inbox.returned(child, ending)
     }
 
     /** A parent turn of `task:{name}`, asked by ana, and its conversation's origin. */
@@ -274,7 +281,9 @@ object SpawningTests extends TestSuite {
       )
     }
 
-    test("a ring sent before the wait wakes the first rung, and the reply is read once") {
+    test(
+      "a ring sent before the wait wakes the first rung with its child's ending, and the reply is read once"
+    ) {
       val w = new World(does = Vector(replied("Found it.")))
       val (turn, origin) = w.parent("rung")
       val got = w.spawn(request(turn, origin))
@@ -283,11 +292,33 @@ object SpawningTests extends TestSuite {
       }
       (got, w.recorded(turn), received) ==> (
         Vector("Replied(c2, Found it.@member, Exact(0.01))"),
-        Vector("narrow:0:0", "spawn:0:0", "ended:0:0", "read:0:0"),
+        Vector("narrow:0:0", "spawn:0:0", "read:0:0"),
         Vector(
-          "DBOS.recv" -> InMemoryDurable.Outcome.Output("rang"),
+          "DBOS.recv" -> InMemoryDurable.Outcome.Output("answered"),
           "DBOS.sleep" -> InMemoryDurable.Outcome.Output("300000")
         )
+      )
+    }
+
+    test(
+      "a child that rings before its end is recorded is taken at its ring's ending, never waited for again"
+    ) {
+      val w = new World(does = Vector(replied("Found it.")), endsLate = true)
+      val (turn, origin) = w.parent("rung-early")
+      (w.spawn(request(turn, origin)), w.recorded(turn)) ==> (
+        Vector("Replied(c2, Found it.@member, Exact(0.01))"),
+        Vector("narrow:0:0", "spawn:0:0", "read:0:0")
+      )
+    }
+
+    test(
+      "a ring whose message names no ending has its child's end read, as a timed-out wait does"
+    ) {
+      val w = new World(does = Vector(replied("Found it.")), ringing = _ => "rang")
+      val (turn, origin) = w.parent("rung-unread")
+      (w.spawn(request(turn, origin)), w.recorded(turn)) ==> (
+        Vector("Replied(c2, Found it.@member, Exact(0.01))"),
+        Vector("narrow:0:0", "spawn:0:0", "ended:0:0", "read:0:0")
       )
     }
 
@@ -418,7 +449,8 @@ object SpawningTests extends TestSuite {
     }
 
     test("each step records its pinned form, and a history of them replays to the same end") {
-      val w = new World(does = Vector(replied("Found it.")))
+      // A ring that names no ending, so the end is read and its form recorded.
+      val w = new World(does = Vector(replied("Found it.")), ringing = _ => "rang")
       val (turn, origin) = w.parent("journal")
       val first = w.spawn(request(turn, origin))
       (w.outputs(turn), w.replayed(request(turn, origin))) ==> (

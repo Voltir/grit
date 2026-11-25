@@ -337,7 +337,8 @@ private[grit] object Launch {
           placing
         ),
         TurnWeighing(runtime.triage, mentions),
-        TurnRouting(mentions, d.budget, runtime.spending)
+        TurnRouting(mentions, d.budget, runtime.spending),
+        runtime
       )
     val close: WorkflowId => Durable^ ?=> String =
       Close.body(

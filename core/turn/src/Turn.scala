@@ -3,10 +3,11 @@ package grit.turn
 import grit.core.allot.Allotment
 import grit.core.durable.{Durable, Flows, Journaled, StepRecord}
 import grit.core.id.{EntryId, EntrySeq, TurnRef, WorkflowId}
+import grit.core.inbox.TurnEnding
 import grit.core.model.{Pinned, StrictSchemas, TurnProfile, TurnProfileId}
-import grit.core.store.{Db, Entry, Jot, ModelProfileStore, Payload, StoreError, Tx}
+import grit.core.store.{Db, Entry, Jot, ModelProfileStore, Origin, Payload, StoreError, Tx}
 import grit.core.tool.{Tool, Toolbox}
-import grit.core.visibility.{Classification, Label}
+import grit.core.visibility.{Classification, Label, Subject}
 
 import TurnFailure.reason
 import TurnLoop.Round
@@ -214,7 +215,11 @@ object Turn {
   /** The turn workflow's body, for the turn whose workflow id is `workflowId`: its flow
     * ([[TurnFlow]]), its model offered the tools its `offer` step recorded from `tooling`'s.
     * Returns what the turn did, for logs: its reply and summary are in the store, never in
-    * this string.
+    * this string. A spawned child's turn rings its parent through `env.spawns` once its flow
+    * returns, however it ended, with the ending that string says
+    * ([[grit.core.inbox.SpawnInbox.returned]]); a
+    * ring that fails, or a turn whose step threw, rings nothing, and its parent reads its end
+    * at its next [[grit.act.phase.Spawning.Every]].
     */
   def body[C^](env: TurnEnv^, tooling: TurnTooling[C]^)(
       workflowId: WorkflowId
@@ -225,9 +230,24 @@ object Turn {
         identity,
         turn => {
           val turning = new TurnSteps.Turning(env, tooling, d.stream(TurnStream.Key))
-          Flows.run(TurnFlow.flow, turning, turn).merge
+          val did = Flows.run(TurnFlow.flow, turning, turn).merge
+          ring(env, turn, did)
+          did
         }
       )
+
+  // Not a step: a rerun rings again, and the ring's key keeps one (SpawnInbox.returned). The
+  // origin read is of a conversation's fixed origin, so every run decides alike.
+  private def ring(env: TurnEnv^, turn: TurnRef, did: String): Unit =
+    env.db.read(Subject.Turn(turn))(env.hosting.conversations.get(turn.conversationId)) match {
+      case Right(Some(c)) =>
+        c.origin match {
+          case _: Origin.Spawned =>
+            val _ = env.spawns.returned(turn, TurnEnding.of(did))
+          case _ => ()
+        }
+      case _ => ()
+    }
 
   /** The id of the `i`-th search query assembly wrote for `turn`, from 0. */
   def queryId(turn: TurnRef, i: Int): EntryId = {

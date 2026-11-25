@@ -27,6 +27,7 @@ import grit.core.id.{
   WorkflowId
 }
 import grit.core.identity.Principal
+import grit.core.inbox.SpawnInbox
 import grit.core.persona.Persona
 import grit.core.place.{Place, Reaches, Service, WorksIn}
 import grit.core.provider.{Models, TokenEstimator}
@@ -62,12 +63,13 @@ import grit.core.triage.{Corpora, Tags, TriageStore, Weighing}
   * transaction, `clock` dates entries and paces the reply's stream, and `fresh` tags each
   * attempt at a model call ([[TurnStream]]); `classifier` also judges an unprompted turn's
   * draft, settled as [[TurnSpeech]] says, and stitches a conversation's first message as
-  * [[TurnStitching]] says. None of them writes the store but `stitching`'s `placements`,
-  * which queues an opening's placement and waits for it, so a step body that captures this
-  * can otherwise only read it. `weighing` is what its root's answers are read from, or
-  * asked of, before its offer ([[TurnWeighing]]); `routing`, what its `route` step reads
-  * besides its clearances ([[TurnRouting]]). `moveRecords` keeps the costs of the asks it makes
-  * as moves ([[moves]]).
+  * [[TurnStitching]] says. `weighing` is what its root's answers are read from, or asked
+  * of, before its offer ([[TurnWeighing]]); `routing`, what its `route` step reads besides
+  * its clearances ([[TurnRouting]]). `moveRecords` keeps the costs of the asks it makes as
+  * moves ([[moves]]). `spawns` is where a spawned child's turn rings its parent once it ends
+  * ([[Turn.body]]). Two of them write: `stitching`'s `placements`, which queues an opening's
+  * placement and waits for it, and `spawns`, which records and starts a child and rings a
+  * parent; a step body that captures this and calls neither can only read the store.
   */
 final case class TurnEnv(
     records: TurnRecords,
@@ -82,7 +84,8 @@ final case class TurnEnv(
     speech: TurnSpeech,
     stitching: TurnStitching^,
     weighing: TurnWeighing^,
-    routing: TurnRouting^
+    routing: TurnRouting^,
+    spawns: SpawnInbox^
 ) {
 
   /** What the turn's moves are made with: its own models, classifier, db and clock, their costs

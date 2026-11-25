@@ -87,11 +87,12 @@ trait SpawnInbox extends caps.SharedCapability {
     */
   def granted(parent: TurnRef)(using Tx^): Either[StoreError, Vector[SpendCap]]
 
-  /** Rings `child`'s parent, named by its origin, on [[SpawnInbox.topic]], that it ended; once
-    * per child, however often called. [[InboxError.Invalid]] when `child`'s conversation is not
-    * a spawned child's; [[InboxError.NoSuchTurn]] when its parent never ran.
+  /** Rings `child`'s parent, named by its origin, on [[SpawnInbox.topic]], that it ended as
+    * `ending`, the ring's message its [[TurnEnding.word]]; once per child, however often called,
+    * the first ring's ending kept. [[InboxError.Invalid]] when `child`'s conversation is not a
+    * spawned child's; [[InboxError.NoSuchTurn]] when its parent never ran.
     */
-  def returned(child: TurnRef): Either[InboxError, Unit]
+  def returned(child: TurnRef, ending: TurnEnding): Either[InboxError, Unit]
 }
 
 object SpawnInbox {

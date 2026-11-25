@@ -179,7 +179,8 @@ object TurnSentTests extends TestSuite {
               )
           ),
           TurnWeighing(engine.triage, Unweighed),
-          grit.turn.TurnRouting(Untasked, engine.budget, engine.spending)
+          grit.turn.TurnRouting(Untasked, engine.budget, engine.spending),
+          engine
         ),
         TurnTooling[{}](
           right(Toolbox.of[{}](echo)),

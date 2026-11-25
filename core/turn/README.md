@@ -61,7 +61,12 @@ child whose type is not declared ends at that first step (`TurnFailure.Undeclare
 gate admits its call under the spend cap its conversation's first turn recorded (`Payload.Spawn`),
 in every turn of that conversation: once its recorded calls reach the cap, or one was not priced,
 the turn ends before that call (`TurnFailure.OverCap`), and its parent reads it as
-`Delegated.Limited`, by the same `SpendCap.admits`.
+`Delegated.Limited`, by the same `SpendCap.admits`. Once its flow returns, however it ended,
+`Turn.body` rings its parent with its ending (`SpawnInbox.returned`), outside any step: a rerun
+rings again and the ring's key keeps one. The parent takes the ending from the ring, since the
+child's workflow status says it ended only after its body returns. A child whose step threw rings
+nothing; its parent reads its workflow's error as `Otherwise` at its next `Spawning.Every`, at most
+5 minutes later.
 
 Its prompt, in order: the base (`TurnPrompt.TaskBase` when briefed for one task),
 `TurnPrompt.Candour`, `TurnPrompt.Answering`, `TurnPrompt.Security` (not when so briefed),

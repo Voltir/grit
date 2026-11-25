@@ -58,4 +58,14 @@ object TurnEnding {
     if (outcome.endsWith(AtLimitSaid)) AtLimit
     else if (outcome.startsWith(Replied + ": ")) Answered
     else Otherwise
+
+  /** `ending` as a ring and a spawn's records write it: `answered`, `atLimit` or `otherwise`. */
+  def word(ending: TurnEnding): String = ending match {
+    case Answered => "answered"
+    case AtLimit => "atLimit"
+    case Otherwise => "otherwise"
+  }
+
+  /** The ending [[word]] writes as `text`; `None` for any other text. */
+  def read(text: String): Option[TurnEnding] = values.find(word(_) == text)
 }

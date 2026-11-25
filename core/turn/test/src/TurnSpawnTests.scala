@@ -283,6 +283,48 @@ object TurnSpawnTests extends TestSuite {
       ) ==> ("failed: OverCap(SpendCap(0.05))", TurnEnding.Otherwise, 2, Right(false))
     }
 
+    test("a child that fails rings its parent with its ending, once however often it is rerun") {
+      val entries = new InMemoryEntryStore
+      val conversations = new grit.core.store.InMemoryConversationStore
+      val inbox = new grit.core.inbox.InMemoryInbox(
+        conversations,
+        entries,
+        new grit.core.store.InMemoryPrincipals,
+        new InMemoryUsageLedger,
+        grit.core.spend.Budget(java.time.ZoneOffset.UTC, None),
+        grit.core.visibility.Visibility.Shipped,
+        grit.core.identity.TestAccounts.principal,
+        new grit.core.visibility.InMemoryRecorded()
+      )
+      val from = spawnedFrom(repository)
+      val parent = from match {
+        case Origin.Spawned(p, _, _) => p
+        case _ => throw new java.lang.AssertionError("a spawned origin")
+      }
+      inbox.started = Vector(parent)
+      // Its type is not declared: it fails at its first step.
+      val turn = spawn(entries, SubagentFixtures.coder, "Fix the typo.")
+      def body(id: grit.core.id.WorkflowId)(using grit.core.durable.Durable^): String = spawnedBody(
+        entries,
+        model(),
+        edgeAt(new InMemoryDurable, repository),
+        new Files(Map.empty),
+        Spawnable.empty,
+        from,
+        conversations = conversations,
+        spawns = inbox
+      )(id)
+      val durable = new InMemoryDurable
+      val ran = durable.run(turn.workflowId)(body)
+      val rerun =
+        new InMemoryDurable().replay(turn.workflowId, durable.history(turn.workflowId))(body)
+      (ran, rerun, inbox.returns) ==> (
+        "failed: Undeclared(coder)",
+        Right("failed: Undeclared(coder)"),
+        Vector((parent, turn, TurnEnding.Otherwise))
+      )
+    }
+
     test("a child's later turn keeps to the spend cap its first turn's note set") {
       val entries = new InMemoryEntryStore
       val first = spawn(entries, SubagentFixtures.scholar, "Find the release date.")

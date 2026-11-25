@@ -115,7 +115,8 @@ object Spawning {
     * transaction, `OverLimit`, or as [[Delegation.narrowed]] refuses it, at what the parent's
     * model has read (the transaction's floor joined with `bound`), its spend counting the caps
     * its earlier children were granted; made and started once however often it is rerun; its
-    * end read after each [[Every]] or its ring, up to [[Within]]; its reply and spend read in the
+    * end taken from its ring ([[SpawnInbox.returned]]), else read after each [[Every]] that
+    * passes without one, up to [[Within]]; its reply and spend read in the
     * parent's transaction. At most 21 steps. In a rehearsal, whose waits return at once and whose
     * children run only after it returns, `Unanswered`. [[PerTurn]] and the cap count hold only
     * while one turn's spawns run one after another: each is counted in one step and made in the
@@ -140,15 +141,23 @@ object Spawning {
       steps.read.on(_.in),
       e => asked(e.in).parent.subject
     )(env => e => reading(env.spawns, asked(e.in).bound, e.child))
+    val unrung: Flow[SpawnEnv, Child[I], Ended[I], Child[I]] =
+      Flow.decide(ended) {
+        case (c, Right(Some(ending))) => Left(Ended(c.in, c.child, ending))
+        case (c, _) => Right(c)
+      }
+    // A ring carries the child's ending, sent from inside its workflow before that workflow's
+    // status says it ended, so `ended` is read only when the wait timed out or its message is
+    // no ending.
     val rung: Flow[SpawnEnv, Child[I], Ended[I], Child[I]] =
       Flow
         .recv[Child[I]](steps.await.on(_.in), c => SpawnInbox.topic(c.child), _ => Every)
         .keeping
-        .map(_._1)
-        .andThen(Flow.decide(ended) {
-          case (c, Right(Some(ending))) => Left(Ended(c.in, c.child, ending))
-          case (c, _) => Right(c)
-        })
+        .andThen(
+          Flow.branch((at: (Child[I], Option[String])) =>
+            at._2.flatMap(TurnEnding.read).map(Ended(at._1.in, at._1.child, _)).toLeft(at._1)
+          )(Flow.fromEither[Ended[I], Ended[I], Child[I]](Left(_)), unrung)
+        )
     val waited: Flow[SpawnEnv, Child[I], Ended[I], Delegated] =
       (1 until Rungs)
         .foldLeft(rung)((f, _) => f.andThen(rung))
@@ -446,12 +455,8 @@ object Spawning {
     }
   )
 
-  private val endings: Vector[(Option[TurnEnding], String)] = Vector(
-    None -> "running",
-    Some(TurnEnding.Answered) -> "answered",
-    Some(TurnEnding.AtLimit) -> "atLimit",
-    Some(TurnEnding.Otherwise) -> "otherwise"
-  )
+  private val endings: Vector[(Option[TurnEnding], String)] =
+    (None -> "running") +: TurnEnding.values.toVector.map(e => Some(e) -> TurnEnding.word(e))
 
   /** `{"ok":e}`, `e` one of `running`, `answered`, `atLimit`, `otherwise`; or `{"failed":w}`. */
   private given Journaled[Either[String, Option[TurnEnding]]] = Journaled.outcome(

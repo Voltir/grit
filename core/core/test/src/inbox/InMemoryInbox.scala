@@ -121,9 +121,11 @@ final class InMemoryInbox(
   @caps.unsafe.untrackedCaptures
   private var finished = Map.empty[TurnRef, Progress.Done]
 
-  /** Each spawned child that rang its parent, with that parent, in order: once per child. */
+  /** Each spawned child that rang its parent, with that parent and the ending it rang with, in
+    * order: once per child.
+    */
   @caps.unsafe.untrackedCaptures
-  var returns = Vector.empty[(TurnRef, TurnRef)]
+  var returns = Vector.empty[(TurnRef, TurnRef, TurnEnding)]
 
   /** Records a call of `turn` that cost `usd` dollars now, as its turn would. */
   def charge(turn: TurnRef, usd: BigDecimal): Unit = {
@@ -669,14 +671,14 @@ final class InMemoryInbox(
         .toVector
     )
 
-  def returned(child: TurnRef): Either[InboxError, Unit] =
+  def returned(child: TurnRef, ending: TurnEnding): Either[InboxError, Unit] =
     if (down) unavailable
     else
       inTx(conversations.get(child.conversationId)).left.map(InboxError.stored).flatMap {
         case Some(Conversation(_, Origin.Spawned(parent, _, _), _, _, _)) =>
           if (!started.contains(parent)) Left(InboxError.NoSuchTurn(parent.workflowId))
           else {
-            if (!returns.exists(_._2 == child)) returns = returns :+ (parent, child)
+            if (!returns.exists(_._2 == child)) returns = returns :+ (parent, child, ending)
             Right(())
           }
         case _ => Left(InboxError.Invalid("only a spawned child returns to a parent"))

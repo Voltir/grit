@@ -128,7 +128,7 @@ final class Rehearsing private (
     SqlInbox.grantedOf(parent)
 
   /** Rings nothing: a session runs no workflow to ring. */
-  def returned(child: TurnRef): Either[InboxError, Unit] = Right(())
+  def returned(child: TurnRef, ending: TurnEnding): Either[InboxError, Unit] = Right(())
 
   /** Hands every body to its runner ([[Rehearsing.Runner.launched]]), which runs the
     * situation's workflows through them, in this session, before this returns; `plugins` and

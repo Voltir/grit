@@ -159,7 +159,8 @@ final class Engine private (
     sqlInbox.granted(parent)
 
   /** [[grit.core.inbox.SpawnInbox.returned]], through this engine's inbox. */
-  def returned(child: TurnRef): Either[InboxError, Unit] = sqlInbox.returned(child)
+  def returned(child: TurnRef, ending: TurnEnding): Either[InboxError, Unit] =
+    sqlInbox.returned(child, ending)
 
   /** Where each opening is placed, by the `stitch` workflow [[launch]] registers. */
   val placements: grit.core.stitch.Placements = new DbosPlacements(client)

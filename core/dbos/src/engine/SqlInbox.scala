@@ -340,7 +340,7 @@ final class SqlInbox(
   def granted(parent: TurnRef)(using Tx^): Either[StoreError, Vector[SpendCap]] =
     SqlInbox.grantedOf(parent)
 
-  def returned(child: TurnRef): Either[InboxError, Unit] =
+  def returned(child: TurnRef, ending: TurnEnding): Either[InboxError, Unit] =
     inTransaction(conversations.get(child.conversationId)).flatMap {
       case Some(c) =>
         c.origin match {
@@ -349,7 +349,7 @@ final class SqlInbox(
               // The topic, one per child, doubles as the idempotency key: DBOS keeps one ring.
               client.send(
                 WorkflowId.value(parent.workflowId),
-                WorkflowId.value(child.workflowId),
+                TurnEnding.word(ending),
                 SpawnInbox.topic(child),
                 SpawnInbox.topic(child)
               )

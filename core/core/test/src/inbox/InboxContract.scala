@@ -1117,7 +1117,10 @@ abstract class InboxContract extends TestSuite {
         val silent = store.replyAt(spawned, public)
         store.append(spawned, spawned.replyId, Payload.Message(Message.said("Fixed.", "m")))
         val _ = inbox.startTurn(parent)
-        val rings = (store.spawns.returned(spawned), store.spawns.returned(spawned))
+        val rings = (
+          store.spawns.returned(spawned, TurnEnding.Otherwise),
+          store.spawns.returned(spawned, TurnEnding.Answered)
+        )
         (
           store.spawns.ended(unstarted),
           store.spawns.ended(spawned),
@@ -1125,7 +1128,7 @@ abstract class InboxContract extends TestSuite {
           store.replyAt(spawned, public),
           rings,
           store.rung(parent, spawned),
-          store.spawns.returned(parent)
+          store.spawns.returned(parent, TurnEnding.Answered)
         ) ==> (
           Right(None),
           Right(Some(TurnEnding.Otherwise)),
@@ -1156,7 +1159,9 @@ abstract class InboxContract extends TestSuite {
             ana
           )
           .fold(e => throw new java.lang.AssertionError(e), identity)
-        store.spawns.returned(spawned) ==> Left(InboxError.NoSuchTurn(parent.workflowId))
+        store.spawns.returned(spawned, TurnEnding.Otherwise) ==> Left(
+          InboxError.NoSuchTurn(parent.workflowId)
+        )
       }
     }
 

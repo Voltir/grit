@@ -164,6 +164,7 @@ object TurnFixtures {
   /** A fixture turn's env: [[TurnEnv]] with its moves' records drawn from `records`, `hosting`
     * and `routing`, so a move's ledger row lands in the turn's ledger and is admitted against
     * its routing's spend; no schedule or savepoint of theirs is ever read by the turn's moves.
+    * A child's ring goes to `spawns`, by default an inbox that knows no conversation.
     */
   def turnEnv(
       records: TurnRecords,
@@ -177,8 +178,9 @@ object TurnFixtures {
       speech: TurnSpeech,
       stitching: TurnStitching^,
       weighing: TurnWeighing^,
-      routing: TurnRouting^
-  ): TurnEnv^{classifier, models, db, clock, fresh, stitching, weighing, routing} =
+      routing: TurnRouting^,
+      spawns: grit.core.inbox.SpawnInbox^ = grit.core.inbox.InMemoryInbox.fresh()
+  ): TurnEnv^{classifier, models, db, clock, fresh, stitching, weighing, routing, spawns} =
     TurnEnv(
       records,
       hosting,
@@ -202,7 +204,8 @@ object TurnFixtures {
       speech,
       stitching,
       weighing,
-      routing
+      routing,
+      spawns
     )
 
   /** Askers that resolve every turn to `asker`. */
@@ -1082,7 +1085,8 @@ object TurnFixtures {
     * reached service `reaches`; its calls made through `db`, under `catalog`, the pins they
     * were made under kept in `seen`, each recorded in `ledger`; its classifier `classifier`,
     * its root's task asked through `routing`, and its window drawn with a query written when
-    * `queries` ([[QueryWriting]]).
+    * `queries` ([[QueryWriting]]); its conversation kept in `conversations`, its ring sent to
+    * `spawns`.
     */
   def spawnedBody(
       entries: EntryStore,
@@ -1099,9 +1103,10 @@ object TurnFixtures {
       summarizer: Provider^ = new StubProvider(),
       classifier: Classifier^ = NoClassifier,
       routing: TurnRouting^ = noRouting(),
-      queries: Boolean = false
+      queries: Boolean = false,
+      conversations: InMemoryConversationStore = new InMemoryConversationStore,
+      spawns: grit.core.inbox.SpawnInbox^ = grit.core.inbox.InMemoryInbox.fresh()
   )(id: WorkflowId)(using Durable^): String = {
-    val conversations = new InMemoryConversationStore
     conversations.findOrCreate(from, Account.Local, Label.Public)(using TestTx.fake)
     Turn.body(
       turnEnv(
@@ -1141,7 +1146,8 @@ object TurnFixtures {
         quiet(),
         unstitched(),
         noTriage(),
-        routing
+        routing,
+        spawns
       ),
       TurnTooling[caps.CapSet^{ws}](
         tools(ws),
