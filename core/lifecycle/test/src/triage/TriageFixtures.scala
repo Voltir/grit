@@ -281,6 +281,22 @@ object TriageFixtures {
       e
     }
 
+    /** A spawned child's root, its parent's task `task` written by `name`, as the next turn at
+      * `minutes` in `in`; its turn.
+      */
+    def spawn(task: String, minutes: Long, name: String, in: ConversationId = c): TurnRef = {
+      val cap = grit.core.message.SpendCap
+        .of(BigDecimal("0.05"))
+        .fold(e => throw new java.lang.AssertionError(e), identity)
+      val e = insert(
+        Payload.Spawn(grit.core.agent.SubagentFixtures.coder, task, cap),
+        Some(s"test:u-$name" -> name),
+        minutes,
+        in
+      )
+      TurnRef(in, e.turnSeq)
+    }
+
     /** `text` heard from `name` as the next turn at `minutes` and `seconds`, with a reply
       * address, naming `asked`; its triage.
       */

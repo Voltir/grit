@@ -149,6 +149,18 @@ object MentionsTests extends TestSuite {
     }
 
     test(
+      "a spawned child's root, its parent's task and no person's message, is not asked the task questions: Unread"
+    ) {
+      val w = new World
+      val t = w.spawn("Fix the typo in the README.", 0, "Ana")
+      val classifier = tasks
+      (
+        mentions(w, classifier, new Waits(Right("placed"))).task(t),
+        classifier.calls
+      ) ==> (Left(Weighing.Unweighed.Unread), 0)
+    }
+
+    test(
       "a classifier whose service is not cleared for what the read knew is not asked the task questions"
     ) {
       val w = new World
