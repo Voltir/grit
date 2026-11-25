@@ -45,6 +45,20 @@ offers, less any whose name an earlier tool has; then the tooling's `conversing`
 recipe briefs the turn for one task (`Briefing.Tasked`); then its own `tools`; then its `operator`
 tools when its origin is the operator's (`Audience.operator`); then its `administering` tools when
 its root is `Addressed` or `ByName` and its origin is colleagues' (`Audience.Colleagues`).
+After its own tools it is offered `delegate` (`TurnDelegate`), when its deployment declares
+subagents, its root is put to or heard by grit (never an occasion's, nor a spawned child's), its
+room is no direct message's, and a person's account wrote its first entry, as
+`SpawnInbox.spawned` requires; that last read is made only when the rest hold.
+
+A `delegate` call binds to `Bound.Delegating`, and its round records it as
+`Kind.Delegating(agent, task)`. It is settled through `Spawning.spawn`, not run: in
+`call:n:j:narrow` (the parent's transaction reads its type, its own conversation's room and its
+earlier children, and decides), `call:n:j:spawn` (the child recorded and started),
+`call:n:j:await` (the wait for the child's ring: DBOS's `Received`, named so by `Turn.Step.named`),
+`call:n:j:ended` (its end read after a wait passes) and `call:n:j:read` (its reply and spend read in
+the parent's transaction); then `call:n:j` keeps what the child came to, answered from the type its
+round recorded, a reply fenced in `<reply>` and believed at its own integrity met with the turn's
+level (`TurnDelegate.answer`, `TurnDelegate.believed`).
 
 Of its own tools a turn is offered, in that order, by four questions: what runs its conversation
 (the recipe's briefing: `conversing`), every turn (`tools`), who reads it (its origin's audience:

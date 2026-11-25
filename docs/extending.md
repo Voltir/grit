@@ -36,6 +36,10 @@ schedules that run it, and the `Labeller` of its rooms; beside them it declares,
 `Visibility` and its `Identities` (below). The rest it chooses among grit's
 shipped implementations, by the kit's enums.
 
+A deployment may also declare subagents (`Deployment.of(subagents = …)`, `grit.core.agent`):
+each type is then offered to its turns, through the `delegate` tool, as a run it may start for
+one task and wait for ([`core/turn/README.md`](../core/turn/README.md), "What a turn is offered").
+
 A `ServedEdge` says what its people do with an ask that waits for one, in its `asks`
 (`ServedEdge.Asks`): `Answered`, its people answer and send the answers back (`Inbox.answer`);
 `Unanswered`, it holds conversations and shows no ask, so a call that asks there waits its whole
