@@ -367,9 +367,9 @@ object TurnTooling {
 
   /** What a turn rooted at `root` is offered from: for [[TurnOffer.Root.Spawned]], its type's
     * persona, services and hosted tools, briefed for one task ([[TurnRecipe.Tasked]]), with
-    * none of `tooling`'s own, operator, administering or conversing tools, nor any subagent; of
-    * a type `tooling.subagents` no longer declares, nothing of its own. `tooling` for any other
-    * root.
+    * none of `tooling`'s own, operator, administering or conversing tools, nor any subagent. Of
+    * a type `tooling.subagents` no longer declares, as when it is removed between `pin-models`
+    * and the offer, the deployment's persona and no tools. `tooling` for any other root.
     */
   def at[C^](tooling: TurnTooling[C]^, root: TurnOffer.Root): TurnTooling[C]^{tooling} =
     root match {

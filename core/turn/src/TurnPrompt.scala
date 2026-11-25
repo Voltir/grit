@@ -258,8 +258,8 @@ object TurnPrompt {
       case Origin.Work(repository, _) =>
         s"This is a run of work in the repository ${repository.name}: $unread"
       case _: Origin.Spawned =>
-        "This run does one task for another conversation, which wrote that task in grit's " +
-          "note at the start of your messages. Your last reply is passed back to that " +
+        "This run does one task for another conversation. That task follows grit's note at " +
+          "the start of your messages. Your last reply is passed back to that " +
           "conversation when the run ends, and nobody can answer a question here, so do not " +
           "ask one: finish the task, then say what you did and what you found."
       case _: Origin.Direct =>
