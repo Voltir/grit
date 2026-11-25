@@ -2,6 +2,7 @@ package grit.act.moves
 
 import grit.core.act.MoveError
 import grit.core.act.MovesFixtures.Judging
+import grit.core.durable.InMemoryDurable
 import grit.core.id.{EntryId, TurnRef}
 import grit.core.message.{Tokens, Usage}
 import grit.core.spend.SpendCap
@@ -34,12 +35,28 @@ object DurableSpendCapTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "an ask once its conversation's spend reached its spend cap is Capped, and no model is asked"
+      "an ask once its conversation's spend reached its spend cap is Capped for that reason, and no model is asked"
     ) {
       val w = new MovesWorld(broken = false, MovesContract.Floor, spendCap = Some(cap))
       spent(w, "earlier", MovesWorld.Turn, "0.02")
       val got = w.run(limits(1, 0), Vector(), new Judging())(m => Seen(Vector(asked(m, "a"))))
-      (got, w.ledger.rows.size) ==> (Seen(Vector(Left(MoveError.Capped))), 1)
+      // The reason the ask records, which a person may read: its spend cap's, not the day's.
+      val reasons = w.durable.history(MovesWorld.Turn.workflowId).collect {
+        case InMemoryDurable.Step("ask:a", InMemoryDurable.Outcome.Output(v)) =>
+          MovesJournal.askMade.decode(v).map {
+            case AskMade.Refused(_, why, _, _) => why
+            case other => other.toString
+          }
+      }
+      (got, w.ledger.rows.size, reasons) ==> (
+        Seen(Vector(Left(MoveError.Capped))),
+        1,
+        Vector(
+          Right(
+            "The conversation's spend reached its spend cap, or some of it was not priced, so no model was asked."
+          )
+        )
+      )
     }
   }
 }

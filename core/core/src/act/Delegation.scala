@@ -11,8 +11,8 @@ import grit.core.visibility.{Integrity, Label}
 /** How an acting is narrowed for a subagent a turn starts: what it may do, from its parent's. */
 object Delegation {
 
-  /** The acting a child of `parent` acts under, given its turn: a `as` briefed at `brief`, acting
-    * as `parent` acts for and at its gates, believed at `parent`'s integrity met with `brief`, its
+  /** The acting a child of type `as`, briefed at `brief`, acts under, given its turn: it acts as
+    * `parent` acts for and at its gates, believed at `parent`'s integrity met with `brief`, its
     * asks held to `as.spendCap`. Refused by the first of `Below`, `Above`, `NotWorking` and
     * `OverCap` that holds. `parentAt` is the parent's classification, `room` the label the
     * child's room may receive, `origin` the parent conversation's, and `spent` what it has spent,

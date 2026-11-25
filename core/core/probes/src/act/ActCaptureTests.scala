@@ -218,9 +218,6 @@ object ActCaptureTests extends TestSuite {
       |}
       |""".stripMargin
 
-  /** Every breach capture checking rejects; [[keepReturnsRead]] is the bound on what a keep
-    * returns, rejected with the checker off too.
-    */
   /** A child's acting, made as a function of its turn, that reaches the database. */
   private val narrowedReadsDb =
     """final class Narrows(db: Db^) {
@@ -228,6 +225,9 @@ object ActCaptureTests extends TestSuite {
       |}
       |""".stripMargin
 
+  /** Every breach capture checking rejects; [[keepReturnsRead]] is the bound on what a keep
+    * returns, rejected with the checker off too.
+    */
   private val breaches: Vector[String] =
     Vector(
       jobKeepsMoves,
