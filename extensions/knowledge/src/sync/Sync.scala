@@ -46,7 +46,8 @@ final class Sync(sources: Vector[Source[?]]) extends KeepingJob[SyncParams] {
   val name: JobName = Sync.Name
 
   // 9: the summary's ask ends with Fenced.Rule, which now names <session_log> too.
-  val version: Int = 9
+  // 10: and <reply>.
+  val version: Int = 10
 
   def write(params: SyncParams): ujson.Value =
     ujson.Obj("source" -> CorpusName.value(params.source), "perRun" -> params.perRun)
