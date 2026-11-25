@@ -214,5 +214,46 @@ object SqlInboxTests extends TestSuite {
         case other => false
       } ==> Left(true)
     }
+
+    test(
+      "a child whose parent's first entry is kept under no account's spelling is refused as the store's, not as unwritten"
+    ) {
+      val engine = LiveEngine.open(config, "test")
+      try {
+        val origin = Origin.Task("inbox", "corrupt-author")
+        val parent = engine.inbox
+          .ingest(origin, SourceId("p"), Message.User("fix it"), Account.Local, None)
+          .fold(e => sys.error(e.toString), identity)
+        LiveDb.transaction(config)(
+          Right(
+            execute(
+              "WITH home AS (INSERT INTO grit.principals (id, kind) VALUES (uuidv7()::text, " +
+                "'person') RETURNING id) INSERT INTO grit.identities (account, home) " +
+                "SELECT 'not an account', id FROM home; " +
+                "UPDATE grit.inbound SET account = 'not an account' WHERE entry_id IN " +
+                "(SELECT id FROM grit.entries WHERE conversation_id = '" +
+                ConversationId.value(parent.conversationId) + "'::uuid)"
+            )
+          )
+        ) ==> Right(())
+        val child: Origin.Spawned = Origin.Spawned(
+          parent,
+          grit.core.place.WorkName.of("s0-0-corrupt").fold(sys.error, identity),
+          origin.room
+        )
+        engine.spawned(
+          child,
+          grit.core.id.AgentType.of("coder").fold(sys.error, identity),
+          "Fix the typo.",
+          grit.core.message.SpendCap.of(BigDecimal("0.05")).fold(sys.error, identity),
+          grit.core.visibility.Integrity.Member,
+          grit.core.visibility.Label.Public
+        ) ==> Left(
+          InboxError.Invalid(
+            "a stored account: an account is local, grit, or {namespace}:{name}: not an account"
+          )
+        )
+      } finally engine.close()
+    }
   }
 }

@@ -234,9 +234,8 @@ private[engine] final class Recorder(
       Right(Left(InboxError.Invalid("a child is never spawned within a direct message's room")))
     else
       firstOf(origin.parent)
-        .map(
-          _.flatMap((_, account) => Account.read(account).toOption).filter(_ != Account.Grit)
-        )
+        .flatMap(_.fold(Right(None))((_, account) => SqlIdentities.read(account).map(Some(_))))
+        .map(_.filter(_ != Account.Grit))
         .flatMap {
           case Some(by) =>
             for {
