@@ -19,8 +19,8 @@ import grit.core.model.{
   ToolGuidance
 }
 import grit.core.provider.ToolSchema
-import grit.core.recipe.Briefing
 import grit.core.tool.Outcome
+import grit.turn.TaskStatus.Handoff
 
 import utest.*
 import TurnLoop.{Ended, Next, Pending, Round, Rounds}
@@ -89,7 +89,7 @@ object TurnLoopTests extends TestSuite {
     ) {
       // Pinned whole: a model reads these words, and a person may see them echoed.
       val handoff = TaskStatus
-        .schema(false)
+        .schema(false, Handoff.ToNextTurn)
         .parameters
         .obj
         .get("properties")
@@ -109,12 +109,84 @@ object TurnLoopTests extends TestSuite {
         )
       )
     }
+    test(
+      "a spawned child's task_status, ending notes and refusal say its handoff goes back to the conversation that started its run, and that nothing goes on with it"
+    ) {
+      // Pinned whole: a model reads these words, and its parent may echo them to a person.
+      val read = reply("reading", Vector("a"))
+      val schema = TaskStatus.schema(false, Handoff.ToParent)
+      def described(field: String) = schema.parameters.obj
+        .get("properties")
+        .flatMap(_.obj.get(field))
+        .flatMap(_.obj.get("description"))
+        .map(_.str)
+      def noted(text: String) = s"<grit_note>\n$text\n</grit_note>"
+      (
+        Handoff.of(
+          grit.core.recipe.Briefing.Tasked,
+          TurnOffer.Root.Spawned(grit.core.agent.SubagentFixtures.coder)
+        ),
+        schema.description,
+        described("state"),
+        described("handoff"),
+        Vector(3, 4).map(n => TurnLoop.notes(cutAt5, Handoff.ToParent, round(n))),
+        TurnLoop.next(cutAt5, Handoff.ToParent, round(4), read)
+      ) ==> (
+        Handoff.ToParent,
+        "Say whether the task is done, once you are told this run is ending; before then it is " +
+          "not recorded. Call it alone. Either way the run ends, and your handoff is passed back " +
+          "to the conversation that started this run: done says the task is finished, more says " +
+          "work is left, which this run will not continue.",
+        Some("done: the task is finished. more: work is left that this run did not get to."),
+        Some(
+          "Your reply, passed back to the conversation that started this run, which sees none " +
+            "of your earlier replies. For done: what you did and what you found. For more: what " +
+            "is done so far, what is left, and where things are."
+        ),
+        Vector(
+          Vector(
+            round(3) -> noted(
+              "This run is ending: this is your last call with tools, and the next may call " +
+                "task_status alone. Make the changes the work needs now. When nothing is left " +
+                "to change, call task_status alone, with your reply to the conversation that " +
+                "started this run: done if the task is finished, more if work is left."
+            )
+          ),
+          Vector(
+            round(3) -> TurnLoop.LimitToolsToParent,
+            round(4) -> noted(
+              "This run is ending, and this is its last call. Call task_status now, and no " +
+                "other tool: done if the task is finished, or more if work is left. Your " +
+                "handoff is passed back to the conversation that started this run, which sees " +
+                "none of your earlier replies, and nothing here goes on with the task, so say " +
+                "what you did, what you found, what is left, and where things are. If you " +
+                "cannot call it, answer in text with the same."
+            )
+          )
+        ),
+        Next.Again(
+          Vector(
+            Pending.Refused(
+              call("a"),
+              Outcome.Failed(
+                "Not run: this run is ending, and its last call may call task_status alone. " +
+                  "Call it now, with your reply to the conversation that started this run: " +
+                  "done if the task is finished, more if work is left."
+              )
+            )
+          ),
+          round(5),
+          Ended.Answer(reply("reading"))
+        )
+      )
+    }
+
     test("a turn briefed for one task offers task_status on every call; a conversing one never") {
       val read = ToolSchema("read", "Read a file.", ujson.Obj("type" -> "object"))
       (
-        TurnLoop.offered(Briefing.Tasked, Vector(read), strict = true),
-        TurnLoop.offered(Briefing.Conversing, Vector(read), strict = true)
-      ) ==> (Vector(read, TaskStatus.schema(true)), Vector(read))
+        TurnLoop.offered(Handoff.ToNextTurn, Vector(read), strict = true),
+        TurnLoop.offered(Handoff.Unoffered, Vector(read), strict = true)
+      ) ==> (Vector(read, TaskStatus.schema(true, Handoff.ToNextTurn)), Vector(read))
     }
 
     test(
@@ -122,8 +194,8 @@ object TurnLoopTests extends TestSuite {
     ) {
       val read = reply("reading", Vector("a"))
       (
-        TurnLoop.next(cutAt5, Briefing.Tasked, round(4), read),
-        TurnLoop.next(cutAt5, Briefing.Conversing, round(4), read)
+        TurnLoop.next(cutAt5, Handoff.ToNextTurn, round(4), read),
+        TurnLoop.next(cutAt5, Handoff.Unoffered, round(4), read)
       ) ==> (
         Next.Again(
           Vector(Pending.Refused(call("a"), TurnLoop.EndingRefused)),
@@ -148,9 +220,9 @@ object TurnLoopTests extends TestSuite {
         Message.Assistant(Vector(call("a"), status), StopReason.ToolUse, Usage.Zero, "m")
       val refused = Pending.Refused(status, Outcome.Failed(TaskStatus.Early))
       (
-        TurnLoop.next(cutAt5, Briefing.Tasked, round(2), early),
-        TurnLoop.next(budget(5), Briefing.Tasked, round(2), early),
-        TurnLoop.next(budget(5), Briefing.Conversing, round(2), early)
+        TurnLoop.next(cutAt5, Handoff.ToNextTurn, round(2), early),
+        TurnLoop.next(budget(5), Handoff.ToNextTurn, round(2), early),
+        TurnLoop.next(budget(5), Handoff.Unoffered, round(2), early)
       ) ==> (
         Next.Settle(Vector(Pending.Run(call("a")), refused), round(3)),
         Next.Settle(Vector(Pending.Run(call("a")), refused), round(3)),
@@ -169,9 +241,9 @@ object TurnLoopTests extends TestSuite {
       val declaring: Message.Assistant =
         Message.Assistant(Vector(status), StopReason.ToolUse, Usage.Zero, "m")
       (
-        TurnLoop.next(budget(5), Briefing.Tasked, round(3), declaring),
-        TurnLoop.next(Rounds.Fewest, Briefing.Tasked, round(0), declaring),
-        TurnLoop.notes(Rounds.Fewest, Briefing.Tasked, round(1))
+        TurnLoop.next(budget(5), Handoff.ToNextTurn, round(3), declaring),
+        TurnLoop.next(Rounds.Fewest, Handoff.ToNextTurn, round(0), declaring),
+        TurnLoop.notes(Rounds.Fewest, Handoff.ToNextTurn, round(1))
       ) ==> (
         answers(declaring.copy(blocks = Vector(AssistantBlock.Text("Half done.")))),
         Next.Settle(Vector(Pending.Refused(status, Outcome.Failed(TaskStatus.Early))), round(1)),
@@ -197,14 +269,14 @@ object TurnLoopTests extends TestSuite {
       val answered = replying(thought, AssistantBlock.Text("All moved."))
       (
         (
-          TurnLoop.next(cutAt5, Briefing.Tasked, round(3), done),
-          TurnLoop.declared(cutAt5, Briefing.Tasked, round(3), done)
+          TurnLoop.next(cutAt5, Handoff.ToNextTurn, round(3), done),
+          TurnLoop.declared(cutAt5, Handoff.ToNextTurn, round(3), done)
         ),
-        TurnLoop.next(cutAt5, Briefing.Tasked, round(3), mixed),
-        TurnLoop.next(cutAt5, Briefing.Tasked, round(3), blank),
-        TurnLoop.declared(cutAt5, Briefing.Tasked, round(4), mixed),
-        TurnLoop.next(budget(5), Briefing.Conversing, round(3), done),
-        TurnLoop.declared(budget(5), Briefing.Conversing, round(3), done)
+        TurnLoop.next(cutAt5, Handoff.ToNextTurn, round(3), mixed),
+        TurnLoop.next(cutAt5, Handoff.ToNextTurn, round(3), blank),
+        TurnLoop.declared(cutAt5, Handoff.ToNextTurn, round(4), mixed),
+        TurnLoop.next(budget(5), Handoff.Unoffered, round(3), done),
+        TurnLoop.declared(budget(5), Handoff.Unoffered, round(3), done)
       ) ==> (
         (
           answers(answered),
@@ -370,7 +442,7 @@ object TurnLoopTests extends TestSuite {
         )
       )
       table.foreach { (r, sent, expected) =>
-        (r.index, TurnLoop.next(b, Briefing.Conversing, r, sent)) ==> (r.index, expected)
+        (r.index, TurnLoop.next(b, Handoff.Unoffered, r, sent)) ==> (r.index, expected)
       }
     }
 
@@ -384,8 +456,8 @@ object TurnLoopTests extends TestSuite {
       val cut = bounded.after(Vector(input(1000), input(1100), input(1250)))
       (
         cut.calls,
-        Vector(2, 3, 4).map(n => TurnLoop.notes(cut, Briefing.Tasked, round(n))),
-        TurnLoop.notes(cut, Briefing.Conversing, round(4)),
+        Vector(2, 3, 4).map(n => TurnLoop.notes(cut, Handoff.ToNextTurn, round(n))),
+        TurnLoop.notes(cut, Handoff.Unoffered, round(4)),
         bounded.after(Vector(input(1000), input(1100), input(1140))).calls,
         bounded.after(Vector(input(0), input(0), input(0))).calls,
         budget(12).after(Vector(input(1000), input(9000))).calls,
@@ -409,9 +481,9 @@ object TurnLoopTests extends TestSuite {
       "the last call with tools and the last are told so, the calls after each keeping its note: that the turn is ending on one briefed for one task, though no limit cut it; a first call never is"
     ) {
       (
-        Vector(0, 1, 2, 3).map(n => TurnLoop.notes(budget(4), Briefing.Conversing, round(n))),
-        TurnLoop.notes(budget(4), Briefing.Tasked, round(3)),
-        TurnLoop.notes(Rounds.Fewest, Briefing.Conversing, round(1))
+        Vector(0, 1, 2, 3).map(n => TurnLoop.notes(budget(4), Handoff.Unoffered, round(n))),
+        TurnLoop.notes(budget(4), Handoff.ToNextTurn, round(3)),
+        TurnLoop.notes(Rounds.Fewest, Handoff.Unoffered, round(1))
       ) ==> (
         Vector(
           Vector.empty,

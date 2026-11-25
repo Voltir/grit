@@ -209,7 +209,7 @@ object TurnJournalTests extends TestSuite {
       val third = TurnLoop.Round.First.next.next
       (
         read.map(limits.encode),
-        read.map(_.map(l => TurnLoop.notes(l.budget, grit.core.recipe.Briefing.Tasked, third.next)))
+        read.map(_.map(l => TurnLoop.notes(l.budget, TaskStatus.Handoff.ToNextTurn, third.next)))
       ) ==> (
         Right(before),
         Right(

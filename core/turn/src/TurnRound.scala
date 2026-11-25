@@ -143,14 +143,14 @@ private[turn] object TurnRound {
       */
     def atLimit: Boolean = {
       val cut = budget
-      val briefing = looping.offer.briefing
+      val handoff = looping.offer.handoff
       // A cut turn that never declared, as where a provider cannot force task_status, goes on:
       // a needless turn costs less than a task left half done as if finished.
       val done = replies.lastOption
-        .flatMap(TurnLoop.declared(cut, briefing, round, _))
+        .flatMap(TurnLoop.declared(cut, handoff, round, _))
         .exists(_.state == TaskStatus.State.Done)
       // A conversing turn answering on its last call with tools was told so and answered.
-      val last = TurnLoop.declares(briefing) || round.index >= cut.last.index
+      val last = TurnLoop.declares(handoff) || round.index >= cut.last.index
       TurnLoop.asksStatus(cut, round) && last && !done
     }
 
@@ -424,7 +424,7 @@ private[turn] object TurnRound {
       case Left(failure) => Left(Stalled(failure, at))
       case Right(reply) =>
         val now = at.copy(replies = at.replies :+ reply)
-        TurnLoop.next(now.budget, at.looping.offer.briefing, at.round, reply) match {
+        TurnLoop.next(now.budget, at.looping.offer.handoff, at.round, reply) match {
           case Next.Ends(ending) => ends(now, ending).map(Right(_))
           case Next.Settle(calls, next) => Right(Left(Left(Settle(now, reply, calls, next))))
           case Next.Again(calls, next, before) =>

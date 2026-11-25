@@ -5,7 +5,6 @@ import grit.core.message.{AssistantBlock, Message, StopReason, Tokens}
 import grit.core.model.{AfterToolResult, Pinned, ToolGuidance}
 import grit.core.prompt.{Fenced, Stripped, Tag}
 import grit.core.provider.{ModelRequest, ToolSchema}
-import grit.core.recipe.Briefing
 import grit.core.tool.{Outcome, ToolName}
 
 /** What a turn's tool loop decides: the model is called, the tools its reply calls are
@@ -132,14 +131,18 @@ object TurnLoop {
   /** The notes the loop's calls up to `round` add, each at the round it is first sent, as a
     * gate's are ([[TurnShown.loopShape]]): at `budget`'s last call with tools, unless that is the
     * turn's first, [[LimitTools]] when its last calls end it at its limit
-    * ([[Rounds.endsAtLimit]]) on a turn `briefing` says is for one task, else [[LastTools]]; at
-    * its last call, [[Ending]] or [[LastCall]] alike.
+    * ([[Rounds.endsAtLimit]]) on a turn whose `handoff` offers [[TaskStatus]] (on one handing
+    * to its parent, [[LimitToolsToParent]]), else [[LastTools]]; at its last call, [[Ending]]
+    * ([[EndingToParent]]) or [[LastCall]] alike.
     */
-  def notes(budget: Rounds, briefing: Briefing, round: Round): Vector[(Round, String)] = {
-    val ending = budget.endsAtLimit && declares(briefing)
+  def notes(budget: Rounds, handoff: TaskStatus.Handoff, round: Round): Vector[(Round, String)] = {
+    val ending = budget.endsAtLimit && declares(handoff)
+    val toParent = handoff == TaskStatus.Handoff.ToParent
     Vector(
-      budget.lastTools -> (if (ending) LimitTools else LastTools),
-      budget.last -> (if (ending) Ending else LastCall)
+      budget.lastTools -> (if (!ending) LastTools
+                           else if (toParent) LimitToolsToParent
+                           else LimitTools),
+      budget.last -> (if (!ending) LastCall else if (toParent) EndingToParent else Ending)
     ).filter((at, _) => at > 0 && round >= at)
   }
 
@@ -175,6 +178,28 @@ object TurnLoop {
         "task and this handoff, none of your earlier replies, so say what is done so far, " +
         "what is left, and where things are. If you cannot call it, answer in text with what " +
         "the next turn needs."
+    )
+  )
+
+  /** [[LimitTools]] for a turn whose handoff goes to its parent ([[TaskStatus.Handoff.ToParent]]). */
+  val LimitToolsToParent: String = Fenced.noted(
+    Vector(
+      "This run is ending: this is your last call with tools, and the next may call " +
+        "task_status alone. Make the changes the work needs now. When nothing is left to " +
+        "change, call task_status alone, with your reply to the conversation that started " +
+        "this run: done if the task is finished, more if work is left."
+    )
+  )
+
+  /** [[Ending]] for a turn whose handoff goes to its parent ([[TaskStatus.Handoff.ToParent]]). */
+  val EndingToParent: String = Fenced.noted(
+    Vector(
+      "This run is ending, and this is its last call. Call task_status now, and no other " +
+        "tool: done if the task is finished, or more if work is left. Your handoff is passed " +
+        "back to the conversation that started this run, which sees none of your earlier " +
+        "replies, and nothing here goes on with the task, so say what you did, what you " +
+        "found, what is left, and where things are. If you cannot call it, answer in text " +
+        "with the same."
     )
   )
 
@@ -279,27 +304,41 @@ object TurnLoop {
       "needs."
   )
 
+  /** [[EndingRefused]] for a turn whose handoff goes to its parent
+    * ([[TaskStatus.Handoff.ToParent]]).
+    */
+  val EndingRefusedToParent: Outcome = Outcome.Failed(
+    "Not run: this run is ending, and its last call may call task_status alone. Call it now, " +
+      "with your reply to the conversation that started this run: done if the task is " +
+      "finished, more if work is left."
+  )
+
   /** What a call on the last call of a turn told [[LastCall]] is answered. */
   val LastRefused: Outcome = Outcome.Failed(
     "Not run: this is your last call in this turn, and it may call no tool. Answer in text " +
       "now from what you have found so far, and say plainly what you did not get to."
   )
 
-  /** What the loop does after `reply`, the reply to `round` of a turn briefed as `briefing`. A
-    * reply that [[declared]] through [[TaskStatus]] answers with its handoff as its text, its
+  /** What the loop does after `reply`, the reply to `round` of a turn whose `handoff` is that.
+    * A reply that [[declared]] through [[TaskStatus]] answers with its handoff as its text, its
     * calls dropped. A reply that calls no tool, or any reply after the budget's last call (its
     * one retry), ends as [[ended]] says. A reply to the budget's last call that calls a tool:
     * [[Next.Again]], each call refused with [[CutOff]] when the reply stopped at max tokens,
-    * else with [[EndingRefused]] on a turn told [[Ending]], else [[LastRefused]]. Otherwise its
-    * calls are settled, each run, or each refused with [[CutOff]] when the reply stopped at max
-    * tokens; a call to [[TaskStatus]] on a turn briefed for one task refused with
-    * [[TaskStatus.Early]] before the cut's last call with tools, and with
-    * [[TaskStatus.Unrecorded]] from it; then the next call is made.
+    * else with [[EndingRefused]] ([[EndingRefusedToParent]]) on a turn told [[Ending]], else
+    * [[LastRefused]]. Otherwise its calls are settled, each run, or each refused with
+    * [[CutOff]] when the reply stopped at max tokens; a call to [[TaskStatus]] on a turn
+    * offered it refused with [[TaskStatus.Early]] before the cut's last call with tools, and
+    * with [[TaskStatus.Unrecorded]] from it; then the next call is made.
     */
-  def next(budget: Rounds, briefing: Briefing, round: Round, reply: Message.Assistant): Next = {
+  def next(
+      budget: Rounds,
+      handoff: TaskStatus.Handoff,
+      round: Round,
+      reply: Message.Assistant
+  ): Next = {
     val calls = reply.blocks.collect { case c: AssistantBlock.ToolCall => c }
     val last = budget.last
-    val status = declared(budget, briefing, round, reply)
+    val status = declared(budget, handoff, round, reply)
     if (status.isDefined) {
       // Its call becomes the reply's text: no tool call reaches the conversation.
       val kept = reply.blocks.filter(_.isInstanceOf[AssistantBlock.Reasoning])
@@ -310,7 +349,8 @@ object TurnLoop {
     else if (round == last) {
       val refusal =
         if (reply.stop == StopReason.MaxTokens) CutOff
-        else if (budget.endsAtLimit && declares(briefing)) EndingRefused
+        else if (budget.endsAtLimit && declares(handoff))
+          (if (handoff == TaskStatus.Handoff.ToParent) EndingRefusedToParent else EndingRefused)
         else LastRefused
       Next.Again(calls.map(Pending.Refused(_, refusal)), round + 1, ended(reply))
     } else {
@@ -320,7 +360,7 @@ object TurnLoop {
         else
           calls.map(c =>
             // Offered, it is never run: early, beside other calls, or unreadable, it is refused.
-            if (declares(briefing) && c.name == ToolName.value(TaskStatus.Name))
+            if (declares(handoff) && c.name == ToolName.value(TaskStatus.Name))
               Pending.Refused(
                 c,
                 Outcome.Failed(if (ending) TaskStatus.Unrecorded else TaskStatus.Early)
@@ -331,31 +371,29 @@ object TurnLoop {
     }
   }
 
-  /** Whether a turn briefed as `briefing` is offered [[TaskStatus]]: one briefed for one task. */
-  private[turn] def declares(briefing: Briefing): Boolean = briefing match {
-    case Briefing.Tasked => true
-    case Briefing.Conversing => false
-  }
+  /** Whether a turn whose handoff is `handoff` is offered [[TaskStatus]]. */
+  private[turn] def declares(handoff: TaskStatus.Handoff): Boolean =
+    handoff != TaskStatus.Handoff.Unoffered
 
-  /** `schemas`, the tools every call of a turn briefed as `briefing` offers, with
-    * [[TaskStatus]] after them, its schema strict when `strict`, when `briefing` is
-    * [[Briefing.Tasked]].
+  /** `schemas`, the tools every call of a turn whose handoff is `handoff` offers, with
+    * [[TaskStatus]] after them, worded for `handoff`, its schema strict when `strict`, unless
+    * `handoff` is [[TaskStatus.Handoff.Unoffered]].
     */
   def offered(
-      briefing: Briefing,
+      handoff: TaskStatus.Handoff,
       schemas: Vector[ToolSchema],
       strict: Boolean
   ): Vector[ToolSchema] =
-    if (declares(briefing)) schemas :+ TaskStatus.schema(strict) else schemas
+    if (declares(handoff)) schemas :+ TaskStatus.schema(strict, handoff) else schemas
 
-  /** What `reply`, the reply to `round` of a turn briefed as `briefing`, declares through
-    * [[TaskStatus]] when that ends the turn: on a turn briefed for one task, from its budget's
+  /** What `reply`, the reply to `round` of a turn whose handoff is `handoff`, declares through
+    * [[TaskStatus]] when that ends the turn: on a turn offered it, from its budget's
     * ending on ([[asksStatus]]), a reply whose readable calls to it are its only calls, or any
     * reply to the last call that calls it; else `None`.
     */
   def declared(
       budget: Rounds,
-      briefing: Briefing,
+      handoff: TaskStatus.Handoff,
       round: Round,
       reply: Message.Assistant
   ): Option[TaskStatus.Declared] = {
@@ -363,7 +401,7 @@ object TurnLoop {
     val status = TaskStatus.calls(reply).size
     Option
       .when(
-        declares(briefing) && asksStatus(budget, round) && status > 0 &&
+        declares(handoff) && asksStatus(budget, round) && status > 0 &&
           (status == calls || round >= budget.last)
       )(
         TaskStatus.of(reply)

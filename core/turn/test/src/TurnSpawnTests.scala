@@ -210,6 +210,27 @@ object TurnSpawnTests extends TestSuite {
       offered(provider).intersect(Set("topic", "task_status")) ==> Set("task_status")
     }
 
+    test("a child's task_status is worded for a handoff going back to its parent, on every call") {
+      val entries = new InMemoryEntryStore
+      val turn = spawn(entries, SubagentFixtures.coder, "Fix the typo.")
+      val durable = new InMemoryDurable
+      val provider = model(("t1", "fetch"))
+      durable.run(turn.workflowId)(
+        spawnedBody(
+          entries,
+          provider,
+          edgeAt(durable, repository),
+          new Files(Map("a.txt" -> "alpha")),
+          coders,
+          spawnedFrom(repository)
+        )
+      )
+      // The words are pinned in TurnLoopTests; this pins that a child's turn is sent them.
+      val child = TaskStatus.schema(false, TaskStatus.Handoff.ToParent).description
+      provider.requests.map(_.tools.find(_.name == "task_status").map(_.description)) ==>
+        Vector.fill(2)(Some(child))
+    }
+
     test("a child's first message dates when its run was started, speaking of no person") {
       val entries = new InMemoryEntryStore
       val turn = spawn(entries, SubagentFixtures.coder, "Fix the typo in README.md.")

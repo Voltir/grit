@@ -307,13 +307,13 @@ private[turn] object Rounding {
   ): ModelRequest -> ModelRequest = {
     val settings = pins.turn.settings
     val strict = settings.strict == StrictSchemas.Enforced
-    val briefing = at.looping.offer.briefing
+    val handoff = at.looping.offer.handoff
     loopShape(
       at.looping.asked,
-      TurnLoop.offered(briefing, gatedOffer(tools.set, tools.schemas(strict), strict), strict),
+      TurnLoop.offered(handoff, gatedOffer(tools.set, tools.schemas(strict), strict), strict),
       settings.afterResult,
       settings.guidance,
-      gateNotes(at.gates, at.round, tools.set) ++ TurnLoop.notes(at.budget, briefing, at.round)
+      gateNotes(at.gates, at.round, tools.set) ++ TurnLoop.notes(at.budget, handoff, at.round)
     )
   }
 
@@ -493,7 +493,7 @@ private[turn] object Rounding {
           loopShape(
             None,
             TurnLoop.offered(
-              recorded.briefing,
+              recorded.handoff,
               gatedOffer(tools.set, tools.schemas(strict), strict),
               strict
             ),

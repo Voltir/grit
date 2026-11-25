@@ -448,7 +448,7 @@ object Turn {
       own = Toolbox.of[{}](set.tools.map(Tool.gone)*).getOrElse(Toolbox.Empty)
       tools <- offered(own, asking, byRef.root).left.map(reason)
       schemas = tools.schemas(strict)
-      offering = TurnLoop.offered(byRef.briefing, gatedOffer(tools.set, schemas, strict), strict)
+      offering = TurnLoop.offered(byRef.handoff, gatedOffer(tools.set, schemas, strict), strict)
       // How round `round`'s call was shaped, as it was live, with `more` notes besides.
       shapeAt = (round: Round, more: Vector[(Round, String)]) =>
         loopShape(
@@ -457,7 +457,7 @@ object Turn {
           settings.afterResult,
           settings.guidance,
           gateNotes(gates, round, tools.set) ++ limits.fold(Vector.empty)(l =>
-            TurnLoop.notes(l.budget.after(replies.take(round.index)), byRef.briefing, round)
+            TurnLoop.notes(l.budget.after(replies.take(round.index)), byRef.handoff, round)
           ) ++ more
         )
       // What the window showed before the turn's own entries, as every call was sent it: the

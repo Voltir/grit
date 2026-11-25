@@ -84,6 +84,9 @@ object TurnOffer {
 
     /** The width the turn's window is drawn at: its shape's, else the deployed width. */
     def width: Width = shaped.fold(Width.Deployed)(_.width)
+
+    /** How its turn's calls offer [[TaskStatus]], from its `briefing` and `root`. */
+    def handoff: TaskStatus.Handoff = TaskStatus.Handoff.of(briefing, root)
   }
 
   /** The zones a turn's message is dated in ([[TurnShown.answering]]), as its `offer` step found
