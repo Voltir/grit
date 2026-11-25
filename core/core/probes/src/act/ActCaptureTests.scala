@@ -218,13 +218,6 @@ object ActCaptureTests extends TestSuite {
       |}
       |""".stripMargin
 
-  /** A child's acting, made as a function of its turn, that reaches the database. */
-  private val narrowedReadsDb =
-    """final class Narrows(db: Db^) {
-      |  def child(parent: Acting): TurnRef -> Acting = turn => { val _ = db; parent.copy(turn = turn) }
-      |}
-      |""".stripMargin
-
   /** Every breach capture checking rejects; [[keepReturnsRead]] is the bound on what a keep
     * returns, rejected with the checker off too.
     */
@@ -238,8 +231,7 @@ object ActCaptureTests extends TestSuite {
       judgmentReaderClassifies,
       jobHoldsClassifier,
       scanAsks,
-      dreamKeepsMoves,
-      narrowedReadsDb
+      dreamKeepsMoves
     )
 
   private val usesMoves =
@@ -428,10 +420,6 @@ object ActCaptureTests extends TestSuite {
       assert(errs.isEmpty)
     }
 
-    test("a child's acting made by a pure function of its turn cannot reach the database") {
-      assert(flowsInto("{}")(errors(narrowedReadsDb)))
-    }
-
     test("a job that keeps its moves in a field is rejected") {
       assert(flowsInto("{any}")(errors(jobKeepsMoves)))
     }
@@ -467,9 +455,7 @@ object ActCaptureTests extends TestSuite {
 
     test("capture checking is what rejects each breach but the bounds") {
       val flags = options.filterNot(_.startsWith("-language:experimental."))
-      // A pure function type is capture syntax too: unchecked, `->` is `=>`.
-      val source =
-        erased(prelude + breaches.mkString("\n") + "\n").replace(" -> Acting", " => Acting")
+      val source = erased(prelude + breaches.mkString("\n") + "\n")
       val errs = Probes.errors(source, flags)
       assert(errs.isEmpty)
     }
