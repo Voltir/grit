@@ -161,7 +161,7 @@ object Spawning {
           case (i, Narrowing.Go(at)) => Right(Narrowed(i, at))
           case (_, Narrowing.Refused(why)) => Left(Delegated.Refused(why))
           case (_, Narrowing.OverLimit(most)) => Left(Delegated.OverLimit(most))
-          case (_, Narrowing.Unread(why)) => Left(Delegated.Unspawned(why))
+          case (_, Narrowing.Failed(why)) => Left(Delegated.Unspawned(why))
         })
         .andThen(Flow.decide(made) {
           case (n, Made.Child(child)) => Right(Child(n.in, child))
@@ -197,7 +197,7 @@ object Spawning {
     val at = r.bound.fold(Tx.classification.label)(Tx.locked(_).label)
     val parent = r.call.turn
     inbox.spent(parent).flatMap(own => inbox.granted(parent).map(caps => (own, caps))) match {
-      case Left(e) => Narrowing.Unread(e.described)
+      case Left(e) => Narrowing.Failed(e.described)
       case Right((_, caps)) if caps.size >= PerTurn => Narrowing.OverLimit(PerTurn)
       case Right((own, caps)) =>
         Delegation
@@ -276,7 +276,7 @@ object Spawning {
     case Go(at: Label)
     case Refused(why: Delegation.Refused)
     case OverLimit(most: Int)
-    case Unread(why: String)
+    case Failed(why: String)
   }
 
   /** What became of the child's record and start. */
@@ -398,7 +398,7 @@ object Spawning {
       case Narrowing.Go(at) => ujson.Obj("go" -> ujson.Obj("at" -> Label.written(at)))
       case Narrowing.Refused(why) => ujson.Obj("refused" -> refused(why))
       case Narrowing.OverLimit(most) => ujson.Obj("overLimit" -> ujson.Num(most.toDouble))
-      case Narrowing.Unread(why) => ujson.Obj("store" -> why)
+      case Narrowing.Failed(why) => ujson.Obj("store" -> why)
     },
     v => {
       val f = Fields("a spawn's narrowing", v)
@@ -407,7 +407,7 @@ object Spawning {
         .map(Narrowing.Go(_))
         .orElse(f.field("refused").flatMap(refusedOf).map(Narrowing.Refused(_)))
         .orElse(f.int("overLimit").map(Narrowing.OverLimit(_)))
-        .orElse(f.str("store").map(Narrowing.Unread(_)))
+        .orElse(f.str("store").map(Narrowing.Failed(_)))
         .left
         .map(_ => s"recorded: no narrowing: $v")
     }
