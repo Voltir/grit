@@ -1029,7 +1029,7 @@ abstract class InboxContract extends TestSuite {
     }
 
     test(
-      "a spawned child's root is grit's note beginning its own conversation's first turn, written through its parent's asker and believed as given; a rerun is that turn; anyone else, or a direct message's room, is refused, recording nothing"
+      "a spawned child's root is recorded once, through its parent's asker; anyone else, or a direct message's room, is refused, recording nothing"
     ) {
       withInbox(Uncapped) { (inbox, store) =>
         val here = Origin.Task("inbox", "spawning")
@@ -1089,7 +1089,7 @@ abstract class InboxContract extends TestSuite {
     }
 
     test(
-      "a spawned child is started: ended is None for a turn never started, and how it ended once it has; its reply is Silent until it writes one, then Said as written; it rings its parent once"
+      "a started child's end, reply and ring read as it left them"
     ) {
       withInbox(Uncapped) { (inbox, store) =>
         val here = Origin.Task("inbox", "spawned-ended")
@@ -1138,9 +1138,7 @@ abstract class InboxContract extends TestSuite {
       }
     }
 
-    test(
-      "a spawned child whose parent never ran rings no one: NoSuchTurn; what its conversation's calls cost is its spend"
-    ) {
+    test("a spawned child whose parent never ran rings no one: NoSuchTurn") {
       withInbox(Uncapped) { (inbox, store) =>
         val here = Origin.Task("inbox", "spawned-orphan")
         val ana = TestAccounts.account("task:ana-spawned-orphan")
@@ -1158,18 +1156,37 @@ abstract class InboxContract extends TestSuite {
             ana
           )
           .fold(e => throw new java.lang.AssertionError(e), identity)
+        store.spawns.returned(spawned) ==> Left(InboxError.NoSuchTurn(parent.workflowId))
+      }
+    }
+
+    test("a spawned child's spend is what its own conversation's calls cost") {
+      withInbox(Uncapped) { (inbox, store) =>
+        val here = Origin.Task("inbox", "spawned-spend")
+        val ana = TestAccounts.account("task:ana-spawned-spend")
+        val parent = inbox
+          .ingest(here, SourceId("p"), said("fix it"), ana, None)
+          .fold(e => throw new java.lang.AssertionError(e), identity)
+        val spawned = store.spawns
+          .spawned(
+            InboxContract.child(parent, "s1-0-spend", here.room),
+            InboxContract.Coder,
+            "Fix the typo.",
+            InboxContract.Cap,
+            Integrity.Member,
+            Label.Public,
+            ana
+          )
+          .fold(e => throw new java.lang.AssertionError(e), identity)
         store.spendIn(spawned, BigDecimal("0.01"))
         store.spendIn(spawned, BigDecimal("0.02"))
         store.spendIn(parent, BigDecimal("0.5"))
-        (store.spawns.returned(spawned), store.spentOf(spawned)) ==> (
-          Left(InboxError.NoSuchTurn(parent.workflowId)),
-          Right(Cost.Exact(BigDecimal("0.03")))
-        )
+        store.spentOf(spawned) ==> Right(Cost.Exact(BigDecimal("0.03")))
       }
     }
 
     test(
-      "a child is refused Above when its room's label does not dominate its parent's classification, and OverCap once the day's spend reaches the cap, each recording nothing"
+      "a child is refused Above when its room's label does not dominate its parent's classification, recording nothing"
     ) {
       withInbox(Uncapped) { (inbox, store) =>
         val here = Origin.Task("inbox", "spawned-above")
@@ -1191,6 +1208,9 @@ abstract class InboxContract extends TestSuite {
           store.exists(child)
         ) ==> (Left(InboxError.Above(Internal, Label.Public)), false)
       }
+    }
+
+    test("a child is refused OverCap once the day's spend reaches the cap, recording nothing") {
       val cap = DailyCap.of("1").fold(e => throw new java.lang.AssertionError(e), identity)
       withInbox(Budget(ZoneOffset.UTC, Some(cap))) { (inbox, store) =>
         val here = Origin.Task("inbox", "spawned-capped")

@@ -112,7 +112,7 @@ object OriginTests extends TestSuite {
     }
 
     test(
-      "a spawned child's place is under the turn that spawned it, its room the one it was spawned within; it comes by grit's own edge, its messages are for nobody, and its asker is its first entry's author"
+      "a spawned child's origin is grit's own, under its parent turn and within the room it was spawned in"
     ) {
       val child = Origin.Spawned(
         TurnRef(ConversationId("c1"), TurnSeq(4)),

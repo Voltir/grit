@@ -291,7 +291,7 @@ object SpawningTests extends TestSuite {
     }
 
     test(
-      "a child at its round limit, or past its spend cap, is Limited; one that answered is Replied, past its cap too; one that answered nothing, or ended otherwise, is Failed"
+      "a child's end and spend decide what it comes to, and its read replays"
     ) {
       val w = new World(does =
         Vector(
@@ -379,23 +379,14 @@ object SpawningTests extends TestSuite {
       val w = new World(does = Vector(replied("Found it.")))
       val (turn, origin) = w.parent("journal")
       val first = w.spawn(request(turn, origin))
-      val history = w.durable.history(turn.workflowId)
-      val outputs = history.collect {
-        case InMemoryDurable.Step(name, InMemoryDurable.Outcome.Output(o))
-            if !name.startsWith("DBOS.") =>
-          name -> o
-      }
-      val replayed = new InMemoryDurable().replay(turn.workflowId, history) { _ =>
-        shown(Flows.run(spawning, SpawnEnv(w.spawns), request(turn, origin)).merge)
-      }
-      (outputs, replayed) ==> (
+      (w.outputs(turn), w.replayed(request(turn, origin))) ==> (
         Vector(
           "narrow:0:0" -> """{"go":{"at":"public"}}""",
           "spawn:0:0" -> """{"child":{"conversation":"c2","turn":0}}""",
           "ended:0:0" -> """{"ok":"answered"}""",
           "read:0:0" -> """{"said":{"text":"Found it.","integrity":"member"},"spent":{"exact":"0.01"}}"""
         ),
-        Right(first.mkString)
+        Right(first)
       )
     }
   }
