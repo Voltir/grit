@@ -7,7 +7,7 @@ import grit.core.id.AgentType
 import grit.core.model.*
 import grit.core.persona.Persona
 import grit.core.place.{Repository, Service}
-import grit.core.spend.Carve
+import grit.core.spend.SpendCap
 import grit.core.visibility.Integrity
 
 import utest.*
@@ -20,7 +20,7 @@ object SubagentTests extends TestSuite {
   private val coder = ok(AgentType.of("coder"))
   private val scholar = ok(AgentType.of("scholar"))
   private val persona = ok(Persona.of("Coder"))
-  private val carve = ok(Carve.of(BigDecimal("0.05")))
+  private val spendCap = ok(SpendCap.of(BigDecimal("0.05")))
 
   private val pins: Pins = {
     val ref = ModelRef(ok(ModelId.of("anthropic/claude-haiku").toRight("a model id")), None)
@@ -41,7 +41,7 @@ object SubagentTests extends TestSuite {
   private val services = Subagent.Tools.Services(Vector(ok(Service.of("docs"))))
 
   private def subagent(agent: AgentType, tools: Subagent.Tools, requires: Integrity) =
-    Subagent.of(agent, persona, pins, tools, carve, requires)
+    Subagent.of(agent, persona, pins, tools, spendCap, requires)
 
   val tests = Tests {
     test("a coding subagent is refused unless its brief must carry the integrity to write out") {

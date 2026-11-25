@@ -67,7 +67,7 @@ In dependency order, each with the core packages it imports:
   each absent or present, passed by code only when every one holds; a steward's examples
   benched against the signals first. Names no axis. ← `period`, `classify`
 - **`spend`**: what grit spends on model calls, read back (a day's, a conversation's, a turn's),
-  and the daily budget and a subagent's carve. ← `id`, `message`, `model`, `store`
+  and the daily budget and a subagent's spend cap. ← `id`, `message`, `model`, `store`
 - **`triage`**: what grit makes of a message it heard (ADR 0020): its question sets, the gates
   over their answers, shadow variants, and the corpora that could supply what a message asks
   for. ← `id`, `message`, `place`, `period`, `store`, `spend`, `classify`
@@ -95,7 +95,7 @@ In dependency order, each with the core packages it imports:
   (`Blobs`), as capabilities `grit.host` implements, and the pure rules they share. ← `id`,
   `place`, `secret`
 - **`agent`**: the kinds of agent a deployment declares that a turn may start for one task
-  (subagents): each one's persona, tools, pins, carve and the integrity its brief must carry.
+  (subagents): each one's persona, tools, pins, spend cap and the integrity its brief must carry.
   Nothing in core imports it. ← `id`, `place`, `model`, `visibility`, `persona`, `spend`, `host`
 - **`session`**: each working session's record, a grit turn's or a harness's: one row of who,
   when and its counters, and a capped log of its events in grit's words, an event recorded again

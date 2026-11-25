@@ -1103,7 +1103,7 @@ object DeploymentTests extends TestSuite {
           ok(grit.core.persona.Persona.of("Scholar")),
           pins,
           grit.core.agent.Subagent.Tools.Services(Vector(github)),
-          ok(grit.core.spend.Carve.of(BigDecimal("0.05"))),
+          ok(grit.core.spend.SpendCap.of(BigDecimal("0.05"))),
           grit.core.visibility.Integrity.Outside
         )
       )

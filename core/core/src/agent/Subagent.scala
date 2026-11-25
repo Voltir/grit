@@ -5,19 +5,19 @@ import grit.core.id.AgentType
 import grit.core.model.Pins
 import grit.core.persona.Persona
 import grit.core.place.{Repository, Service}
-import grit.core.spend.Carve
+import grit.core.spend.SpendCap
 import grit.core.visibility.Integrity
 
 /** A kind of agent a turn may start for one task: the persona it is told it is, the tools it is
   * offered, the pins that answer it (met with routing's clearances, ADR 0031), the most one may
-  * spend, and the least integrity its brief must carry. Pure; a deployment declares it.
+  * spend, and the least integrity its brief must carry. A deployment declares it.
   */
 final case class Subagent private (
     agent: AgentType,
     persona: Persona,
     pins: Pins,
     tools: Subagent.Tools,
-    carve: Carve,
+    spendCap: SpendCap,
     requires: Integrity
 ) extends caps.Pure
 
@@ -41,7 +41,7 @@ object Subagent {
       persona: Persona,
       pins: Pins,
       tools: Tools,
-      carve: Carve,
+      spendCap: SpendCap,
       requires: Integrity
   ): Either[String, Subagent] = tools match {
     // A coding type pushes to a forge: its brief must be believed enough to write out of grit.
@@ -50,6 +50,6 @@ object Subagent {
         s"the coding subagent ${AgentType.value(agent)} must require at least " +
           s"${Integrity.shown(Integrity.WritesOut)}, not ${Integrity.shown(requires)}"
       )
-    case _ => Right(Subagent(agent, persona, pins, tools, carve, requires))
+    case _ => Right(Subagent(agent, persona, pins, tools, spendCap, requires))
   }
 }
