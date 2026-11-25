@@ -30,7 +30,7 @@ enum ReasoningReplay {
   case Dropped
 
   /** As [[Details]] for the last assistant reply the request sends; not sent for any earlier
-    * one. Each call then rewrites the cache from the previous reply on.
+    * one. What that costs a cache is the bench README's (`eval/bench/README.md`).
     */
   case Latest
 

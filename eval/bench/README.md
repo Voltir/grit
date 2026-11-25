@@ -67,8 +67,14 @@ it (`Allotment.Reasoning`); a pin asking none at the Anthropic API is sent
 `AnthropicProvider.DefaultEffort`, and elsewhere its provider thinks at its own default.
 `--replay` sets which of a turn's earlier replies send their reasoning back on its later calls
 (`GRIT_REPLAY`, laid over every rung of the turn's ladder and no other role's): `all`, `none`, or
-`latest`, the last reply's alone, so each call rewrites the cache from the previous reply on;
-unset, the pair's profile's holds (`details`, all, unless the catalog says otherwise). Its turn is kept in `grit_bench_coder`, which
+`latest`, the last reply the request sends alone; unset, the pair's profile's holds (`details`,
+all, unless the catalog says otherwise). `latest` changes each call's request at the previous
+reply, whose reasoning the next call drops, and what that costs depends on the cache. A cache
+keyed on the longest matching prefix (an OpenRouter model's implicit cache) writes again from that
+reply on, about one round a call. Anthropic's reads only at a breakpoint an earlier call wrote:
+the stable mark sits at each request's end, after the reply whose reasoning is now gone, so every
+call falls back to the established mark and writes the whole exchange since it again, a cost that
+grows with the square of the turn's rounds. Its turn is kept in `grit_bench_coder`, which
 `scripts/eval` drops and makes afresh before each run (`--keep-coder` copies it as the run
 ends, for a report across its turns), and read back from there for the trial: the
 calls and bytes before its first edit, and each `run` that failed as a denial. Its calls are read
