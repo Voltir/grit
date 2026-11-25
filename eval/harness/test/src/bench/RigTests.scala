@@ -720,7 +720,7 @@ object RigTests extends TestSuite {
     }
 
     test(
-      "a grit trial names its pair, and whether its calls were priced by grit's rates or by the figure their provider reported"
+      "a grit trial's report says how its cost was priced"
     ) {
       def at(model: String) =
         s"[provider] $model answered · in 10 · read 0 · write 0 · out 20 · "
