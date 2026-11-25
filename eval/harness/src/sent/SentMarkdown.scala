@@ -750,6 +750,8 @@ object SentMarkdown {
     case TurnOffer.Root.Named => "named (drafted, unjudged)"
     case TurnOffer.Root.ByName => "by name (heard, answered as said to grit)"
     case TurnOffer.Root.Occasion => "occasion (drafted unprompted on a job's occasion)"
+    case TurnOffer.Root.Spawned(agent) =>
+      s"spawned (a child of the type ${grit.core.id.AgentType.value(agent)})"
   }
 
   private def speech(sent: TurnSent): String = {
@@ -759,6 +761,7 @@ object SentMarkdown {
       case TurnOffer.Root.Heard => "drafting, judged before posting"
       case TurnOffer.Root.Named => "drafting, named, unjudged"
       case TurnOffer.Root.Occasion => "drafting on an occasion, judged before posting"
+      case TurnOffer.Root.Spawned(_) => "no speech decision (a spawned child)"
     }
     val outcome = sent.speech.fold("")(o => s"; outcome ${SpeechJson.outcomeName(o)}")
     val judged = sent.judged.fold("") {

@@ -88,6 +88,9 @@ private[turn] object TurnSteps {
       * when the store, the offer or the route's pins cannot be read.
       */
     def carried(p: Placed): Either[TurnFailure, TurnBasis]
+
+    /** The type a turn whose first entry holds `root` runs as ([[TurnTooling.spawnedAs]]). */
+    def spawnedAs(root: Payload): Either[TurnFailure, Option[Spawnable.Child]]
   }
 
   /** The [[Env]] of a turn with `env`, offered `tooling`'s tools, its model told through
@@ -102,6 +105,9 @@ private[turn] object TurnSteps {
     def placing: Placing.Env^{this} = turnEnv.stitching.placing
 
     def weigh(turn: TurnRef): Option[TurnWeighing.Weighed] = weighOf(turnEnv, tooling, turn)
+
+    def spawnedAs(root: Payload): Either[TurnFailure, Option[Spawnable.Child]] =
+      tooling.spawnedAs(root)
 
     def offer(turn: TurnRef, weighed: Option[TurnWeighing.Weighed], routed: Turn.Routed)(using
         Tx^
@@ -346,7 +352,8 @@ private[turn] object TurnSteps {
 
   /** `pin-models`: the catalog in force, pinned as the turn's profile: kept by the store, and
     * its id the step's output, so a replay makes every call under the profile the turn started
-    * with.
+    * with. A spawned child's turn pins are its type's ([[Env.spawnedAs]]), and one whose type is
+    * not declared ends here, `Undeclared`.
     */
   val pinModels: Step[Env, TurnRef, Either[TurnFailure, TurnProfileId]] =
     Step.transact[Env, TurnRef, Either[TurnFailure, TurnProfileId]](
@@ -361,7 +368,16 @@ private[turn] object TurnSteps {
               .catalog()
               .left
               .map(why => TurnFailure.Model(s"no model catalog: $why"))
-            profile = catalog.pin
+            own <- env.records.entries.ofTurn(turn).left.map(TurnFailure.ofStore)
+            child <- own
+              .minByOption(_.seq)
+              .fold[Either[TurnFailure, Option[Spawnable.Child]]](Right(None))(e =>
+                r.spawnedAs(e.payload)
+              )
+            pinned = catalog.pin
+            profile = child.fold(pinned)(c =>
+              TurnProfile.of(c.subagent.pins, pinned.summary, pinned.query)
+            )
             _ <- env.records.profiles.pin(turn.workflowId, profile).left.map(TurnFailure.ofStore)
           } yield profile.id
         }
@@ -1043,7 +1059,7 @@ private[turn] object TurnSteps {
     val spoken = rooted match {
       case TurnOffer.Root.Occasion => Spoken.Root.Occasion
       case TurnOffer.Root.Addressed | TurnOffer.Root.Heard | TurnOffer.Root.Named |
-          TurnOffer.Root.ByName =>
+          TurnOffer.Root.ByName | TurnOffer.Root.Spawned(_) =>
         Spoken.Root.Heard
     }
     for {
@@ -1285,7 +1301,7 @@ private[turn] object TurnSteps {
       at: Instant
   )(using Tx^): Either[TurnFailure, Appended] = {
     val (id, payload) = offer.root match {
-      case TurnOffer.Root.Addressed | TurnOffer.Root.ByName =>
+      case TurnOffer.Root.Addressed | TurnOffer.Root.ByName | TurnOffer.Root.Spawned(_) =>
         (turn.replyId, Payload.Message(message))
       case TurnOffer.Root.Heard | TurnOffer.Root.Named | TurnOffer.Root.Occasion =>
         (turn.draftId, Payload.Draft(message))
@@ -1345,7 +1361,7 @@ private[turn] object TurnSteps {
             .left
             .map(TurnFailure.ofStore)
         case TurnOffer.Root.Addressed | TurnOffer.Root.Heard | TurnOffer.Root.Named |
-            TurnOffer.Root.Occasion =>
+            TurnOffer.Root.Occasion | TurnOffer.Root.Spawned(_) =>
           Right(true)
       }
     } yield Appended(id, followed)

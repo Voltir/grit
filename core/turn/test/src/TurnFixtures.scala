@@ -1048,6 +1048,106 @@ object TurnFixtures {
     }
   }
 
+  /** A coding type of [[grit.core.agent.SubagentFixtures]], its coding tools `fetch` alone. */
+  val coders: Spawnable = Spawnable.of(
+    grit.core.agent.Subagents
+      .of(
+        Vector(
+          grit.core.agent.SubagentFixtures.ok(
+            grit.core.agent.SubagentFixtures.subagent(
+              grit.core.agent.SubagentFixtures.coder,
+              grit.core.agent.SubagentFixtures.coding,
+              Integrity.WritesOut
+            )
+          )
+        )
+      )
+      .fold(why => throw new java.lang.AssertionError(why), identity),
+    _ => Vector(hostedFetch)
+  )
+
+  /** A spawned child of `coder` within the room `within`, its parent the first turn of another
+    * conversation.
+    */
+  def spawnedFrom(within: Place): Origin =
+    Origin.Spawned(
+      TurnRef(ConversationId("c-parent"), TurnSeq(0)),
+      grit.core.place.WorkName.of("s1-0-0123456789abcdef").fold(sys.error, identity),
+      within
+    )
+
+  /** A turn's workflow body as a deployment declaring `subagents` runs it, over `entries` and
+    * `provider`, its conversation from `from`, its hosted calls sent through `served`: its
+    * parent's own tools `peek` and `poke` over `ws`, its hosted tools [[hostedTools]] and its
+    * reached service `reaches`; its calls made through `db`, under `catalog`, the pins they
+    * were made under kept in `seen`, each recorded in `ledger`.
+    */
+  def spawnedBody(
+      entries: EntryStore,
+      provider: Provider^,
+      served: Served,
+      ws: Files,
+      subagents: Spawnable,
+      from: Origin,
+      reaches: Vector[Reaches] = Vector.empty,
+      ledger: UsageLedger = new InMemoryUsageLedger,
+      db: Db^ = FakeDb,
+      catalog: Catalog = TestCatalog,
+      seen: Pinnings = new Pinnings,
+      summarizer: Provider^ = new StubProvider()
+  )(id: WorkflowId)(using Durable^): String = {
+    val conversations = new InMemoryConversationStore
+    conversations.findOrCreate(from, Account.Local, Label.Public)(using TestTx.fake)
+    Turn.body(
+      turnEnv(
+        TurnRecords(
+          entries,
+          ledger,
+          CharEstimate,
+          profilesKept(),
+          new InMemoryPrincipals,
+          new InMemoryDocuments,
+          new InMemoryPieces,
+          unheld()
+        ),
+        TurnHosting(
+          conversations,
+          Prompts,
+          ToolSets,
+          served,
+          served.edges,
+          new InMemoryVoiceStore,
+          LocalAsker
+        ),
+        new LinearAssembler(
+          entries,
+          NoPeriods,
+          new InMemoryPrincipals,
+          CharEstimate,
+          LinearAssembler.DefaultBudget
+        ),
+        grit.core.classify.TestClassifiers.cleared(NoClassifier),
+        new FixedModels(provider, summarizer, catalog, seen),
+        db,
+        new NoWait,
+        Fresh.random(),
+        quiet(),
+        unstitched(),
+        noTriage(),
+        noRouting()
+      ),
+      TurnTooling[caps.CapSet^{ws}](
+        tools(ws),
+        Toolbox.Empty,
+        hostedTools,
+        new TestJot,
+        budget(5),
+        reaches = reaches,
+        subagents = subagents
+      )
+    )(id)
+  }
+
   /** `calls` model calls as a turn's budget. */
   def budget(calls: Int): TurnLoop.Rounds =
     TurnLoop.Rounds.of(calls).fold(why => throw new java.lang.AssertionError(why), identity)
@@ -1143,6 +1243,32 @@ object TurnFixtures {
         next.seq,
         Payload.Message(Message.User(text)),
         at,
+        integrity
+      )
+    )
+    TurnRef(conversation, next.turnSeq)
+  }
+
+  /** Records grit's note that begins a spawned child's first turn ([[Payload.Spawn]]), of
+    * type `agent` briefed `brief`, as the conversation's next turn.
+    */
+  def spawn(
+      entries: EntryStore,
+      agent: grit.core.id.AgentType,
+      brief: String,
+      integrity: Integrity = Integrity.Member
+  ): TurnRef = {
+    given Tx = TestTx.fake
+    val next = entries.lockNext(conversation).getOrElse(sys.error("in-memory store"))
+    entries.insert(
+      Entry(
+        EntryId(s"spawn:${grit.core.id.AgentType.value(agent)}"),
+        conversation,
+        next.turnSeq,
+        None,
+        next.seq,
+        Payload.Spawn(agent, brief, grit.core.agent.SubagentFixtures.spendCap),
+        Instant.EPOCH,
         integrity
       )
     )

@@ -476,6 +476,26 @@ object TurnJournalTests extends TestSuite {
     }
 
     test(
+      "a spawned child's offer is written with its type, and a child of an undeclared type fails naming it"
+    ) {
+      val j = summon[Journaled[Either[TurnFailure, TurnOffer.Recorded]]]
+      val tools = grit.core.tool.ToolSet.Empty.id
+      val set = grit.core.tool.ToolSetId.value(tools)
+      val coder = grit.core.agent.SubagentFixtures.coder
+      val spawned: Either[TurnFailure, TurnOffer.Recorded] =
+        Right(TurnOffer.Recorded(None, tools, Vector.empty, TurnOffer.Root.Spawned(coder)))
+      j.encode(spawned) ==>
+        s"""{"ok":{"workspace":null,"tools":"$set","prompt":[],"root":"spawned","agent":"coder"}}"""
+      j.decode(j.encode(spawned)) ==> Right(spawned)
+      j.decode(s"""{"ok":{"workspace":null,"tools":"$set","prompt":[],"root":"spawned"}}""") ==>
+        Left("offer: a spawned root names no agent")
+      val undeclared: Either[TurnFailure, TurnOffer.Recorded] =
+        Left(TurnFailure.Undeclared(coder))
+      j.encode(undeclared) ==> """{"failed":"undeclared","reason":"coder"}"""
+      j.decode(j.encode(undeclared)) ==> Right(undeclared)
+    }
+
+    test(
       "an offer's advertised tools are written by name, and an offer recorded before them reads as none"
     ) {
       // Pinned: replay reads this key to rebuild the tools a turn took from an edge's advert.

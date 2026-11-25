@@ -10,6 +10,7 @@ import grit.core.context.{AssemblyNote, Projection, Querying, Results, Retrieved
 import grit.core.durable.Journaled
 import grit.core.edge.{OutcomeJson, RequestState}
 import grit.core.id.{
+  AgentType,
   ConversationId,
   CorpusName,
   DocumentVersionId,
@@ -704,6 +705,9 @@ private[turn] object TurnJournal {
       case TurnOffer.Root.Named => o("root") = "named"
       case TurnOffer.Root.ByName => o("root") = "by-name"
       case TurnOffer.Root.Occasion => o("root") = "occasion"
+      case TurnOffer.Root.Spawned(agent) =>
+        o("root") = "spawned"
+        o("agent") = AgentType.value(agent)
       case TurnOffer.Root.Addressed => ()
     }
     // Written only when some were taken, so every other offer keeps its earlier form.
@@ -772,6 +776,12 @@ private[turn] object TurnJournal {
         case Some(ujson.Str("named")) => Right(TurnOffer.Root.Named)
         case Some(ujson.Str("by-name")) => Right(TurnOffer.Root.ByName)
         case Some(ujson.Str("occasion")) => Right(TurnOffer.Root.Occasion)
+        case Some(ujson.Str("spawned")) =>
+          o.get("agent")
+            .flatMap(_.strOpt)
+            .toRight("offer: a spawned root names no agent")
+            .flatMap(AgentType.of)
+            .map(TurnOffer.Root.Spawned(_))
         case Some(other) => Left(s"offer: unknown root ${other.render()}")
       }
       advertised <- o.get("advertised") match {
@@ -1462,6 +1472,7 @@ private[turn] object TurnJournal {
             case TurnFailure.ToolsChanged(r) => ("tools-changed", r)
             case TurnFailure.Uncleared(c) => ("uncleared", Label.written(c))
             case TurnFailure.OutOfOutput(n) => ("out-of-output", Tokens.value(n).toString)
+            case TurnFailure.Undeclared(a) => ("undeclared", AgentType.value(a))
           }
           ujson.Obj("failed" -> kind, "reason" -> reason)
       },
@@ -1496,6 +1507,7 @@ private[turn] object TurnJournal {
       case (Some("uncleared"), Some(r)) => Label.read(r).toOption.map(TurnFailure.Uncleared(_))
       case (Some("out-of-output"), Some(r)) =>
         r.toLongOption.map(n => TurnFailure.OutOfOutput(Tokens(n)))
+      case (Some("undeclared"), Some(r)) => AgentType.of(r).toOption.map(TurnFailure.Undeclared(_))
       case _ => None
     }
 }

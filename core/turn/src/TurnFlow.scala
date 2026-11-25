@@ -240,7 +240,7 @@ private[turn] object TurnFlow {
     def of(e: Ended): Ending = (e.result, e.at.offer.root) match {
       case (Result.Unneeded(_), _) =>
         Unsettled(e, Undrafted(e.turn, Outcome.NothingRecalled), "unneeded")
-      case (Result.Failed(failure), TurnOffer.Root.Addressed) =>
+      case (Result.Failed(failure), TurnOffer.Root.Addressed | TurnOffer.Root.Spawned(_)) =>
         Stopped(s"failed: ${written(failure)}${e.notes}")
       case (
             draft: Result.Kept,
@@ -257,7 +257,10 @@ private[turn] object TurnFlow {
           Undrafted(e.turn, Outcome.Failed(written(failure))),
           s"failed: ${written(failure)}"
         )
-      case (reply: Result.Kept, TurnOffer.Root.Addressed | TurnOffer.Root.ByName) =>
+      case (
+            reply: Result.Kept,
+            TurnOffer.Root.Addressed | TurnOffer.Root.ByName | TurnOffer.Root.Spawned(_)
+          ) =>
         Replied(e, reply)
     }
   }

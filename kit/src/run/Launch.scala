@@ -46,8 +46,9 @@ import grit.lifecycle.stitch.{Stitch, StitchEnv}
 import grit.lifecycle.triage.{Mentions, Triage, TriageEnv, TriageRecords}
 import grit.models.{CatalogModels, JevClassifier, JevConfig, Seed, StubClassifier, StubModels}
 import grit.std.either.Proven
-import grit.tools.{About, Administering, Cleared, FileReading, MessageIds, Probes, Tuning}
+import grit.tools.{About, Administering, Cleared, Coding, FileReading, MessageIds, Probes, Tuning}
 import grit.turn.{
+  Spawnable,
   Turn,
   TurnEnv,
   TurnHosting,
@@ -540,6 +541,8 @@ private[grit] object Launch {
     val administers: Either[SetRefusal, Toolbox[caps.CapSet^{administration, clock}]] =
       Toolbox.of[caps.CapSet^{administration, clock}](administering(d, administration, clock)*)
     val shows = renders(d)
+    // Each declared type with the coding tools its allowlist permits, offered at its repository.
+    val subagents = Spawnable.of(d.subagents, Coding.allowlistedHosted)
     val launching = d.offer.tools match {
       // Neither asks first, so neither offers the operator's tools, which do.
       case Offered.Read | Offered.Allowlisted(_) =>
@@ -563,7 +566,8 @@ private[grit] object Launch {
                     persona = d.persona,
                     administering = admin,
                     renders = shows,
-                    conversing = conversing
+                    conversing = conversing,
+                    subagents = subagents
                   )
                 )
             }
@@ -604,7 +608,8 @@ private[grit] object Launch {
                     persona = d.persona,
                     administering = admin,
                     renders = shows,
-                    conversing = conversing
+                    conversing = conversing,
+                    subagents = subagents
                   )
                 )
               }

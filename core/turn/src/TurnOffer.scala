@@ -4,7 +4,7 @@ import java.time.ZoneId
 
 import grit.core.context.Width
 import grit.core.edge.Advert
-import grit.core.id.{ClaimHolder, TurnRef}
+import grit.core.id.{AgentType, ClaimHolder, TurnRef}
 import grit.core.place.{Place, Reaches, Service, WorksIn}
 import grit.core.prompt.{FragmentId, SystemPrompt, Voice}
 import grit.core.recipe.{Briefing, Offering, Rooted, ServiceOffer}
@@ -110,10 +110,13 @@ object TurnOffer {
     * ([[grit.core.speech.Speech.postNamed]]); no offer records it now. An offer recorded
     * before roots existed is `Addressed`. `Occasion` is grit's own note of a job's occasion
     * ([[grit.core.store.Payload.Occasion]]), drafted with no search and posted where its
-    * decision placed it.
+    * decision placed it. `Spawned` is a spawned child's first turn ([[grit.core.store.Payload.Spawn]]),
+    * offered and told as its type `agent` says ([[TurnTooling.at]]), otherwise as an
+    * `Addressed` one.
     */
   enum Root {
     case Addressed, Heard, Named, ByName, Occasion
+    case Spawned(agent: AgentType)
   }
 
   /** What `turn` is offered now, kept, and recorded as `turn`'s prompt: its conversation's
@@ -135,7 +138,10 @@ object TurnOffer {
     * `entries` is a heard message ([[grit.core.store.Payload.Heard]]) and `answering` (triage
     * decided to answer it as said to grit, [[grit.core.speech.Decision.Answering]]), `Heard`
     * for any other heard message, `Occasion` when it is an occasion
-    * ([[grit.core.store.Payload.Occasion]]), else `Addressed`; a `ByName` turn is offered, told
+    * ([[grit.core.store.Payload.Occasion]]), `Spawned` when it is a spawned child's note
+    * ([[grit.core.store.Payload.Spawn]]): offered from its type's tooling ([[TurnTooling.at]])
+    * at the workspace its type names ([[Spawnable.Child.workspace]]), whose tools only an edge
+    * serving that place offers; else `Addressed`. A `ByName` turn is offered, told
     * and shaped as an `Addressed` one, an `Occasion` one as a `Heard` one at its room's top
     * level. A `Heard` or `Occasion` turn records `venue`,
     * where its decision placed its draft; any other, its thread.
@@ -196,10 +202,17 @@ object TurnOffer {
           )
         case Some(Payload.Occasion(brief, _, _)) =>
           (Root.Occasion, Rooted.Heard(Focus.Open), Some(TurnPrompt.occasion(brief)), venue)
+        case Some(Payload.Spawn(agent, _, _)) =>
+          (Root.Spawned(agent), Rooted.Addressed, None, Venue.Thread)
         case _ => (Root.Addressed, Rooted.Addressed, None, Venue.Thread)
       }
-      shaping = tooling.recipe.at(rooted)
-      workspace = workspaceOf(conversation.origin, tooling.worksIn)
+      own = TurnTooling.at(tooling, root)
+      shaping = own.recipe.at(rooted)
+      // A child works where its type says, never where its room or its parent does.
+      workspace = root match {
+        case Root.Spawned(agent) => tooling.subagents(agent).flatMap(_.workspace)
+        case _ => workspaceOf(conversation.origin, tooling.worksIn)
+      }
       servedAt <- workspace.fold[Either[StoreError, Option[Advert]]](Right(None))(
         hosting.edges.serving
       )
@@ -212,13 +225,13 @@ object TurnOffer {
       sends = workspace.flatMap(_.service).forall(Tx.sendsTo(_, at))
       names = served.tools.map(_.name).toSet
       // An engine-described tool is offered only as it is described, never narrowed.
-      described = tooling.hosted.filter { h =>
+      described = own.hosted.filter { h =>
         val whole = h.entry
         names.contains(h.name) &&
         whole.offerable(sends, at).map(_.writes.map(_.to)) == Some(whole.writes.map(_.to))
       }
-      engines = (tooling.conversing.names ++ tooling.tools.names ++ tooling.operator.names ++
-        tooling.administering.names ++ tooling.hosted.map(_.name)).toSet
+      engines = (own.conversing.names ++ own.tools.names ++ own.operator.names ++
+        own.administering.names ++ own.hosted.map(_.name)).toSet
       advertised = served.tools
         .filterNot(e => engines.contains(e.name))
         .flatMap(_.offerable(sends, at))
@@ -227,14 +240,14 @@ object TurnOffer {
       // A heard-rooted turn's draft runs its calls, and only its reply is gated: it reaches only
       // what its links let a heard turn read.
       (services, readOnly) = rooted match {
-        case Rooted.Addressed => (Reaches.of(tooling.reaches, conversation.origin.place), false)
+        case Rooted.Addressed => (Reaches.of(own.reaches, conversation.origin.place), false)
         case Rooted.Heard(_) =>
-          val reads = tooling.reaches.filter(_.heard == Reaches.Heard.ReadOnly)
+          val reads = own.reaches.filter(_.heard == Reaches.Heard.ReadOnly)
           (Reaches.of(reads, conversation.origin.place), true)
       }
       reached <- reachedFrom(hosting, services, engines ++ hosted.map(_.name), at, readOnly)
       reaching = reached.map((service, set, _) => (service, set))
-      took = shape(shaping.offering, tooling.knowledge, weighed, workspace, hosted, reaching)
+      took = shape(shaping.offering, own.knowledge, weighed, workspace, hosted, reaching)
       (atWorkspace, reachedTook) = took.partition(_.via == TurnShape.Via.Workspace)
       kept = !atWorkspace.exists(_.offer.withheld)
       offeredHosted = if (kept) hosted else Vector.empty
@@ -244,8 +257,8 @@ object TurnOffer {
       }
       offeredReaching = offeredReached.map((service, set, _) => (service, set))
       administers = administering(root, conversation.origin)
-      whole <- setOf(tooling, conversation.origin, administers, hosted, reaching).map(_._2)
-      offered <- setOf(tooling, conversation.origin, administers, offeredHosted, offeredReaching)
+      whole <- setOf(own, conversation.origin, administers, hosted, reaching).map(_._2)
+      offered <- setOf(own, conversation.origin, administers, offeredHosted, offeredReaching)
       (hostedSet, set) = offered
       _ <- hosting.toolSets.keep(set)
       _ <- if (whole.id == set.id) Right(()) else hosting.toolSets.keep(whole)
@@ -268,7 +281,7 @@ object TurnOffer {
       }.flatten)
       voice <- hosting.voices.current()
       // A turn briefed for one task is told neither grit's labels nor who may see what.
-      conversing = tooling.recipe.briefing match {
+      conversing = own.recipe.briefing match {
         case Briefing.Conversing => true
         case Briefing.Tasked => false
       }
@@ -281,11 +294,11 @@ object TurnOffer {
           TurnPrompt.TagRule,
           TurnPrompt.edge(conversation.origin)
         ) ++ holder(conversation.origin).map(_ => TurnPrompt.Briefed) ++
-          TurnPrompt.rendered(conversation.origin, tooling.renders) ++
+          TurnPrompt.rendered(conversation.origin, own.renders) ++
           TurnPrompt.destination(conversation.origin) ++
-          TurnPrompt.called(tooling.persona, conversation.origin) ++
+          TurnPrompt.called(own.persona, conversation.origin) ++
           unasked ++
-          TurnPrompt.voiced(tooling.persona, conversation.origin) ++
+          TurnPrompt.voiced(own.persona, conversation.origin) ++
           Vector(TurnPrompt.room(conversation.origin, Tx.floor(tx))) ++
           Option.when(kept)(
             TurnPrompt.reach(
@@ -313,7 +326,7 @@ object TurnOffer {
       offeredReaching.flatMap((service, set) => set.tools.map(_.name -> service.place)).toMap,
       Some(TurnShape(shaping.width, whole.id, took)),
       Some(Zoned(person, deployment)),
-      tooling.recipe.briefing,
+      own.recipe.briefing,
       placed
     )).left.map(TurnFailure.ofStore)
 
@@ -349,7 +362,7 @@ object TurnOffer {
   private def administering(root: Root, origin: Origin): Boolean =
     (root match {
       case Root.Addressed | Root.ByName => true
-      case Root.Heard | Root.Named | Root.Occasion => false
+      case Root.Heard | Root.Named | Root.Occasion | Root.Spawned(_) => false
     }) && (origin.audience match {
       case Audience.Colleagues => true
       case Audience.Operator | Audience.Nobody | Audience.Person => false
@@ -411,13 +424,15 @@ object TurnOffer {
       recorded.zoned
     )
 
-  /** The tools `offer`'s set names, in its order: each `tooling`'s conversing tool, own tool,
-    * operator tool or administering tool, else its hosted one, else, for a name `offer` took from an advert, its
-    * workspace's or a reached service's, that tool as
+  /** The tools `offer`'s set names, in its order: each conversing tool, own tool, operator tool
+    * or administering tool of `whole` as `offer`'s root takes it ([[TurnTooling.at]]: a spawned
+    * child's type's, never `whole`'s own), else its hosted one, else, for a name `offer` took
+    * from an advert, its workspace's or a reached service's, that tool as
     * [[grit.core.tool.Hosted.advertised]] makes it from the set's entry, else a stand-in for
     * a tool this build no longer has ([[Tool.gone]]).
     */
-  def toolbox[C^](tooling: TurnTooling[C]^, offer: TurnOffer): Toolbox[C] = {
+  def toolbox[C^](whole: TurnTooling[C]^, offer: TurnOffer): Toolbox[C] = {
+    val tooling = TurnTooling.at(whole, offer.root)
     val chosen: Vector[Tool.Offered^{C}] = offer.tools.tools.map { entry =>
       tooling.conversing
         .tool(entry.name)

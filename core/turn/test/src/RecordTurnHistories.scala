@@ -1100,6 +1100,28 @@ object RecordTurnHistories {
           )
         )
         recorded(durable, turn)
+      },
+      // A spawned child's first turn, recorded before a turn took its type's settings: its
+      // offer names no root, so it reads as addressed.
+      "spawned-untyped" -> {
+        val entries = new InMemoryEntryStore
+        val turn = spawn(entries, grit.core.agent.SubagentFixtures.coder, "Fix the typo.")
+        val durable = new InMemoryDurable
+        val ws = new Files(Map.empty)
+        durable.run(turn.workflowId)(
+          tooledBody(
+            entries,
+            new RecordingProvider,
+            new InMemoryUsageLedger,
+            new grit.models.StubProvider(),
+            NoClassifier,
+            ws,
+            tools(ws),
+            5,
+            hosted = hostedTools
+          )
+        )
+        recorded(durable, turn)
       }
     )
   }

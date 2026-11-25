@@ -51,6 +51,14 @@ Of its own tools a turn is offered, in that order, by four questions: what runs 
 `operator`), and what it answers in which room (its root and audience: `administering`). The coding
 tools, `hosted`, the deployment's `Offered` chose.
 
+A spawned child's turn (root `Spawned`) is offered from its type's tooling instead
+(`TurnTooling.at`): briefed for one task, its type's persona, the services its type reaches, and,
+for a coding type, the coding tools its allowlist permits, at its type's repository; none of the
+deployment's own, operator, administering or conversing tools, and no subagent. Its hosted tools
+are offered only where an edge serves that repository, as any workspace's are. Its calls are made
+under its type's pins (`pin-models`), met with its room's clearances as every turn's are, and a
+child whose type is not declared ends at that first step (`TurnFailure.Undeclared`).
+
 Its prompt, in order: the base (`TurnPrompt.TaskBase` when briefed for one task),
 `TurnPrompt.Candour`, `TurnPrompt.Answering`, `TurnPrompt.Security` (not when so briefed),
 `TurnPrompt.Briefed` when it is briefed, its edge's fragment, what its edge says its reply shows

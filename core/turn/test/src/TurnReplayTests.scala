@@ -147,7 +147,9 @@ object TurnReplayTests extends TestSuite {
       "room-thread-asked.json" -> reasoned,
       "room-carried-appended.json" -> reasoned,
       // A job's occasion at a room's top level: its needs gate unasked and drawn with no query.
-      "occasion.json" -> reasoned
+      "occasion.json" -> reasoned,
+      // A spawned child's first turn, recorded before a turn took its type's settings.
+      "spawned-untyped.json" -> reasoned
     )
   }
 
@@ -321,6 +323,20 @@ object TurnReplayTests extends TestSuite {
       failures ==> Vector.empty
     }
 
+    test(
+      "a spawned child's offer recorded before a turn took its type's settings replays as addressed"
+    ) {
+      val j = TurnJournal.recordedOffer
+      val roots = histories.collect {
+        case (path, Right(h)) if path.endsWith("spawned-untyped.json") =>
+          h.steps.collect {
+            case InMemoryDurable.Step(Turn.Step.Offer, InMemoryDurable.Outcome.Output(text)) =>
+              j.decode(text).map(_.map(_.root))
+          }
+      }.flatten
+      roots ==> Vector(Right(Right(TurnOffer.Root.Addressed)))
+    }
+
     test("every recorded projection is written back byte for byte") {
       // A carried turn's `assemble` records its projection: a boundary or an append, the
       // window as a window is written, and its cost. Today's codec writes the same text back.
@@ -340,7 +356,8 @@ object TurnReplayTests extends TestSuite {
         "room-closing-found.json",
         "room-thread-asked.json",
         "room-carried-appended.json",
-        "occasion.json"
+        "occasion.json",
+        "spawned-untyped.json"
       )
       val failures = outputs.collect {
         case (file, InMemoryDurable.Outcome.Output(text))

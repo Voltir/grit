@@ -1,6 +1,7 @@
 package grit.turn
 
 import grit.act.phase.Faults
+import grit.core.id.AgentType
 import grit.core.message.Tokens
 import grit.core.route
 import grit.core.store.StoreError
@@ -33,6 +34,11 @@ enum TurnFailure {
     * it; whoever drives the turn decides what follows.
     */
   case OutOfOutput(output: Tokens)
+
+  /** A spawned child whose type `agent` its deployment does not declare: it ends at its first
+    * step, before any call.
+    */
+  case Undeclared(agent: AgentType)
 }
 
 object TurnFailure {
@@ -63,5 +69,7 @@ object TurnFailure {
     case TurnFailure.Uncleared(c) => route.Uncleared.reply(route.Uncleared(c))
     case TurnFailure.OutOfOutput(output) =>
       s"the model used its whole output budget thinking and gave no reply ($output output tokens)"
+    case TurnFailure.Undeclared(agent) =>
+      s"no subagent of the type ${AgentType.value(agent)} is declared"
   }
 }

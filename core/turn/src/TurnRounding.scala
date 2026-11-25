@@ -356,7 +356,7 @@ private[turn] object Rounding {
     root match {
       case TurnOffer.Root.Heard | TurnOffer.Root.Named | TurnOffer.Root.Occasion =>
         rooted.meet(Integrity.Outside)
-      case TurnOffer.Root.Addressed | TurnOffer.Root.ByName => rooted
+      case TurnOffer.Root.Addressed | TurnOffer.Root.ByName | TurnOffer.Root.Spawned(_) => rooted
     }
   }
 

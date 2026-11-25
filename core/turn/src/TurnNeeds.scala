@@ -93,6 +93,8 @@ object TurnNeeds {
   def unasked(root: TurnOffer.Root): Option[Unasked] = root match {
     case TurnOffer.Root.Heard => Some(TurnOffer.Root.Heard)
     case TurnOffer.Root.Named => Some(TurnOffer.Root.Named)
-    case TurnOffer.Root.Addressed | TurnOffer.Root.ByName | TurnOffer.Root.Occasion => None
+    case TurnOffer.Root.Addressed | TurnOffer.Root.ByName | TurnOffer.Root.Occasion |
+        TurnOffer.Root.Spawned(_) =>
+      None
   }
 }

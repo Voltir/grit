@@ -6,6 +6,7 @@ import scala.concurrent.duration.FiniteDuration
 
 import grit.act.moves.{MoveRecords, MovesEnv}
 import grit.act.phase.Placing
+import grit.core.agent.{Subagent, Subagents}
 import grit.core.allot.Tasking
 import grit.core.classify.ClearedClassifier
 import grit.core.clock.{Clock, Fresh}
@@ -13,7 +14,9 @@ import grit.core.context.ContextAssembler
 import grit.core.document.DocumentStore
 import grit.core.edge.{Deliveries, EdgeDirectory, ToolRequests}
 import grit.core.files.PieceStore
+import grit.core.host.Allowlist
 import grit.core.id.{
+  AgentType,
   ClaimHolder,
   ConversationId,
   EdgeName,
@@ -25,7 +28,7 @@ import grit.core.id.{
 }
 import grit.core.identity.Principal
 import grit.core.persona.Persona
-import grit.core.place.{Reaches, WorksIn}
+import grit.core.place.{Place, Reaches, Service, WorksIn}
 import grit.core.provider.{Models, TokenEstimator}
 import grit.core.recipe.TurnRecipe
 import grit.core.session.{Event, Session, Sessions}
@@ -41,6 +44,7 @@ import grit.core.store.{
   Jot,
   ModelProfileStore,
   Origin,
+  Payload,
   Principals,
   PromptStore,
   StoreError,
@@ -276,7 +280,8 @@ final case class TurnHosting(
   * unprompted turn, nor one in a direct message, a job's run or a directory's conversation;
   * whatever tools the deployment's `Offered` chose, which governs only the coding and operator
   * tools. `conversing`, grit's own tools for a conversation with people, are offered unless
-  * `recipe` briefs the turn for one task ([[grit.core.recipe.Briefing.Tasked]]).
+  * `recipe` briefs the turn for one task ([[grit.core.recipe.Briefing.Tasked]]). `subagents`
+  * are the types a spawned child runs as ([[spawnedAs]], [[TurnTooling.at]]).
   */
 final case class TurnTooling[C^](
     tools: Toolbox[C],
@@ -292,8 +297,64 @@ final case class TurnTooling[C^](
     persona: Persona = Persona.Grit,
     administering: Toolbox[C] = Toolbox.Empty,
     renders: Map[EdgeName, String] = Map.empty,
-    conversing: Toolbox[C] = Toolbox.Empty
-)
+    conversing: Toolbox[C] = Toolbox.Empty,
+    subagents: Spawnable = Spawnable.empty
+) {
+
+  /** The type a turn whose first entry holds `root` runs as: `None` unless `root` is a
+    * [[Payload.Spawn]]; [[TurnFailure.Undeclared]] when its type is not among `subagents`.
+    */
+  def spawnedAs(root: Payload): Either[TurnFailure, Option[Spawnable.Child]] = root match {
+    case Payload.Spawn(agent, _, _) =>
+      subagents(agent).map(Some(_)).toRight(TurnFailure.Undeclared(agent))
+    case _ => Right(None)
+  }
+}
+
+/** A deployment's subagents as its turns run them: each type, with the hosted tools a child of
+  * it is offered ([[Spawnable.of]]).
+  */
+final case class Spawnable private (byType: Map[AgentType, Spawnable.Child]) extends caps.Pure {
+  def apply(agent: AgentType): Option[Spawnable.Child] = byType.get(agent)
+}
+
+object Spawnable {
+
+  /** A type a child runs as, and the hosted tools it is offered: a coding type's, for its
+    * allowlist, at its repository; none for any other.
+    */
+  final case class Child private[Spawnable] (subagent: Subagent, hosted: Vector[Tool.Offered])
+      extends caps.Pure {
+
+    /** Where it works: its repository's place for a coding type, else nowhere. */
+    def workspace: Option[Place] = subagent.tools match {
+      case Subagent.Tools.Coding(_, repository, _) => Some(repository.place)
+      case Subagent.Tools.Services(_) => None
+    }
+
+    /** The services it reaches besides its workspace. */
+    def services: Vector[Service] = subagent.tools match {
+      case Subagent.Tools.Coding(services, _, _) => services
+      case Subagent.Tools.Services(services) => services
+    }
+  }
+
+  val empty: Spawnable = Spawnable(Map.empty)
+
+  /** Each of `subagents`, a coding type offered the hosted tools `coding` describes for its
+    * allowlist.
+    */
+  def of(subagents: Subagents, coding: Allowlist -> Vector[Tool.Offered]): Spawnable =
+    Spawnable(subagents.byType.map { (agent, s) =>
+      agent -> Child(
+        s,
+        s.tools match {
+          case Subagent.Tools.Coding(_, _, allowlist) => coding(allowlist)
+          case Subagent.Tools.Services(_) => Vector.empty
+        }
+      )
+    })
+}
 
 object TurnTooling {
 
@@ -303,4 +364,31 @@ object TurnTooling {
     */
   def reserving[C^](own: Toolbox[C]): Option[String] =
     TurnShown.offered(own, None).left.toOption.map(TurnFailure.reason)
+
+  /** What a turn rooted at `root` is offered from: for [[TurnOffer.Root.Spawned]], its type's
+    * persona, services and hosted tools, briefed for one task ([[TurnRecipe.Tasked]]), with
+    * none of `tooling`'s own, operator, administering or conversing tools, nor any subagent; of
+    * a type `tooling.subagents` no longer declares, nothing of its own. `tooling` for any other
+    * root.
+    */
+  def at[C^](tooling: TurnTooling[C]^, root: TurnOffer.Root): TurnTooling[C]^{tooling} =
+    root match {
+      case TurnOffer.Root.Spawned(agent) =>
+        val child = tooling.subagents(agent)
+        tooling.copy(
+          tools = Toolbox.Empty,
+          operator = Toolbox.Empty,
+          hosted = child.fold(Vector.empty)(_.hosted),
+          worksIn = Vector.empty,
+          reaches = child.fold(Vector.empty)(_.services.map(Reaches(Place.Everywhere, _))),
+          recipe = TurnRecipe.Tasked,
+          persona = child.fold(tooling.persona)(_.subagent.persona),
+          administering = Toolbox.Empty,
+          conversing = Toolbox.Empty,
+          subagents = Spawnable.empty
+        )
+      case TurnOffer.Root.Addressed | TurnOffer.Root.Heard | TurnOffer.Root.Named |
+          TurnOffer.Root.ByName | TurnOffer.Root.Occasion =>
+        tooling
+    }
 }

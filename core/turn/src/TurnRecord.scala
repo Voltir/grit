@@ -76,7 +76,9 @@ object TurnRecord {
     root match {
       case TurnOffer.Root.Heard | TurnOffer.Root.Occasion =>
         read[TurnJudge.Judgement](steps, Turn.Step.Judge)
-      case TurnOffer.Root.Addressed | TurnOffer.Root.Named | TurnOffer.Root.ByName => Right(None)
+      case TurnOffer.Root.Addressed | TurnOffer.Root.Named | TurnOffer.Root.ByName |
+          TurnOffer.Root.Spawned(_) =>
+        Right(None)
     }
   }
 
