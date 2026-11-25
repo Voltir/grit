@@ -659,22 +659,29 @@ private[dbos] object SqlInbox {
       case None => kept(child.replyId).map(if (_) SpawnReply.Unread else SpawnReply.Silent)
     }
 
+  /** [[grantedOf]]'s statement, its parameters set by [[bindGranted]]: served by
+    * `idx_conversations_origin`.
+    */
+  private[engine] val Granted: String =
+    """SELECT e.payload->>'spendCap' FROM grit.conversations c
+      |JOIN grit.entries e ON e.conversation_id = c.id
+      |WHERE c.origin @> jsonb_build_object('kind', 'spawned', 'conversation', ?::text, 'turn', ?::bigint)
+      |  AND e.payload->>'kind' = 'spawn'
+      |ORDER BY c.id""".stripMargin
+
+  /** Sets [[Granted]]'s parameters to `parent`. */
+  private[engine] def bindGranted(s: java.sql.PreparedStatement, parent: TurnRef): Unit = {
+    s.setString(1, ConversationId.value(parent.conversationId))
+    s.setLong(2, TurnSeq.value(parent.turnSeq))
+  }
+
   /** [[SpawnInbox.granted]]: the caps of the root notes of the conversations whose origin names
     * `parent`, by containment of their origin's fields and in the order they were made, whatever
-    * the transaction's clearance. No index serves the origin yet: it reads every conversation.
+    * the transaction's clearance.
     */
   private[engine] def grantedOf(parent: TurnRef)(using Tx^): Either[StoreError, Vector[SpendCap]] =
     SqlStatements
-      .many(
-        """SELECT e.payload->>'spendCap' FROM grit.conversations c
-          |JOIN grit.entries e ON e.conversation_id = c.id
-          |WHERE c.origin @> jsonb_build_object('kind', 'spawned', 'conversation', ?::text, 'turn', ?::bigint)
-          |  AND e.payload->>'kind' = 'spawn'
-          |ORDER BY c.id""".stripMargin
-      ) { s =>
-        s.setString(1, ConversationId.value(parent.conversationId))
-        s.setLong(2, TurnSeq.value(parent.turnSeq))
-      }(_.getString(1))
+      .many(Granted)(bindGranted(_, parent))(_.getString(1))
       .flatMap(caps =>
         Traversal.traverse(caps)(usd =>
           scala.util

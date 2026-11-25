@@ -49,6 +49,26 @@ object LiveDb {
         } catch { case e: Throwable => conn.rollback(); throw e }
     }
 
+  /** Postgres's plan for `sql` on `config`'s database, bound by `bind`, every line, with
+    * sequential scans off: so the plan shows which index serves the read, whatever the table's
+    * size.
+    */
+  def plan(config: DbConfig)(sql: String)(bind: java.sql.PreparedStatement => Unit): String =
+    transaction(config) { (tx: Tx^) ?=>
+      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+      Using.resource(conn.prepareStatement("SET LOCAL enable_seqscan = off"))(ps => {
+        val _ = ps.execute()
+      })
+      Using.resource(conn.prepareStatement(s"EXPLAIN $sql")) { ps =>
+        bind(ps)
+        Using.resource(ps.executeQuery()) { rs =>
+          val out = Vector.newBuilder[String]
+          while (rs.next()) out += rs.getString(1)
+          out.result().mkString("\n")
+        }
+      }
+    }
+
   /** Whether, within 10 seconds, at least `sessions` sessions on `config`'s database wait on a
     * lock another holds.
     */

@@ -164,6 +164,12 @@ object SqlInboxTests extends TestSuite {
       } finally client.close()
     }
 
+    test("a parent turn's granted caps are read through idx_conversations_origin") {
+      val parent = TurnRef(ConversationId("0190a000-0000-7000-8000-0000000000aa"), TurnSeq.First)
+      val shown = LiveDb.plan(config)(SqlInbox.Granted)(SqlInbox.bindGranted(_, parent))
+      assert(shown.contains("idx_conversations_origin"))
+    }
+
     test("a post is searched by its text, and the call that made it goes with its entry") {
       val origin = Origin.Task("sql", "posted")
       val slot = CallSlot

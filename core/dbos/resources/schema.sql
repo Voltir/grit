@@ -384,6 +384,10 @@ CREATE TABLE IF NOT EXISTS grit.conversations (
 
 CREATE INDEX IF NOT EXISTS idx_conversations_place ON grit.conversations (place_id);
 CREATE INDEX IF NOT EXISTS idx_conversations_room ON grit.conversations (room_id);
+-- Containment on the origin (`origin @> …`), which the unique index's equality does not serve:
+-- a parent turn's spawned children, found by the parent named in their origin (SpawnInbox.granted).
+CREATE INDEX IF NOT EXISTS idx_conversations_origin ON grit.conversations
+    USING gin (origin jsonb_path_ops);
 
 -- A room grit knows beyond its conversations (ADR 0033): its access as its edge last reported
 -- it, the label people set for it through grit (NULL: none), whether it is quiet, its baseline,

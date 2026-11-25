@@ -7,7 +7,6 @@ import scala.io.Source
 import scala.util.Using
 
 import grit.core.id.{DocKey, PluginName}
-import grit.core.store.Tx
 import grit.core.visibility.{Clearance, Label}
 
 import utest.*
@@ -28,25 +27,6 @@ object SqlDocumentHistoryTests extends TestSuite {
     c
   }
 
-  /** Postgres's plan for `sql`, bound by `bind`, every line, with sequential scans off: so the
-    * plan shows which index serves the read, whatever the table's size.
-    */
-  private def plan(sql: String)(bind: java.sql.PreparedStatement => Unit): String =
-    LiveDb.transaction(config) { (tx: Tx^) ?=>
-      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-      Using.resource(conn.prepareStatement("SET LOCAL enable_seqscan = off"))(ps => {
-        val _ = ps.execute()
-      })
-      Using.resource(conn.prepareStatement(s"EXPLAIN $sql")) { ps =>
-        bind(ps)
-        Using.resource(ps.executeQuery()) { rs =>
-          val out = Vector.newBuilder[String]
-          while (rs.next()) out += rs.getString(1)
-          out.result().mkString("\n")
-        }
-      }
-    }
-
   val tests = Tests {
 
     test("as of an instant is read through idx_documents_history, never a scan of the plugin") {
@@ -54,7 +34,7 @@ object SqlDocumentHistoryTests extends TestSuite {
         PluginName.of("history").fold(e => sys.error(e), identity),
         DocKey.of("p/a").fold(e => sys.error(e), identity)
       )
-      val shown = plan(SqlDocuments.AsOf) { ps =>
+      val shown = LiveDb.plan(config)(SqlDocuments.AsOf) { ps =>
         SqlClearance.bind(ps, 1, Clearance.of(Label.Public))
         SqlDocuments.bindAsOf(ps, plugin, key, Label.Public, Instant.parse("2026-03-01T00:00:00Z"))
       }
