@@ -304,6 +304,24 @@ object AnthropicJsonTests extends TestSuite {
       )
     }
 
+    test(
+      "request: under the latest replay, a last reply left with nothing to send passes the thinking to the reply before it"
+    ) {
+      val openRouter = ujson.Arr(ujson.Obj("type" -> "reasoning.text", "text" -> "hm"))
+      val loop = Vector(
+        Message.User("go"),
+        called(
+          AssistantBlock.Reasoning("Read it first.", Some(thinking)),
+          AssistantBlock.ToolCall(ToolCallId("call_1"), "read", ujson.Obj())
+        ),
+        Message.ToolResult(ToolCallId("call_1"), "ok", isError = false),
+        called(AssistantBlock.Reasoning("hm", Some(openRouter)))
+      )
+      val wire = sent(ModelRequest("s", loop), replay = ReasoningReplay.Latest)("messages").arr
+      (wire.map(_("role").str).toVector, wire(1)("content")(0)) ==>
+        (Vector("user", "assistant", "user"), thinking)
+    }
+
     test("request: effort in Anthropic's words under output_config") {
       def effort(e: Effort) = sent(exchange, effort = e).obj.get("output_config")
       effort(Effort.Minimal) ==> Some(ujson.Obj("effort" -> "low"))

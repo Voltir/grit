@@ -35,7 +35,8 @@ object OpenRouterJson {
     val cached = model.startsWith(AnthropicProvider.Vendor)
     val tools = request.tools.map(tool)
     val messages =
-      request.messages.zip(replay.sends(request.messages)).map(message(_, _, cached))
+      // Every assistant message is sent, its reasoning or not.
+      request.messages.zip(replay.sends(request.messages, _ => true)).map(message(_, _, cached))
     val system =
       if (!cached) Some(ujson.Obj("role" -> "system", "content" -> request.system))
       else

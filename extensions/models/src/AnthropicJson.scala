@@ -57,7 +57,9 @@ object AnthropicJson {
         case ToolUse.Auto | ToolUse.Required => "auto"
       }))
     }
-    val messages = request.messages.zip(replay.sends(request.messages)).map(message)
+    // A reply left with nothing to send is left out, so it never holds the latest reasoning.
+    val sends = replay.sends(request.messages, a => message(a, true).isDefined)
+    val messages = request.messages.zip(sends).map(message)
     CacheMarks
       .marked(request.system, tools, messages, request.repeats)
       .foreach(block => body("system") = ujson.Arr(block))

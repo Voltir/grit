@@ -29,15 +29,17 @@ enum ReasoningReplay {
   /** Not sent. */
   case Dropped
 
-  /** As [[Details]] for the request's last assistant reply alone; not sent for any earlier one.
-    * Each call then rewrites the cache from the previous reply on.
+  /** As [[Details]] for the last assistant reply the request sends; not sent for any earlier
+    * one. Each call then rewrites the cache from the previous reply on.
     */
   case Latest
 
-  /** For each of a request's `messages`, whether its reasoning is sent under this replay. */
-  def sends(messages: Vector[Message]): Vector[Boolean] = {
+  /** For each of a request's `messages`, whether its reasoning is sent under this replay;
+    * `sent` says whether the wire sends a reply at all when its reasoning goes with it.
+    */
+  def sends(messages: Vector[Message], sent: Message.Assistant => Boolean): Vector[Boolean] = {
     val last = messages.lastIndexWhere {
-      case _: Message.Assistant => true
+      case a: Message.Assistant => sent(a)
       case _ => false
     }
     messages.indices.toVector.map(i =>
