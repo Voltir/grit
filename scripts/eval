@@ -87,7 +87,7 @@
 #       reported (as grit's line prints it), the run stopped once it is reached or at a call
 #       priced by neither; --max-turns at least 2,
 #       its tool rounds; --max-tokens the most a reply writes (8192); --max-memory-gb the most
-#       its processes, all those working in its checkout, may hold together (24), the run stopped
+#       its processes, all those working in its checkout, may hold together (MemoryCap.Default), the run stopped
 #       past it or when the machine has under 1 GB available, in the compile before grit and in
 #       the checks alike. --window-tokens and --work-turns set grit's GRIT_WINDOW_TOKENS and GRIT_WORK_TURNS;
 #       --effort the reasoning effort its turn's standard rung and its dreaming ask, GRIT_EFFORT

@@ -49,8 +49,9 @@ private[main] object BenchCommands {
     * <program>` ([[Caps.of]]) and a
     * harness: `--harness claude-code` (the default) with `--claude <program> --agent <file>`, or
     * `--harness grit` with `--grit <launcher> --java-home <dir> --standing <file> --coder-url
-    * <jdbc> --max-tokens <n> [--max-memory-gb <n>] [--window-tokens <n>] [--work-turns <n>]` (8
-    * GB when not given, [[MemoryCap.of]]; the last two grit's [[Arm.Settings]]; a standing file
+    * <jdbc> --max-tokens <n> [--max-memory-gb <n>] [--window-tokens <n>] [--work-turns <n>]
+    * [--effort <effort>]` ([[MemoryCap.of]], [[MemoryCap.Default]] when not given; the last three
+    * grit's [[Arm.Settings]], the effort a word [[CatalogJson.readEffort]] reads; a standing file
     * [[Standing.read]] refuses is refused before anything runs): the task
     * `<name>` of `<dir>` ([[BenchTask.of]], its `task.json` and `brief.md`), in a checkout under `<work>` named for it and `clock`'s now, of the repository
     * at `<path>`. With `--known`, its own commits through its checks ([[Rig.known]]). With `--dry
