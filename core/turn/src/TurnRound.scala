@@ -6,7 +6,7 @@ import scala.concurrent.duration.FiniteDuration
 import scala.jdk.DurationConverters.ScalaDurationOps
 
 import grit.act.phase.Calling
-import grit.core.act.Extraction
+import grit.core.act.{Extraction, Gates}
 import grit.core.approval.Approval
 import grit.core.durable.{Flow, Observed, Step, StepName}
 import grit.core.edge.Permit
@@ -103,7 +103,7 @@ private[turn] object TurnRound {
   /** What a turn's loop runs under: `turn`, offering what `offer` names, its calls made as
     * `routed` says over `seen`, what its requests show before its own entries, as `budget` allows, `asked` the classification its
     * model is asked about when the classifier was unsure; a call that asks a person first
-    * waits at most `answerWithin`.
+    * waits at most `answerWithin`, as [[gates]] says.
     */
   final case class Looping(
       turn: TurnRef,
@@ -113,7 +113,19 @@ private[turn] object TurnRound {
       asked: Option[TurnAgenda.Classification],
       budget: TurnLoop.Rounds,
       answerWithin: FiniteDuration
-  )
+  ) {
+
+    /** What becomes of a call whose tool asks a person first: under a spawned child's root, the
+      * gates [[grit.core.act.Delegation.narrowed]] gives a child; else its asker's, for
+      * `answerWithin`.
+      */
+    def gates: Gates = offer.root match {
+      case TurnOffer.Root.Spawned(_) => Gates.Closed
+      case TurnOffer.Root.Addressed | TurnOffer.Root.Heard | TurnOffer.Root.Named |
+          TurnOffer.Root.ByName | TurnOffer.Root.Occasion =>
+        Gates.Asker(answerWithin)
+    }
+  }
 
   /** Where a turn's loop, run under `looping`, stands at round `round`: for a gated turn, the
     * gate of each round so far, by its index; and every reply so far, as the model sent it,

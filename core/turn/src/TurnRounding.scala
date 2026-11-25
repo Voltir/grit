@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.act.phase.Gated as CallGate
 import grit.act.phase.{Asking, Calling, Shaped, Shaping}
-import grit.core.act.{Allowance, Extraction, Gates, Posed}
+import grit.core.act.{Allowance, Extraction, Posed}
 import grit.core.approval.Approval
 import grit.core.context.{CarriedWindow, Window}
 import grit.core.durable.StreamWriter
@@ -100,7 +100,7 @@ private[turn] final class Rounding[C^](
     })
 
   def asked(call: TurnRound.Call): Either[TurnFailure, CallGate.Ask] = {
-    val gates = Gates.Asker(call.at.looping.answerWithin)
+    val gates = call.at.looping.gates
     rebinding(call.at).flatMap(_.rebind(call.slot, call.pending, Extract.Unasked) {
       case Right(gated: Bound.Gated) => asking(Calling.gate(gates, gated))
       case Right(hosted: Bound.Hosted) => asking(Calling.gate(gates, hosted))
@@ -236,8 +236,29 @@ private[turn] final class Rounding[C^](
         )
       )
 
-    // `pending` bound to the round's tools, extract's questions put to `answer`.
+    // `pending` bound to the round's tools, extract's questions put to `answer`. Under closed
+    // gates (a spawned child's: TurnRound.Looping.gates) a call whose tool asks a person first
+    // binds to its refusal (Calling.gate), so the round records it refused and its own step
+    // answers it at once: this is the one place a call is refused for its gates.
     def bound[X^](
+        pending: Pending,
+        answer: Extract.Answer^{X}
+    ): Either[Outcome, (Bound.Runs | Bound.Hosted | Bound.Keeping)^{C, env, tooling, reads, X}] =
+      read[X](pending, answer) match {
+        case Right(asks: Bound.Gated) => gated(asks).toLeft(asks)
+        case Right(asks: Bound.Hosted) => gated(asks).toLeft(asks)
+        case other => other
+      }
+
+    // What closed gates answer `asks` with; `None` when its gates let it be asked or sent.
+    private def gated(asks: (Bound.Gated | Bound.Hosted)^): Option[Outcome] =
+      Calling.gate(at.looping.gates, asks) match {
+        case CallGate.Refused(outcome) => Some(outcome)
+        case CallGate.Free | CallGate.Ask(_, _) => None
+      }
+
+    // `pending` read against the round's tools, its gates not yet applied.
+    private def read[X^](
         pending: Pending,
         answer: Extract.Answer^{X}
     ): Either[Outcome, (Bound.Runs | Bound.Hosted | Bound.Keeping)^{C, env, tooling, reads, X}] = {

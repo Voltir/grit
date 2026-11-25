@@ -11,8 +11,9 @@ import grit.core.visibility.{Integrity, Label}
 object Delegation {
 
   /** The acting a child of type `as`, briefed at `brief`, acts under, given its turn: it acts as
-    * `parent` acts for and at its gates, believed at `parent`'s integrity met with `brief`, its
-    * asks held to `as.spendCap`. Refused by the first of `Below`, `Above`, `NotWorking` and
+    * `parent` acts for, its gates [[Gates.Closed]] (nobody reads a child's conversation to
+    * approve its calls), believed at `parent`'s integrity met with `brief`, its asks held to
+    * `as.spendCap`. Refused by the first of `Below`, `Above`, `NotWorking` and
     * `OverCap` that holds. `parentAt` is the parent's classification, `room` the label the
     * child's room may receive, `origin` the parent conversation's, and `spent` what it has spent,
     * read only when `parent`'s allowance is `Capped`.
@@ -37,7 +38,7 @@ object Delegation {
         turn,
         parent.actsFor,
         Allowance.Capped(as.spendCap),
-        parent.gates,
+        Gates.Closed,
         believed
       )
   }

@@ -154,6 +154,21 @@ object TurnSpawnTests extends TestSuite {
   }
 
   /** The stub classifier's answers, each call priced. */
+  /** The coding type of [[coders]], its coding tools `prod` alone, which asks a person first. */
+  private val prodders: Spawnable = Spawnable.of(
+    Subagents
+      .of(
+        Vector(
+          SubagentFixtures.ok(
+            SubagentFixtures
+              .subagent(SubagentFixtures.coder, SubagentFixtures.coding, Integrity.WritesOut)
+          )
+        )
+      )
+      .fold(why => throw new java.lang.AssertionError(why), identity),
+    _ => Vector(hostedProd)
+  )
+
   private final class PricedClassifier extends grit.core.classify.Classifier {
     protected def answer(
         state: ujson.Value,
@@ -580,6 +595,44 @@ object TurnSpawnTests extends TestSuite {
       )
       (later.turnSeq == first.turnSeq, ran, provider.requests.size) ==>
         (false, "failed: OverCap(SpendCap(0.05))", 0)
+    }
+
+    test(
+      "a child's call of a tool that asks a person first is refused in its own step at once, asking no one and sending nothing"
+    ) {
+      val entries = new InMemoryEntryStore
+      val turn = spawn(entries, SubagentFixtures.coder, "Fix the typo.")
+      val durable = new InMemoryDurable
+      val edge = edgeAt(durable, repository)
+      val provider = model(("t1", "prod"))
+      durable.run(turn.workflowId)(
+        spawnedBody(
+          entries,
+          provider,
+          edge,
+          new Files(Map.empty),
+          prodders,
+          spawnedFrom(repository)
+        )
+      )
+      given grit.core.store.Tx = grit.dbos.sql.TestTx.fake
+      val results = entries.list(conversation).toOption.toVector.flatten.collect {
+        case grit.core.store.Entry(_, _, _, _, _, Payload.Result(result, _), _, _) =>
+          (result.content, result.isError)
+      }
+      val calls = durable.recordedSteps(turn.workflowId).filter(_.startsWith("call:0:0"))
+      (offered(provider).contains("prod"), calls, results, edge.sent) ==> (
+        true,
+        Vector("call:0:0"),
+        Vector(
+          (
+            "prod asks a person first, and nobody waits on this call to approve it, so it did " +
+              "not run.",
+            true
+          )
+        ),
+        Vector.empty
+      )
     }
 
     test(

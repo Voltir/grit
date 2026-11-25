@@ -61,7 +61,7 @@ object DelegationTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "a services child keeps its parent's acting, narrowed to its brief and its type's cap"
+      "a services child acts for its parent's asker, narrowed to its brief and its type's cap, its gates closed"
     ) {
       (
         narrowed(scholarType, brief = Integrity.Outside, origin = slack),
@@ -76,7 +76,7 @@ object DelegationTests extends TestSuite {
             child,
             parent.actsFor,
             Allowance.Capped(spendCap),
-            parent.gates,
+            Gates.Closed,
             Integrity.Outside
           )
         ),
