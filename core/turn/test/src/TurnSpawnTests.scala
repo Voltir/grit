@@ -1,15 +1,16 @@
 package grit.turn
 
-import grit.core.agent.SubagentFixtures
+import grit.core.agent.{Subagent, SubagentFixtures, Subagents}
 import grit.core.durable.InMemoryDurable
 import grit.core.edge.InMemoryEdges
 import grit.core.id.ToolCallId
 import grit.core.inbox.TurnEnding
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.model.{Assignment, Catalog, Grade, Ladder, Policy, Rung}
 import grit.core.place.Place
-import grit.core.store.{InMemoryEntryStore, Origin}
+import grit.core.store.{InMemoryEntryStore, InMemoryUsageLedger, Origin}
 import grit.core.tool.Outcome
-import grit.core.visibility.{Clearance, Label, Level}
+import grit.core.visibility.{Clearance, Integrity, Label, Level}
 
 import utest.*
 
@@ -42,6 +43,42 @@ object TurnSpawnTests extends TestSuite {
     val edge = new Served(new InMemoryEdges, durable, _ => Serve.Now(Outcome.Done("read")), at)
     edge.advertise(hostedTools)
     edge
+  }
+
+  /** A type answering from the docs service, its pins of two grades so its task is asked. */
+  private val scholars: Spawnable = {
+    def rung(g: Grade, model: String) = Rung(g, Assignment(pair(model, None), 100, None))
+    val ladder = Ladder
+      .of(
+        Vector(rung(Grade.Standard, "test/child-standard"), rung(Grade.Strong, "test/child-strong"))
+      )
+      .fold(why => throw new java.lang.AssertionError(why), identity)
+    val pins = Catalog.of(Policy(ladder, ladder, ladder, ladder, ladder), Vector.empty).pin.turn
+    val scholar = Subagent
+      .of(
+        SubagentFixtures.scholar,
+        SubagentFixtures.persona,
+        pins,
+        SubagentFixtures.services,
+        SubagentFixtures.spendCap,
+        Integrity.Member
+      )
+      .flatMap(s => Subagents.of(Vector(s)))
+      .fold(why => throw new java.lang.AssertionError(why), identity)
+    Spawnable.of(scholar, _ => Vector.empty)
+  }
+
+  /** The stub classifier's answers, each call priced. */
+  private final class PricedClassifier extends grit.core.classify.Classifier {
+    protected def answer(
+        state: ujson.Value,
+        questions: Vector[grit.core.classify.Question]
+    ): Either[grit.core.classify.ClassifierError, grit.core.classify.Answers] =
+      Right(
+        grit.models.StubClassifier
+          .answers(state, questions)
+          .copy(usage = Usage(Tokens(20), Tokens(1), Tokens.Zero, Some(BigDecimal("0.00001"))))
+      )
   }
 
   private def offered(provider: Scripted): Set[String] =
@@ -119,6 +156,46 @@ object TurnSpawnTests extends TestSuite {
         ),
         true,
         true
+      )
+    }
+
+    test(
+      "every call a child makes is recorded priced, its classifier's, its query's and its task's among them, so its spend is exact"
+    ) {
+      val entries = new InMemoryEntryStore
+      val turn = spawn(entries, SubagentFixtures.scholar, "Find the release date.")
+      val durable = new InMemoryDurable
+      val ledger = new InMemoryUsageLedger
+      val priced = new Scripted((_, _) => Right(calling("done")))
+      durable.run(turn.workflowId)(
+        spawnedBody(
+          entries,
+          priced,
+          edgeAt(durable, room),
+          new Files(Map.empty),
+          scholars,
+          spawnedFrom(room),
+          ledger = ledger,
+          summarizer = new Scripted((_, _) => Right(calling("a summary"))),
+          classifier = new PricedClassifier,
+          routing = routing(new Tasks(Right(HardInvestigation))),
+          queries = true
+        )
+      )
+      given grit.core.store.Tx = grit.dbos.sql.TestTx.fake
+      val rows = ledger.of(turn.workflowId).fold(e => sys.error(e.toString), identity)
+      (
+        rows.map(r => grit.core.id.EntryId.value(r.entry) -> r.usage.costUsd.isDefined),
+        ledger.conversation(turn.conversationId).map(s => SubagentFixtures.spendCap.admits(s.cost))
+      ) ==> (
+        Vector(
+          "route:c1:0" -> true,
+          "move:c1:0:needs" -> true,
+          "move:c1:0:query" -> true,
+          "reply:c1:0" -> true,
+          "summary:c1:0" -> true
+        ),
+        Right(true)
       )
     }
 

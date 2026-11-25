@@ -1080,7 +1080,9 @@ object TurnFixtures {
     * `provider`, its conversation from `from`, its hosted calls sent through `served`: its
     * parent's own tools `peek` and `poke` over `ws`, its hosted tools [[hostedTools]] and its
     * reached service `reaches`; its calls made through `db`, under `catalog`, the pins they
-    * were made under kept in `seen`, each recorded in `ledger`.
+    * were made under kept in `seen`, each recorded in `ledger`; its classifier `classifier`,
+    * its root's task asked through `routing`, and its window drawn with a query written when
+    * `queries` ([[QueryWriting]]).
     */
   def spawnedBody(
       entries: EntryStore,
@@ -1094,7 +1096,10 @@ object TurnFixtures {
       db: Db^ = FakeDb,
       catalog: Catalog = TestCatalog,
       seen: Pinnings = new Pinnings,
-      summarizer: Provider^ = new StubProvider()
+      summarizer: Provider^ = new StubProvider(),
+      classifier: Classifier^ = NoClassifier,
+      routing: TurnRouting^ = noRouting(),
+      queries: Boolean = false
   )(id: WorkflowId)(using Durable^): String = {
     val conversations = new InMemoryConversationStore
     conversations.findOrCreate(from, Account.Local, Label.Public)(using TestTx.fake)
@@ -1119,14 +1124,16 @@ object TurnFixtures {
           new InMemoryVoiceStore,
           LocalAsker
         ),
-        new LinearAssembler(
-          entries,
-          NoPeriods,
-          new InMemoryPrincipals,
-          CharEstimate,
-          LinearAssembler.DefaultBudget
-        ),
-        grit.core.classify.TestClassifiers.cleared(NoClassifier),
+        if (queries) new QueryWriting(entries)
+        else
+          new LinearAssembler(
+            entries,
+            NoPeriods,
+            new InMemoryPrincipals,
+            CharEstimate,
+            LinearAssembler.DefaultBudget
+          ),
+        grit.core.classify.TestClassifiers.cleared(classifier),
         new FixedModels(provider, summarizer, catalog, seen),
         db,
         new NoWait,
@@ -1134,7 +1141,7 @@ object TurnFixtures {
         quiet(),
         unstitched(),
         noTriage(),
-        noRouting()
+        routing
       ),
       TurnTooling[caps.CapSet^{ws}](
         tools(ws),
