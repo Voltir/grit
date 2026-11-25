@@ -1,5 +1,7 @@
 package grit.core.act
 
+import java.time.ZoneOffset
+
 import scala.concurrent.duration.*
 
 import grit.core.agent.SubagentFixtures.{
@@ -15,7 +17,7 @@ import grit.core.agent.SubagentFixtures.{
 import grit.core.id.{ConversationId, TurnRef, TurnSeq}
 import grit.core.message.Cost
 import grit.core.place.{Repository, WorkName}
-import grit.core.spend.SpendCap
+import grit.core.spend.{Budget, SpendCap}
 import grit.core.store.Origin
 import grit.core.visibility.{Compartment, Integrity, Label, Level}
 
@@ -59,16 +61,26 @@ object DelegationTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "a child of a services type, from any origin, acts as its parent acts for and at its gates, believed at the meet of its brief, held to its type's spend cap"
+      "a services child keeps its parent's acting, narrowed to its brief and its type's cap"
     ) {
-      narrowed(scholarType, brief = Integrity.Outside, origin = slack) ==> Right(
-        Acting(
-          child,
-          parent.actsFor,
-          Allowance.Capped(spendCap),
-          parent.gates,
-          Integrity.Outside
-        )
+      (
+        narrowed(scholarType, brief = Integrity.Outside, origin = slack),
+        narrowed(
+          scholarType,
+          from = parent.copy(integrity = Integrity.Member),
+          brief = Integrity.Authority
+        ).map(_.integrity)
+      ) ==> (
+        Right(
+          Acting(
+            child,
+            parent.actsFor,
+            Allowance.Capped(spendCap),
+            parent.gates,
+            Integrity.Outside
+          )
+        ),
+        Right(Integrity.Member)
       )
     }
 
@@ -112,6 +124,11 @@ object DelegationTests extends TestSuite {
         narrowed(scholarType, from = capped("0.10"), spent = usd("0.05")).map(_.turn)
       ) ==> (Left(Delegation.Refused.OverCap(spendCap, cap, usd("0.06"))), Right(child))
     }
+    test("a capped parent that has spent more than its cap is OverCap") {
+      val cap = ok(SpendCap.of(BigDecimal("0.10")))
+      narrowed(scholarType, from = capped("0.10"), spent = usd("0.20")) ==>
+        Left(Delegation.Refused.OverCap(spendCap, cap, usd("0.20")))
+    }
 
     test("a capped parent whose spend was not all priced is OverCap, however little it shows") {
       val cap = ok(SpendCap.of(BigDecimal("1")))
@@ -121,7 +138,11 @@ object DelegationTests extends TestSuite {
     }
 
     test("a parent not held to a spend cap is not refused for what it spent") {
-      narrowed(scholarType, spent = usd("100")).map(_.turn) ==> Right(child)
+      val daily = parent.copy(allowance = Allowance.Daily(Budget(ZoneOffset.UTC, None)))
+      (
+        narrowed(scholarType, spent = usd("100")).map(_.turn),
+        narrowed(scholarType, from = daily, spent = usd("100")).map(_.turn)
+      ) ==> (Right(child), Right(child))
     }
 
     test("refusals come in order: Below before Above before NotWorking before OverCap") {
