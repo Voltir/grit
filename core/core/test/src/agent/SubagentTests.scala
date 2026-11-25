@@ -9,8 +9,10 @@ object SubagentTests extends TestSuite {
 
   val tests = Tests {
     test("a coding subagent is refused unless its brief must carry the integrity to write out") {
-      val refused = subagent(coder, coding, Integrity.Outside)
-      assert(refused.left.exists(_.contains("coder")))
+      subagent(coder, coding, Integrity.Outside).map(_.agent) ==> Left(
+        s"the coding subagent coder must require at least ${Integrity.shown(Integrity.WritesOut)}, " +
+          s"not ${Integrity.shown(Integrity.Outside)}"
+      )
       assert(subagent(coder, coding, Integrity.Member).isRight)
     }
 
@@ -18,14 +20,20 @@ object SubagentTests extends TestSuite {
       assert(subagent(scholar, services, Integrity.Outside).isRight)
     }
 
-    test("two subagents of one type are refused, naming it; a type declared once is found") {
+    test("two subagents of one type are refused, naming it") {
       val one = ok(subagent(coder, coding, Integrity.Member))
       val other = ok(subagent(scholar, services, Integrity.Outside))
-      val twice = Subagents.of(Vector(one, other, one))
-      assert(twice.left.exists(_.contains("coder")))
-      val both = ok(Subagents.of(Vector(one, other)))
-      both(coder) ==> Some(one)
-      both(scholar) ==> Some(other)
+      Subagents.of(Vector(one, other, one)).map(_(coder)) ==> Left(
+        "two subagents are declared of the type coder"
+      )
+    }
+    test("a subagent is found by the type it was declared of") {
+      val one = ok(subagent(coder, coding, Integrity.Member))
+      val other = ok(subagent(scholar, services, Integrity.Outside))
+      Subagents.of(Vector(one, other)).map(s => (s(coder), s(scholar))) ==>
+        Right((Some(one), Some(other)))
+    }
+    test("no subagents find nothing") {
       Subagents.empty(coder) ==> None
     }
   }
