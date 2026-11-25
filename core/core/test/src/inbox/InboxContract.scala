@@ -1135,7 +1135,7 @@ abstract class InboxContract extends TestSuite {
           Right(SpawnReply.Silent),
           Right(SpawnReply.Said("Fixed.", Integrity.Member)),
           (Right(()), Right(())),
-          1,
+          Vector(TurnEnding.Otherwise),
           Left(InboxError.Invalid("only a spawned child returns to a parent"))
         )
       }
@@ -1407,8 +1407,8 @@ object InboxContract {
     * for a call; `spawns`, where the inbox's spawned children are recorded; `replyAt`, a
     * child's reply read in a transaction at a clearance; `spentOf`, what a child's
     * conversation's calls cost; `spendIn` records a call of a turn that
-    * cost that many dollars now; `rung`, how many rings of a child have reached its parent's
-    * workflow; `started`, whether a turn was started, read before [[end]], which waits on it;
+    * cost that many dollars now; `rung`, the endings of each ring of a child that reached its
+    * parent's workflow, oldest first; `started`, whether a turn was started, read before [[end]], which waits on it;
     * `grantedAt`, the spend caps a parent's children were granted, read at a clearance.
     */
   final case class Store(
@@ -1438,7 +1438,7 @@ object InboxContract {
       replyAt: (TurnRef, Clearance) => Either[StoreError, SpawnReply],
       spentOf: TurnRef => Either[StoreError, Cost],
       spendIn: (TurnRef, BigDecimal) => Unit,
-      rung: (TurnRef, TurnRef) => Int,
+      rung: (TurnRef, TurnRef) => Vector[TurnEnding],
       started: TurnRef => Boolean,
       grantedAt: (TurnRef, Clearance) => Either[StoreError, Vector[SpendCap]]
   )

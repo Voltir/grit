@@ -20,7 +20,7 @@ import grit.core.id.{
   WorkflowId
 }
 import grit.core.identity.{Account, Standing, TestAccounts, Vouched}
-import grit.core.inbox.{Inbox, InboxContract, SpawnInbox}
+import grit.core.inbox.{Inbox, InboxContract, SpawnInbox, TurnEnding}
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.{CloseReason, Period, TestClosings}
 import grit.core.place.Place
@@ -303,17 +303,31 @@ object SqlInboxContractTests extends InboxContract, caps.SharedCapability {
           Using.resource(ps.executeQuery())(rs => if (rs.next()) rs.getInt(1) else 0)
         }
       }
-    def rung(parent: TurnRef, child: TurnRef): Int =
+    // Each ring's message as DBOS stored it, read as an ending; one that is none fails the read.
+    def rung(parent: TurnRef, child: TurnRef): Vector[TurnEnding] =
       LiveDb.transaction(db) { (tx: Tx^) ?=>
         val conn: java.sql.Connection^{tx} = Tx.connection(tx)
         Using.resource(
           conn.prepareStatement(
-            "SELECT count(*) FROM dbos.notifications WHERE destination_uuid = ? AND topic = ?"
+            "SELECT message FROM dbos.notifications WHERE destination_uuid = ? AND topic = ? " +
+              "ORDER BY created_at_epoch_ms"
           )
         ) { ps =>
           ps.setString(1, WorkflowId.value(parent.workflowId))
           ps.setString(2, SpawnInbox.topic(child))
-          Using.resource(ps.executeQuery())(rs => if (rs.next()) rs.getInt(1) else 0)
+          Using.resource(ps.executeQuery()) { rs =>
+            Iterator
+              .continually(rs.next())
+              .takeWhile(identity)
+              .map { _ =>
+                val stored = rs.getString(1)
+                val text = scala.util.Try(ujson.read(stored).str).getOrElse(stored)
+                TurnEnding
+                  .read(text)
+                  .getOrElse(throw new java.lang.AssertionError(s"a ring of no ending: $stored"))
+              }
+              .toVector
+          }
         }
       }
     def started(turn: TurnRef): Boolean =
