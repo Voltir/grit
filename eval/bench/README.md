@@ -54,7 +54,9 @@ trials sort by the version of the standing text they ran under. Before grit star
 one; its Mill daemon stays warm for the coder. grit starts from an empty environment: the rig sets every variable it reads
 (`Rig.gritTrial`), its tools the allowlisted coding set and scout, the run's pair in every role it sets
 (a Claude model at the Anthropic API, or with `--upstream` an OpenRouter model at that upstream
-alone), and its key (`ANTHROPIC_API_KEY` or `OPENROUTER_API_KEY`) handed through a file. Its turn is kept in `grit_bench_coder`, which
+alone), with `--effort` the reasoning effort its turn and its dreaming ask for (`GRIT_EFFORT` and
+`GRIT_DREAM_EFFORT`, which the turn's summary and query follow; unset, grit sends none and the
+provider thinks at its own default), and its key (`ANTHROPIC_API_KEY` or `OPENROUTER_API_KEY`) handed through a file. Its turn is kept in `grit_bench_coder`, which
 `scripts/eval` drops and makes afresh before each run (`--keep-coder` copies it as the run
 ends, for a report across its turns), and read back from there for the trial: the
 calls and bytes before its first edit, and each `run` that failed as a denial. Its calls are read

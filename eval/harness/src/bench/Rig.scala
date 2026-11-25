@@ -13,7 +13,7 @@ import grit.core.clock.Clock
 import grit.core.host.{Argv, Handing, Memory, Processes, Ran, RelPath, Variables}
 import grit.core.id.{Harness, SessionId}
 import grit.core.message.{Cost, SpendCap, Tokens, Usage}
-import grit.core.model.{Grade, ModelId, ModelRef, Upstream}
+import grit.core.model.{CatalogJson, Effort, Grade, ModelId, ModelRef, Upstream}
 import grit.core.secret.{Secret, Variable}
 import grit.dbos.internal.TrialRows
 import grit.dbos.sql.DbConfig
@@ -176,12 +176,15 @@ object Arm {
   ) extends Arm
 
   /** What a grit trial sets of grit's run besides the rig's own variables: its window's limit
-    * (`window`, `GRIT_WINDOW_TOKENS`) and the most turns `grit work` goes on for (`workTurns`,
-    * `GRIT_WORK_TURNS`); each unset leaves grit's own default.
+    * (`window`, `GRIT_WINDOW_TOKENS`), the most turns `grit work` goes on for (`workTurns`,
+    * `GRIT_WORK_TURNS`), and the reasoning effort its turn and its dreaming ask for (`effort`,
+    * `GRIT_EFFORT` and `GRIT_DREAM_EFFORT`; a turn's summary and query follow the turn's); each
+    * unset leaves grit's own default.
     */
   final case class Settings(
       window: Option[Tokens] = None,
-      workTurns: Option[Int] = None
+      workTurns: Option[Int] = None,
+      effort: Option[Effort] = None
   )
 
   object Grit {
@@ -806,7 +809,10 @@ object Rig {
   /** The variables `s` sets, each it leaves unset left out. */
   private def settings(s: Arm.Settings): Vector[(String, String)] =
     s.window.map(w => "GRIT_WINDOW_TOKENS" -> Tokens.value(w).toString).toVector ++
-      s.workTurns.map(n => "GRIT_WORK_TURNS" -> n.toString)
+      s.workTurns.map(n => "GRIT_WORK_TURNS" -> n.toString) ++
+      s.effort.toVector.flatMap(e =>
+        Vector(ModelRole.Turn, ModelRole.Dream).map(_.effortVar -> CatalogJson.effort(e))
+      )
 
   /** The script `sh -c` runs to start grit with its key: the key read from the file its first
     * argument names into `key`, then the rest of its arguments run in its place, so the key is in

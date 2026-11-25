@@ -10,6 +10,7 @@ import grit.core.clock.Clock
 import grit.core.host.{RelPath, Variables}
 import grit.core.id.{ConversationId, TurnRef, WorkflowId}
 import grit.core.message.{Message, Tokens}
+import grit.core.model.CatalogJson
 import grit.core.secret.Secret
 import grit.core.visibility.{Label, Subject}
 import grit.dbos.internal.TrialRows
@@ -155,6 +156,15 @@ private[main] object BenchCommands {
                     case Some(_) =>
                       need(f, "work-turns").flatMap(positive("work-turns")).map(Some(_))
                   }
+                  effort <- f.get("effort") match {
+                    case None => Right(None)
+                    case Some(e) =>
+                      CatalogJson
+                        .readEffort(ujson.Str(e))
+                        .map(Some(_))
+                        .left
+                        .map(why => s"--effort $e: $why")
+                  }
                   passed <- Variables.of(
                     Map(
                       "PATH" -> sys.env.getOrElse("PATH", "/usr/bin:/bin"),
@@ -169,7 +179,7 @@ private[main] object BenchCommands {
                     url,
                     maxTokens,
                     passed,
-                    Arm.Settings(window, workTurns)
+                    Arm.Settings(window, workTurns, effort)
                   )
                   _ <-
                     if (f.get("dry").contains("true"))

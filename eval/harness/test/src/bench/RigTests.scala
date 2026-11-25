@@ -11,6 +11,7 @@ import grit.core.clock.Clock
 import grit.core.host.{Argv, Handing, HostError, Memory, Processes, RelPath, Variables}
 import grit.core.id.{Harness, ToolCallId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.model.Effort
 import grit.core.secret.{TestSecrets, Variable}
 import grit.dbos.internal.TrialRows
 import grit.host.checkout.{LocalHanding, LocalProcesses, Redaction}
@@ -981,6 +982,21 @@ object RigTests extends TestSuite {
               .toVector
           )
         } ==> Right(("grit", Vector("GRIT_WINDOW_TOKENS=25000", "GRIT_WORK_TURNS=3")))
+      }
+    }
+
+    test(
+      "a grit trial's effort reaches grit as its turn's and its dreaming's effort, and a trial with none sets no effort"
+    ) {
+      withTask { f =>
+        def efforts(settings: Arm.Settings) =
+          gritTrial(f, GritFake(gritLines), settings = settings).map(_ =>
+            f.recorded("genv").linesIterator.filter(_.contains("EFFORT")).toVector
+          )
+        (efforts(Arm.Settings(effort = Some(Effort.Medium))), efforts(Arm.Settings())) ==> (
+          Right(Vector("GRIT_DREAM_EFFORT=medium", "GRIT_EFFORT=medium")),
+          Right(Vector.empty)
+        )
       }
     }
 
