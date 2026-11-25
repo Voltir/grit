@@ -3,6 +3,7 @@ package grit.act.moves
 import grit.core.act.MoveError
 import grit.core.act.MovesFixtures.Judging
 import grit.core.durable.InMemoryDurable
+import grit.core.id.{ConversationId, TurnRef}
 import grit.core.message.{Tokens, Usage}
 import grit.core.spend.SpendCap
 import grit.dbos.sql.TestTx
@@ -21,12 +22,18 @@ object DurableSpendCapTests extends TestSuite {
   private def costing(usd: String): Usage =
     Usage(Tokens(1), Tokens(1), Tokens.Zero, Some(BigDecimal(usd)))
 
+  /** Another turn of [[MovesWorld.Turn]]'s conversation. */
+  private val another = MovesWorld.Turn.copy(turnSeq = MovesWorld.Turn.turnSeq.next)
+
+  /** A turn of another conversation. */
+  private val elsewhere = TurnRef(ConversationId("elsewhere"), MovesWorld.Turn.turnSeq)
+
   val tests = Tests {
     test(
       "an ask once its conversation's spend reached its spend cap is Capped for that reason, and no model is asked"
     ) {
       val w = new MovesWorld(broken = false, MovesContract.Floor, spendCap = Some(cap))
-      w.ledger.called("earlier", MovesWorld.Turn, costing("0.02"))(using TestTx.fake)
+      w.ledger.called("another turn", another, costing("0.02"))(using TestTx.fake)
       val got = w.run(limits(1, 0), Vector(), new Judging())(m => Seen(Vector(asked(m, "a"))))
       // The reason the ask records, which a person may read: its spend cap's, not the day's.
       val reasons = w.durable.history(MovesWorld.Turn.workflowId).collect {
@@ -45,6 +52,16 @@ object DurableSpendCapTests extends TestSuite {
           )
         )
       )
+    }
+    test(
+      "an ask while its conversation's spend is under its spend cap is asked, whatever another conversation spent"
+    ) {
+      val w = new MovesWorld(broken = false, MovesContract.Floor, spendCap = Some(cap))
+      w.ledger.now = w.clock.at
+      w.ledger.called("another turn", another, costing("0.01"))(using TestTx.fake)
+      w.ledger.called("elsewhere", elsewhere, costing("0.05"))(using TestTx.fake)
+      val got = w.run(limits(1, 0), Vector(), new Judging())(m => Seen(Vector(asked(m, "a"))))
+      (got.moves.map(_.isRight), w.ledger.rows.size) ==> (Vector(true), 3)
     }
   }
 }
