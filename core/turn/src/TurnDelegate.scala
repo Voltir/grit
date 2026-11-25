@@ -24,6 +24,7 @@ object TurnDelegate {
     */
   def tool(subagents: Spawnable): Option[Tool.Offered] =
     spec(subagents).map(s =>
+      // Shown as its run's type, after the tool's name: as [[shown]] writes it.
       Hosted.delegating(s, (a: (AgentType, String)) => AgentType.value(a._1))(identity)
     )
 
@@ -82,6 +83,11 @@ object TurnDelegate {
         Outcome.Failed(s"$run ended without a reply.")
     }
   }
+
+  /** A call of the tool handing its task to a run of `agent`, in one line, as a transcript
+    * shows it ([[grit.core.tool.Bound.shown]]).
+    */
+  def shown(agent: AgentType): String = s"${ToolName.value(Name)} ${AgentType.value(agent)}"
 
   /** The integrity a call's result is kept at when its run came to `came`: its reply's, met
     * with `level`, the turn's; `level` when no reply came.

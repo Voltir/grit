@@ -151,22 +151,22 @@ private[turn] final class Rounding[C^](
   def spawning: SpawnEnv^{this} =
     SpawnEnv(env.spawns, tooling.subagents.declared, env.hosting.conversations)
 
-  def delegated(call: TurnRound.Call, came: Delegated): Either[TurnFailure, TurnTools.Settled] =
-    rebinding(call.at).flatMap(_.rebind(call.slot, call.pending, Extract.Unasked) {
-      case Right(delegating: Bound.Delegating) =>
-        val believed = TurnDelegate.believed(came, call.at.level)
-        Some(
-          settling.answer(
-            call.slot,
-            call.id,
-            delegating.shown,
-            TurnDelegate.answer(delegating.agent, came),
-            TurnTools.Answered.Grit(believed),
-            now()
-          )
-        )
-      case _ => None
-    }.flatten)
+  // Answered from what the round recorded, never the call bound again: a type the deployment
+  // drops while the parent waits leaves the child's spend and reply to be kept, not a failure.
+  def delegated(
+      asked: TurnRound.Delegation,
+      came: Delegated
+  ): Either[TurnFailure, TurnTools.Settled] = {
+    val call = asked.call
+    settling.answer(
+      call.slot,
+      call.id,
+      TurnDelegate.shown(asked.agent),
+      TurnDelegate.answer(asked.agent, came),
+      TurnTools.Answered.Grit(TurnDelegate.believed(came, call.at.level)),
+      now()
+    )
+  }
 
   def settling: TurnTools.Settling^{this} =
     new TurnTools.Settling(
@@ -243,18 +243,28 @@ private[turn] final class Rounding[C^](
     // recorded with its round, in this run or one before it; a binding `as` does not take
     // means the call's tools changed between those runs, which a redeploy can do, since what
     // a call binds to is the deployment's, not the history's.
+    // A call that hands its task to a run is never bound again: its round recorded its run's
+    // type and task, and what that run came to is answered from them (delegated).
     def rebind[A, X^](slot: TurnTools.Slot, pending: Pending, answer: Extract.Answer^{X})(
         as: Either[
           Outcome,
-          (Bound.Runs | Bound.Hosted | Bound.Keeping | Bound.Delegating)^{C, env, tooling, reads, X}
+          (Bound.Runs | Bound.Hosted | Bound.Keeping)^{C, env, tooling, reads, X}
         ] ->{Rounding.this} Option[A]
-    ): Either[TurnFailure, A] =
-      as(bound[X](pending, answer)).toRight(
+    ): Either[TurnFailure, A] = {
+      val taken = bound[X](pending, answer) match {
+        case Left(outcome) => as(Left(outcome))
+        case Right(runs: Bound.Runs) => as(Right(runs))
+        case Right(hosted: Bound.Hosted) => as(Right(hosted))
+        case Right(keeping: Bound.Keeping) => as(Right(keeping))
+        case Right(_: Bound.Delegating) => None
+      }
+      taken.toRight(
         TurnFailure.ToolsChanged(
           s"the call at round ${slot.round.index}, index ${slot.index}, binds otherwise than " +
             "its round recorded: its tools changed between runs"
         )
       )
+    }
 
     // `pending` bound to the round's tools, extract's questions put to `answer`. Under closed
     // gates (a spawned child's: TurnRound.Looping.gates) a call whose tool asks a person first

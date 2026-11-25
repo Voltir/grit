@@ -104,7 +104,7 @@ object TurnRoundTests extends TestSuite {
       new grit.core.store.InMemoryConversationStore
     )
     def delegated(
-        call: TurnRound.Call,
+        asked: TurnRound.Delegation,
         came: grit.act.phase.Delegated
     ): Either[TurnFailure, TurnTools.Settled] = Left(TurnFailure.Store("nothing delegates"))
     def settling: TurnTools.Settling^{this} = settlingIn(jot, entries)

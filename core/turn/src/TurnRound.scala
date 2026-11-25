@@ -85,11 +85,12 @@ private[turn] object TurnRound {
       */
     def spawning: SpawnEnv^{this}
 
-    /** The `call:n:j` body of `call`, which handed its task to a child that came to `came`:
-      * answered unrun as [[TurnDelegate.answer]] says, a reply believed at the child's
-      * integrity met with the turn's level, anything else at the turn's level.
+    /** The `call:n:j` body of `asked`, which handed its task to a child that came to `came`:
+      * answered unrun as [[TurnDelegate.answer]] says, from the type its round recorded, a
+      * reply believed at the child's integrity met with the turn's level
+      * ([[TurnDelegate.believed]]), anything else at the turn's level.
       */
-    def delegated(call: Call, came: Delegated): Either[TurnFailure, Settled]
+    def delegated(asked: Delegation, came: Delegated): Either[TurnFailure, Settled]
 
     /** Where the calls' results are kept. */
     def settling: TurnTools.Settling^{this}
@@ -629,7 +630,7 @@ private[turn] object TurnRound {
       requestOf(d).map(Requested(d, _)).toRight(Left(TurnFailure.Store(Unrequested)))
     )
     val answered = Step[Env, Came, Either[TurnFailure, Settled]](Names.call)(r =>
-      c => r.delegated(c.asked.delegation.call, c.came)
+      c => r.delegated(c.asked.delegation, c.came)
     )
     val spawned = Spawning
       .spawn[Requested](Names.spawning[Requested], _.request)

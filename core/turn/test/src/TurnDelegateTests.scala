@@ -62,7 +62,7 @@ object TurnDelegateTests extends TestSuite {
   /** A parent's conversation of `origin` in an in-memory inbox under `budget`, begun by a
     * message of `by`'s, run in `durable`, offered `subagents`: each child it spawns is run at
     * once by `child`, unless `children` is false, and rings its parent; the first read of a
-    * child's end dies when `crashing`.
+    * child's end dies when `crashing`, and the first read of its reply when `crashingAtReply`.
     */
   private final class Parenting(
       durable: InMemoryDurable,
@@ -70,6 +70,7 @@ object TurnDelegateTests extends TestSuite {
       origin: Origin = Origin.Task("delegating", "parent"),
       children: Boolean = true,
       crashing: Boolean = false,
+      crashingAtReply: Boolean = false,
       subagents: Spawnable = scholarsAt(Integrity.Outside),
       budget: grit.core.spend.Budget = grit.core.spend.Budget(java.time.ZoneOffset.UTC, None),
       by: Account = ana,
@@ -99,6 +100,12 @@ object TurnDelegateTests extends TestSuite {
     var made: Vector[TurnRef] = Vector.empty
     @caps.unsafe.untrackedCaptures
     private var dying: Boolean = crashing
+    @caps.unsafe.untrackedCaptures
+    private var dyingAtReply: Boolean = crashingAtReply
+
+    /** The types the deployment declares now: `subagents`, until a test redeploys it. */
+    @caps.unsafe.untrackedCaptures
+    var deployed: Spawnable = subagents
 
     private def originOf(turn: TurnRef): Option[Origin] =
       inbox.conversations.all.find(_.id == turn.conversationId).map(_.origin)
@@ -122,7 +129,9 @@ object TurnDelegateTests extends TestSuite {
       def ended(c: TurnRef): Either[InboxError, Option[TurnEnding]] =
         if (dying) { dying = false; throw new InMemoryDurable.Crash }
         else inbox.ended(c)
-      def reply(c: TurnRef)(using Tx^) = inbox.reply(c)
+      def reply(c: TurnRef)(using Tx^) =
+        if (dyingAtReply) { dyingAtReply = false; throw new InMemoryDurable.Crash }
+        else inbox.reply(c)
       def spent(turn: TurnRef)(using Tx^) = inbox.spent(turn)
       def granted(p: TurnRef)(using Tx^): Either[StoreError, Vector[SpendCap]] = inbox.granted(p)
       def returned(c: TurnRef, ending: TurnEnding): Either[InboxError, Unit] =
@@ -142,7 +151,7 @@ object TurnDelegateTests extends TestSuite {
         provider,
         edge,
         new Files(Map.empty),
-        subagents,
+        deployed,
         from,
         ledger = inbox.ledger,
         conversations = inbox.conversations,
@@ -213,6 +222,25 @@ object TurnDelegateTests extends TestSuite {
           s"The scholar run did not finish within ${grit.act.phase.Spawning.Within.toMinutes} " +
             "minutes; its reply will not reach you here."
         )
+      )
+    }
+
+    test(
+      "a type the deployment drops while its run is read keeps the run's reply as the call's result, never failing the turn"
+    ) {
+      val durable = new InMemoryDurable
+      val world = new Parenting(
+        durable,
+        new Scripted((_, _) => Right(said("Found it."))),
+        crashingAtReply = true
+      )
+      val model = delegating(asked)
+      val crashed = scala.util.Try(world.run(model)).isFailure
+      world.deployed = Spawnable.empty
+      val _ = world.run(model)
+      (crashed, world.results) ==> (
+        true,
+        Vector("The scholar run replied, spending $0.001:\n<reply>\nFound it.\n</reply>")
       )
     }
 
