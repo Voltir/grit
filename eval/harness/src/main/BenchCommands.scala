@@ -289,7 +289,9 @@ private[main] object BenchCommands {
                 .mkString("\n"),
               if (last.answer.isDefined) None
               else
-                TurnRecord.failure(steps).map((step, f) => s"$step: ${TurnFailure.reason(f)}")
+                TurnRecord.failure(steps).map((step, f) => s"$step: ${TurnFailure.reason(f)}"),
+              // A report's line, not the trial's grade: a record that does not read says none.
+              TurnRecord.limits(steps).toOption.flatten.flatMap(_.budget.limit)
             )
         } yield read.fold(GritTurn.unread(session, status.status, _), identity)
       }

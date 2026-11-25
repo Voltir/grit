@@ -72,5 +72,9 @@ JVMs among them) hold more than its memory budget (8 GB, `--max-memory-gb`) or l
 under 1 GB available. The same budget holds while the checkout compiles before grit starts (a
 trial refused, naming the compile) and while each check runs (a trial not passed, naming the
 check, and no check after it run). Every JVM grit's tree and the task's checks start is held to 15% of the
-machine's memory. grit's own output and the tail of its errors go to the run's log; a run the trial row
+machine's memory. grit's own output and the tail of its errors go to the run's log, then a line its
+report prints too: the effort its turn asked for, the window a boundary draws (`--window-tokens`, or
+the linear assembler's default), and the input limit its last turn recorded with its window
+(`TurnLoop.inputLimit`: the pin's effective context or first price rise where its profile gives
+them, else grit's 500,000-token backstop, less room for one clipped tool result); a run the trial row
 refuses still prints its calls and cost. `--dry` prints what the first call would send, with no key and nothing kept.

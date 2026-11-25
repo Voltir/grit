@@ -260,7 +260,8 @@ object RigTests extends TestSuite {
     ),
     "SUCCESS",
     "# The turn\nrendered",
-    None
+    None,
+    Some(Tokens(450_000))
   )
 
   /** A fake [[Memory]]: 9 GB held, of 16 GB available, once the root holds `heavy`, which a
@@ -806,7 +807,8 @@ object RigTests extends TestSuite {
               "compiled",
               "[main] said",
               "[rig] the tail of grit's errors:",
-              "a log line"
+              "a log line",
+              "[rig] under: effort none sent; window 100000 tokens; input limit 450000 tokens"
             )
           )
         )
@@ -996,6 +998,27 @@ object RigTests extends TestSuite {
         (efforts(Arm.Settings(effort = Some(Effort.Medium))), efforts(Arm.Settings())) ==> (
           Right(Vector("GRIT_DREAM_EFFORT=medium", "GRIT_EFFORT=medium")),
           Right(Vector.empty)
+        )
+      }
+    }
+
+    test(
+      "a grit trial's report and its log say the effort, window and input limit its turn ran under, the window grit's default when unset"
+    ) {
+      withTask { f =>
+        def under(settings: Arm.Settings, turn: GritTurn) =
+          gritTrial(f, GritFake(gritLines), turn = turn, settings = settings).map { t =>
+            val log = Files.readString(f.root.resolve("grit.log")).linesIterator.toVector
+            (t.lines.filter(_.startsWith("under:")), log.filter(_.contains("under:")))
+          }
+        val medium = "under: effort medium; window 100000 tokens; input limit 450000 tokens"
+        val unset = "under: effort none sent; window 25000 tokens; input limit not recorded"
+        (
+          under(Arm.Settings(effort = Some(Effort.Medium)), gritTurn),
+          under(Arm.Settings(window = Some(Tokens(25_000))), gritTurn.copy(inputLimit = None))
+        ) ==> (
+          Right((Vector(medium), Vector(s"[rig] $medium"))),
+          Right((Vector(unset), Vector(s"[rig] $unset")))
         )
       }
     }

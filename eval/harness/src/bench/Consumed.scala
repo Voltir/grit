@@ -22,14 +22,17 @@ final case class Call(id: String, model: String, usage: Usage, reported: Boolean
   * last turn's workflow (`SUCCESS`, `PENDING`, `ERROR`, …), every turn of it as a person reads
   * them, as the eval's `sent` renders a turn, and why its last turn failed, as
   * `<step>: <reason>`, or as `grit work`'s own line ([[Consumed.reported]]), when it ended
-  * without a reply: a turn fails inside a workflow DBOS records as `SUCCESS`.
+  * without a reply: a turn fails inside a workflow DBOS records as `SUCCESS`. `inputLimit` is the
+  * input its last turn's requests were held to, as that turn recorded it with its window
+  * (`TurnLoop.inputLimit`); `None` when it recorded none.
   */
 final case class GritTurn(
     session: String,
     messages: Vector[Message],
     status: String,
     rendered: String,
-    failed: Option[String]
+    failed: Option[String],
+    inputLimit: Option[Tokens]
 )
 
 object GritTurn {
@@ -39,7 +42,14 @@ object GritTurn {
     * failed for that reason, so its trial is kept, in error, priced from its output alone.
     */
   def unread(session: String, status: String, why: String): GritTurn =
-    GritTurn(session, Vector.empty, status, s"Its turns could not be read back: $why", Some(why))
+    GritTurn(
+      session,
+      Vector.empty,
+      status,
+      s"Its turns could not be read back: $why",
+      Some(why),
+      None
+    )
 }
 
 /** A tool call the run was refused, by tool and its input as JSON. */

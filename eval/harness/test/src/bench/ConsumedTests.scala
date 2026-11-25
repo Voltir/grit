@@ -48,7 +48,8 @@ object ConsumedTests extends TestSuite {
     ),
     status,
     "the turn, rendered",
-    failed
+    failed,
+    None
   )
 
   val tests = Tests {

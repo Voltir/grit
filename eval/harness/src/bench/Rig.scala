@@ -9,6 +9,7 @@ import scala.jdk.CollectionConverters.*
 import scala.util.Try
 import scala.util.matching.Regex
 
+import grit.assembly.linear.LinearAssembler
 import grit.core.clock.Clock
 import grit.core.host.{Argv, Handing, Memory, Processes, Ran, RelPath, Variables}
 import grit.core.id.{Harness, SessionId}
@@ -233,7 +234,8 @@ trait CoderTurns extends caps.SharedCapability {
 
 /** A trial, the run's output it was read from, a line a message, the coder's diff from the task's
   * base ([[Clone.changes]]), what that output gave, the task's checks as they ran after it, the
-  * arm that ran it, and the pair it ran on, whose upstream the trial does not record.
+  * arm that ran it, the pair it ran on, whose upstream the trial does not record, and the input
+  * limit a grit coder's turn recorded ([[GritTurn]]'s `inputLimit`).
   */
 final case class Tried(
     trial: TrialRows.Trial,
@@ -243,19 +245,24 @@ final case class Tried(
     checked: Checked,
     stopped: Option[String],
     arm: Arm,
-    pair: ModelRef
+    pair: ModelRef,
+    inputLimit: Option[Tokens]
 ) extends caps.Pure {
 
-  /** What a person reads of it, a line each: its measures and its pair, each call's tokens, its
-    * cost as [[Tried.spending]] gives it, how the run ended, each denial, and each check; never
-    * the transcript's text.
+  /** What a person reads of it, a line each: its measures and its pair, for a grit coder what it
+    * ran under ([[Tried.under]]), each call's tokens, its cost as [[Tried.spending]] gives it, how
+    * the run ended, each denial, and each check; never the transcript's text.
     */
   def lines: Vector[String] = {
     def tokens(u: Usage) = s"${Tried.input(u)}, output ${Tokens.value(u.output)}"
     val t = trial
     Vector(
       s"trial: ${t.session.local} of ${TrialRows.TaskName.value(t.task)} by $pair, " +
-        s"${t.wall.toSeconds} s",
+        s"${t.wall.toSeconds} s"
+    ) ++ (arm match {
+      case g: Arm.Grit => Vector(Tried.under(g.settings, inputLimit))
+      case _: Arm.ClaudeCode => Vector.empty
+    }) ++ Vector(
       s"calls: ${t.calls}; before the first edit: " +
         t.callsBeforeEdit
           .zip(t.readBeforeEdit)
@@ -284,6 +291,18 @@ object Tried {
 
   /** What every [[verdict]] holds, found anywhere in a line holding one. */
   val Verdicts: Regex = "passed: (true|false); distance: ".r
+
+  /** What a grit coder set by `settings` ran under, as a person reads it: the reasoning effort
+    * its turn asked for (`none sent` when unset), the window a boundary draws (grit's own
+    * default when unset), and `inputLimit`, the input its turn's requests were held to as it
+    * recorded it (`not recorded` for `None`).
+    */
+  def under(settings: Arm.Settings, inputLimit: Option[Tokens]): String = {
+    val effort = settings.effort.fold("none sent")(CatalogJson.effort)
+    val window = Tokens.value(settings.window.getOrElse(LinearAssembler.DefaultBudget))
+    val limit = inputLimit.fold("not recorded")(l => s"${Tokens.value(l)} tokens")
+    s"under: effort $effort; window $window tokens; input limit $limit"
+  }
 
   /** What a person reads of what `consumed` spent, a line each: each call's tokens, then its cost
     * in cents by grit's rates ([[Consumed.gritCost]]) and, for a run `arm` is Claude Code's, by
@@ -490,7 +509,7 @@ object Rig {
             )
             harness <- Harness.of("claude-code")
             session <- SessionId.of(harness, local)
-          } yield Coded(session, consumed, lines, wall, stopped)
+          } yield Coded(session, consumed, lines, wall, stopped, None)
         }
       }
 
@@ -511,7 +530,8 @@ object Rig {
     * before grit, a `Left` naming it, and for the checks as [[Checks.run]] says; its task, every
     * turn of it, is read from `turns` once it has ended. A command it left running dies with it, and its Mill daemon is
     * shut down. What grit wrote to its output, then the tail of its errors, is written to
-    * `output` once it has ended, whatever becomes of the trial. `Left` for fewer than 2 turns, or
+    * `output` once it has ended, whatever becomes of the trial, and once its turn is read, what
+    * it ran under ([[Tried.under]]). `Left` for fewer than 2 turns, or
     * a model at the Anthropic API [[AnthropicRates]] has no rates for, before anything runs; when `memory` cannot be
     * read in the checkout, before its compile starts; when `output` cannot be
     * written or its turn cannot be read; or when the trial row refuses the run, its
@@ -579,10 +599,20 @@ object Rig {
           (Watched.Read(lines, ended, stopped), wall) = streamed
           _ <- kept(output, lines, ended)
           turn <- turns.task()
+          _ <- written(output, append = true)(
+            Vector(s"[rig] ${Tried.under(arm.settings, turn.inputLimit)}")
+          )
           reported = ended.fold(_ => turn, r => Consumed.reported(turn, r.exit, r.output.text))
           consumed = Consumed.ofTurn(lines, reported, stopped)
           session <- SessionId.of(Harness.Grit, turn.session)
-        } yield Coded(session, consumed, lines ++ turn.rendered.linesIterator, wall, stopped)
+        } yield Coded(
+          session,
+          consumed,
+          lines ++ turn.rendered.linesIterator,
+          wall,
+          stopped,
+          turn.inputLimit
+        )
       }
     } yield tried
 
@@ -892,19 +922,31 @@ object Rig {
             )
             .left
             .map(refused => (Tried.spending(c.consumed, arm) :+ refused).mkString("\n"))
-        } yield Tried(trial, c.transcript, diff, c.consumed, checked, c.stopped, arm, cap.pair)
+        } yield Tried(
+          trial,
+          c.transcript,
+          diff,
+          c.consumed,
+          checked,
+          c.stopped,
+          arm,
+          cap.pair,
+          c.inputLimit
+        )
       )
     } yield tried
 
   /** What a coder's run gave: its session, what it consumed, its transcript, how long it ran,
-    * and why it was stopped early, if it was.
+    * why it was stopped early, if it was, and the input limit its turn recorded
+    * ([[GritTurn]]'s `inputLimit`; Claude Code's, none).
     */
   private final case class Coded(
       session: SessionId,
       consumed: Consumed,
       transcript: Vector[String],
       wall: FiniteDuration,
-      stopped: Option[String]
+      stopped: Option[String],
+      inputLimit: Option[Tokens]
   )
 
   /** `task`'s known diff at `dir`, its commits applied to its base, and then its checks run;
