@@ -99,7 +99,7 @@ object LocalToolsTests extends TestSuite {
       origin: Origin,
       tool: String,
       arguments: ujson.Value,
-      destination: Place => Option[Place] = Some(_)
+      destination: Place => Option[Place]
   ): Outcome = {
     val turn = TurnRef(ConversationId("c"), TurnSeq.First)
     val q = ToolRequest(
