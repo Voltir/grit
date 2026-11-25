@@ -15,6 +15,7 @@ import grit.core.id.{Harness, SessionId}
 import grit.core.message.{Cost, Tokens, Usage}
 import grit.core.model.{Grade, ModelId, ModelRef, Upstream}
 import grit.core.secret.{Secret, Variable}
+import grit.core.spend.SpendCap
 import grit.dbos.internal.TrialRows
 import grit.dbos.sql.DbConfig
 import grit.kit.environment.DotEnv
@@ -30,7 +31,7 @@ import grit.models.{AnthropicProvider, AnthropicRates, ModelRole, OpenRouterConf
 final case class Caps private (
     model: ModelId,
     upstream: Upstream,
-    maxBudgetUsd: BigDecimal,
+    budget: SpendCap,
     maxTurns: Int
 ) extends caps.Pure {
 
@@ -95,9 +96,8 @@ object Caps {
             )
           } yield (id, u)
       }
-      b <- maxBudgetUsd.toDoubleOption
-        .filter(_ > 0)
-        .map(_ => BigDecimal(maxBudgetUsd))
+      b <- Try(BigDecimal(maxBudgetUsd)).toOption
+        .flatMap(SpendCap.of(_).toOption)
         .toRight(s"the budget $maxBudgetUsd is not an amount of USD above 0")
       t <- maxTurns.toIntOption.filter(_ >= 1).toRight(s"the turns $maxTurns are not 1 or more")
       (id, u) = m
@@ -772,8 +772,8 @@ object Rig {
       .find(_.usage.costUsd.isEmpty)
       .map(c => s"a call of ${c.model} reported no cost, so its cap could not hold")
       .orElse(
-        Option.when(cost >= cap.maxBudgetUsd)(
-          s"its calls cost ${Cost.cents(cost)}, reaching its cap of ${Cost.cents(cap.maxBudgetUsd)}"
+        Option.unless(cap.budget.admits(Cost.Exact(cost)))(
+          s"its calls cost ${Cost.cents(cost)}, reaching its cap of ${Cost.cents(cap.budget.usd)}"
         )
       )
   }
@@ -1027,7 +1027,7 @@ object Rig {
       "--model",
       model,
       "--max-budget-usd",
-      cap.maxBudgetUsd.toString,
+      cap.budget.usd.toString,
       "--max-turns",
       cap.maxTurns.toString
     )

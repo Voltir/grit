@@ -1025,6 +1025,17 @@ object RigTests extends TestSuite {
         )
       )
     }
+    test("a budget is a decimal of USD above 0; anything else is refused naming it") {
+      List("0.05", "0", "-0.01", "five", "Infinity").map(b =>
+        Caps.of("claude-haiku-5-5", None, b, "4").map(_.budget.usd)
+      ) ==> List(
+        Right(BigDecimal("0.05")),
+        Left("the budget 0 is not an amount of USD above 0"),
+        Left("the budget -0.01 is not an amount of USD above 0"),
+        Left("the budget five is not an amount of USD above 0"),
+        Left("the budget Infinity is not an amount of USD above 0")
+      )
+    }
 
     test(
       "an OpenRouter grit coder runs its pair's upstream in every role it sets, handed its key as OPENROUTER_API_KEY"
