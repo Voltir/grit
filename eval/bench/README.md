@@ -35,7 +35,8 @@ under `--restricted` and `--permission-prompts none`: file tools stay inside the
 settings the rig passes load, and a call no rule allows is refused and recorded with the trial
 (`Rig.Allowed`: reads and edits, scout, `./mill`, `scripts/check`, and git's `add`, `commit`,
 `status`, `diff` and `log`). The model, Claude Code's budget and its rounds are required on every
-run; `--max-rounds` reaches Claude Code as its own `--max-turns`. The baseline is therefore Claude Code under grit's rule, not Claude Code as a person runs it
+run; `--max-rounds` reaches Claude Code as its own `--max-turns`, whose "agentic turn" is a round,
+so the run makes at most that many model calls. The baseline is therefore Claude Code under grit's rule, not Claude Code as a person runs it
 with its own settings, and commands that only read (`ls`, `cat`, `grep`) still run without a rule.
 The run is billed to the Anthropic API key the rig passes, priced by grit's own rates beside
 Claude Code's estimate. A run a cap stopped is a trial not passed.
@@ -54,7 +55,10 @@ trials sort by the version of the standing text they ran under. Before grit star
 one; its Mill daemon stays warm for the coder. grit starts from an empty environment: the rig sets every variable it reads
 (`Rig.gritTrial`), its tools the allowlisted coding set and scout, the run's pair in every role it sets
 (a Claude model at the Anthropic API, or with `--upstream` an OpenRouter model at that upstream
-alone), and its key (`ANTHROPIC_API_KEY` or `OPENROUTER_API_KEY`) handed through a file.`--effort` sets the reasoning effort its turn's standard rung and its dreaming ask (`GRIT_EFFORT`
+alone), and its key (`ANTHROPIC_API_KEY` or `OPENROUTER_API_KEY`) handed through a file.
+`--max-rounds` is each turn's tool rounds (`GRIT_TOOL_ROUNDS`, at least 2), so a turn makes about
+one model call more than it, over up to `--work-turns` turns (`Work.DefaultTurns` unset): the cap
+bounds a turn, not the trial.`--effort` sets the reasoning effort its turn's standard rung and its dreaming ask (`GRIT_EFFORT`
 and `GRIT_DREAM_EFFORT`, which the turn's summary, query and heard roles follow); unset, the
 catalog's holds, and the seed asks none. The effort a call asks is not always the one set: a turn
 routed to its strong or light rung asks that rung's, and the route's allotment can raise or lower

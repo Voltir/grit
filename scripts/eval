@@ -81,7 +81,9 @@
 #       Anthropic API's model id (claude-haiku-5-5), or with --upstream an OpenRouter model id
 #       served by that upstream alone (deepseek/deepseek-v4.1-flash-20260910 --upstream
 #       fireworks; grit only); --max-budget-usd the most a run may spend,
-#       which it can pass; --max-rounds a turn's rounds (--max-turns, its old name, is refused).
+#       which it can pass; --max-rounds a turn's rounds (--max-turns, its old name, is refused):
+#       Claude Code makes at most that many model calls in the run, a grit trial about one more
+#       in each turn, over up to --work-turns turns (Work.DefaultTurns unset).
 #       The trial, its transcript and its diff are kept in
 #       grit_bench (created when missing) and .local/bench/blobs/grit_bench/, and printed:
 #       for grit's runs, the grade, effort, window and input limit its turn ran under (in its log too),
