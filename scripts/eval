@@ -29,7 +29,7 @@
 #       else grit and none, beside the tags triage kept.
 #
 #   scripts/eval context --conversation <conversation-id> --from <database> [--full]
-#                        [--redraw <tokens>]
+#                        [--redraw <tokens>] [--keep <rounds>] [--floor <tokens>]
 #       Every turn of one conversation, a task's turns, written to
 #       .local/eval/review/context-<conversation-id>.md, each as the line above writes one
 #       turn, after what the turns held in the cache, also printed: the task's cache and the
@@ -44,7 +44,15 @@
 #       digest (grit's estimate scaled to the provider's count), the room to the last call
 #       and to the input limit, what the earlier turns' summaries would cost appended, and how
 #       many of its tool calls name a file the digest lists; each redrawn request is written
-#       message by message. No model is called.
+#       message by message. Then, printed and written, stubbing results simulated over each
+#       turn (grit.eval.harness.sent.Stubbing): before each call, the turn's own results of
+#       read-only tools older than the last <rounds> rounds (--keep, 3 when not given), of
+#       <tokens> estimated tokens or more (--floor, 2000), that nothing the model wrote since
+#       points at, replaced by a stub. A line a call (its input; D, what would be stubbed; T,
+#       the tail rewritten; whether the pressure and priced triggers fire), then a line each
+#       for stubbing at every call, at the limit and when priced: what it drops of the
+#       results, its regret in hindsight, and its input and cost against the recorded ones.
+#       No model is called.
 #
 #   scripts/eval bench --summary
 #       Cents per passing trial over grit_bench's trials, by task, harness and model: every
@@ -141,7 +149,7 @@ harness() {
 }
 
 context() {
-  local id=${1:-} from= full= capture= limit=() conversation= redraw=()
+  local id=${1:-} from= full= capture= limit=() conversation= redraw=() stub=()
   if [ "$id" = --conversation ]; then conversation=${2:-}; id=$conversation; shift; fi
   [ -n "$id" ] && [[ $id != --* ]] || usage
   shift
@@ -151,6 +159,7 @@ context() {
       --full) full=--full; shift ;;
       --limit) limit=(--limit "${2:-}"); shift 2 ;;
       --redraw) redraw=(--redraw "${2:-}"); shift 2 ;;
+      --keep|--floor) stub+=("$1" "${2:-}"); shift 2 ;;
       --capture) capture=${2:-}; shift 2 ;;
       *) usage ;;
     esac
@@ -160,7 +169,7 @@ context() {
   local out="$main/.local/eval/review/context-$id.md" url="jdbc:postgresql://localhost:5432/$from"
   if [ -n "$conversation" ]; then
     harness context --url "$url" --from "$from" --conversation "$conversation" --out "$out" $full \
-      "${redraw[@]}"
+      "${redraw[@]}" "${stub[@]}"
   elif [[ $id =~ ^[0-9a-f-]{36}:[0-9]+$ ]]; then
     harness context --url "$url" --from "$from" --workflow "$id" --out "$out" $full "${limit[@]}"
   else

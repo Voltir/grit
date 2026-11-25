@@ -1,9 +1,10 @@
 package grit.eval.harness.sent
 
 import grit.core.id.ToolCallId
-import grit.core.message.{AssistantBlock, Message, Tokens}
+import grit.core.message.{AssistantBlock, Cost, Message, Tokens}
 import grit.core.model.{Pricing, Rates}
 import grit.core.provider.{ModelRequest, TokenEstimator}
+import grit.core.tool.ToolName
 
 /** Stubbing results, simulated over a recorded turn: before each call, the turn's own old,
   * unreferenced results of read-only tools replaced by a one-line stub saying the call can be
@@ -99,6 +100,25 @@ object Stubbing {
       pricing: Option[Pricing]
   ) extends caps.Pure
 
+  object Recorded {
+
+    /** `sent` as [[replay]] reads it: each of its calls whose ledger row is kept
+      * ([[TurnSent.requests]]), its own messages after its window's.
+      */
+    def of(sent: TurnSent): Recorded =
+      Recorded(
+        sent.requests.flatMap((_, reply, request) =>
+          sent.row(reply).map(r => Sent(request, r.usage.input, r.usage.costUsd))
+        ),
+        sent.answer.map(_.message),
+        sent.calls.window.size,
+        sent.tools.filter(_.readOnly).map(e => ToolName.value(e.name)).toSet,
+        sent.shown,
+        sent.limit,
+        sent.pricing
+      )
+  }
+
   /** What a million input tokens cost uncached or written to the cache (`write`), and read from
     * it (`read`).
     */
@@ -162,7 +182,8 @@ object Stubbing {
       priced: Boolean
   ) extends caps.Pure
 
-  /** The turn stubbed at each `trigger`: `stubbings` made, `stubbed` results in all, `dropped`
+  /** The turn stubbed at each `trigger`: `stubbings` made, the tails they `rewrote` in the
+    * cache in all (each its call's T, in the provider's tokens), `stubbed` results in all, `dropped`
     * tokens of them less their stubs, of `results`, all the turn's own results (both by the
     * estimate); of those stubbed, the `regretted`, which a later call repeats (the same tool,
     * the same shown line) or later output points at; the calls' `input` in all, less what was
@@ -173,6 +194,7 @@ object Stubbing {
   final case class Outcome(
       trigger: Trigger,
       stubbings: Int,
+      rewrote: Tokens,
       stubbed: Int,
       dropped: Tokens,
       results: Tokens,
@@ -183,9 +205,15 @@ object Stubbing {
       recordedCost: Option[BigDecimal]
   ) extends caps.Pure
 
-  /** `turn` under `rule`: each of its calls, then its outcome under each trigger, in order. */
-  final case class Replay(rule: Rule, calls: Vector[Call], outcomes: Vector[Outcome])
-      extends caps.Pure
+  /** `turn` under `rule`: each of its calls; its own results as the rule judges them before its
+    * last call (`last`), nothing stubbed before; then its outcome under each trigger, in order.
+    */
+  final case class Replay(
+      rule: Rule,
+      calls: Vector[Call],
+      last: Vector[Judged],
+      outcomes: Vector[Outcome]
+  ) extends caps.Pure
 
   /** `turn` replayed under `rule`, by `estimator`. */
   def replay(rule: Rule, turn: Recorded, estimator: TokenEstimator): Replay = {
@@ -203,7 +231,14 @@ object Stubbing {
         priced(at, price(turn, sent))
       )
     }
-    Replay(rule, calls, Trigger.values.toVector.map(outcome(rule, turn, _, estimator)))
+    Replay(
+      rule,
+      calls,
+      turn.calls.lastOption.fold(Vector.empty[Judged])(c =>
+        judge(rule, c.request, turn.own, turn.readOnly, estimator)
+      ),
+      Trigger.values.toVector.map(outcome(rule, turn, _, estimator))
+    )
   }
 
   /** What the rule would stub before one call, beside what is stubbed already. */
@@ -275,10 +310,11 @@ object Stubbing {
         stubbed: Map[ToolCallId, Int],
         saved: Map[ToolCallId, Long],
         stubbings: Int,
+        rewritten: Long,
         input: Long,
         cost: Option[BigDecimal]
     )
-    val start = State(Map.empty, Map.empty, 0, 0L, turn.pricing.map(_ => BigDecimal(0)))
+    val start = State(Map.empty, Map.empty, 0, 0L, 0L, turn.pricing.map(_ => BigDecimal(0)))
     val end = turn.calls.foldLeft(start) { (s, sent) =>
       val at = step(rule, turn, sent, s.stubbed.keySet, estimator)
       def scaled(n: Long): Long =
@@ -313,6 +349,7 @@ object Stubbing {
         stubbed,
         saved,
         s.stubbings + (if (fires) 1 else 0),
+        s.rewritten + (if (fires) at.tail else 0L),
         s.input + Tokens.value(sent.input) - dropped,
         cost
       )
@@ -339,6 +376,7 @@ object Stubbing {
     Outcome(
       trigger,
       end.stubbings,
+      Tokens(end.rewritten),
       end.stubbed.size,
       Tokens(end.saved.values.sum),
       Tokens(own.map(r => Tokens.value(r.cost)).sum),
@@ -349,6 +387,59 @@ object Stubbing {
       turn.calls.foldLeft(Option(BigDecimal(0)))((sum, c) => sum.zip(c.cost).map(_ + _))
     )
   }
+
+  /** `replay` as a person reads it in a terminal: a heading naming its rule, a line a call, then
+    * a line a trigger.
+    */
+  def lines(replay: Replay): Vector[String] = {
+    val rule = replay.rule
+    val rounds = if (rule.keep == 1) "round" else "rounds"
+    val head = s"stubbing results older than the last ${rule.keep} $rounds, " +
+      s"of ${Tokens.value(rule.floor)} estimated tokens or more:"
+    val calls = replay.calls.map { c =>
+      val pressed = c.pressed.fold("")(p => s"; at the limit, stubbing frees ${percent(p)} of it")
+      val priced = if (c.priced) "; the priced trigger fires" else ""
+      s"  call ${c.round}: ${Tokens.value(c.input)} in; D ${Tokens.value(c.dropped)}, " +
+        s"T ${Tokens.value(c.tail)}$pressed$priced"
+    }
+    val outcomes = replay.outcomes.map { o =>
+      val stubbings = (if (o.stubbings == 1) "1 stubbing" else s"${o.stubbings} stubbings") +
+        s" rewriting ${Tokens.value(o.rewrote)}"
+      val results = if (o.stubbed == 1) "1 result" else s"${o.stubbed} results"
+      val freed = share(Tokens.value(o.dropped), Tokens.value(o.results))
+      val regret = share(o.regretted.toLong, o.stubbed.toLong)
+      val recorded = o.recordedCost.fold("unpriced")(Cost.cents)
+      val simulated = o.cost.fold("unpriced")(Cost.cents)
+      val cost = s"cost $recorded recorded, $simulated simulated"
+      s"  ${triggered(o.trigger)}: $stubbings, $results, ${Tokens.value(o.dropped)} of " +
+        s"${Tokens.value(o.results)} result tokens dropped ($freed), ${o.regretted} regretted " +
+        s"($regret); input ${Tokens.value(o.recordedInput)} recorded, " +
+        s"${Tokens.value(o.input)} simulated; $cost"
+    }
+    def of(kept: Option[Kept]): String = {
+      val these = replay.last.filter(_.kept == kept)
+      s"${these.size} (${these.map(j => Tokens.value(j.result.cost)).sum} tokens)"
+    }
+    val last = replay.calls.lastOption.fold("")(c => s" call ${c.round}") match {
+      case at =>
+        s"  before the last$at, nothing stubbed: ${of(None)} stubbable; kept " +
+          s"${of(Some(Kept.Writes))} not read-only, ${of(Some(Kept.Recent))} recent, " +
+          s"${of(Some(Kept.Small))} small, ${of(Some(Kept.Pointed))} pointed at"
+    }
+    ((head +: calls) :+ last) ++ outcomes
+  }
+
+  private def triggered(t: Trigger): String = t match {
+    case Trigger.Each => "at every call"
+    case Trigger.Pressure => "at the limit"
+    case Trigger.Priced => "when priced"
+  }
+
+  private def share(part: Long, whole: Long): String =
+    if (whole <= 0) "-" else percent(BigDecimal(part) / BigDecimal(whole))
+
+  private def percent(p: BigDecimal): String =
+    s"${(p * 100).setScale(1, BigDecimal.RoundingMode.HALF_UP)}%"
 
   private val Million: BigDecimal = BigDecimal(1000000)
 

@@ -5,7 +5,7 @@ import java.nio.file.{Files, Path}
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.core.clock.Clock
-import grit.core.id.{ConversationId, WorkflowId}
+import grit.core.id.{ConversationId, TurnSeq, WorkflowId}
 import grit.core.message.Tokens
 import grit.core.persona.Persona
 import grit.core.triage.Corpora
@@ -18,6 +18,7 @@ import grit.eval.harness.sent.{
   PersonaJson,
   Redrawn,
   SentMarkdown,
+  Stubbing,
   TaskLines,
   TaskTurn,
   TurnSent
@@ -46,8 +47,9 @@ private[main] object ContextCommands {
     * now: what the task's turns held in the cache ([[TaskLines]]), printed and written to
     * `--out`; with `--redraw <tokens>`, each boundary's first call beside its window drawn
     * afresh by this build's linear assembler at a limit of that many tokens ([[Redrawn]]), its
-    * table printed and each turn's redrawn request written; then each turn as
-    * [[SentMarkdown.render]] writes it.
+    * table printed and each turn's redrawn request written; stubbing results simulated over
+    * each turn ([[Stubbing]]) under `--keep` and `--floor` ([[Stubbing.Rule.Default]] where
+    * not given), printed and written; then each turn as [[SentMarkdown.render]] writes it.
     */
   private def conversationContext(
       f: Map[String, String],
@@ -67,6 +69,17 @@ private[main] object ContextCommands {
             .map(n => Some(Tokens(n)))
             .toRight(s"--redraw is not a whole number above 0: $raw")
       }
+      keep <- f
+        .get("keep")
+        .fold[Either[String, Int]](Right(Stubbing.Rule.Default.keep))(raw =>
+          raw.toIntOption.toRight(s"--keep is not a whole number: $raw")
+        )
+      floor <- f
+        .get("floor")
+        .fold[Either[String, Tokens]](Right(Stubbing.Rule.Default.floor))(raw =>
+          raw.toLongOption.map(Tokens(_)).toRight(s"--floor is not a whole number: $raw")
+        )
+      rule <- Stubbing.Rule.of(keep, floor).left.map(w => s"--keep or --floor: $w")
       config <- DbConfig.fromEnv(sys.env.updated(DbConfig.UrlVar, url)).left.map(_.message)
       read <- opened[(ConversationSent, Vector[Redrawn])](config)(reader =>
         ConversationSent
@@ -93,11 +106,21 @@ private[main] object ContextCommands {
       redrawn: Vector[Redrawn] = read._2
       lines = TaskLines.lines(TaskTurn.all(sent))
       table = if (redraw.isEmpty) Vector.empty else Redrawn.table(redrawn)
+      stubbed = sent.turns.filter(_.requests.nonEmpty).flatMap { t =>
+        val recorded = Stubbing.Recorded.of(t)
+        val limit = t.limit.fold("none")(l => Tokens.value(l).toString)
+        val priced = t.pricing.fold("unpriced, at Anthropic's ratios")(_ => "priced by its pin")
+        s"turn ${TurnSeq.value(t.turn.turnSeq)}: ${recorded.calls.size} calls, limit $limit, $priced" +:
+          Stubbing.lines(Stubbing.replay(rule, recorded, CharEstimate))
+      }
       _ <- mkdirs(out.getParent)
       cut = if (full) Cut.Whole else Cut.Default
       _ <- write(
         out,
         (lines.map(l => s"- $l") ++ table.headOption.map(_ => table.mkString("\n")) ++
+          stubbed.headOption.map(_ =>
+            SentMarkdown.fenced(stubbed.mkString("\n"), "text").mkString("\n")
+          ) ++
           redrawn.map(Redrawn.markdown(_).mkString("\n")) ++
           sent.turns.map(SentMarkdown.render(_, from, cut)))
           .mkString("\n\n")
@@ -106,6 +129,7 @@ private[main] object ContextCommands {
       println(s"written: $out")
       lines.foreach(println)
       table.foreach(println)
+      stubbed.foreach(println)
     }
 
   /** `context` of a heard message (`--entry`): what Jev was asked of it, its triage request

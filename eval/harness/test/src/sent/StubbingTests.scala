@@ -3,6 +3,7 @@ package grit.eval.harness.sent
 import grit.assembly.estimate.CharEstimate
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.model.{Pricing, Rates}
 import grit.core.provider.{ModelRequest, ToolSchema}
 
 import utest.*
@@ -101,6 +102,20 @@ object StubbingTests extends TestSuite {
     test("a stubbing is regretted when later output points at it") {
       regretted(turn("read again", said(plain.linesIterator.toVector.headOption.getOrElse("")))) ==>
         Some(1 -> 1)
+    }
+    test("the report says, stubbing at every call, what it dropped of the results and its input") {
+      // A million tokens: 1 USD uncached, 1.25 written, 0.1 read. The tail of 699 rewritten
+      // costs 699 * 1.15, the 380 stubbed from both calls save 380 * 0.1: 0.2¢ becomes 0.2766¢.
+      val priced = turn("read a", said("fixed")).copy(
+        calls = turn("read a", said("fixed")).calls.map(_.copy(cost = Some(BigDecimal("0.001")))),
+        pricing = Rates.of(1, BigDecimal("1.25"), BigDecimal("0.1"), 5).toOption.map(Pricing.flat)
+      )
+      val lines = Stubbing.lines(Stubbing.replay(rule, priced, estimator))
+      lines.find(_.startsWith("  at every call")) ==> Some(
+        "  at every call: 1 stubbing rewriting 699, 1 result, 80 of 347 result tokens dropped " +
+          "(23.1%), 1 regretted (100.0%); input 2100 recorded, 1720 simulated; " +
+          "cost 0.2¢ recorded, 0.28¢ simulated"
+      )
     }
     test("a stubbing no later call repeats nor output points at is not regretted") {
       regretted(turn("read again", said("fixed"))) ==> Some(1 -> 0)

@@ -4,8 +4,9 @@ import java.time.Instant
 
 import grit.assembly.estimate.CharEstimate
 import grit.core.context.CarriedWindow
-import grit.core.id.{EntryId, TurnRef, WorkflowId}
+import grit.core.id.{EntryId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.{Message, Tokens}
+import grit.core.model.Pricing
 import grit.core.place.Place
 import grit.core.prompt.Fragment
 import grit.core.provider.ModelRequest
@@ -27,7 +28,10 @@ import grit.turn.{Turn, TurnJudge, TurnOffer, TurnRecord, TurnSummary}
   * search `queries` assembly wrote and the `window` it was shown, a carried window's parts
   * included ([[CarriedWindow.whole]]); the stitch placement of its
   * conversation's first message (`stitch`), triage's `tags` on its root, what became of a
-  * heard root's draft (`speech`, `judged`), and the tool calls given up on (`givenUp`).
+  * heard root's draft (`speech`, `judged`), the tool calls given up on (`givenUp`), the line
+  * each of its calls was `shown` as ([[Payload.Result.shown]]), the input `limit` its loop ran
+  * under ([[TurnRecord.limits]]), and the `pricing` of the pin its calls were made under
+  * ([[TurnRecord.pinned]]).
   */
 final case class TurnSent(
     workflow: WorkflowId,
@@ -50,7 +54,10 @@ final case class TurnSent(
     tags: Option[Tags],
     speech: Option[Outcome],
     judged: Option[TurnJudge.Judgement],
-    givenUp: Map[(Int, Int), TurnRecord.GivenUp]
+    givenUp: Map[(Int, Int), TurnRecord.GivenUp],
+    shown: Map[ToolCallId, String],
+    limit: Option[Tokens],
+    pricing: Option[Pricing]
 ) {
 
   /** The ledger row kept under `entry`, if any. */
@@ -200,6 +207,12 @@ object TurnSent {
       )
       speech <- TurnRecord.speech(steps)
       judged <- TurnRecord.judged(steps, offered.root)
+      limits <- TurnRecord.limits(steps)
+      pinned <- reader.all
+        .read((tx: Tx^) ?=> Right(TurnRecord.pinned(steps, reader.profiles)))
+        .left
+        .map(Unread.said(s"pin of $id"))
+        .flatten
     } yield {
       def kept(entry: EntryId): Option[Entry] = mine.find(_.id == entry)
       // The ledger keeps no thinking: the reply's own usage says it, kept with its entry, or,
@@ -253,7 +266,12 @@ object TurnSent {
         tags,
         speech,
         judged,
-        TurnRecord.givenUp(steps)
+        TurnRecord.givenUp(steps),
+        mine.collect { case Entry(_, _, _, _, _, Payload.Result(r, shown), _, _) =>
+          r.callId -> shown
+        }.toMap,
+        limits.flatMap(_.budget.limit),
+        pinned.flatMap(_.settings.pricing)
       )
     }
   }
