@@ -5,7 +5,7 @@ import java.nio.charset.StandardCharsets
 import scala.util.Try
 
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
-import grit.core.model.Pricing
+import grit.core.model.{Pinned, Pricing}
 import grit.core.provider.CallLine
 import grit.models.{AnthropicJson, AnthropicRates}
 
@@ -22,9 +22,8 @@ final case class Call(id: String, model: String, usage: Usage, reported: Boolean
   * last turn's workflow (`SUCCESS`, `PENDING`, `ERROR`, …), every turn of it as a person reads
   * them, as the eval's `sent` renders a turn, and why its last turn failed, as
   * `<step>: <reason>`, or as `grit work`'s own line ([[Consumed.reported]]), when it ended
-  * without a reply: a turn fails inside a workflow DBOS records as `SUCCESS`. `inputLimit` is the
-  * input its last turn's requests were held to, as that turn recorded it with its window
-  * (`TurnLoop.inputLimit`); `None` when it recorded none.
+  * without a reply: a turn fails inside a workflow DBOS records as `SUCCESS`; and what its last
+  * turn's calls ran under, as that turn recorded it.
   */
 final case class GritTurn(
     session: String,
@@ -32,8 +31,24 @@ final case class GritTurn(
     status: String,
     rendered: String,
     failed: Option[String],
-    inputLimit: Option[Tokens]
+    ranUnder: RanUnder
 )
+
+/** What a grit coder's turn recorded of what its calls ran under: `pin`, the pin they were made
+  * under, its allotment's effort laid over its own (`TurnRecord.pinned`), and `inputLimit`, the
+  * input its requests were held to (`TurnRecord.limits`, as `TurnLoop.inputLimit` decided it);
+  * each `None` when the turn recorded none, `Left` saying why when its record does not read.
+  */
+final case class RanUnder(
+    pin: Either[String, Option[Pinned]],
+    inputLimit: Either[String, Option[Tokens]]
+)
+
+object RanUnder {
+
+  /** Nothing recorded: Claude Code's run, which keeps no grit turn. */
+  val Unrecorded: RanUnder = RanUnder(Right(None), Right(None))
+}
 
 object GritTurn {
 
@@ -48,7 +63,7 @@ object GritTurn {
       status,
       s"Its turns could not be read back: $why",
       Some(why),
-      None
+      RanUnder(Left(why), Left(why))
     )
 }
 

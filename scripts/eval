@@ -69,7 +69,7 @@
 #       fireworks; grit only); --max-budget-usd the most a run may spend,
 #       which it can pass; --max-turns its turns. The trial, its transcript and its diff are kept in
 #       grit_bench (created when missing) and .local/bench/blobs/grit_bench/, and printed:
-#       for grit's runs, the effort, window and input limit its turn ran under (in its log too),
+#       for grit's runs, the grade, effort, window and input limit its turn ran under (in its log too),
 #       tokens per call with cache reads and writes, grit's cost (beside Claude Code's, for its
 #       runs), how the run ended, its denials and its checks. The key is ANTHROPIC_API_KEY
 #       (OPENROUTER_API_KEY with --upstream), from
@@ -90,8 +90,10 @@
 #       its processes, all those working in its checkout, may hold together (24), the run stopped
 #       past it or when the machine has under 1 GB available, in the compile before grit and in
 #       the checks alike. --window-tokens and --work-turns set grit's GRIT_WINDOW_TOKENS and GRIT_WORK_TURNS;
-#       --effort its turn's and its dreaming's reasoning effort, GRIT_EFFORT and GRIT_DREAM_EFFORT,
-#       one of the catalog's words (minimal, low, medium, high, xhigh, max); unset, none is sent.
+#       --effort the reasoning effort its turn's standard rung and its dreaming ask, GRIT_EFFORT
+#       and GRIT_DREAM_EFFORT, one of the catalog's words (minimal, low, medium, high, xhigh, max);
+#       unset, the catalog's. A call routed to another rung, or allotted another effort, asks that
+#       one, and the report says which the calls asked beside what was set.
 #       grit runs the linear assembler. --keep-coder copies grit_bench_coder, once the run
 #       ends however it ends, to grit_bench_coder_<yyyymmddhhmmss> (UTC), so the next trial's
 #       fresh database does not take its turns with it; the copies are dropped by hand.

@@ -12,6 +12,7 @@ import grit.core.id.{ConversationId, TurnRef, WorkflowId}
 import grit.core.message.{Message, Tokens}
 import grit.core.model.CatalogJson
 import grit.core.secret.Secret
+import grit.core.store.Tx
 import grit.core.visibility.{Label, Subject}
 import grit.dbos.internal.TrialRows
 import grit.dbos.sql.DbConfig
@@ -24,6 +25,7 @@ import grit.eval.harness.bench.{
   GritTurn,
   MemoryCap,
   PerPass,
+  RanUnder,
   Rig,
   Standing,
   Tried
@@ -290,8 +292,14 @@ private[main] object BenchCommands {
               if (last.answer.isDefined) None
               else
                 TurnRecord.failure(steps).map((step, f) => s"$step: ${TurnFailure.reason(f)}"),
-              // A report's line, not the trial's grade: a record that does not read says none.
-              TurnRecord.limits(steps).toOption.flatten.flatMap(_.budget.limit)
+              RanUnder(
+                reader.all
+                  .read((tx: Tx^) ?=> Right(TurnRecord.pinned(steps, reader.profiles)))
+                  .left
+                  .map(e => s"the profile could not be read: ${e.described}")
+                  .flatten,
+                TurnRecord.limits(steps).map(_.flatMap(_.budget.limit))
+              )
             )
         } yield read.fold(GritTurn.unread(session, status.status, _), identity)
       }

@@ -180,9 +180,11 @@ object Arm {
 
   /** What a grit trial sets of grit's run besides the rig's own variables: its window's limit
     * (`window`, `GRIT_WINDOW_TOKENS`), the most turns `grit work` goes on for (`workTurns`,
-    * `GRIT_WORK_TURNS`), and the reasoning effort its turn and its dreaming ask for (`effort`,
-    * `GRIT_EFFORT` and `GRIT_DREAM_EFFORT`; a turn's summary and query follow the turn's); each
-    * unset leaves grit's own default.
+    * `GRIT_WORK_TURNS`), and the reasoning effort its turn's standard rung and its dreaming ask
+    * (`effort`, `GRIT_EFFORT` and `GRIT_DREAM_EFFORT`; the turn's summary, query and heard roles,
+    * the heard role the task classifier, follow the turn's); each unset leaves grit's own
+    * default. A call routed to another rung, or allotted another effort, asks that one
+    * ([[Tried.under]] reports which).
     */
   final case class Settings(
       window: Option[Tokens] = None,
@@ -236,8 +238,8 @@ trait CoderTurns extends caps.SharedCapability {
 
 /** A trial, the run's output it was read from, a line a message, the coder's diff from the task's
   * base ([[Clone.changes]]), what that output gave, the task's checks as they ran after it, the
-  * arm that ran it, the pair it ran on, whose upstream the trial does not record, and the input
-  * limit a grit coder's turn recorded ([[GritTurn]]'s `inputLimit`).
+  * arm that ran it, the pair it ran on, whose upstream the trial does not record, and what a grit
+  * coder's turn recorded it ran under ([[RanUnder.Unrecorded]] for Claude Code's).
   */
 final case class Tried(
     trial: TrialRows.Trial,
@@ -248,7 +250,7 @@ final case class Tried(
     stopped: Option[String],
     arm: Arm,
     pair: ModelRef,
-    inputLimit: Option[Tokens]
+    ranUnder: RanUnder
 ) extends caps.Pure {
 
   /** What a person reads of it, a line each: its measures and its pair, for a grit coder what it
@@ -262,7 +264,7 @@ final case class Tried(
       s"trial: ${t.session.local} of ${TrialRows.TaskName.value(t.task)} by $pair, " +
         s"${t.wall.toSeconds} s"
     ) ++ (arm match {
-      case g: Arm.Grit => Vector(Tried.under(g.settings, inputLimit))
+      case g: Arm.Grit => Vector(Tried.under(g.settings, ranUnder))
       case _: Arm.ClaudeCode => Vector.empty
     }) ++ Vector(
       s"calls: ${t.calls}; before the first edit: " +
@@ -294,16 +296,36 @@ object Tried {
   /** What every [[verdict]] holds, found anywhere in a line holding one. */
   val Verdicts: Regex = "passed: (true|false); distance: ".r
 
-  /** What a grit coder set by `settings` ran under, as a person reads it: the reasoning effort
-    * its turn asked for (`none sent` when unset), the window a boundary draws (grit's own
-    * default when unset), and `inputLimit`, the input its turn's requests were held to as it
-    * recorded it (`not recorded` for `None`).
+  /** What a grit coder set by `settings` ran under, as `ran` recorded it, as a person reads it:
+    * the grade its turn's calls were routed to and the effort they asked, followed by
+    * `(set <effort>)` when that is not what `settings` asked (`none` when unset); a pin asking
+    * none at the Anthropic API as [[AnthropicProvider.DefaultEffort]], `(grit's default)`, the
+    * effort that provider sends then; the window a boundary draws (grit's own default when
+    * unset); and the input limit. What `ran` holds no record of is `not recorded`, and what did
+    * not read `not read`.
     */
-  def under(settings: Arm.Settings, inputLimit: Option[Tokens]): String = {
-    val effort = settings.effort.fold("none sent")(CatalogJson.effort)
+  def under(settings: Arm.Settings, ran: RanUnder): String = {
+    val set = settings.effort.fold("none")(CatalogJson.effort)
+    val asked = ran.pin match {
+      case Right(Some(p)) =>
+        val effort = p.assignment.effort match {
+          case Some(e) => CatalogJson.effort(e)
+          case None if p.assignment.ref.upstream.contains(Upstream.AnthropicApi) =>
+            s"${CatalogJson.effort(AnthropicProvider.DefaultEffort)} (grit's default)"
+          case None => "none"
+        }
+        val differs = if (p.assignment.effort == settings.effort) "" else s" (set $set)"
+        s"grade ${p.grade.word}, effort $effort$differs"
+      case Right(None) => s"effort not recorded (set $set)"
+      case Left(_) => s"effort not read (set $set)"
+    }
     val window = Tokens.value(settings.window.getOrElse(LinearAssembler.DefaultBudget))
-    val limit = inputLimit.fold("not recorded")(l => s"${Tokens.value(l)} tokens")
-    s"under: effort $effort; window $window tokens; input limit $limit"
+    val limit = ran.inputLimit match {
+      case Right(Some(l)) => s"${Tokens.value(l)} tokens"
+      case Right(None) => "not recorded"
+      case Left(_) => "not read"
+    }
+    s"under: $asked; window $window tokens; input limit $limit"
   }
 
   /** What a person reads of what `consumed` spent, a line each: each call's tokens, then its cost
@@ -511,7 +533,7 @@ object Rig {
             )
             harness <- Harness.of("claude-code")
             session <- SessionId.of(harness, local)
-          } yield Coded(session, consumed, lines, wall, stopped, None)
+          } yield Coded(session, consumed, lines, wall, stopped, RanUnder.Unrecorded)
         }
       }
 
@@ -602,7 +624,7 @@ object Rig {
           _ <- kept(output, lines, ended)
           turn <- turns.task()
           _ <- written(output, append = true)(
-            Vector(s"[rig] ${Tried.under(arm.settings, turn.inputLimit)}")
+            Vector(s"[rig] ${Tried.under(arm.settings, turn.ranUnder)}")
           )
           reported = ended.fold(_ => turn, r => Consumed.reported(turn, r.exit, r.output.text))
           consumed = Consumed.ofTurn(lines, reported, stopped)
@@ -613,7 +635,7 @@ object Rig {
           lines ++ turn.rendered.linesIterator,
           wall,
           stopped,
-          turn.inputLimit
+          turn.ranUnder
         )
       }
     } yield tried
@@ -933,14 +955,13 @@ object Rig {
           c.stopped,
           arm,
           cap.pair,
-          c.inputLimit
+          c.ranUnder
         )
       )
     } yield tried
 
   /** What a coder's run gave: its session, what it consumed, its transcript, how long it ran,
-    * why it was stopped early, if it was, and the input limit its turn recorded
-    * ([[GritTurn]]'s `inputLimit`; Claude Code's, none).
+    * why it was stopped early, if it was, and what its turn recorded it ran under.
     */
   private final case class Coded(
       session: SessionId,
@@ -948,7 +969,7 @@ object Rig {
       transcript: Vector[String],
       wall: FiniteDuration,
       stopped: Option[String],
-      inputLimit: Option[Tokens]
+      ranUnder: RanUnder
   )
 
   /** `task`'s known diff at `dir`, its commits applied to its base, and then its checks run;

@@ -2,6 +2,7 @@ package grit.turn
 
 import grit.core.durable.{History, InMemoryDurable, StepRecord}
 import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq, WorkflowId}
+import grit.core.model.{Effort, Grade, TurnProfileId}
 import grit.core.speech.Outcome
 import grit.core.tool.ToolSetId
 import grit.core.visibility.{Label, Level}
@@ -273,6 +274,52 @@ object TurnRecordTests extends TestSuite {
         Right(Some(Label.at(Level.Internal))),
         Right(None)
       )
+    }
+
+    test(
+      "the pin a turn's calls were made under is the one its route picked from its pinned profile, its allotment's effort laid over the pin's, and none before it routed"
+    ) {
+      import TurnJournal.given
+      given grit.core.store.Tx = grit.dbos.sql.TestTx.fake
+      val profile = TurnFixtures.GradedCatalog.pin
+      val routed = Route.Recorded(
+        Label.at(Level.Internal),
+        1,
+        Some(0),
+        Some(0),
+        grit.core.allot.Headroom.Ample,
+        Route.Task.Skipped,
+        grit.core.allot.Allotment(
+          Some(Grade.Strong),
+          grit.core.allot.Allotment.Reasoning.At(Effort.High),
+          grit.core.allot.Allotment.Calls.Default
+        ),
+        None
+      )
+      val pinned = StepRecord(
+        Turn.Step.PinModels,
+        Some(
+          summon[grit.core.durable.Journaled[Either[TurnFailure, TurnProfileId]]].encode(
+            Right(profile.id)
+          )
+        ),
+        None
+      )
+      val route = StepRecord(
+        Turn.Step.Route,
+        Some(
+          summon[grit.core.durable.Journaled[Either[TurnFailure, Route.Recorded]]]
+            .encode(Right(routed))
+        ),
+        None
+      )
+      val kept = TurnFixtures.profilesKept()
+      (
+        TurnRecord
+          .pinned(Vector(pinned, route), kept)
+          .map(_.map(p => (p.grade, p.assignment.effort))),
+        TurnRecord.pinned(Vector(pinned), kept)
+      ) ==> (Right(Some((Grade.Strong, Some(Effort.High)))), Right(None))
     }
   }
 }

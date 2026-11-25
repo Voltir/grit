@@ -8,6 +8,7 @@ import grit.core.edge.RequestState
 import grit.core.files.PieceSearch
 import grit.core.id.{DocumentVersionId, EntryId, TurnRef, WorkflowId}
 import grit.core.message.Message
+import grit.core.model.{Pinned, TurnProfileId}
 import grit.core.provider.ModelRequest
 import grit.core.speech.Outcome
 import grit.core.store.{
@@ -132,6 +133,32 @@ object TurnRecord {
   def limits(steps: Vector[StepRecord]): Either[String, Option[TurnRound.Limits]] =
     read[Either[TurnFailure, TurnRound.Limits]](steps, Turn.Step.RecordWindow)
       .map(_.flatMap(_.toOption))
+
+  /** The pin the turn's own calls were made under: the one its `route` step picked from the
+    * profile its `pin-models` step pinned, read from `profiles`, with the effort the route's
+    * allotment asks laid over the pin's own. `None` when either step is not recorded, or recorded
+    * a failure. `Left` naming what does not read: a step's output, or the profile, not kept or
+    * holding no pin where the route names one.
+    */
+  def pinned(steps: Vector[StepRecord], profiles: ModelProfileStore)(using
+      Tx^
+  ): Either[String, Option[Pinned]] =
+    for {
+      id <- read[Either[TurnFailure, TurnProfileId]](steps, Turn.Step.PinModels)
+        .map(_.flatMap(_.toOption))
+      recorded <- read[Either[TurnFailure, Route.Recorded]](steps, Turn.Step.Route)
+        .map(_.flatMap(_.toOption))
+      pin <- (id, recorded) match {
+        case (Some(i), Some(r)) =>
+          val named = TurnProfileId.value(i)
+          for {
+            kept <- profiles.get(i).left.map(e => s"the profile $named unread: ${e.described}")
+            profile <- kept.toRight(s"no profile kept under $named")
+            route <- r.in(profile)
+          } yield Some(Turn.Picked.of(route).turn)
+        case _ => Right(None)
+      }
+    } yield pin
 
   /** A turn's model calls: each whose reply called tools, oldest first (`looped`), then the
     * one that answered, once its reply or draft was kept (`answered`); `schemas` says whether

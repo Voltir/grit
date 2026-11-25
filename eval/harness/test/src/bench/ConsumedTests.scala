@@ -49,7 +49,7 @@ object ConsumedTests extends TestSuite {
     status,
     "the turn, rendered",
     failed,
-    None
+    RanUnder.Unrecorded
   )
 
   val tests = Tests {

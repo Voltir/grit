@@ -11,7 +11,7 @@ import grit.core.clock.Clock
 import grit.core.host.{Argv, Handing, HostError, Memory, Processes, RelPath, Variables}
 import grit.core.id.{Harness, ToolCallId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.model.Effort
+import grit.core.model.{Assignment, CatalogVersion, Effort, Grade, ModelRef, Pinned, Settings}
 import grit.core.secret.{TestSecrets, Variable}
 import grit.dbos.internal.TrialRows
 import grit.host.checkout.{LocalHanding, LocalProcesses, Redaction}
@@ -261,7 +261,7 @@ object RigTests extends TestSuite {
     "SUCCESS",
     "# The turn\nrendered",
     None,
-    Some(Tokens(450_000))
+    RanUnder(Right(None), Right(Some(Tokens(450_000))))
   )
 
   /** A fake [[Memory]]: 9 GB held, of 16 GB available, once the root holds `heavy`, which a
@@ -812,7 +812,7 @@ object RigTests extends TestSuite {
               "[main] said",
               "[rig] the tail of grit's errors:",
               "a log line",
-              "[rig] under: effort none sent; window 100000 tokens; input limit 450000 tokens"
+              "[rig] under: effort not recorded (set none); window 100000 tokens; input limit 450000 tokens"
             )
           )
         )
@@ -1009,22 +1009,44 @@ object RigTests extends TestSuite {
     }
 
     test(
-      "a grit trial's report and its log say the effort, window and input limit its turn ran under, the window grit's default when unset"
+      "a grit trial's report and its log say the grade and effort its turn's calls asked, the setting beside it when they differ, its window and input limit"
     ) {
       withTask { f =>
-        def under(settings: Arm.Settings, turn: GritTurn) =
-          gritTrial(f, GritFake(gritLines), turn = turn, settings = settings).map { t =>
-            val log = Files.readString(f.root.resolve("grit.log")).linesIterator.toVector
-            (t.lines.filter(_.startsWith("under:")), log.filter(_.contains("under:")))
-          }
-        val medium = "under: effort medium; window 100000 tokens; input limit 450000 tokens"
-        val unset = "under: effort none sent; window 25000 tokens; input limit not recorded"
+        def under(settings: Arm.Settings, ran: RanUnder) =
+          gritTrial(
+            f,
+            GritFake(gritLines),
+            turn = gritTurn.copy(ranUnder = ran),
+            settings = settings
+          )
+            .map { t =>
+              val log = Files.readString(f.root.resolve("grit.log")).linesIterator.toVector
+              (t.lines.filter(_.startsWith("under:")), log.filter(_.contains("under:")))
+            }
+        def pin(grade: Grade, ref: ModelRef, effort: Option[Effort]) =
+          Pinned(CatalogVersion("v"), grade, Assignment(ref, 8192, effort), Settings.of(None))
+        val (fireworks, anthropic) = (deepseek.pair, cap.pair)
+        // Routed to its strong rung, which a hard root's allotment asks at high.
+        val strong = RanUnder(
+          Right(Some(pin(Grade.Strong, fireworks, Some(Effort.High)))),
+          Right(Some(Tokens(450_000)))
+        )
+        val defaulted =
+          RanUnder(Right(Some(pin(Grade.Standard, anthropic, None))), Right(None))
+        val high = "under: grade strong, effort high (set medium); window 100000 tokens; " +
+          "input limit 450000 tokens"
+        val medium = "under: grade standard, effort medium (grit's default); window 25000 " +
+          "tokens; input limit not recorded"
+        val unread = "under: effort not read (set medium); window 100000 tokens; input limit " +
+          "not read"
         (
-          under(Arm.Settings(effort = Some(Effort.Medium)), gritTurn),
-          under(Arm.Settings(window = Some(Tokens(25_000))), gritTurn.copy(inputLimit = None))
+          under(Arm.Settings(effort = Some(Effort.Medium)), strong),
+          under(Arm.Settings(window = Some(Tokens(25_000))), defaulted),
+          under(Arm.Settings(effort = Some(Effort.Medium)), RanUnder(Left("gone"), Left("gone")))
         ) ==> (
+          Right((Vector(high), Vector(s"[rig] $high"))),
           Right((Vector(medium), Vector(s"[rig] $medium"))),
-          Right((Vector(unset), Vector(s"[rig] $unset")))
+          Right((Vector(unread), Vector(s"[rig] $unread")))
         )
       }
     }
