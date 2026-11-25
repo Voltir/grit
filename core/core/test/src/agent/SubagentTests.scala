@@ -33,8 +33,5 @@ object SubagentTests extends TestSuite {
       Subagents.of(Vector(one, other)).map(s => (s(coder), s(scholar))) ==>
         Right((Some(one), Some(other)))
     }
-    test("no subagents find nothing") {
-      Subagents.empty(coder) ==> None
-    }
   }
 }

@@ -60,7 +60,7 @@ object DurableSpendCapTests extends TestSuite {
       w.ledger.called("another turn", another, costing("0.01"))(using TestTx.fake)
       w.ledger.called("elsewhere", elsewhere, costing("0.05"))(using TestTx.fake)
       val got = w.run(limits(1, 0), Vector(), new Judging())(m => Seen(Vector(asked(m, "a"))))
-      (got.moves.map(_.isRight), w.ledger.rows.size) ==> (Vector(true), 3)
+      (got, w.ledger.rows.size) ==> (Seen(Vector(Right("hello"))), 3)
     }
   }
 }
