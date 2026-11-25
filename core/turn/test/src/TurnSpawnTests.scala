@@ -34,6 +34,46 @@ object TurnSpawnTests extends TestSuite {
       "m"
     )
 
+  /** A conversation of `from` and the in-memory inbox over its stores, which keeps each ring; when
+    * `from` is a spawned child's, its parent is started, so a ring reaches it.
+    */
+  private final class Ringing(from: Origin) {
+    val entries = new InMemoryEntryStore
+    val conversations = new grit.core.store.InMemoryConversationStore
+    val inbox: grit.core.inbox.InMemoryInbox^ = new grit.core.inbox.InMemoryInbox(
+      conversations,
+      entries,
+      new grit.core.store.InMemoryPrincipals,
+      new InMemoryUsageLedger,
+      grit.core.spend.Budget(java.time.ZoneOffset.UTC, None),
+      grit.core.visibility.Visibility.Shipped,
+      grit.core.identity.TestAccounts.principal,
+      new grit.core.visibility.InMemoryRecorded()
+    )
+    val parent: grit.core.id.TurnRef =
+      from match {
+        case Origin.Spawned(p, _, _) => p
+        case _ =>
+          grit.core.id.TurnRef(grit.core.id.ConversationId("none"), grit.core.id.TurnSeq.First)
+      }
+    inbox.started = Vector(parent)
+
+    /** The turn's body over these stores, offered `subagents`, its model `provider`. */
+    def body(subagents: Spawnable, provider: Scripted)(id: grit.core.id.WorkflowId)(using
+        grit.core.durable.Durable^
+    ): String =
+      spawnedBody(
+        entries,
+        provider,
+        edgeAt(new InMemoryDurable, repository),
+        new Files(Map.empty),
+        subagents,
+        from,
+        conversations = conversations,
+        spawns = inbox
+      )(id)
+  }
+
   /** A reply calling `calls`, priced at `usd`. */
   private def costing(usd: String, calls: (String, String)*): Message.Assistant =
     calling("", calls*)
@@ -284,44 +324,37 @@ object TurnSpawnTests extends TestSuite {
     }
 
     test("a child that fails rings its parent with its ending, once however often it is rerun") {
-      val entries = new InMemoryEntryStore
-      val conversations = new grit.core.store.InMemoryConversationStore
-      val inbox = new grit.core.inbox.InMemoryInbox(
-        conversations,
-        entries,
-        new grit.core.store.InMemoryPrincipals,
-        new InMemoryUsageLedger,
-        grit.core.spend.Budget(java.time.ZoneOffset.UTC, None),
-        grit.core.visibility.Visibility.Shipped,
-        grit.core.identity.TestAccounts.principal,
-        new grit.core.visibility.InMemoryRecorded()
-      )
-      val from = spawnedFrom(repository)
-      val parent = from match {
-        case Origin.Spawned(p, _, _) => p
-        case _ => throw new java.lang.AssertionError("a spawned origin")
-      }
-      inbox.started = Vector(parent)
+      val w = new Ringing(spawnedFrom(repository))
       // Its type is not declared: it fails at its first step.
-      val turn = spawn(entries, SubagentFixtures.coder, "Fix the typo.")
-      def body(id: grit.core.id.WorkflowId)(using grit.core.durable.Durable^): String = spawnedBody(
-        entries,
-        model(),
-        edgeAt(new InMemoryDurable, repository),
-        new Files(Map.empty),
-        Spawnable.empty,
-        from,
-        conversations = conversations,
-        spawns = inbox
-      )(id)
+      val turn = spawn(w.entries, SubagentFixtures.coder, "Fix the typo.")
+      def body(id: grit.core.id.WorkflowId)(using grit.core.durable.Durable^): String =
+        w.body(Spawnable.empty, model())(id)
       val durable = new InMemoryDurable
       val ran = durable.run(turn.workflowId)(body)
       val rerun =
         new InMemoryDurable().replay(turn.workflowId, durable.history(turn.workflowId))(body)
-      (ran, rerun, inbox.returns) ==> (
+      (ran, rerun, w.inbox.returns) ==> (
         "failed: Undeclared(coder)",
         Right("failed: Undeclared(coder)"),
-        Vector((parent, turn, TurnEnding.Otherwise))
+        Vector((w.parent, turn, TurnEnding.Otherwise))
+      )
+    }
+
+    test("a child that answers rings its parent Answered, and an ordinary turn rings no one") {
+      val child = new Ringing(spawnedFrom(room))
+      val asked = spawn(child.entries, SubagentFixtures.scholar, "Find the release date.")
+      val answered = new InMemoryDurable().run(asked.workflowId)(
+        child.body(scholars, new Scripted((_, _) => Right(calling("done"))))
+      )
+      val ordinary = new Ringing(Origin.Task("ring", "ordinary"))
+      val said = say(ordinary.entries, "Hello.")
+      val _ = new InMemoryDurable().run(said.workflowId)(
+        ordinary.body(scholars, new Scripted((_, _) => Right(calling("hi"))))
+      )
+      (TurnEnding.of(answered), child.inbox.returns, ordinary.inbox.returns) ==> (
+        TurnEnding.Answered,
+        Vector((child.parent, asked, TurnEnding.Answered)),
+        Vector.empty
       )
     }
 

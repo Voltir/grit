@@ -5,9 +5,9 @@ import grit.core.durable.{Durable, Flows, Journaled, StepRecord}
 import grit.core.id.{EntryId, EntrySeq, TurnRef, WorkflowId}
 import grit.core.inbox.TurnEnding
 import grit.core.model.{Pinned, StrictSchemas, TurnProfile, TurnProfileId}
-import grit.core.store.{Db, Entry, Jot, ModelProfileStore, Origin, Payload, StoreError, Tx}
+import grit.core.store.{Db, Entry, Jot, ModelProfileStore, Payload, StoreError, Tx}
 import grit.core.tool.{Tool, Toolbox}
-import grit.core.visibility.{Classification, Label, Subject}
+import grit.core.visibility.{Classification, Label}
 
 import TurnFailure.reason
 import TurnLoop.Round
@@ -236,18 +236,12 @@ object Turn {
         }
       )
 
-  // Not a step: a rerun rings again, and the ring's key keeps one (SpawnInbox.returned). The
-  // origin read is of a conversation's fixed origin, so every run decides alike.
-  private def ring(env: TurnEnv^, turn: TurnRef, did: String): Unit =
-    env.db.read(Subject.Turn(turn))(env.hosting.conversations.get(turn.conversationId)) match {
-      case Right(Some(c)) =>
-        c.origin match {
-          case _: Origin.Spawned =>
-            val _ = env.spawns.returned(turn, TurnEnding.of(did))
-          case _ => ()
-        }
-      case _ => ()
-    }
+  // Not a step: a rerun rings again, and the ring's key keeps one. Every turn asks; the inbox
+  // answers Invalid, ringing no one, for one whose conversation is not a spawned child's, and
+  // that answer, like a failed ring's, is dropped unlogged (SpawnInbox.returned).
+  private def ring(env: TurnEnv^, turn: TurnRef, did: String): Unit = {
+    val _ = env.spawns.returned(turn, TurnEnding.of(did))
+  }
 
   /** The id of the `i`-th search query assembly wrote for `turn`, from 0. */
   def queryId(turn: TurnRef, i: Int): EntryId = {
