@@ -68,7 +68,7 @@ run, a trial not passed, its cost unknown rather than zero. The run is stopped o
 budget, so it can pass the budget by the
 call that reached it. A run whose turn did not succeed, or that the budget stopped, is a trial not
 passed, as is one whose processes (all those working in its checkout, the Mill daemon and its test
-JVMs among them) hold more than its memory budget (8 GB, `--max-memory-gb`) or leave the machine
+JVMs among them) hold more than its memory budget (24 GB, `--max-memory-gb`) or leave the machine
 under 1 GB available. The same budget holds while the checkout compiles before grit starts (a
 trial refused, naming the compile) and while each check runs (a trial not passed, naming the
 check, and no check after it run). Every JVM grit's tree and the task's checks start is held to 15% of the

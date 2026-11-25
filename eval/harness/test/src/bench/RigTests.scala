@@ -277,6 +277,10 @@ object RigTests extends TestSuite {
         else Right(Memory.Held(0L, 16L << 30))
     }
 
+  /** The memory budget every fake trial runs under, below the 9 GB the heavy fakes hold. */
+  private val eightGb: MemoryCap =
+    MemoryCap.of("8").fold(e => throw new java.lang.AssertionError(e), identity)
+
   /** A grit coder's trial over the fake launcher, its turn read back as `gritTurn`. */
   private def gritTrial(
       f: Fixture^,
@@ -297,7 +301,7 @@ object RigTests extends TestSuite {
       f.task,
       f.gritArm(fake, settings = settings),
       caps,
-      MemoryCap.Default,
+      eightGb,
       key,
       checkout,
       Rig.Quiet,
@@ -909,7 +913,9 @@ object RigTests extends TestSuite {
       }
     }
 
-    test("a memory budget is a whole number of GB of at least 1, the floor always 1 GB") {
+    test(
+      "a memory budget is a whole number of GB of at least 1, 24 GB by default, the floor always 1 GB"
+    ) {
       (
         MemoryCap.of("12").map(c => (c.most, c.floor)),
         MemoryCap.of("0"),
@@ -919,7 +925,7 @@ object RigTests extends TestSuite {
         Right((12L << 30, 1L << 30)),
         Left("the memory budget 0 is not a whole number of GB of at least 1"),
         Left("the memory budget 1.5 is not a whole number of GB of at least 1"),
-        (8L << 30, 1L << 30)
+        (24L << 30, 1L << 30)
       )
     }
 

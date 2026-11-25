@@ -87,7 +87,7 @@
 #       reported (as grit's line prints it), the run stopped once it is reached or at a call
 #       priced by neither; --max-turns at least 2,
 #       its tool rounds; --max-tokens the most a reply writes (8192); --max-memory-gb the most
-#       its processes, all those working in its checkout, may hold together (8), the run stopped
+#       its processes, all those working in its checkout, may hold together (24), the run stopped
 #       past it or when the machine has under 1 GB available, in the compile before grit and in
 #       the checks alike. --window-tokens and --work-turns set grit's GRIT_WINDOW_TOKENS and GRIT_WORK_TURNS;
 #       --effort its turn's and its dreaming's reasoning effort, GRIT_EFFORT and GRIT_DREAM_EFFORT,
@@ -220,7 +220,9 @@ bench() {
         --java-home "$(path_of grit.app.javaHome)" --scout "$main/scripts/scout"
         --standing "$standing"
         --coder-url "jdbc:postgresql://localhost:5432/grit_bench_coder"
-        --max-tokens "${tokens:-8192}" --max-memory-gb "${memory:-8}")
+        --max-tokens "${tokens:-8192}")
+      # Unset, the harness's own default holds (MemoryCap.Default), its one home.
+      [ -z "$memory" ] || flags+=(--max-memory-gb "$memory")
       flags+=("${settings[@]}")
       if [ -n "$dry" ]; then
         harness bench "${common[@]}" --work "$HOME/.cache/grit-bench/work" "${rest[@]}" \

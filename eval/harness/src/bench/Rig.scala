@@ -115,8 +115,10 @@ object MemoryCap {
   /** 1 GB: the least memory the machine must keep available while a coder runs. */
   val Floor: Long = 1L << 30
 
-  /** 8 GB, its floor [[Floor]]. */
-  val Default: MemoryCap = MemoryCap(8L << 30, Floor)
+  /** 24 GB, its floor [[Floor]]: the frozen tasks' checks were measured at up to 16.5 GB, all of
+    * one task's run in turn, sampled every 2 s, so a peak between samples went unseen.
+    */
+  val Default: MemoryCap = MemoryCap(24L << 30, Floor)
 
   /** `gb` gigabytes, its floor [[Floor]], or why not: not a whole number of at least 1. */
   def of(gb: String): Either[String, MemoryCap] =
