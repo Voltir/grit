@@ -170,7 +170,10 @@ final class InMemoryInbox(
       by: Account,
       link: Option[Href]
   ): Either[InboxError, TurnRef] =
-    refusing.toLeft(()).flatMap(_ => taken(origin, source, message, by, link))
+    InboxError
+      .unspawned(origin)
+      .flatMap(_ => refusing.toLeft(()))
+      .flatMap(_ => taken(origin, source, message, by, link))
 
   /** [[ingest]], unscripted. */
   private def taken(
@@ -218,35 +221,45 @@ final class InMemoryInbox(
   ): Either[InboxError, TurnRef] =
     if (down) unavailable
     else
-      inTx {
-        found(origin).flatMap(
-          _.fold[Either[StoreError, Option[Entry]]](Right(None))(c =>
-            entries.ofTurn(TurnRef(c.id, task)).map(_.minByOption(e => EntrySeq.value(e.seq)))
-          )
+      InboxError.unspawned(origin).flatMap(_ => continuing(origin, source, task, turn, reason, by))
+
+  private def continuing(
+      origin: Origin,
+      source: SourceId,
+      task: TurnSeq,
+      turn: Int,
+      reason: WentOn,
+      by: Account
+  ): Either[InboxError, TurnRef] =
+    inTx {
+      found(origin).flatMap(
+        _.fold[Either[StoreError, Option[Entry]]](Right(None))(c =>
+          entries.ofTurn(TurnRef(c.id, task)).map(_.minByOption(e => EntrySeq.value(e.seq)))
         )
-      }.left
-        .map(InboxError.stored)
-        .flatMap {
-          case Some(first) if principals.author(first.id).contains(by) =>
-            recorded(
-              origin,
-              source,
-              Payload.Continuation(task, turn, reason),
-              by,
-              labelOf(origin),
-              Some(
-                WentOn.believed(
-                  reason,
-                  first.integrity.meet(Tx.integrityOf(person(by))(using inForce))
-                )
-              ),
-              java.time.Instant.EPOCH,
-              capped = true,
-              None
-            )
-          case _ =>
-            Left(InboxError.Invalid("a task is continued only by whoever wrote its first message"))
-        }
+      )
+    }.left
+      .map(InboxError.stored)
+      .flatMap {
+        case Some(first) if principals.author(first.id).contains(by) =>
+          recorded(
+            origin,
+            source,
+            Payload.Continuation(task, turn, reason),
+            by,
+            labelOf(origin),
+            Some(
+              WentOn.believed(
+                reason,
+                first.integrity.meet(Tx.integrityOf(person(by))(using inForce))
+              )
+            ),
+            java.time.Instant.EPOCH,
+            capped = true,
+            None
+          )
+        case _ =>
+          Left(InboxError.Invalid("a task is continued only by whoever wrote its first message"))
+      }
 
   def occasion(
       origin: Origin,
@@ -255,21 +268,34 @@ final class InMemoryInbox(
       at: Instant,
       believed: Integrity
   ): Either[InboxError, TurnRef] =
-    if (origin.place.direct) Left(InboxError.Invalid("an occasion begins no direct message"))
-    else
-      recorded(
-        origin,
-        OccasionKey.source(plugin, occasion.key),
-        Payload.Occasion(occasion.brief, occasion.about, occasion.key),
-        Account.Grit,
-        labelOf(origin),
-        Some(believed),
-        at,
-        capped = false,
-        None
-      )
+    InboxError.unspawned(origin).flatMap { _ =>
+      if (origin.place.direct) Left(InboxError.Invalid("an occasion begins no direct message"))
+      else
+        recorded(
+          origin,
+          OccasionKey.source(plugin, occasion.key),
+          Payload.Occasion(occasion.brief, occasion.about, occasion.key),
+          Account.Grit,
+          labelOf(origin),
+          Some(believed),
+          at,
+          capped = false,
+          None
+        )
+    }
 
   def hear(
+      origin: Origin,
+      source: SourceId,
+      text: String,
+      by: Account,
+      at: java.time.Instant,
+      reach: Reach,
+      link: Option[Href]
+  ): Either[InboxError, Unit] =
+    InboxError.unspawned(origin).flatMap(_ => heardAs(origin, source, text, by, at, reach, link))
+
+  private def heardAs(
       origin: Origin,
       source: SourceId,
       text: String,
@@ -391,6 +417,16 @@ final class InMemoryInbox(
     }
 
   def posted(
+      origin: Origin,
+      source: SourceId,
+      text: String,
+      at: Instant,
+      request: CallSlot,
+      by: Account
+  ): Either[InboxError, Boolean] =
+    InboxError.unspawned(origin).flatMap(_ => postedAs(origin, source, text, at, request, by))
+
+  private def postedAs(
       origin: Origin,
       source: SourceId,
       text: String,

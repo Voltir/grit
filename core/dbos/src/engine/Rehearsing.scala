@@ -86,8 +86,9 @@ final class Rehearsing private (
       at: Instant,
       believed: Integrity
   ): Either[InboxError, TurnRef] =
-    SqlInbox
-      .undirected(origin, "an occasion begins no direct message")
+    InboxError
+      .unspawned(origin)
+      .flatMap(_ => SqlInbox.undirected(origin, "an occasion begins no direct message"))
       .flatMap(_ =>
         maintained(recorder.occasion(origin, plugin, occasion, at, believed)).left
           .map(InboxError.stored)
@@ -160,8 +161,9 @@ final class Rehearsing private (
       at: Instant,
       reach: Reach
   ): Either[InboxError, Starts.Heard] =
-    SqlInbox
-      .undirected(origin, "a direct message is never heard")
+    InboxError
+      .unspawned(origin)
+      .flatMap(_ => SqlInbox.undirected(origin, "a direct message is never heard"))
       .flatMap(_ =>
         maintained(recorder.heard(origin, source, text, by, at, reach, None)).left
           .map(InboxError.stored)
@@ -178,8 +180,9 @@ final class Rehearsing private (
       by: Account
   ): Either[InboxError, Starts.Said] = {
     val now = clock.now()
-    SqlInbox
-      .writtenBy(origin, by)
+    InboxError
+      .unspawned(origin)
+      .flatMap(_ => SqlInbox.writtenBy(origin, by))
       .flatMap(_ =>
         maintained(recorder.said(origin, source, message, by, now, None)).left
           .map(InboxError.stored)

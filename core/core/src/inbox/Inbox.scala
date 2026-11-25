@@ -35,7 +35,8 @@ trait OccasionInbox extends caps.SharedCapability {
     * source [[grit.core.occasion.OccasionKey.source]], and returns that turn; the turn recorded
     * before when that source was in that conversation, whatever this occasion holds, so a step that re-runs gets it
     * back. Never refused over the day's cap. [[InboxError.Invalid]] for an
-    * [[grit.core.store.Origin.Direct]], and when the store holds what it cannot read.
+    * [[grit.core.store.Origin.Direct]], a spawned child's ([[InboxError.unspawned]]), and when
+    * the store holds what it cannot read.
     */
   def occasion(
       origin: Origin,
@@ -128,7 +129,8 @@ trait Inbox extends OccasionInbox {
     * day's recorded spend has reached the inbox's cap ([[grit.core.spend.Budget]]) is
     * [[InboxError.OverCap]]: nothing is recorded, its conversation not even created.
     * [[InboxError.Invalid]] for an [[grit.core.store.Origin.Direct]] whose account is not `by`: a
-    * person writes only their own direct message. [[InboxError.Sealed]] for a new message in a
+    * person writes only their own direct message; and for a spawned child's, whatever `source`
+    * is ([[InboxError.unspawned]]). [[InboxError.Sealed]] for a new message in a
     * direct message's thread begun when its person was cleared for more than they are now: nothing
     * is recorded, and a message in a new thread begins one at their clearance now. `link` opens
     * the message where it was said, as its edge links it (`None` from an edge that links none);
@@ -150,8 +152,9 @@ trait Inbox extends OccasionInbox {
     * asker at the task's clearance (ADR 0058); it is believed no higher than that message, and
     * no higher than [[grit.core.store.WentOn.believed]] allows `reason`. A
     * `source` already recorded for `origin` returns its turn. [[InboxError.OverCap]] as
-    * [[ingest]] refuses a new message; [[InboxError.Invalid]] when `origin` has no
-    * conversation, `task` has no first entry in it, or `by` did not write that entry. A
+    * [[ingest]] refuses a new message; [[InboxError.Invalid]] when `origin` is a spawned
+    * child's ([[InboxError.unspawned]]) or has no conversation, `task` has no first entry in it,
+    * or `by` did not write that entry. A
     * conversation whose period closed since the task still takes it.
     */
   def continued(
@@ -182,7 +185,8 @@ trait Inbox extends OccasionInbox {
     * if that was lost. Its turn runs only when grit drafts a reply to it
     * ([[grit.core.speech.Speech.decide]]). Never refused over the day's cap.
     * [[InboxError.Invalid]] for an [[grit.core.store.Origin.Direct]]: a direct message is
-    * never heard. `link` is kept as [[ingest]] keeps it.
+    * never heard; and for a spawned child's ([[InboxError.unspawned]]). `link` is kept as
+    * [[ingest]] keeps it.
     */
   def hear(
       origin: Origin,
@@ -205,7 +209,7 @@ trait Inbox extends OccasionInbox {
     * anything is recorded for `origin`. Never
     * triaged, never a turn that runs, never refused over the day's cap.
     * [[InboxError.Invalid]] for an [[grit.core.store.Origin.Direct]]: grit's posts begin no
-    * direct message.
+    * direct message; and for a spawned child's ([[InboxError.unspawned]]).
     */
   def posted(
       origin: Origin,
@@ -358,6 +362,17 @@ object InboxError {
     case w: StoreError.Worked => Invalid(w.described)
     case StoreError.DuplicateId(id) =>
       Unavailable(s"entry ${EntryId.value(id)} appeared mid-transaction")
+  }
+
+  /** [[Invalid]] for a spawned child's conversation ([[Origin.Spawned]]), whose one turn its
+    * spawn records ([[SpawnInbox.spawned]]): what every door that begins a turn answers it, before
+    * it reads anything.
+    */
+  def unspawned(origin: Origin): Either[InboxError, Unit] = origin match {
+    case Origin.Spawned(_, _, _) => Left(Invalid("a spawned child's conversation is its one turn"))
+    case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Room(_, _) | Origin.Thread(_, _, _) |
+        Origin.Task(_, _) | Origin.Work(_, _) | Origin.Direct(_, _) =>
+      Right(())
   }
 
   /** What an edge tells a person, once, in a thread whose message was [[Sealed]]. */

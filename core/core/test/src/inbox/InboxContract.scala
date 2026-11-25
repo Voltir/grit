@@ -1141,6 +1141,53 @@ abstract class InboxContract extends TestSuite {
       }
     }
 
+    test(
+      "a spawned child's conversation begins no turn but its spawn's at any door, recorded or not: each Invalid"
+    ) {
+      withInbox(Uncapped) { (inbox, store) =>
+        val here = Origin.Task("inbox", "spawned-one-turn")
+        val ana = TestAccounts.account("task:ana-spawned-one-turn")
+        val parent = inbox
+          .ingest(here, SourceId("p"), said("fix it"), ana, None)
+          .fold(e => throw new java.lang.AssertionError(e), identity)
+        val known = InboxContract.child(parent, "s1-0-one", here.room)
+        val _ = store.spawns
+          .spawned(
+            known,
+            InboxContract.Coder,
+            "Fix the typo.",
+            InboxContract.Cap,
+            Integrity.Member,
+            Label.Public,
+            ana
+          )
+          .fold(e => throw new java.lang.AssertionError(e), identity)
+        val unknown = InboxContract.child(parent, "s1-0-never", here.room)
+        // The spawn's own source, so a door that looked it up first would hand back its turn.
+        def doors(o: Origin): Vector[Either[InboxError, Unit]] = Vector(
+          inbox.ingest(o, SourceId("spawn"), said("and this"), ana, None).map(_ => ()),
+          inbox.continued(o, SourceId("spawn"), TurnSeq.First, 2, WentOn.AtLimit, ana).map(_ => ()),
+          inbox.hear(o, SourceId("spawn"), "heard", ana, Said, Reach.Nowhere, None),
+          inbox.posted(o, SourceId("spawn"), "posted", PostedAt, Asking, ana).map(_ => ()),
+          inbox
+            .occasion(
+              o,
+              InboxContract.Plugin,
+              InboxContract.occasion("ahead:child"),
+              PostedAt,
+              Integrity.Member
+            )
+            .map(_ => ())
+        )
+        val refused = Left(InboxError.Invalid("a spawned child's conversation is its one turn"))
+        (doors(known), doors(unknown), store.exists(unknown)) ==> (
+          Vector.fill(5)(refused),
+          Vector.fill(5)(refused),
+          false
+        )
+      }
+    }
+
     test("a spawned child whose parent never ran rings no one: NoSuchTurn") {
       withInbox(Uncapped) { (inbox, store) =>
         val here = Origin.Task("inbox", "spawned-orphan")

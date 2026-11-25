@@ -93,7 +93,11 @@ final class SqlInbox(
       by: Account,
       link: Option[Href]
   ): Either[InboxError, TurnRef] =
-    SqlInbox.writtenBy(origin, by).flatMap(_ => ingested(origin, source, message, by, link))
+    for {
+      _ <- InboxError.unspawned(origin)
+      _ <- SqlInbox.writtenBy(origin, by)
+      turn <- ingested(origin, source, message, by, link)
+    } yield turn
 
   private def ingested(
       origin: Origin,
@@ -120,11 +124,12 @@ final class SqlInbox(
       turn: Int,
       reason: WentOn,
       by: Account
-  ): Either[InboxError, TurnRef] = {
-    val now = clock.now()
-    inTransaction(recorder.continued(origin, source, task, turn, reason, by, now))
-      .flatMap(identity)
-  }
+  ): Either[InboxError, TurnRef] =
+    InboxError.unspawned(origin).flatMap { _ =>
+      val now = clock.now()
+      inTransaction(recorder.continued(origin, source, task, turn, reason, by, now))
+        .flatMap(identity)
+    }
 
   def hear(
       origin: Origin,
@@ -135,8 +140,9 @@ final class SqlInbox(
       reach: Reach,
       link: Option[Href]
   ): Either[InboxError, Unit] =
-    SqlInbox
-      .undirected(origin, "a direct message is never heard")
+    InboxError
+      .unspawned(origin)
+      .flatMap(_ => SqlInbox.undirected(origin, "a direct message is never heard"))
       .flatMap(_ => heard(origin, source, text, by, at, reach, link))
 
   def occasion(
@@ -146,8 +152,9 @@ final class SqlInbox(
       at: Instant,
       believed: Integrity
   ): Either[InboxError, TurnRef] =
-    SqlInbox
-      .undirected(origin, "an occasion begins no direct message")
+    InboxError
+      .unspawned(origin)
+      .flatMap(_ => SqlInbox.undirected(origin, "an occasion begins no direct message"))
       .flatMap(_ =>
         inTransaction(recorder.occasion(origin, plugin, occasion, at, believed)).flatMap(identity)
       )
@@ -188,8 +195,9 @@ final class SqlInbox(
       request: CallSlot,
       by: Account
   ): Either[InboxError, Boolean] =
-    SqlInbox
-      .undirected(origin, "grit's posts begin no direct message")
+    InboxError
+      .unspawned(origin)
+      .flatMap(_ => SqlInbox.undirected(origin, "grit's posts begin no direct message"))
       .flatMap(_ => postedAs(origin, source, text, at, request, by))
 
   private def postedAs(
