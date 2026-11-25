@@ -69,6 +69,13 @@ final class InMemoryUsageLedger extends UsageLedger, Spending {
       Right(())
     }
 
+  /** Records one call of `turn`'s, as `entry`, of model `m`, costing what `usage` says; an
+    * entry already recorded fails the test.
+    */
+  def called(entry: String, turn: TurnRef, usage: Usage)(using Tx^): Unit =
+    record(EntryId(entry), turn, turn.workflowId, "m", None, None, usage, Tokens(1))
+      .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
+
   def of(workflow: WorkflowId)(using Tx^): Either[StoreError, Vector[UsageLedger.Row]] =
     Right(rows.collect {
       case (entry, w, model, usage, estimate, _) if w == workflow =>

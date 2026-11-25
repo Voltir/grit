@@ -69,14 +69,6 @@ object AskingTests extends TestSuite {
   private def spendCap(usd: String): SpendCap =
     SpendCap.of(BigDecimal(usd)).fold(e => throw new java.lang.AssertionError(e), identity)
 
-  /** `ledger` records one call of `turn`'s, as `entry`, costing what `usage` says. */
-  private def recorded(ledger: InMemoryUsageLedger, entry: String, turn: TurnRef, usage: Usage)(
-      using Tx^
-  ): Unit =
-    ledger
-      .record(EntryId(entry), turn, turn.workflowId, "m", None, None, usage, Tokens(1))
-      .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
-
   /** Spending that cannot be read: an allowance that reads it fails. */
   private val unreadable: Spending = new Spending {
     def on(day: Day)(using Tx^): Either[StoreError, Spend] = Left(StoreError.DatabaseError("x"))
@@ -116,29 +108,9 @@ object AskingTests extends TestSuite {
       ledger.now = start
       val daily = Allowance.Daily(budget("0.02"))
       val before = Asking.admits(daily, turn.conversationId, ledger, start)
-      val _ =
-        ledger.record(
-          EntryId("a"),
-          turn,
-          turn.workflowId,
-          "m",
-          None,
-          None,
-          answer("a").usage,
-          Tokens(1)
-        )
+      ledger.called("a", turn, answer("a").usage)
       val under = Asking.admits(daily, turn.conversationId, ledger, start)
-      val _ =
-        ledger.record(
-          EntryId("b"),
-          turn,
-          turn.workflowId,
-          "m",
-          None,
-          None,
-          answer("b").usage,
-          Tokens(1)
-        )
+      ledger.called("b", turn, answer("b").usage)
       val at = Asking.admits(daily, turn.conversationId, ledger, start)
       val tomorrow = Asking.admits(
         daily,
@@ -164,10 +136,10 @@ object AskingTests extends TestSuite {
       ledger.now = start
       val capped = Allowance.Capped(spendCap("0.02"))
       val elsewhere = TurnRef(ConversationId("d"), TurnSeq.First)
-      recorded(ledger, "a", turn, answer("a").usage)
-      recorded(ledger, "o", elsewhere, answer("o", "1").usage)
+      ledger.called("a", turn, answer("a").usage)
+      ledger.called("o", elsewhere, answer("o", "1").usage)
       val under = Asking.admits(capped, turn.conversationId, ledger, start)
-      recorded(ledger, "b", turn, answer("b").usage)
+      ledger.called("b", turn, answer("b").usage)
       val at = Asking.admits(capped, turn.conversationId, ledger, start)
       (under, at) ==> (Right(true), Right(false))
     }
@@ -176,7 +148,7 @@ object AskingTests extends TestSuite {
       val ledger = new InMemoryUsageLedger
       given Tx = TestTx.fake
       ledger.now = start
-      recorded(ledger, "a", turn, Usage(Tokens(10), Tokens(2), Tokens.Zero, None))
+      ledger.called("a", turn, Usage(Tokens(10), Tokens(2), Tokens.Zero, None))
       Asking.admits(Allowance.Capped(spendCap("1")), turn.conversationId, ledger, start) ==>
         Right(false)
     }
