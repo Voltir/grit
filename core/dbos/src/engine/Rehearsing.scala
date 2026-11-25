@@ -121,8 +121,11 @@ final class Rehearsing private (
   def reply(child: TurnRef)(using Tx^): Either[StoreError, SpawnReply] =
     SqlInbox.replyOf(entries, child)
 
-  def spent(child: TurnRef)(using Tx^): Either[StoreError, Cost] =
-    spending.conversation(child.conversationId).map(_.cost)
+  def spent(turn: TurnRef)(using Tx^): Either[StoreError, Cost] =
+    spending.conversation(turn.conversationId).map(_.cost)
+
+  def granted(parent: TurnRef)(using Tx^): Either[StoreError, Vector[SpendCap]] =
+    SqlInbox.grantedOf(parent)
 
   /** Rings nothing: a session runs no workflow to ring. */
   def returned(child: TurnRef): Either[InboxError, Unit] = Right(())

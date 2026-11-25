@@ -54,6 +54,7 @@ import grit.core.store.{
 import grit.core.visibility.{Integrity, Label, Subject, Visibility}
 import grit.dbos.sql.{SqlSchedules, SqlStatements}
 import grit.dbos.workflow.{Runs, Stitches, Triages, Turns}
+import grit.std.either.Traversal
 
 import dev.dbos.transact.exceptions.DBOSNonExistentWorkflowException
 import dev.dbos.transact.workflow.WorkflowState
@@ -333,8 +334,11 @@ final class SqlInbox(
   def reply(child: TurnRef)(using Tx^): Either[StoreError, SpawnReply] =
     SqlInbox.replyOf(entries, child)
 
-  def spent(child: TurnRef)(using Tx^): Either[StoreError, Cost] =
-    spending.conversation(child.conversationId).map(_.cost)
+  def spent(turn: TurnRef)(using Tx^): Either[StoreError, Cost] =
+    spending.conversation(turn.conversationId).map(_.cost)
+
+  def granted(parent: TurnRef)(using Tx^): Either[StoreError, Vector[SpendCap]] =
+    SqlInbox.grantedOf(parent)
 
   /** One `DBOSClient.send` to the parent's workflow, under an idempotency key fixed by the
     * child ([[SqlInbox.returnedKey]]): DBOS keeps one notification per key, as [[answer]]'s.
@@ -656,6 +660,34 @@ private[dbos] object SqlInbox {
   /** Whether an entry `id` is kept, whatever the transaction's clearance: the one bit
     * [[replyOf]] tells apart as `Unread`, never what it holds.
     */
+  /** [[SpawnInbox.granted]]: the caps of the root notes of the conversations whose origin names
+    * `parent`, by their origin's fields and in the order they were made, whatever the
+    * transaction's clearance. No index serves the origin's fields: it reads every conversation.
+    */
+  private[engine] def grantedOf(parent: TurnRef)(using Tx^): Either[StoreError, Vector[SpendCap]] =
+    SqlStatements
+      .many(
+        """SELECT e.payload->>'spendCap' FROM grit.conversations c
+          |JOIN grit.entries e ON e.conversation_id = c.id
+          |WHERE c.origin->>'kind' = 'spawned' AND c.origin->>'conversation' = ?
+          |  AND (c.origin->>'turn')::bigint = ? AND e.payload->>'kind' = 'spawn'
+          |ORDER BY c.id""".stripMargin
+      ) { s =>
+        s.setString(1, ConversationId.value(parent.conversationId))
+        s.setLong(2, TurnSeq.value(parent.turnSeq))
+      }(_.getString(1))
+      .flatMap(caps =>
+        Traversal.traverse(caps)(usd =>
+          scala.util
+            .Try(BigDecimal(usd))
+            .toOption
+            .toRight(s"a spend cap is a number: $usd")
+            .flatMap(SpendCap.of)
+            .left
+            .map(StoreError.Invalid(_))
+        )
+      )
+
   private def kept(id: EntryId)(using Tx^): Either[StoreError, Boolean] =
     SqlStatements
       .many("SELECT 1 FROM grit.entries WHERE id = ?")(_.setString(1, EntryId.value(id)))(_ => ())

@@ -78,8 +78,14 @@ trait SpawnInbox extends caps.SharedCapability {
     */
   def reply(child: TurnRef)(using Tx^): Either[StoreError, SpawnReply]
 
-  /** What `child`'s conversation's recorded calls cost. */
-  def spent(child: TurnRef)(using Tx^): Either[StoreError, Cost]
+  /** What `turn`'s conversation's recorded calls cost: a child's, or a parent's. */
+  def spent(turn: TurnRef)(using Tx^): Either[StoreError, Cost]
+
+  /** The spend caps `parent`'s children were spawned with, in the order they were, whatever the
+    * transaction's clearance: a cap is its type's, never its child's words, and a child kept
+    * above the parent's clearance still counts against what the parent may grant.
+    */
+  def granted(parent: TurnRef)(using Tx^): Either[StoreError, Vector[SpendCap]]
 
   /** Rings `child`'s parent, named by its origin, on [[SpawnInbox.topic]], that it ended; once
     * per child, however often called. [[InboxError.Invalid]] when `child`'s conversation is not

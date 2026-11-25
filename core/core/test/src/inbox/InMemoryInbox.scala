@@ -638,8 +638,29 @@ final class InMemoryInbox(
         }
     })
 
-  def spent(child: TurnRef)(using Tx^): Either[StoreError, Cost] =
-    ledger.conversation(child.conversationId).map(_.cost)
+  def spent(turn: TurnRef)(using Tx^): Either[StoreError, Cost] =
+    ledger.conversation(turn.conversationId).map(_.cost)
+
+  def granted(parent: TurnRef)(using Tx^): Either[StoreError, Vector[SpendCap]] =
+    Right(
+      conversations.all
+        .filter(c =>
+          c.origin match {
+            case Origin.Spawned(p, _, _) => p == parent
+            case _ => false
+          }
+        )
+        .flatMap(c =>
+          entries.everything.collectFirst {
+            case e if e.conversationId == c.id =>
+              e.payload match {
+                case Payload.Spawn(_, _, cap) => Some(cap)
+                case _ => None
+              }
+          }.flatten
+        )
+        .toVector
+    )
 
   def returned(child: TurnRef): Either[InboxError, Unit] =
     if (down) unavailable

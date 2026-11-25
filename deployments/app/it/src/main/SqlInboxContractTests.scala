@@ -385,7 +385,8 @@ object SqlInboxContractTests extends InboxContract, caps.SharedCapability {
         child => LiveDb.transaction(db)(engine.spent(child)),
         spendIn,
         rung,
-        started
+        started,
+        (parent, clearance) => LiveDb.transaction(db, clearance)(engine.granted(parent))
       )
     )
   }

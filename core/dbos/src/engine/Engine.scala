@@ -152,7 +152,11 @@ final class Engine private (
   def reply(child: TurnRef)(using Tx^): Either[StoreError, SpawnReply] = sqlInbox.reply(child)
 
   /** [[grit.core.inbox.SpawnInbox.spent]], through this engine's inbox. */
-  def spent(child: TurnRef)(using Tx^): Either[StoreError, Cost] = sqlInbox.spent(child)
+  def spent(turn: TurnRef)(using Tx^): Either[StoreError, Cost] = sqlInbox.spent(turn)
+
+  /** [[grit.core.inbox.SpawnInbox.granted]], through this engine's inbox. */
+  def granted(parent: TurnRef)(using Tx^): Either[StoreError, Vector[SpendCap]] =
+    sqlInbox.granted(parent)
 
   /** [[grit.core.inbox.SpawnInbox.returned]], through this engine's inbox. */
   def returned(child: TurnRef): Either[InboxError, Unit] = sqlInbox.returned(child)

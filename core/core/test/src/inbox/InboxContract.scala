@@ -1268,6 +1268,50 @@ abstract class InboxContract extends TestSuite {
         )
       }
     }
+
+    test(
+      "a parent's children's spend caps are granted in the order they were spawned, a child kept above the reader's clearance among them; another turn's children are not its"
+    ) {
+      val room = TestLabels.place("task:granted-internal")
+      val visibility = (for {
+        compartments <- Compartments.of(Vector.empty).left.map(_.toString)
+        rooms <- RoomLabels
+          .of(Vector(room -> Internal), Labelled.Mapped(Label.Public))
+          .left
+          .map(_.toString)
+        v <- Visibility.of(compartments, rooms, Vector.empty, Vector.empty).left.map(_.toString)
+      } yield v).fold(e => throw new java.lang.AssertionError(e), identity)
+      withInbox(Uncapped, visibility) { (inbox, store) =>
+        val here = Origin.Task("granted-internal", "parent")
+        val ana = TestAccounts.account("task:ana-granted")
+        def ingested(source: String) = inbox
+          .ingest(here, SourceId(source), said("fix it"), ana, None)
+          .fold(e => throw new java.lang.AssertionError(e), identity)
+        val parent = ingested("p")
+        val other = ingested("q")
+        val small =
+          SpendCap.of(BigDecimal("0.02")).fold(e => throw new java.lang.AssertionError(e), identity)
+        def spawn(of: TurnRef, name: String, within: Place, cap: SpendCap, at: Label) = store.spawns
+          .spawned(
+            InboxContract.child(of, name, within),
+            InboxContract.Coder,
+            "Fix the typo.",
+            cap,
+            Integrity.Member,
+            at,
+            ana
+          )
+          .fold(e => throw new java.lang.AssertionError(e), identity)
+        val _ = spawn(parent, "s1-0-granted", here.room, InboxContract.Cap, Label.Public)
+        val _ = spawn(parent, "s1-1-granted", room, small, Internal)
+        val _ = spawn(other, "s1-0-granted-other", here.room, small, Label.Public)
+        val public = Clearance.of(Label.Public)
+        (store.grantedAt(parent, public), store.grantedAt(ingested("r"), public)) ==> (
+          Right(Vector(InboxContract.Cap, small)),
+          Right(Vector.empty)
+        )
+      }
+    }
   }
 }
 
@@ -1339,7 +1383,8 @@ object InboxContract {
     * child's reply read in a transaction at a clearance; `spentOf`, what a child's
     * conversation's calls cost; `spendIn` records a call of a turn that
     * cost that many dollars now; `rung`, how many rings of a child have reached its parent's
-    * workflow; `started`, whether a turn was started, read before [[end]], which waits on it.
+    * workflow; `started`, whether a turn was started, read before [[end]], which waits on it;
+    * `grantedAt`, the spend caps a parent's children were granted, read at a clearance.
     */
   final case class Store(
       spend: BigDecimal => Unit,
@@ -1369,6 +1414,7 @@ object InboxContract {
       spentOf: TurnRef => Either[StoreError, Cost],
       spendIn: (TurnRef, BigDecimal) => Unit,
       rung: (TurnRef, TurnRef) => Int,
-      started: TurnRef => Boolean
+      started: TurnRef => Boolean,
+      grantedAt: (TurnRef, Clearance) => Either[StoreError, Vector[SpendCap]]
   )
 }
