@@ -200,6 +200,36 @@ object RehearsingLiveTests extends TestSuite {
     }
 
     test(
+      "a rehearsal begins no turn in a spawned child's conversation, at ingest, hear or occasion: each Invalid"
+    ) {
+      val (config, engine, thread) = seeded("rehearsing_unspawned")
+      try {
+        val child =
+          grit.core.inbox.InboxContract.child(TurnRef(thread, TurnSeq.First), "s1-0-r", room.place)
+        val shown =
+          Rehearsing(config, LiveEngine.Uncapped, Visibility.Shipped, Clock.system(), new Handed) {
+            r =>
+              Vector(
+                r.ingest(child, SourceId("c"), Message.User("and this"), Account.Local)
+                  .map(_ => ()),
+                r.hear(child, SourceId("c"), "heard", Account.Local, at, Reach.Nowhere)
+                  .map(_ => ()),
+                r.occasion(
+                  child,
+                  grit.core.inbox.InboxContract.Plugin,
+                  grit.core.inbox.InboxContract.occasion("ahead:child"),
+                  at,
+                  grit.core.visibility.Integrity.Member
+                ).map(_ => ())
+              )
+          }
+        shown ==> Right(
+          Vector.fill(3)(Left(InboxError.Invalid("a spawned child's conversation is its one turn")))
+        )
+      } finally engine.close()
+    }
+
+    test(
       "a session launched hands every body to its runner and leaves every table as it was; a turn started on it reaches the runner"
     ) {
       val (config, engine, thread) = seeded("rehearsing_runner")

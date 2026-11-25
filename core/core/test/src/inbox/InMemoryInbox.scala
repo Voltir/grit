@@ -219,9 +219,9 @@ final class InMemoryInbox(
       reason: WentOn,
       by: Account
   ): Either[InboxError, TurnRef] =
-    if (down) unavailable
-    else
-      InboxError.unspawned(origin).flatMap(_ => continuing(origin, source, task, turn, reason, by))
+    InboxError
+      .unspawned(origin)
+      .flatMap(_ => if (down) unavailable else continuing(origin, source, task, turn, reason, by))
 
   private def continuing(
       origin: Origin,
