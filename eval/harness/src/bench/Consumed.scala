@@ -9,11 +9,10 @@ import grit.core.model.Pricing
 import grit.core.provider.CallLine
 import grit.models.{AnthropicJson, AnthropicRates}
 
-/** One model call of a run: its message id, the model that answered it, and what it consumed,
-  * priced by [[AnthropicRates]], or when `reported`, a grit call of a model it has no rates for,
-  * by the cost its provider reported, as grit's line printed it ([[CallLine.read]]'s `rounded`);
-  * `costUsd` `None` when neither prices it. Its usage is the one its message began with: input
-  * and cache final, output not, since a message's `output_tokens` grows as it streams.
+/** One model call of a run, its usage priced by [[AnthropicRates]], or when `reported` (a grit
+  * call of a model it has no rates for) by the cost its provider reported, as grit's line printed
+  * it ([[CallLine.read]]'s `rounded`); `costUsd` is None when neither prices it. Its usage is the
+  * one its message began with: input and cache tokens final, output tokens not.
   */
 final case class Call(id: String, model: String, usage: Usage, reported: Boolean = false)
     extends caps.Pure
