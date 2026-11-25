@@ -1,14 +1,23 @@
 package grit.turn
 
 import grit.core.agent.{Subagent, SubagentFixtures, Subagents}
-import grit.core.durable.InMemoryDurable
+import grit.core.document.InMemoryDocuments
+import grit.core.durable.{InMemoryDurable, StepRecord}
 import grit.core.edge.InMemoryEdges
+import grit.core.files.InMemoryPieces
 import grit.core.id.ToolCallId
 import grit.core.inbox.TurnEnding
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Assignment, Catalog, Grade, Ladder, Policy, Rung}
 import grit.core.place.Place
-import grit.core.store.{InMemoryEntryStore, InMemoryUsageLedger, Origin}
+import grit.core.store.{
+  InMemoryConversationStore,
+  InMemoryEntryStore,
+  InMemoryPrincipals,
+  InMemoryUsageLedger,
+  Origin,
+  Payload
+}
 import grit.core.tool.Outcome
 import grit.core.visibility.{Clearance, Integrity, Label, Level}
 
@@ -229,6 +238,71 @@ object TurnSpawnTests extends TestSuite {
       val child = TaskStatus.schema(false, TaskStatus.Handoff.ToParent).description
       provider.requests.map(_.tools.find(_.name == "task_status").map(_.description)) ==>
         Vector.fill(2)(Some(child))
+    }
+
+    test(
+      "a child's requests rebuild from its record as sent, and its window record keeps the started line"
+    ) {
+      val entries = new InMemoryEntryStore
+      val turn = spawn(entries, SubagentFixtures.coder, "Fix the typo.")
+      val durable = new InMemoryDurable
+      val provider = model(("t1", "fetch"))
+      val conversations = new InMemoryConversationStore
+      val profiles = profilesKept()
+      durable.run(turn.workflowId)(
+        spawnedBody(
+          entries,
+          provider,
+          edgeAt(durable, repository),
+          new Files(Map("a.txt" -> "alpha")),
+          coders,
+          spawnedFrom(repository),
+          conversations = conversations,
+          profiles = profiles
+        )
+      )
+      val steps = durable
+        .history(turn.workflowId)
+        .map(s =>
+          StepRecord(
+            s.name,
+            s.outcome match {
+              case InMemoryDurable.Outcome.Output(value) => Some(value)
+              case InMemoryDurable.Outcome.Threw(_) | InMemoryDurable.Outcome.Marker => None
+            },
+            None
+          )
+        )
+      val reads = TurnRecord.Reads(
+        conversations,
+        entries,
+        new InMemoryPrincipals,
+        new InMemoryDocuments,
+        new InMemoryPieces,
+        Prompts,
+        ToolSets,
+        profiles
+      )
+      given grit.core.store.Tx = grit.dbos.sql.TestTx.fake
+      val dated = entries.get(Turn.windowId(turn)).toOption.flatten.map(_.payload).collect {
+        case w: Payload.Window => w.carry.map(_.dated)
+      }
+      (
+        TurnRecord
+          .requests(turn, steps, reads)
+          .map(c => c.looped.map(_.request) ++ c.answered.map(_.on).toVector),
+        dated
+      ) ==> (
+        Right(provider.requests),
+        Some(
+          Some(
+            Some(
+              "This run was started Thu 1970-01-01 00:00 UTC. Times grit shows you in your view " +
+                "are UTC. Write each time in your reply with its zone."
+            )
+          )
+        )
+      )
     }
 
     test("a child's first message dates when its run was started, speaking of no person") {

@@ -1086,7 +1086,7 @@ object TurnFixtures {
     * were made under kept in `seen`, each recorded in `ledger`; its classifier `classifier`,
     * its root's task asked through `routing`, and its window drawn with a query written when
     * `queries` ([[QueryWriting]]); its conversation kept in `conversations`, its ring sent to
-    * `spawns`.
+    * `spawns`, its pinned profiles kept in `profiles`.
     */
   def spawnedBody(
       entries: EntryStore,
@@ -1105,7 +1105,8 @@ object TurnFixtures {
       routing: TurnRouting^ = noRouting(),
       queries: Boolean = false,
       conversations: InMemoryConversationStore = new InMemoryConversationStore,
-      spawns: grit.core.inbox.SpawnInbox^ = grit.core.inbox.InMemoryInbox.fresh()
+      spawns: grit.core.inbox.SpawnInbox^ = grit.core.inbox.InMemoryInbox.fresh(),
+      profiles: ModelProfileStore = profilesKept()
   )(id: WorkflowId)(using Durable^): String = {
     conversations.findOrCreate(from, Account.Local, Label.Public)(using TestTx.fake)
     Turn.body(
@@ -1114,7 +1115,7 @@ object TurnFixtures {
           entries,
           ledger,
           CharEstimate,
-          profilesKept(),
+          profiles,
           new InMemoryPrincipals,
           new InMemoryDocuments,
           new InMemoryPieces,
