@@ -34,6 +34,18 @@ object TurnSpawnTests extends TestSuite {
       "m"
     )
 
+  /** A reply calling `calls`, priced at `usd`. */
+  private def costing(usd: String, calls: (String, String)*): Message.Assistant =
+    calling("", calls*)
+      .copy(usage = Usage(Tokens(10), Tokens(2), Tokens.Zero, Some(BigDecimal(usd))))
+
+  /** Routing whose spend is read from `ledger`, asking no task. */
+  private def spendingFrom(ledger: InMemoryUsageLedger) =
+    routing(
+      new Tasks(Left(grit.core.triage.Weighing.Unweighed.Unavailable)),
+      spending = ledger
+    )
+
   /** A model that calls `first` on its first call and answers "done" after. */
   private def model(first: (String, String)*): Scripted =
     new Scripted((_, n) => Right(if (n == 0) calling("", first*) else calling("done")))
@@ -239,6 +251,67 @@ object TurnSpawnTests extends TestSuite {
       )
       (provider.requests.size, ran.startsWith("failed: Uncleared("), TurnEnding.of(ran)) ==>
         (0, true, TurnEnding.Otherwise)
+    }
+
+    test(
+      "a child whose spend reaches its cap mid-turn makes no further call and ends OverCap, at a spend its cap refuses"
+    ) {
+      val entries = new InMemoryEntryStore
+      val turn = spawn(entries, SubagentFixtures.scholar, "Find the release date.")
+      val durable = new InMemoryDurable
+      val ledger = new InMemoryUsageLedger
+      // Each call costs 0.03 against the type's cap of 0.05: the third round's gate refuses.
+      val provider = new Scripted((_, _) => Right(costing("0.03", "c" -> "lookup")))
+      val ran = durable.run(turn.workflowId)(
+        spawnedBody(
+          entries,
+          provider,
+          edgeAt(durable, room),
+          new Files(Map.empty),
+          scholars,
+          spawnedFrom(room),
+          ledger = ledger,
+          routing = spendingFrom(ledger)
+        )
+      )
+      given grit.core.store.Tx = grit.dbos.sql.TestTx.fake
+      (
+        ran,
+        TurnEnding.of(ran),
+        provider.requests.size,
+        ledger.conversation(turn.conversationId).map(s => SubagentFixtures.spendCap.admits(s.cost))
+      ) ==> ("failed: OverCap(SpendCap(0.05))", TurnEnding.Otherwise, 2, Right(false))
+    }
+
+    test("a child's later turn keeps to the spend cap its first turn's note set") {
+      val entries = new InMemoryEntryStore
+      val first = spawn(entries, SubagentFixtures.scholar, "Find the release date.")
+      val ledger = new InMemoryUsageLedger
+      locally {
+        given grit.core.store.Tx = grit.dbos.sql.TestTx.fake
+        ledger.called(
+          "spent",
+          first,
+          Usage(Tokens(1), Tokens(1), Tokens.Zero, Some(BigDecimal("0.06")))
+        )
+      }
+      val later = say(entries, "Go on.")
+      val durable = new InMemoryDurable
+      val provider = model()
+      val ran = durable.run(later.workflowId)(
+        spawnedBody(
+          entries,
+          provider,
+          edgeAt(durable, room),
+          new Files(Map.empty),
+          scholars,
+          spawnedFrom(room),
+          ledger = ledger,
+          routing = spendingFrom(ledger)
+        )
+      )
+      (later.turnSeq == first.turnSeq, ran, provider.requests.size) ==>
+        (false, "failed: OverCap(SpendCap(0.05))", 0)
     }
 
     test(

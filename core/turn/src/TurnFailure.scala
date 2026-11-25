@@ -2,7 +2,7 @@ package grit.turn
 
 import grit.act.phase.Faults
 import grit.core.id.AgentType
-import grit.core.message.Tokens
+import grit.core.message.{Cost, SpendCap, Tokens}
 import grit.core.route
 import grit.core.store.StoreError
 import grit.core.visibility.Label
@@ -39,6 +39,11 @@ enum TurnFailure {
     * step, before any call.
     */
   case Undeclared(agent: AgentType)
+
+  /** A spawned child's round refused before its model call: its conversation's recorded calls
+    * no longer cost less than `cap`, or one was not priced ([[grit.core.act.Allowance.Capped]]).
+    */
+  case OverCap(cap: SpendCap)
 }
 
 object TurnFailure {
@@ -71,5 +76,7 @@ object TurnFailure {
       s"the model used its whole output budget thinking and gave no reply ($output output tokens)"
     case TurnFailure.Undeclared(agent) =>
       s"no subagent of the type ${AgentType.value(agent)} is declared"
+    case TurnFailure.OverCap(cap) =>
+      s"its spend reached its cap of ${Cost.Exact(cap.usd).written}"
   }
 }

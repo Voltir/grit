@@ -57,7 +57,11 @@ for a coding type, the coding tools its allowlist permits, at its type's reposit
 deployment's own, operator, administering or conversing tools, and no subagent. Its hosted tools
 are offered only where an edge serves that repository, as any workspace's are. Its calls are made
 under its type's pins (`pin-models`), met with its room's clearances as every turn's are, and a
-child whose type is not declared ends at that first step (`TurnFailure.Undeclared`).
+child whose type is not declared ends at that first step (`TurnFailure.Undeclared`). Each round's
+gate admits its call under the spend cap its conversation's first turn recorded (`Payload.Spawn`),
+in every turn of that conversation: once its recorded calls reach the cap, or one was not priced,
+the turn ends before that call (`TurnFailure.OverCap`), and its parent reads it as
+`Delegated.Limited`, by the same `SpendCap.admits`.
 
 Its prompt, in order: the base (`TurnPrompt.TaskBase` when briefed for one task),
 `TurnPrompt.Candour`, `TurnPrompt.Answering`, `TurnPrompt.Security` (not when so briefed),

@@ -496,6 +496,16 @@ object TurnJournalTests extends TestSuite {
     }
 
     test(
+      "a child's round refused at its spend cap is written with the cap and reads back as written"
+    ) {
+      val j = summon[Journaled[Either[TurnFailure, Gated]]]
+      val over: Either[TurnFailure, Gated] =
+        Left(TurnFailure.OverCap(grit.core.agent.SubagentFixtures.spendCap))
+      (j.encode(over), j.decode(j.encode(over))) ==>
+        ("""{"failed":"over-cap","reason":"0.05"}""", Right(over))
+    }
+
+    test(
       "an offer's advertised tools are written by name, and an offer recorded before them reads as none"
     ) {
       // Pinned: replay reads this key to rebuild the tools a turn took from an edge's advert.

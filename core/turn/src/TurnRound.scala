@@ -40,7 +40,8 @@ private[turn] object TurnRound {
   trait Env {
 
     /** `gate:n`'s body: round `at.round`'s gate, decided from the turn's start for the first
-      * round and from `at.level` after.
+      * round and from `at.level` after; [[TurnFailure.OverCap]] when the turn is a spawned
+      * child's and its spend cap no longer admits an ask, so the round makes no call.
       */
     def gate(at: Progress): Either[TurnFailure, Gated]
 

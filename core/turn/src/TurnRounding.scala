@@ -4,13 +4,13 @@ import java.time.Instant
 
 import grit.act.phase.Gated as CallGate
 import grit.act.phase.{Asking, Calling, Shaped, Shaping}
-import grit.core.act.{Extraction, Gates, Posed}
+import grit.core.act.{Allowance, Extraction, Gates, Posed}
 import grit.core.approval.Approval
 import grit.core.context.{CarriedWindow, Window}
 import grit.core.durable.StreamWriter
 import grit.core.flow.{Extracted, Shape, Trusted}
 import grit.core.id.{CallSlot, EntryId, EntrySeq, TurnRef, TurnSeq}
-import grit.core.message.Message
+import grit.core.message.{Message, SpendCap}
 import grit.core.model.{Grade, StrictSchemas}
 import grit.core.provider.ModelRequest
 import grit.core.store.{Entry, Jot, Keeps, Payload, Reads, StoreError, Tx}
@@ -320,7 +320,8 @@ private[turn] object Rounding {
     * from the turn's start, each item hidden so far kept as `named` recorded it, and each
     * answer of read_hidden read ([[ReadHidden.answers]]). The start is its root's
     * integrity, met with [[Integrity.Outside]] when `root` is a heard message grit was not
-    * addressed in ([[TurnOffer.Root.Heard]], [[TurnOffer.Root.Named]]).
+    * addressed in ([[TurnOffer.Root.Heard]], [[TurnOffer.Root.Named]]). [[TurnFailure.OverCap]]
+    * in its place once a spawned child's spend cap refuses an ask ([[overCap]]).
     */
   private def gateOf(
       env: TurnEnv^,
@@ -333,19 +334,49 @@ private[turn] object Rounding {
   )(using pins: Turn.Bounded): Either[TurnFailure, Gated] =
     pins
       .reads(env.db)
-      .read(Subject.Turn(turn))(shown(env.records, turn, seen))
+      .read(Subject.Turn(turn))(for {
+        showing <- shown(env.records, turn, seen)
+        over <- overCap(env, turn, showing.mine)
+      } yield (showing, over))
       .left
       .map(TurnFailure.ofStore)
-      .map { showing =>
-        val start = prior.getOrElse(startOf(showing.mine, root))
-        TurnGate.decide(
-          start,
-          offered,
-          TurnShown.itemsOf(showing),
-          ReadHidden.answers(showing.mine),
-          named
-        )
+      .flatMap { (showing, over) =>
+        over.map(TurnFailure.OverCap(_)).toLeft {
+          val start = prior.getOrElse(startOf(showing.mine, root))
+          TurnGate.decide(
+            start,
+            offered,
+            TurnShown.itemsOf(showing),
+            ReadHidden.answers(showing.mine),
+            named
+          )
+        }
       }
+
+  /** The spend cap of `turn`'s conversation when it is a spawned child's, read from its first
+    * turn's [[Payload.Spawn]] (`mine`, when `turn` is that turn), once what the conversation's
+    * recorded calls cost no longer admits an ask ([[Asking.admits]]); `None` while it does, and
+    * for any other conversation.
+    */
+  private def overCap(env: TurnEnv^, turn: TurnRef, mine: Vector[Entry])(using
+      Tx^
+  ): Either[StoreError, Option[SpendCap]] = {
+    val first =
+      if (turn.turnSeq == TurnSeq.First) Right(mine)
+      else env.records.entries.ofTurn(TurnRef(turn.conversationId, TurnSeq.First))
+    first.flatMap(_.map(_.payload).collectFirst { case Payload.Spawn(_, _, cap) => cap } match {
+      case None => Right(None)
+      case Some(cap) =>
+        Asking
+          .admits(
+            Allowance.Capped(cap),
+            turn.conversationId,
+            env.moveRecords.spending,
+            env.clock.now()
+          )
+          .map(admitted => Option.when(!admitted)(cap))
+    })
+  }
 
   /** Where a turn's first gate starts, its own entries `mine`: its root's integrity, met with
     * [[Integrity.Outside]] when `root` is a heard message grit was not addressed in.

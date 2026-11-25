@@ -20,7 +20,7 @@ import grit.core.id.{
   ToolCallId,
   TurnSeq
 }
-import grit.core.message.{Message, Tokens}
+import grit.core.message.{Message, SpendCap, Tokens}
 import grit.core.model.{CatalogJson, Grade, TurnProfileId}
 import grit.core.period.Probability
 import grit.core.place.{Place, Service}
@@ -1473,6 +1473,7 @@ private[turn] object TurnJournal {
             case TurnFailure.Uncleared(c) => ("uncleared", Label.written(c))
             case TurnFailure.OutOfOutput(n) => ("out-of-output", Tokens.value(n).toString)
             case TurnFailure.Undeclared(a) => ("undeclared", AgentType.value(a))
+            case TurnFailure.OverCap(cap) => ("over-cap", cap.usd.bigDecimal.toPlainString)
           }
           ujson.Obj("failed" -> kind, "reason" -> reason)
       },
@@ -1508,6 +1509,12 @@ private[turn] object TurnJournal {
       case (Some("out-of-output"), Some(r)) =>
         r.toLongOption.map(n => TurnFailure.OutOfOutput(Tokens(n)))
       case (Some("undeclared"), Some(r)) => AgentType.of(r).toOption.map(TurnFailure.Undeclared(_))
+      case (Some("over-cap"), Some(r)) =>
+        scala.util
+          .Try(BigDecimal(r))
+          .toOption
+          .flatMap(usd => SpendCap.of(usd).toOption)
+          .map(TurnFailure.OverCap(_))
       case _ => None
     }
 }
