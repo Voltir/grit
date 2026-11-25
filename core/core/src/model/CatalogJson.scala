@@ -141,6 +141,7 @@ object CatalogJson {
     {
       case ReasoningReplay.Details => "details"
       case ReasoningReplay.Dropped => "dropped"
+      case ReasoningReplay.Latest => "latest"
     }
   )
   private val NameWords: Words[NameRepair] = Words(

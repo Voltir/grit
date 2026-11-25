@@ -34,7 +34,8 @@ object OpenRouterJson {
   ): ujson.Value = {
     val cached = model.startsWith(AnthropicProvider.Vendor)
     val tools = request.tools.map(tool)
-    val messages = request.messages.map(message(_, replay, cached))
+    val messages =
+      request.messages.zip(replay.sends(request.messages)).map(message(_, _, cached))
     val system =
       if (!cached) Some(ujson.Obj("role" -> "system", "content" -> request.system))
       else
@@ -73,9 +74,9 @@ object OpenRouterJson {
   }
 
   /** `m` on the wire, each text as text parts when `parts` and it is not empty (an empty part
-    * is refused), as a string otherwise.
+    * is refused), as a string otherwise; an assistant's reasoning only when `reasoned`.
     */
-  private def message(m: Message, replay: ReasoningReplay, parts: Boolean): ujson.Obj = {
+  private def message(m: Message, reasoned: Boolean, parts: Boolean): ujson.Obj = {
     def said(text: String): ujson.Value =
       if (parts && text.nonEmpty) ujson.Arr(ujson.Obj("type" -> "text", "text" -> text))
       else ujson.Str(text)
@@ -98,13 +99,11 @@ object OpenRouterJson {
           )
         }
         // Sent back verbatim, as OpenRouter asks, so the model's reasoning carries across
-        // the calls of one turn; or not at all, for a pair whose replay is dropped. Only
+        // the calls of one turn; or not at all, when the pair's replay does not send it. Only
         // OpenRouter's own form, an array: another provider's would be garbage here.
-        val details = replay match {
-          case ReasoningReplay.Details =>
-            blocks.collectFirst { case AssistantBlock.Reasoning(_, Some(r: ujson.Arr)) => r }
-          case ReasoningReplay.Dropped => None
-        }
+        val details =
+          if (!reasoned) None
+          else blocks.collectFirst { case AssistantBlock.Reasoning(_, Some(r: ujson.Arr)) => r }
         ujson.Obj.from(
           Vector[(String, ujson.Value)](
             "role" -> "assistant",

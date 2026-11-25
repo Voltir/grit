@@ -28,7 +28,7 @@ object AnthropicJson {
     * order: a user's empty text, and an assistant message left with nothing to send, are
     * left out, since the API refuses an empty block. A tool call's arguments go back as sent
     * when they are an object, else as `{}`. Thinking goes back verbatim in its place when
-    * `replay` is [[ReasoningReplay.Details]] and it is in Anthropic's form, and never
+    * `replay` sends it ([[ReasoningReplay.sends]]) and it is in Anthropic's form, and never
     * otherwise. Tools are sent `strict` as each [[ToolSchema]] says, with `tool_choice` `auto`
     * for [[ToolUse.Auto]] and [[ToolUse.Required]] alike (Anthropic's current models refuse a
     * forced choice); a request without tools has neither key.
@@ -57,7 +57,7 @@ object AnthropicJson {
         case ToolUse.Auto | ToolUse.Required => "auto"
       }))
     }
-    val messages = request.messages.map(message(_, replay))
+    val messages = request.messages.zip(replay.sends(request.messages)).map(message)
     CacheMarks
       .marked(request.system, tools, messages, request.repeats)
       .foreach(block => body("system") = ujson.Arr(block))
@@ -158,7 +158,8 @@ object AnthropicJson {
     case other => other.word
   }
 
-  private def message(m: Message, replay: ReasoningReplay): Option[ujson.Obj] = m match {
+  /** `m` on the wire, an assistant's thinking only when `reasoned`. */
+  private def message(m: Message, reasoned: Boolean): Option[ujson.Obj] = m match {
     case Message.User(text) =>
       Option.when(text.nonEmpty)(wire("user", ujson.Obj("type" -> "text", "text" -> text)))
     case Message.ToolResult(callId, content, isError) =>
@@ -186,7 +187,7 @@ object AnthropicJson {
             )
           )
         case AssistantBlock.Reasoning(_, Some(r: ujson.Obj))
-            if replay == ReasoningReplay.Details &&
+            if reasoned &&
               r.value.get("type").flatMap(_.strOpt).exists(CacheMarks.Thinking.contains) =>
           // A copy, so the breakpoint search can never mark the recorded block itself.
           Some(ujson.Obj.from(r.value))

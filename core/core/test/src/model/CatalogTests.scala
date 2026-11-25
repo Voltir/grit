@@ -457,6 +457,10 @@ object CatalogTests extends TestSuite {
         Setting.Strict(StrictSchemas.WhenRequired)
       )
       CatalogJson.setting("replay", "dropped") ==> Right(Setting.Replay(ReasoningReplay.Dropped))
+      CatalogJson.setting("replay", "latest") ==> Right(Setting.Replay(ReasoningReplay.Latest))
+      val latest = Profile(oss, replay = Known.Of(ReasoningReplay.Latest, nick))
+      CatalogJson.readProfile(ujson.read(CatalogJson.writeProfile(latest).render())) ==>
+        Right(latest)
       CatalogJson.setting("names", "as-sent") ==> Right(Setting.Names(NameRepair.AsSent))
       CatalogJson.setting("repairs", "quoted-number, quoted-list") ==>
         Right(Setting.Repairs(Set(ArgRepair.QuotedNumber, ArgRepair.QuotedList)))

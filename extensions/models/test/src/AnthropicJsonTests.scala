@@ -287,6 +287,23 @@ object AnthropicJsonTests extends TestSuite {
       ) ==> ujson.Arr(text)
     }
 
+    test("request: under the latest replay, only the last assistant reply's thinking goes back") {
+      val reply = called(
+        AssistantBlock.Reasoning("Read it first.", Some(thinking)),
+        AssistantBlock.Text("ok")
+      )
+      val three = Vector(reply, Message.User("again"), reply, Message.User("and again"), reply)
+      def text(t: String) = ujson.Obj("type" -> "text", "text" -> t)
+      sent(ModelRequest("s", three), replay = ReasoningReplay.Latest)("messages").arr.toVector
+        .map(m => m("content").arr.toVector) ==> Vector(
+        Vector(text("ok")),
+        Vector(text("again")),
+        Vector(text("ok")),
+        Vector(text("and again")),
+        Vector(thinking, text("ok"))
+      )
+    }
+
     test("request: effort in Anthropic's words under output_config") {
       def effort(e: Effort) = sent(exchange, effort = e).obj.get("output_config")
       effort(Effort.Minimal) ==> Some(ujson.Obj("effort" -> "low"))

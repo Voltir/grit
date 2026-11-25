@@ -1,6 +1,6 @@
 package grit.core.model
 
-import grit.core.message.Tokens
+import grit.core.message.{Message, Tokens}
 
 /** Whether an upstream holds a model's tool arguments to a `strict` schema. */
 enum StrictSchemas {
@@ -28,6 +28,26 @@ enum ReasoningReplay {
 
   /** Not sent. */
   case Dropped
+
+  /** As [[Details]] for the request's last assistant reply alone; not sent for any earlier one.
+    * Each call then rewrites the cache from the previous reply on.
+    */
+  case Latest
+
+  /** For each of a request's `messages`, whether its reasoning is sent under this replay. */
+  def sends(messages: Vector[Message]): Vector[Boolean] = {
+    val last = messages.lastIndexWhere {
+      case _: Message.Assistant => true
+      case _ => false
+    }
+    messages.indices.toVector.map(i =>
+      this match {
+        case Details => true
+        case Dropped => false
+        case Latest => i == last
+      }
+    )
+  }
 }
 
 /** A repair made to a tool call's arguments before they are read. */
