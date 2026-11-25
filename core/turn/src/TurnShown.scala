@@ -50,7 +50,8 @@ private[turn] object TurnShown {
     * `root` is [[TurnOffer.Root.Spawned]] is offered `own` without `topic`: it is its
     * conversation's first, whose message is placed first and never asked about. read_hidden
     * and extract are not among them: a round binds and offers them apart ([[gatedOffer]]).
-    * `TurnFailure.Model` when `own` already names `topic`, read_hidden or extract, which a
+    * `TurnFailure.Model` when `own` already names `topic` (except under a spawned root, which
+    * is not offered it), read_hidden or extract, which a
     * deployment's own tools are refused for at its start ([[TurnTooling.reserving]]); an edge's advert can
     * still name one.
     */
@@ -442,21 +443,6 @@ private[turn] object TurnShown {
     }
   }
 
-  /** The line [[requestOf]] sends just before a turn's own messages, for a turn whose first
-    * entry was made `at`, in a direct message when `direct`. With no `zoned`, in UTC alone,
-    * as before zones: "The message you are answering was said Wed 2026-10-21 15:03 UTC." With one, in
-    * its zone, saying whose, then in UTC, then how to read times:
-    * "The message you are answering was said Wed 2026-10-21 08:03 PDT, the person's time
-    * (America/Los_Angeles); 15:03 UTC. People here give times in their own zone, not UTC: read the
-    * times the person gives as PDT unless they say otherwise, and answer with times in PDT. Times
-    * grit shows you in your view are UTC."
-    * For a deployment's zone the first sentence reads "… 08:03 PDT, this deployment's time
-    * (America/Los_Angeles); the person's own zone is not known; 15:03 UTC.", with the same tail.
-    * Outside a direct message the tail ends "Read times other people here give as PDT, this
-    * deployment's time, unless they say otherwise." (`zoned.deployment`'s short name). A direct
-    * message's line stays short. The UTC time carries its UTC date when that is another day
-    * ("06:30 UTC Thu 2026-10-22", [[Utc.toClock]]), and UTC under any name is said as UTC.
-    */
   /** The line [[requestOf]] sends just before the own messages of a turn whose first entry is
     * `root`: for a spawned child's ([[Payload.Spawn]]), [[started]] when it was made, `direct`
     * unread; for any other, [[answering]].
@@ -483,6 +469,21 @@ private[turn] object TurnShown {
         "time in your reply with its zone."
     }
 
+  /** The line [[dated]] sends for a turn that is not a spawned child's, whose first
+    * entry was made `at`, in a direct message when `direct`. With no `zoned`, in UTC alone,
+    * as before zones: "The message you are answering was said Wed 2026-10-21 15:03 UTC." With one, in
+    * its zone, saying whose, then in UTC, then how to read times:
+    * "The message you are answering was said Wed 2026-10-21 08:03 PDT, the person's time
+    * (America/Los_Angeles); 15:03 UTC. People here give times in their own zone, not UTC: read the
+    * times the person gives as PDT unless they say otherwise, and answer with times in PDT. Times
+    * grit shows you in your view are UTC."
+    * For a deployment's zone the first sentence reads "… 08:03 PDT, this deployment's time
+    * (America/Los_Angeles); the person's own zone is not known; 15:03 UTC.", with the same tail.
+    * Outside a direct message the tail ends "Read times other people here give as PDT, this
+    * deployment's time, unless they say otherwise." (`zoned.deployment`'s short name). A direct
+    * message's line stays short. The UTC time carries its UTC date when that is another day
+    * ("06:30 UTC Thu 2026-10-22", [[Utc.toClock]]), and UTC under any name is said as UTC.
+    */
   def answering(at: Instant, zoned: Option[TurnOffer.Zoned], direct: Boolean): String =
     zoned.fold(s"The message you are answering was said ${Utc.toDayMinute(at)}.") { z =>
       val short = Utc.shortName(at, z.dated)
