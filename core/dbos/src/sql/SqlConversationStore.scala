@@ -4,9 +4,9 @@ import java.time.OffsetDateTime
 
 import scala.util.Using
 
-import grit.core.id.{CallSlot, ConversationId}
+import grit.core.id.{CallSlot, ConversationId, TurnRef, TurnSeq}
 import grit.core.identity.Account
-import grit.core.place.{Directory, Repository, WorkName}
+import grit.core.place.{Directory, Place, Repository, WorkName}
 import grit.core.store.{Conversation, ConversationStore, Origin, StoreError, Tx}
 import grit.core.visibility.Label
 
@@ -195,6 +195,14 @@ private[dbos] object SqlConversationStore {
       ujson.Obj("kind" -> "direct", "account" -> Account.written(account), "thread" -> thread)
     case Origin.Work(repository, work) =>
       ujson.Obj("kind" -> "work", "repository" -> repository.name, "work" -> WorkName.value(work))
+    case Origin.Spawned(parent, name, within) =>
+      ujson.Obj(
+        "kind" -> "spawned",
+        "conversation" -> ConversationId.value(parent.conversationId),
+        "turn" -> ujson.Num(TurnSeq.value(parent.turnSeq).toDouble),
+        "name" -> WorkName.value(name),
+        "within" -> within.written
+      )
   }
 
   /** The origin stored as `v` ([[originJson]]'s form), or why it is none. */
@@ -239,6 +247,21 @@ private[dbos] object SqlConversationStore {
             repository <- str(o, "repository").flatMap(Repository.of)
             work <- str(o, "work").flatMap(WorkName.of)
           } yield Origin.Work(repository, work)
+        case "spawned" =>
+          for {
+            conversation <- str(o, "conversation")
+            turn <- o
+              .get("turn")
+              .flatMap(_.numOpt)
+              .filter(n => n.isWhole && n >= 0)
+              .toRight("a spawned child's turn is a whole number from 0")
+            name <- str(o, "name").flatMap(WorkName.of)
+            within <- str(o, "within").flatMap(Place.read)
+          } yield Origin.Spawned(
+            TurnRef(ConversationId(conversation), TurnSeq(turn.toLong)),
+            name,
+            within
+          )
         case other => Left(s"unknown origin kind: $other")
       }
     } yield origin

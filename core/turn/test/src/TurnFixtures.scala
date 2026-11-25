@@ -1220,6 +1220,8 @@ object TurnFixtures {
           Some(s"continuation: turn $turn of ${TurnSeq.value(task)}")
         case Payload.Occasion(_, _, key) =>
           Some(s"occasion: ${grit.core.occasion.OccasionKey.value(key)}")
+        case Payload.Spawn(agent, brief, _) =>
+          Some(s"spawn: ${grit.core.id.AgentType.value(agent)}: $brief")
         case Payload.Summary(text) => Some(s"summary: $text")
         case Payload.Query(text) => Some(s"query: $text")
         case Payload.Exchange(Message.Assistant(blocks, _, _, _, _)) =>

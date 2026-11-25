@@ -310,11 +310,11 @@ object LinearAssembler {
         Payload.Continuation(_, _, _) =>
       true
     // A turn's tool exchange is its own: a window never holds a call apart from its turn; an
-    // occasion is shown only to the turn it begins.
+    // occasion or a spawned child's root is shown only to the turn it begins.
     case Payload.Summary(_) | Payload.Query(_) | (_: Payload.Window) | (_: Payload.Prefix) |
         Payload.Agenda(_) | Payload.Exchange(_) | Payload.Result(_, _) | Payload.Declined(_, _) |
         Payload.Attempt(_) | Payload.Ask(_, _, _) | Payload.Closed(_, _, _) | Payload.Draft(_) |
-        Payload.Occasion(_, _, _) =>
+        Payload.Occasion(_, _, _) | Payload.Spawn(_, _, _) =>
       false
   }
 }

@@ -198,7 +198,7 @@ object TurnPrompt {
         s"This is a direct message, labelled $shown at its person's clearance: what is " +
           "said here is read only in this direct message."
       case _: Origin.Tui | _: Origin.Slack | _: Origin.Room | _: Origin.Thread | _: Origin.Task |
-          _: Origin.Work =>
+          _: Origin.Work | _: Origin.Spawned =>
         s"This conversation is labelled $shown: what is said here may be read only where " +
           "that label is allowed."
     }
@@ -234,7 +234,7 @@ object TurnPrompt {
 
   /** Who reads a reply from `origin`'s edge, and what it renders: one person in a terminal,
     * several people in a Slack thread or channel, one person in a direct message, or nobody until a
-    * task's run or a run of work ends.
+    * task's run, a run of work or a subagent's run ends.
     */
   def edge(origin: Origin): Fragment = {
     val unread =
@@ -257,6 +257,7 @@ object TurnPrompt {
       case _: Origin.Task => s"This is a triggered task's run: $unread"
       case Origin.Work(repository, _) =>
         s"This is a run of work in the repository ${repository.name}: $unread"
+      case _: Origin.Spawned => s"This is a subagent's run, briefed by another turn: $unread"
       case _: Origin.Direct =>
         "You are in a direct message with one person, who alone reads it. Your replies are " +
           "rendered from Markdown; keep them short."

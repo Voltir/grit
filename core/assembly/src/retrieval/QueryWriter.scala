@@ -56,11 +56,13 @@ object QueryWriter {
     case Payload.Heard(text) => Some(s"Overheard: $text")
     // Assembly runs before the turn's tool loop, so its own entries hold no exchange yet; a
     // post is the first entry of a turn that never runs, so never a turn's own; grit's
-    // continuation note and an occasion say nothing of the task to search for.
+    // continuation note and an occasion say nothing of the task to search for; a spawned
+    // child's root is grit's own note, never searched.
     case Payload.Summary(_) | Payload.Query(_) | (_: Payload.Window) | (_: Payload.Prefix) |
         Payload.Agenda(_) | Payload.Exchange(_) | Payload.Result(_, _) | Payload.Declined(_, _) |
         Payload.Attempt(_) | Payload.Ask(_, _, _) | Payload.Closed(_, _, _) | Payload.Draft(_) |
-        Payload.Posted(_) | Payload.Continuation(_, _, _) | Payload.Occasion(_, _, _) =>
+        Payload.Posted(_) | Payload.Continuation(_, _, _) | Payload.Occasion(_, _, _) |
+        Payload.Spawn(_, _, _) =>
       None
   }
 }

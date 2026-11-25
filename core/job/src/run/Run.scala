@@ -180,7 +180,8 @@ object Run {
             job <- c.origin match {
               case Origin.Task(name, _) => JobName.of(name)
               case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Room(_, _) |
-                  Origin.Thread(_, _, _) | Origin.Work(_, _) | Origin.Direct(_, _) =>
+                  Origin.Thread(_, _, _) | Origin.Work(_, _) | Origin.Direct(_, _) |
+                  Origin.Spawned(_, _, _) =>
                 Left("its conversation is no task's")
             }
             opening <- entries.headOption.toRight("its turn has no opening")

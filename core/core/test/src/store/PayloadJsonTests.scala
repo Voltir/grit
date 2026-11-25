@@ -2,6 +2,7 @@ package grit.core.store
 
 import grit.core.agenda.{Agenda, Placement, Weights}
 import grit.core.id.{
+  AgentType,
   ConversationId,
   DocumentVersionId,
   EntryId,
@@ -12,7 +13,7 @@ import grit.core.id.{
   ToolCallId,
   TurnSeq
 }
-import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.message.{AssistantBlock, Message, SpendCap, StopReason, Tokens, Usage}
 import grit.core.occasion.{OccasionKey, TestOccasions}
 import grit.core.period.{CloseReason, Closing, Probability, TestClosings}
 import grit.core.place.Place
@@ -158,6 +159,27 @@ object PayloadJsonTests extends TestSuite {
           .read(ujson.read(stored.replace("Say what the room planned, from the document.", " ")))
           .isLeft
       ) ==> (stored, Right(note), true)
+    }
+
+    test(
+      "a spawned child's root is stored by its type, its brief and its spend cap, and read back; a cap not above zero is refused"
+    ) {
+      val note = Payload.Spawn(
+        AgentType.of("coder").fold(e => sys.error(e), identity),
+        "Fix the typo in README.md.",
+        SpendCap.of(BigDecimal("0.075")).fold(e => sys.error(e), identity)
+      )
+      val stored =
+        """{"kind":"spawn","agent":"coder","brief":"Fix the typo in README.md.","spendCap":"0.075"}"""
+      (
+        PayloadJson.write(note).render(),
+        PayloadJson.read(ujson.read(stored)),
+        PayloadJson.read(ujson.read(stored.replace("0.075", "0")))
+      ) ==> (
+        stored,
+        Right(note),
+        Left("a spend cap is a number of dollars above zero, not 0")
+      )
     }
 
     test("an occasion says nothing and counts nothing spoken") {

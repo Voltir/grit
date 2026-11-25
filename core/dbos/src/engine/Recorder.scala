@@ -296,7 +296,7 @@ private[engine] final class Recorder(
           .label(d)
           .map(now => Option.when(!now.dominates(label))(InboxError.Sealed(d)))
       case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Room(_, _) | Origin.Thread(_, _, _) |
-          Origin.Task(_, _) | Origin.Work(_, _) =>
+          Origin.Task(_, _) | Origin.Work(_, _) | Origin.Spawned(_, _, _) =>
         Right(None)
     }
 

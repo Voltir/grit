@@ -2,6 +2,7 @@ package grit.core.store
 
 import grit.core.agenda.AgendaJson
 import grit.core.id.{
+  AgentType,
   ConversationId,
   DocumentVersionId,
   EntryId,
@@ -12,7 +13,7 @@ import grit.core.id.{
   ToolCallId,
   TurnSeq
 }
-import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.message.{AssistantBlock, Message, SpendCap, StopReason, Tokens, Usage}
 import grit.core.model.CatalogJson
 import grit.core.occasion.{OccasionBrief, OccasionKey}
 import grit.core.period.{CloseReason, ClosingJson, Probability}
@@ -50,6 +51,13 @@ object PayloadJson {
         "brief" -> OccasionBrief.value(brief),
         "about" -> ujson.Num(DocumentVersionId.value(about).toDouble),
         "key" -> OccasionKey.value(key)
+      )
+    case Payload.Spawn(agent, brief, spendCap) =>
+      ujson.Obj(
+        "kind" -> "spawn",
+        "agent" -> AgentType.value(agent),
+        "brief" -> brief,
+        "spendCap" -> spendCap.usd.bigDecimal.toPlainString
       )
     case Payload.Summary(text) => ujson.Obj("kind" -> "summary", "text" -> text)
     case Payload.Query(text) => ujson.Obj("kind" -> "query", "text" -> text)
@@ -178,6 +186,15 @@ object PayloadJson {
             )
             key <- str(o, "key").flatMap(k => OccasionKey.of(k).toRight(s"no occasion's key is $k"))
           } yield Payload.Occasion(brief, about, key)
+        case "spawn" =>
+          for {
+            agent <- str(o, "agent").flatMap(AgentType.of)
+            brief <- str(o, "brief")
+            usd <- str(o, "spendCap").flatMap(c =>
+              scala.util.Try(BigDecimal(c)).toOption.toRight(s"a spend cap is a number: $c")
+            )
+            spendCap <- SpendCap.of(usd)
+          } yield Payload.Spawn(agent, brief, spendCap)
         case "summary" => str(o, "text").map(Payload.Summary(_))
         case "query" => str(o, "text").map(Payload.Query(_))
         case "window" =>

@@ -1,6 +1,6 @@
 package grit.core.store
 
-import grit.core.id.EdgeName
+import grit.core.id.{ConversationId, EdgeName, TurnRef, TurnSeq}
 import grit.core.identity.{Account, Principal, TestAccounts}
 import grit.core.place.{Directory, Repository, WorkName}
 
@@ -109,6 +109,44 @@ object OriginTests extends TestSuite {
       val nobody: Account.Sourced => Either[StoreError, Option[Principal]] = _ => Right(None)
       Vector(None, Some(None)).map(run.asker(_)(nobody)) ==>
         Vector(Right(None), Right(Some(Principal.Grit)))
+    }
+
+    test(
+      "a spawned child's place is under the turn that spawned it, its room the one it was spawned within; it comes by grit's own edge, its messages are for nobody, and its asker is its first entry's author"
+    ) {
+      val child = Origin.Spawned(
+        TurnRef(ConversationId("c1"), TurnSeq(4)),
+        WorkName.of("s1-0-ab").getOrElse(throw new java.lang.AssertionError()),
+        Repository.of("grit").getOrElse(throw new java.lang.AssertionError()).place
+      )
+      val ana = Some(TestAccounts.principal(TestAccounts.account("slack:T1/U-ana")))
+      (
+        child.room.written,
+        child.place.written,
+        child.edge,
+        child.audience,
+        child.focus(Position.Opening),
+        child.stitchable,
+        child.rolls,
+        child.asking,
+        child.topLevel,
+        child.asker(Some(ana))(_ => Right(None)),
+        child.asker(Some(None))(_ => Right(None)),
+        child.asker(None)(_ => Right(None))
+      ) ==> (
+        "repository:grit",
+        "spawn:c1/4/s1-0-ab",
+        EdgeName.Task,
+        Audience.Nobody,
+        Focus.Focused,
+        false,
+        false,
+        None,
+        None,
+        Right(ana),
+        Right(Some(Principal.Grit)),
+        Right(None)
+      )
     }
 
     test("only a TUI session is held with the operator") {

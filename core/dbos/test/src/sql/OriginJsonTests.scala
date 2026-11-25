@@ -1,7 +1,8 @@
 package grit.dbos.sql
 
+import grit.core.id.{ConversationId, TurnRef, TurnSeq}
 import grit.core.identity.Account
-import grit.core.place.{Directory, Repository, WorkName}
+import grit.core.place.{Directory, Place, Repository, WorkName}
 import grit.core.store.Origin
 
 import utest.*
@@ -18,6 +19,12 @@ object OriginJsonTests extends TestSuite {
   private val run = Origin.Work(
     Repository.of("grit").fold(e => sys.error(e), identity),
     WorkName.of("fix-typo").fold(e => sys.error(e), identity)
+  )
+
+  private val child = Origin.Spawned(
+    TurnRef(ConversationId("0193a3c2-7c1e-7000-8000-000000000001"), TurnSeq(4)),
+    WorkName.of("s1-0-0123456789abcdef").fold(e => sys.error(e), identity),
+    Place.read("repository:grit").fold(e => sys.error(e), identity)
   )
 
   val tests = Tests {
@@ -61,6 +68,17 @@ object OriginJsonTests extends TestSuite {
         ujson.Obj("kind" -> "work", "repository" -> "grit", "work" -> "fix-typo")
     }
 
+    test("spawned") {
+      SqlConversationStore.originJson(child) ==>
+        ujson.Obj(
+          "kind" -> "spawned",
+          "conversation" -> "0193a3c2-7c1e-7000-8000-000000000001",
+          "turn" -> 4,
+          "name" -> "s1-0-0123456789abcdef",
+          "within" -> "repository:grit"
+        )
+    }
+
     test("direct") {
       SqlConversationStore.originJson(Origin.Direct(person, "1.2")) ==>
         ujson.Obj("kind" -> "direct", "account" -> "slack:T1/U1", "thread" -> "1.2")
@@ -81,7 +99,8 @@ object OriginJsonTests extends TestSuite {
           Origin.Thread("T1", "C1", "1.2"),
           Origin.Task("e2e", "r"),
           Origin.Direct(person, "1.2"),
-          run
+          run,
+          child
         )
       origins.map(o => SqlConversationStore.readOrigin(SqlConversationStore.originJson(o))) ==>
         origins.map(Right(_))
@@ -90,6 +109,11 @@ object OriginJsonTests extends TestSuite {
       SqlConversationStore.readOrigin(
         ujson.Obj("kind" -> "work", "repository" -> "grit", "work" -> "Fix")
       ) ==> Left("a run of work's name holds 'F', not a lowercase letter, a digit or '-': Fix")
+      SqlConversationStore.readOrigin(
+        SqlConversationStore.originJson(child).obj.clone().addOne("within" -> ujson.Str("nowhere"))
+      ) ==> Left(
+        "no namespace in nowhere: write it as fs:/a/path, slack:team/channel or task:name"
+      )
       SqlConversationStore.readOrigin(ujson.Obj("kind" -> "tui", "directory" -> "/home/nick")) ==>
         Left("missing field: session")
       SqlConversationStore.readOrigin(

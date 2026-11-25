@@ -15,6 +15,8 @@ object EdgeName {
   /** Slack's: a Slack thread's messages arrive through it, and it posts their replies. */
   val Slack: EdgeName = "slack"
 
-  /** grit's own, for a task's run, which grit starts itself and no person writes to. */
+  /** grit's own, for a task's run and a subagent's, which grit starts itself and no person
+    * writes to.
+    */
   val Task: EdgeName = "task"
 }

@@ -3,6 +3,7 @@ package grit.core.store
 import java.time.Instant
 
 import grit.core.id.{
+  AgentType,
   DocumentVersionId,
   EntryId,
   EntrySeq,
@@ -12,7 +13,7 @@ import grit.core.id.{
   ToolCallId,
   TurnSeq
 }
-import grit.core.message.{Message, Tokens}
+import grit.core.message.{Message, SpendCap, Tokens}
 import grit.core.period.{CloseReason, Closing}
 
 /** What an [[Entry]] holds. Each case is one kind of entry; context fetched during
@@ -56,6 +57,13 @@ enum Payload {
       about: DocumentVersionId,
       key: grit.core.occasion.OccasionKey
   )
+
+  /** grit's own note that begins a spawned child's first turn ([[Origin.Spawned]]): the type it
+    * was spawned as, the brief its parent gave it, and the most it may spend, recorded through
+    * [[grit.core.inbox.SpawnInbox.spawned]]. Shown only to its own turn, never searched, said
+    * by nobody, and not a period's activity.
+    */
+  case Spawn(agent: AgentType, brief: String, spendCap: SpendCap)
 
   /** A short summary of the turn the entry belongs to, written after its reply. Not a
     * message: the model sees it only if an assembler chooses to show it.

@@ -34,6 +34,9 @@ enum Namespace(val key: String) {
     * run `repository:grit/fix-typo`.
     */
   case Repository extends Namespace("repository")
+
+  /** Spawned children, each under the turn that spawned it: `spawn:{conversation}/{seq}/{name}`. */
+  case Spawn extends Namespace("spawn")
 }
 
 object Namespace {

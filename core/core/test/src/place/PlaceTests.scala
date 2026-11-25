@@ -95,7 +95,7 @@ object PlaceTests extends TestSuite {
       Place.read("home/nick") ==>
         Left("no namespace in home/nick: write it as fs:/a/path, slack:team/channel or task:name")
       Place.read("git:grit") ==>
-        Left("no namespace git: fs, slack, task, service, direct, machine, repository")
+        Left("no namespace git: fs, slack, task, service, direct, machine, repository, spawn")
     }
 
     test("each origin's place, a field holding / split like the rest") {
