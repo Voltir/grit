@@ -74,7 +74,8 @@ object Deployments {
       visibility: Visibility = Visibility.Shipped,
       identities: grit.core.identity.Identities = grit.core.identity.Identities.Shipped,
       version: DeploymentVersion = DeploymentVersion.First,
-      policy: Policy = Policy.one(assigned, assigned, assigned, assigned)
+      policy: Policy = Policy.one(assigned, assigned, assigned, assigned),
+      subagents: grit.core.agent.Subagents = grit.core.agent.Subagents.empty
   ): Either[DeploymentRefusal, Deployment] =
     Deployment.of(
       edges = edges,
@@ -99,7 +100,8 @@ object Deployments {
       visibility = visibility,
       identities = identities,
       version = version,
-      formats = PagedText.formats
+      formats = PagedText.formats,
+      subagents = subagents
     )
 
   /** [[of]], which the test expects to be accepted. */

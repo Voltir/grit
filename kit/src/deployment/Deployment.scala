@@ -4,6 +4,7 @@ import java.time.Instant
 
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
+import grit.core.agent.Subagents
 import grit.core.document.{DocRef, Document, DocumentSearch, DocumentShelf, DocumentVersion}
 import grit.core.edge.ServedEdge
 import grit.core.files.{FileArea, Formats}
@@ -442,7 +443,8 @@ final case class Deployment private (
     version: DeploymentVersion,
     allJobs: Jobs,
     files: FileArea.Bounds,
-    formats: Formats
+    formats: Formats,
+    subagents: Subagents
 ) {
 
   /** The application version this deployment's engines open under: grit's epoch and its
@@ -491,7 +493,8 @@ object Deployment {
       identities: Identities = Identities.Shipped,
       version: DeploymentVersion = DeploymentVersion.First,
       files: FileArea.Bounds = FileArea.Bounds.Default,
-      formats: Formats
+      formats: Formats,
+      subagents: Subagents = Subagents.empty
   ): Either[DeploymentRefusal, Deployment] = {
     val names = edges.map(_.name)
     val unanswered = edges.filter(_.asks == ServedEdge.Asks.Unanswered).map(_.name)
@@ -698,7 +701,8 @@ object Deployment {
       version,
       all,
       files,
-      formats
+      formats,
+      subagents
     )
   }
 

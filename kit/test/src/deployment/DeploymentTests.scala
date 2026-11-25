@@ -1081,5 +1081,35 @@ object DeploymentTests extends TestSuite {
         )
         .map(d => (d.jobs, d.schedules, d.declared)) ==> Right((Vector(), Vector(), Vector()))
     }
+
+    test("a deployment keeps the subagents it declares, and has none unless it declares them") {
+      def ok[A](e: Either[String, A]): A = e.fold(sys.error, identity)
+      val coder = ok(grit.core.id.AgentType.of("coder"))
+      val assigned = grit.core.model.Assignment(
+        grit.core.model.ModelRef(
+          grit.core.model.ModelId.of("openai/gpt-oss-120b").getOrElse(sys.error("model id")),
+          None
+        ),
+        100,
+        None
+      )
+      val pins = grit.core.model.Catalog
+        .of(grit.core.model.Policy.one(assigned, assigned, assigned, assigned), Vector.empty)
+        .pin
+        .turn
+      val subagent = ok(
+        grit.core.agent.Subagent.of(
+          coder,
+          ok(grit.core.persona.Persona.of("Scholar")),
+          pins,
+          grit.core.agent.Subagent.Tools.Services(Vector(github)),
+          ok(grit.core.spend.Carve.of(BigDecimal("0.05"))),
+          grit.core.visibility.Integrity.Outside
+        )
+      )
+      val subagents = ok(grit.core.agent.Subagents.of(Vector(subagent)))
+      Deployments.of(subagents = subagents).map(_.subagents(coder)) ==> Right(Some(subagent))
+      Deployments.of().map(_.subagents(coder)) ==> Right(None)
+    }
   }
 }
