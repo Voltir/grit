@@ -327,7 +327,8 @@ object SpawningTests extends TestSuite {
           Does.Ends(None, "workflow error", BigDecimal("0.06")),
           Does.Ends(None, "workflow error", BigDecimal("0.01")),
           Does.Ends(Some("Dear."), s"${TurnEnding.Replied}: Dear.", BigDecimal("0.06")),
-          Does.Ends(None, s"${TurnEnding.Replied}: ", BigDecimal("0.01"))
+          Does.Ends(None, s"${TurnEnding.Replied}: ", BigDecimal("0.01")),
+          Does.Ends(None, s"${TurnEnding.Replied}: ", BigDecimal("0.06"))
         )
       )
       val (turn, origin) = w.parent("limited")
@@ -336,27 +337,40 @@ object SpawningTests extends TestSuite {
       val failed = Vector(request(other, at))
       val (third, also) = w.parent("answered")
       val answered = Vector(request(third, also), request(third, also, index = 1))
-      val got = (w.spawn(limited*), w.spawn(failed*), w.spawn(answered*))
-      val reads = Vector(turn, other, third).flatMap(w.outputs).filter(_._1.startsWith("read:"))
-      (got, reads, w.replayed(limited*), w.replayed(failed*), w.replayed(answered*)) ==> (
+      val (fourth, again) = w.parent("silent-capped")
+      val silent = Vector(request(fourth, again))
+      val got = (w.spawn(limited*), w.spawn(failed*), w.spawn(answered*), w.spawn(silent*))
+      val reads =
+        Vector(turn, other, third, fourth).flatMap(w.outputs).filter(_._1.startsWith("read:"))
+      (
+        got,
+        reads,
+        w.replayed(limited*),
+        w.replayed(failed*),
+        w.replayed(answered*),
+        w.replayed(silent*)
+      ) ==> (
         (
           Vector(
-            "Limited(c4, Some(Half.@member), Exact(0.01))",
-            "Limited(c5, None, Exact(0.06))"
+            "Limited(c5, Some(Half.@member), Exact(0.01))",
+            "Limited(c6, None, Exact(0.06))"
           ),
-          Vector("Failed(c6, it ended without finishing its task)"),
-          Vector("Replied(c7, Dear.@member, Exact(0.06))", "Failed(c8, it ended saying nothing)")
+          Vector("Failed(c7, it ended without finishing its task)"),
+          Vector("Replied(c8, Dear.@member, Exact(0.06))", "Failed(c9, it ended saying nothing)"),
+          Vector("Limited(c10, None, Exact(0.06))")
         ),
         Vector(
           "read:0:0" -> """{"said":{"text":"Half.","integrity":"member"},"spent":{"exact":"0.01"}}""",
           "read:0:1" -> """{"silent":true,"spent":{"exact":"0.06"}}""",
           "read:0:0" -> """{"silent":true,"spent":{"exact":"0.01"}}""",
           "read:0:0" -> """{"said":{"text":"Dear.","integrity":"member"},"spent":{"exact":"0.06"}}""",
-          "read:0:1" -> """{"silent":true,"spent":{"exact":"0.01"}}"""
+          "read:0:1" -> """{"silent":true,"spent":{"exact":"0.01"}}""",
+          "read:0:0" -> """{"silent":true,"spent":{"exact":"0.06"}}"""
         ),
         Right(got._1),
         Right(got._2),
-        Right(got._3)
+        Right(got._3),
+        Right(got._4)
       )
     }
 
