@@ -67,15 +67,17 @@ object SpawningTests extends TestSuite {
     v <- Visibility.of(compartments, rooms, Vector.empty, Vector.empty).left.map(_.toString)
   } yield v).fold(e => throw new java.lang.AssertionError(e), identity)
 
-  /** The in-memory inbox under `visibility`, its children doing as `does` says in the order they
-    * are made, and the first read of a child's end dying when `crashAtEnded`.
+  /** The in-memory inbox under `visibility`, or `stored` when given, while the parent's
+    * transactions run under `visibility`; its children doing as `does` says in the order they are
+    * made, and the first read of a child's end dying when `crashAtEnded`.
     */
   private final class World(
       visibility: Visibility = Visibility.Shipped,
       does: Vector[Does] = Vector.empty,
-      crashAtEnded: Boolean = false
+      crashAtEnded: Boolean = false,
+      stored: Option[Visibility] = None
   ) {
-    val inbox: InMemoryInbox = InMemoryInbox.fresh(visibility = visibility)
+    val inbox: InMemoryInbox = InMemoryInbox.fresh(visibility = stored.getOrElse(visibility))
     val durable: InMemoryDurable =
       new InMemoryDurable(resolve = _ => Clearance.of(Label.Public), visibility = visibility)
 
@@ -250,6 +252,24 @@ object SpawningTests extends TestSuite {
         Vector(
           "narrow:0:0" -> """{"refused":{"above":{"classification":"internal","room":"public"}}}"""
         ),
+        Right(got)
+      )
+    }
+
+    test(
+      "a room its narrowing read at the parent's classification but the inbox keeps lower is refused Above at the spawn step"
+    ) {
+      val w = new World(labelling("moved", internal), stored = Some(Visibility.Shipped))
+      val (turn, origin) = w.parent("moved")
+      val asked = request(turn, origin, bound = Some(internal))
+      val got = w.spawn(asked)
+      (got, w.outputs(turn), w.made, w.replayed(asked)) ==> (
+        Vector(s"Refused(Above($internal,${Label.Public}))"),
+        Vector(
+          "narrow:0:0" -> """{"go":{"at":"internal"}}""",
+          "spawn:0:0" -> """{"above":{"classification":"internal","room":"public"}}"""
+        ),
+        Vector.empty,
         Right(got)
       )
     }
