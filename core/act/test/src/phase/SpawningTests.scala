@@ -54,9 +54,6 @@ object SpawningTests extends TestSuite {
 
     /** Spends `usd`, then ends with `reply` and `outcome` and rings its parent. */
     case Ends(reply: Option[String], outcome: String, usd: BigDecimal)
-
-    /** Its start is lost, and the process dies before the spawn's step is recorded. */
-    case Unstarted
   }
 
   private def replied(text: String): Does =
@@ -111,9 +108,6 @@ object SpawningTests extends TestSuite {
                 inbox.charge(c, usd)
                 inbox.finish(c, reply.map(Message.said(_, "m")), outcome)
                 durable.send(origin.parent.workflowId, SpawnInbox.topic(c), "rang")
-              case Does.Unstarted =>
-                inbox.started = inbox.started.filterNot(_ == c)
-                throw new InMemoryDurable.Crash
             }
           }
           c
@@ -140,12 +134,31 @@ object SpawningTests extends TestSuite {
 
     /** What `requests` come to, each shown, run in order in their parent's workflow. */
     def spawn(requests: Spawning.Request*): Vector[String] =
-      durable
-        .run(requests.headOption.fold(sys.error("a request"))(_.call.turn.workflowId)) { _ =>
-          requests.map(r => shown(Flows.run(spawning, SpawnEnv(spawns), r).merge)).mkString("\n")
-        }
-        .split("\n")
-        .toVector
+      durable.run(workflow(requests)) { _ => body(requests) }.split("\n").toVector
+
+    /** What `requests` come to replayed in a fresh runtime from their parent's history, or why
+      * that history did not replay.
+      */
+    def replayed(requests: Spawning.Request*): Either[String, Vector[String]] = {
+      val id = workflow(requests)
+      new InMemoryDurable(resolve = _ => Clearance.of(Label.Public), visibility = visibility)
+        .replay(id, durable.history(id)) { _ => body(requests) }
+        .map(_.split("\n").toVector)
+    }
+
+    /** What each of `parent`'s steps recorded, the runtime's own left out. */
+    def outputs(parent: TurnRef): Vector[(String, String)] =
+      durable.history(parent.workflowId).collect {
+        case InMemoryDurable.Step(name, InMemoryDurable.Outcome.Output(o))
+            if !name.startsWith("DBOS.") =>
+          name -> o
+      }
+
+    private def workflow(requests: Seq[Spawning.Request]) =
+      requests.headOption.fold(sys.error("a request"))(_.call.turn.workflowId)
+
+    private def body(requests: Seq[Spawning.Request])(using grit.core.durable.Durable^): String =
+      requests.map(r => shown(Flows.run(spawning, SpawnEnv(spawns), r).merge)).mkString("\n")
 
     /** The steps `parent`'s workflow recorded, the runtime's own left out. */
     def recorded(parent: TurnRef): Vector[String] =
@@ -217,18 +230,28 @@ object SpawningTests extends TestSuite {
       val w = new World()
       val (turn, origin) = w.parent("below")
       val strict = ok(subagent(scholar, services, Integrity.Authority))
-      (w.spawn(request(turn, origin, as = strict)), w.recorded(turn), w.spawnCalls) ==> (
+      val asked = request(turn, origin, as = strict)
+      val got = w.spawn(asked)
+      (got, w.outputs(turn), w.spawnCalls, w.replayed(asked)) ==> (
         Vector(s"Refused(Below(${Integrity.Authority},${Integrity.Member}))"),
-        Vector("narrow:0:0"),
-        0
+        Vector("narrow:0:0" -> """{"refused":{"below":{"needs":"authority","has":"member"}}}"""),
+        0,
+        Right(got)
       )
     }
 
     test("a parent in a public room routed at Internal is refused Above a public room") {
       val w = new World()
       val (turn, origin) = w.parent("routed")
-      w.spawn(request(turn, origin, bound = Some(internal))) ==>
-        Vector(s"Refused(Above($internal,${Label.Public}))")
+      val asked = request(turn, origin, bound = Some(internal))
+      val got = w.spawn(asked)
+      (got, w.outputs(turn), w.replayed(asked)) ==> (
+        Vector(s"Refused(Above($internal,${Label.Public}))"),
+        Vector(
+          "narrow:0:0" -> """{"refused":{"above":{"classification":"internal","room":"public"}}}"""
+        ),
+        Right(got)
+      )
     }
 
     test("a ring sent before the wait wakes the first rung, and the reply is read once") {
@@ -258,30 +281,54 @@ object SpawningTests extends TestSuite {
     test("a child whose room the parent's transaction may not read is Unread, never its text") {
       val w = new World(labelling("internal-child", internal), Vector(replied("Secret.")))
       val (turn, origin) = w.parent("internal-child")
-      w.spawn(request(turn, origin)) ==> Vector("Unread(c2)")
+      val asked = request(turn, origin)
+      val got = w.spawn(asked)
+      (got, w.outputs(turn).lastOption, w.replayed(asked)) ==> (
+        Vector("Unread(c2)"),
+        Some("read:0:0" -> """{"unread":true,"spent":{"exact":"0.01"}}"""),
+        Right(got)
+      )
     }
 
     test(
-      "a child at its round limit, or past its spend cap, is Limited; one ended otherwise is Failed"
+      "a child at its round limit, or past its spend cap, is Limited; one that answered is Replied, past its cap too; one that answered nothing, or ended otherwise, is Failed"
     ) {
       val w = new World(does =
         Vector(
           Does.Ends(Some("Half."), s"half${TurnEnding.AtLimitSaid}", BigDecimal("0.01")),
           Does.Ends(None, "workflow error", BigDecimal("0.06")),
-          Does.Ends(None, "workflow error", BigDecimal("0.01"))
+          Does.Ends(None, "workflow error", BigDecimal("0.01")),
+          Does.Ends(Some("Dear."), s"${TurnEnding.Replied}: Dear.", BigDecimal("0.06")),
+          Does.Ends(None, s"${TurnEnding.Replied}: ", BigDecimal("0.01"))
         )
       )
       val (turn, origin) = w.parent("limited")
       val (other, at) = w.parent("failed")
-      (
-        w.spawn(request(turn, origin), request(turn, origin, index = 1)),
-        w.spawn(request(other, at))
-      ) ==> (
-        Vector(
-          "Limited(c3, Some(Half.@member), Exact(0.01))",
-          "Limited(c4, None, Exact(0.06))"
+      val limited = Vector(request(turn, origin), request(turn, origin, index = 1))
+      val failed = Vector(request(other, at))
+      val (third, also) = w.parent("answered")
+      val answered = Vector(request(third, also), request(third, also, index = 1))
+      val got = (w.spawn(limited*), w.spawn(failed*), w.spawn(answered*))
+      val reads = Vector(turn, other, third).flatMap(w.outputs).filter(_._1.startsWith("read:"))
+      (got, reads, w.replayed(limited*), w.replayed(failed*), w.replayed(answered*)) ==> (
+        (
+          Vector(
+            "Limited(c4, Some(Half.@member), Exact(0.01))",
+            "Limited(c5, None, Exact(0.06))"
+          ),
+          Vector("Failed(c6, it ended without finishing its task)"),
+          Vector("Replied(c7, Dear.@member, Exact(0.06))", "Failed(c8, it ended saying nothing)")
         ),
-        Vector("Failed(c5, it ended without finishing its task)")
+        Vector(
+          "read:0:0" -> """{"said":{"text":"Half.","integrity":"member"},"spent":{"exact":"0.01"}}""",
+          "read:0:1" -> """{"silent":true,"spent":{"exact":"0.06"}}""",
+          "read:0:0" -> """{"silent":true,"spent":{"exact":"0.01"}}""",
+          "read:0:0" -> """{"said":{"text":"Dear.","integrity":"member"},"spent":{"exact":"0.06"}}""",
+          "read:0:1" -> """{"silent":true,"spent":{"exact":"0.01"}}"""
+        ),
+        Right(got._1),
+        Right(got._2),
+        Right(got._3)
       )
     }
 
@@ -290,42 +337,42 @@ object SpawningTests extends TestSuite {
       val (turn, origin) = w.parent("capped")
       w.inbox.charge(turn, BigDecimal("0.01"))
       val parent = Some(acting(turn, Allowance.Capped(usd("0.10"))))
-      w.spawn(
+      val asked = Vector(
         request(turn, origin, parent = parent),
         request(turn, origin, index = 1, parent = parent)
-      ) ==> Vector(
-        "Unanswered(c2)",
-        s"Refused(OverCap(${usd("0.05")},${usd("0.10")},${Cost.Exact(BigDecimal("0.06"))}))"
+      )
+      val got = w.spawn(asked*)
+      (got, w.outputs(turn).lastOption, w.replayed(asked*)) ==> (
+        Vector(
+          "Unanswered(c2)",
+          s"Refused(OverCap(${usd("0.05")},${usd("0.10")},${Cost.Exact(BigDecimal("0.06"))}))"
+        ),
+        Some(
+          "narrow:0:1" -> """{"refused":{"overCap":{"asked":"0.05","cap":"0.10","spent":{"exact":"0.06"}}}}"""
+        ),
+        Right(got)
       )
     }
 
     test("a turn's spawn past PerTurn is OverLimit") {
       val w = new World()
       val (turn, origin) = w.parent("many")
-      w.spawn((0 to Spawning.PerTurn).map(i => request(turn, origin, index = i))*) ==>
-        Vector("Unanswered(c2)", "Unanswered(c3)", s"OverLimit(${Spawning.PerTurn})")
+      val asked = (0 to Spawning.PerTurn).map(i => request(turn, origin, index = i))
+      val got = w.spawn(asked*)
+      (got, w.outputs(turn).lastOption, w.replayed(asked*)) ==> (
+        Vector("Unanswered(c2)", "Unanswered(c3)", s"OverLimit(${Spawning.PerTurn})"),
+        Some(s"narrow:0:${Spawning.PerTurn}" -> """{"overLimit":2}"""),
+        Right(got)
+      )
     }
 
-    test("a rerun after a crash makes its child once, and one after a lost start starts it") {
+    test("a rerun after a crash reads its child back from the spawn's record, making it once") {
       val w = new World(crashAtEnded = true)
       val (turn, origin) = w.parent("rerun")
-      val crashed = scala.util.Try(w.spawn(request(turn, origin))).isFailure
-      val again = w.spawn(request(turn, origin))
-      val v = new World(does = Vector(Does.Unstarted))
-      val (other, at) = v.parent("restart")
-      val lost = scala.util.Try(v.spawn(request(other, at))).isFailure
-      val startedBefore = v.inbox.started.size
-      val restarted = v.spawn(request(other, at))
-      (
-        crashed,
-        again,
-        w.spawnCalls,
-        lost,
-        startedBefore,
-        restarted,
-        v.inbox.started.size,
-        v.made.size
-      ) ==> (true, Vector("Unanswered(c2)"), 1, true, 0, Vector("Unanswered(c2)"), 1, 1)
+      val crashed = scala.util.Try(w.spawn(request(turn, origin))).toEither.left.map(_.getMessage)
+      val again = scala.util.Try(w.spawn(request(turn, origin))).toEither.left.map(_.getMessage)
+      (crashed, again, w.spawnCalls, w.made.size) ==>
+        (Left("simulated crash"), Right(Vector("Unanswered(c2)")), 1, 1)
     }
 
     test("each step records its pinned form, and a history of them replays to the same end") {

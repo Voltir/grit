@@ -117,7 +117,9 @@ object Spawning {
     * its earlier children were granted; made and started once however often it is rerun; its
     * end read after each [[Every]] or its ring, up to [[Within]]; its reply and spend read in the
     * parent's transaction. At most 21 steps. In a rehearsal, whose waits return at once and whose
-    * children run only after it returns, `Unanswered`.
+    * children run only after it returns, `Unanswered`. [[PerTurn]] and the cap count hold only
+    * while one turn's spawns run one after another: each is counted in one step and made in the
+    * next, so two run at once both count the children before either.
     */
   def spawn[I](steps: SpawnSteps[I], asked: I -> Request): Flow[SpawnEnv, I, Nothing, Delegated] = {
     val direct: Flow[Any, I, Delegated, I] = Flow.fromEither { i =>
@@ -292,7 +294,9 @@ object Spawning {
   }
 
   // The recorded forms. A run in flight reads back what an earlier build wrote, so a form here is
-  // never changed, only added to; SpawningTests pins each.
+  // never changed, only added to. SpawningTests pins each form its runs reach, and replays it;
+  // none reaches a narrowing's or a read's `store`, a read's `beyond`, a spawn's `above` or
+  // `unspawned`, or a `notWorking` or `direct` refusal, which are unpinned.
 
   private def cost(c: Cost): ujson.Value = c match {
     case Cost.Exact(usd) => ujson.Obj("exact" -> usd.bigDecimal.toPlainString)
