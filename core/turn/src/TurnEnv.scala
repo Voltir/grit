@@ -366,7 +366,8 @@ object TurnTooling {
     * tools, so a clash fails at its start rather than on every turn.
     */
   def reserving[C^](own: Toolbox[C]): Option[String] =
-    TurnShown.offered(own, None).left.toOption.map(TurnFailure.reason)
+    // An addressed turn's offer adds every reserved tool, topic among them.
+    TurnShown.offered(own, None, TurnOffer.Root.Addressed).left.toOption.map(TurnFailure.reason)
 
   /** What a turn rooted at `root` is offered from: for [[TurnOffer.Root.Spawned]], its type's
     * persona, services and hosted tools, briefed for one task ([[TurnRecipe.Tasked]]), with

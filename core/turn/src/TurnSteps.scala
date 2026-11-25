@@ -147,7 +147,7 @@ private[turn] object TurnSteps {
     )(using Tx^): Either[TurnFailure, TurnRound.Limits] =
       for {
         o <- turnEnv.hosting.offered(offer)
-        tools <- TurnShown.offered(TurnOffer.toolbox(tooling, o), asked)
+        tools <- TurnShown.offered(TurnOffer.toolbox(tooling, o), asked, o.root)
         picked <- routed.pickedIn(turnEnv.records.profiles)
       } yield {
         val estimator = turnEnv.records.estimator

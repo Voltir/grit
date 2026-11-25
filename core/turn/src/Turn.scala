@@ -446,7 +446,7 @@ object Turn {
       // The set as recorded, each tool as a turn reads one its build no longer has: its schema
       // is what a typed tool sends when not strict (Tool.entry records args.schema(false)).
       own = Toolbox.of[{}](set.tools.map(Tool.gone)*).getOrElse(Toolbox.Empty)
-      tools <- offered(own, asking).left.map(reason)
+      tools <- offered(own, asking, byRef.root).left.map(reason)
       schemas = tools.schemas(strict)
       offering = TurnLoop.offered(byRef.briefing, gatedOffer(tools.set, schemas, strict), strict)
       // How round `round`'s call was shaped, as it was live, with `more` notes besides.

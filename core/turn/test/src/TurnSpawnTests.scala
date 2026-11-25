@@ -21,8 +21,8 @@ object TurnSpawnTests extends TestSuite {
   private val repository: Place = SubagentFixtures.scratch.place
   private val room: Place = Origin.Slack("T1", "C1", "1.0").place
 
-  /** The tools grit adds to every turn briefed for one task. */
-  private val every = Set("topic", "read_hidden", "extract", "task_status")
+  /** The tools grit adds to a child's turn. */
+  private val every = Set("read_hidden", "extract", "task_status")
 
   private def calling(text: String, calls: (String, String)*): Message.Assistant =
     Message.Assistant(
@@ -190,6 +190,24 @@ object TurnSpawnTests extends TestSuite {
         spawnedBody(entries, provider, edge, new Files(Map.empty), coders, spawnedFrom(room))
       )
       (offered(provider) -- every, edge.sent) ==> (Set.empty[String], Vector.empty)
+    }
+
+    test("a child is offered task_status and never topic: its one message is never asked about") {
+      val entries = new InMemoryEntryStore
+      val turn = spawn(entries, SubagentFixtures.coder, "Fix the typo.")
+      val durable = new InMemoryDurable
+      val provider = model()
+      durable.run(turn.workflowId)(
+        spawnedBody(
+          entries,
+          provider,
+          edgeAt(durable, repository),
+          new Files(Map.empty),
+          coders,
+          spawnedFrom(repository)
+        )
+      )
+      offered(provider).intersect(Set("topic", "task_status")) ==> Set("task_status")
     }
 
     test("a child's first message dates when its run was started, speaking of no person") {

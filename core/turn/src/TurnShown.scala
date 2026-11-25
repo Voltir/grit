@@ -46,7 +46,9 @@ private[turn] object TurnShown {
   /** The tools every call of every turn offers: `own`, after `topic` ([[TurnVerdict.tool]]),
     * whose schema is the same whatever `asked` holds: `asked` decides only what a call is
     * checked against. So a turn's tools are its tool set's alone, and a later turn can carry
-    * its window (ADR 0052); a turn that asks also tags its message ([[loopShape]]). read_hidden
+    * its window (ADR 0052); a turn that asks also tags its message ([[loopShape]]). A turn whose
+    * `root` is [[TurnOffer.Root.Spawned]] is offered `own` without `topic`: it is its
+    * conversation's first, whose message is placed first and never asked about. read_hidden
     * and extract are not among them: a round binds and offers them apart ([[gatedOffer]]).
     * `TurnFailure.Model` when `own` already names `topic`, read_hidden or extract, which a
     * deployment's own tools are refused for at its start ([[TurnTooling.reserving]]); an edge's advert can
@@ -54,9 +56,13 @@ private[turn] object TurnShown {
     */
   def offered[C^](
       own: Toolbox[C],
-      asked: Option[TurnAgenda.Classification]
+      asked: Option[TurnAgenda.Classification],
+      root: TurnOffer.Root
   ): Either[TurnFailure, Toolbox[C]] = {
-    val tools = own.including(TurnVerdict.tool(asked))
+    val tools = root match {
+      case TurnOffer.Root.Spawned(_) => Right(own)
+      case _ => own.including(TurnVerdict.tool(asked))
+    }
     tools
       .flatMap(t => t.preceded(Vector(unread, unasked)).map(_ => t))
       .left

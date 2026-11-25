@@ -294,7 +294,7 @@ private[turn] object Rounding {
       offer: TurnOffer,
       asked: Option[TurnAgenda.Classification]
   ): Either[TurnFailure, Toolbox[C]] =
-    TurnShown.offered(TurnOffer.toolbox(tooling, offer), asked)
+    TurnShown.offered(TurnOffer.toolbox(tooling, offer), asked, offer.root)
 
   /** Round `at.round`'s request from the plain one, offering `tools` as every call of its turn
     * does ([[TurnLoop.offered]]), their schemas strict when `pins`' turn pair is known to
