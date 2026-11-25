@@ -221,6 +221,13 @@ object ActCaptureTests extends TestSuite {
   /** Every breach capture checking rejects; [[keepReturnsRead]] is the bound on what a keep
     * returns, rejected with the checker off too.
     */
+  /** A child's acting, made as a function of its turn, that reaches the database. */
+  private val narrowedReadsDb =
+    """final class Narrows(db: Db^) {
+      |  def child(parent: Acting): TurnRef -> Acting = turn => { val _ = db; parent.copy(turn = turn) }
+      |}
+      |""".stripMargin
+
   private val breaches: Vector[String] =
     Vector(
       jobKeepsMoves,
@@ -231,7 +238,8 @@ object ActCaptureTests extends TestSuite {
       judgmentReaderClassifies,
       jobHoldsClassifier,
       scanAsks,
-      dreamKeepsMoves
+      dreamKeepsMoves,
+      narrowedReadsDb
     )
 
   private val usesMoves =
@@ -292,6 +300,10 @@ object ActCaptureTests extends TestSuite {
       |}
       |def pure[A <: caps.Pure](a: A): A = a
       |def child(turn: TurnRef): Acting = pure(Acting(turn, ActsFor.Asker, Allowance.Admitted, Gates.Asker(1.minute), Integrity.Authority))
+      |def capped(turn: TurnRef, cap: grit.core.spend.SpendCap): Acting = pure(Acting(turn, ActsFor.Asker, Allowance.Capped(cap), Gates.Closed, Integrity.Member))
+      |def delegated(parent: Acting, as: grit.core.agent.Subagent, at: Label, origin: Origin): Either[Delegation.Refused, TurnRef -> Acting] =
+      |  Delegation.narrowed(parent, as, Integrity.Member, at, at, origin, Cost.Zero).map(made => turn => pure(made(turn)))
+      |def refused(r: Delegation.Refused): Delegation.Refused = pure(r)
       |""".stripMargin
 
   /** A booking whose parameters hold a transaction. */
@@ -409,9 +421,15 @@ object ActCaptureTests extends TestSuite {
       assert(flowsInto("{}")(errors(readerAsks)))
     }
 
-    test("the acting value is pure data: a bound asking for caps.Pure takes it") {
+    test(
+      "the acting value is pure data: a bound asking for caps.Pure takes it, capped or narrowed for a child"
+    ) {
       val errs = errors(actingPure)
       assert(errs.isEmpty)
+    }
+
+    test("a child's acting made by a pure function of its turn cannot reach the database") {
+      assert(flowsInto("{}")(errors(narrowedReadsDb)))
     }
 
     test("a job that keeps its moves in a field is rejected") {
@@ -449,7 +467,10 @@ object ActCaptureTests extends TestSuite {
 
     test("capture checking is what rejects each breach but the bounds") {
       val flags = options.filterNot(_.startsWith("-language:experimental."))
-      val errs = Probes.errors(erased(prelude + breaches.mkString("\n") + "\n"), flags)
+      // A pure function type is capture syntax too: unchecked, `->` is `=>`.
+      val source =
+        erased(prelude + breaches.mkString("\n") + "\n").replace(" -> Acting", " => Acting")
+      val errs = Probes.errors(source, flags)
       assert(errs.isEmpty)
     }
   }

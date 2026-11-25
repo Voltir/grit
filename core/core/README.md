@@ -96,7 +96,7 @@ In dependency order, each with the core packages it imports:
   `place`, `secret`
 - **`agent`**: the kinds of agent a deployment declares that a turn may start for one task
   (subagents): each one's persona, tools, pins, spend cap and the integrity its brief must carry.
-  Nothing in core imports it. ← `id`, `place`, `model`, `visibility`, `persona`, `spend`, `host`
+  Only `act` imports it. ← `id`, `place`, `model`, `visibility`, `persona`, `spend`, `host`
 - **`session`**: each working session's record, a grit turn's or a harness's: one row of who,
   when and its counters, and a capped log of its events in grit's words, an event recorded again
   known by its source's ordinal, and what a tool's call adds to it (`Event.Unrecorded`). ← `id`, `identity`,
@@ -142,9 +142,10 @@ In dependency order, each with the core packages it imports:
   Nothing in core imports it. ← `id`, `place`, `message`, `classify`, `period`, `store`,
   `triage`, `context`, `stitch`
 - **`act`**: what an actor may do, and under what (ADR 0068): who acts, its moves within their
-  limits, and what they come to; and the declassifying move's model-facing text. ← `id`,
-  `place`, `visibility`, `message`, `classify`, `store`, `document`, `period`, `spend`,
-  `durable`, `flow`, `provider`, `tool`, `schema`, `sanitise`, `stitch`, `screen`
+  limits, and what they come to; the acting a subagent is narrowed to from its parent's; and the
+  declassifying move's model-facing text. ← `id`, `place`, `visibility`, `message`, `classify`,
+  `store`, `document`, `period`, `spend`, `durable`, `flow`, `provider`, `tool`, `schema`,
+  `sanitise`, `stitch`, `screen`, `agent`
 - **`job`**: jobs and their schedules (ADRs 0021, 0029). ← `id`, `clock`, `visibility`,
   `message`, `store`, `document`, `flow`, `act`
 - **`inbox`**: the `Inbox` trait the engine takes messages through. ← `id`, `identity`,
