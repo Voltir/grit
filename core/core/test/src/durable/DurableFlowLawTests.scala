@@ -58,6 +58,13 @@ object DurableFlowLawTests extends TestSuite {
       ran(Flow.step(sized), env, "abc") ==> ("Right(tabc)", Vector("tool:3"))
     }
 
+    test("a name over another input is recorded as the name of what it makes of that input") {
+      val keyed = StepName.keyed[String]("tool")(_.length.toString).on[Int](n => "x" * n)
+      val fixed = StepName("fixed").on[Int](_.toString)
+      (keyed(4), keyed.family, keyed.keyed, fixed(4), fixed.keyed) ==>
+        ("tool:4", "tool", true, "fixed", false)
+    }
+
     test(
       "a transaction step runs in a transaction opened for its subject, recorded under its name"
     ) {

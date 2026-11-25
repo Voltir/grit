@@ -19,6 +19,9 @@ sealed trait StepName[-I] {
 
   /** Whether the recorded name is the family and a key. */
   def keyed: Boolean
+
+  /** This name over a `J`: the name it records for what `f` makes of the `J`. */
+  def on[J](f: J -> I): StepName[J]
 }
 
 object StepName {
@@ -65,11 +68,13 @@ object StepName {
   private final case class Fixed(family: String) extends StepName[Any] {
     def apply(in: Any): String = family
     def keyed: Boolean = false
+    def on[J](f: J -> Any): StepName[J] = this
   }
 
   private final case class Keyed[I](family: String, key: I -> String) extends StepName[I] {
     def apply(in: I): String = s"$family:${key(in)}"
     def keyed: Boolean = true
+    def on[J](f: J -> I): StepName[J] = Keyed(family, j => key(f(j)))
   }
 }
 
