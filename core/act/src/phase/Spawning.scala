@@ -3,22 +3,26 @@ package grit.act.phase
 import scala.concurrent.duration.*
 
 import grit.core.act.{Acting, Delegation}
-import grit.core.agent.Subagent
+import grit.core.agent.{Subagent, Subagents}
 import grit.core.durable.{Flow, Journaled, Step, StepName}
 import grit.core.flow.{Mint, Tainted}
-import grit.core.id.{CallSlot, ConversationId, Sha256, TurnRef, TurnSeq}
-import grit.core.identity.Account
+import grit.core.id.{AgentType, CallSlot, ConversationId, Sha256, TurnRef, TurnSeq}
 import grit.core.inbox.{InboxError, SpawnInbox, SpawnReply, TurnEnding}
 import grit.core.json.Fields
 import grit.core.message.{Cost, SpendCap}
 import grit.core.place.{Place, Repository, WorkName}
-import grit.core.store.{Origin, Tx}
+import grit.core.store.{ConversationStore, Origin, Tx}
 import grit.core.visibility.{Integrity, Label}
 
 /** What a spawn's steps act through: `spawns`, where its child is recorded, started, ended and
-  * read.
+  * read; `subagents`, the types a request may name; `conversations`, where its parent's origin
+  * is read.
   */
-final case class SpawnEnv(spawns: SpawnInbox^)
+final case class SpawnEnv(
+    spawns: SpawnInbox^,
+    subagents: Subagents,
+    conversations: ConversationStore
+)
 
 /** What a spawn's steps are recorded as. */
 final case class SpawnSteps[I](
@@ -77,18 +81,17 @@ object Spawning {
 
   private val Rungs: Int = (Within / Every).toInt
 
-  /** A child of type `as`, asked for at `call` by the parent acting as `parent` in the
-    * conversation begun at `origin`, briefed with `brief`, believed at `briefed`; recorded
-    * through `by`, and read within `bound`, as [[Waiting.bound]] is.
+  /** A child of type `agent`, asked for at `call` by the parent acting as `parent`, briefed with
+    * `brief`, believed at `briefed`, and read within `bound`, as [[Waiting.bound]] is. Its type
+    * and its parent's conversation are read in the parent's transaction ([[spawn]]), never
+    * taken from the request.
     */
   final case class Request private (
       call: CallSlot,
       parent: Acting,
-      origin: Origin,
-      as: Subagent,
+      agent: AgentType,
       brief: String,
       briefed: Integrity,
-      by: Account,
       bound: Option[Label]
   ) extends caps.Pure
 
@@ -98,23 +101,24 @@ object Spawning {
     def of(
         call: CallSlot,
         parent: Acting,
-        origin: Origin,
-        as: Subagent,
+        agent: AgentType,
         brief: String,
         briefed: Integrity,
-        by: Account,
         bound: Option[Label]
     ): Option[Request] =
       Option.when(call.turn == parent.turn)(
-        new Request(call, parent, origin, as, brief, briefed, by, bound)
+        new Request(call, parent, agent, brief, briefed, bound)
       )
   }
 
   /** `asked`'s child, made in its parent's room (a coding type's, its repository) and waited for.
-    * Refused before any step when that room is a direct message's; then, in the parent's
-    * transaction, `OverLimit`, or as [[Delegation.narrowed]] refuses it, at what the parent's
-    * model has read (the transaction's floor joined with `bound`), its spend counting the caps
-    * its earlier children were granted; made and started once however often it is rerun; its
+    * In the parent's transaction, its type is read from the env's `subagents` and its parent's
+    * origin from its own conversation (`Unspawned` when either is not there), and it is refused
+    * `Direct` when that room is a direct message's, then `OverLimit`, or as
+    * [[Delegation.narrowed]] refuses it, at what the parent's model has read (the transaction's
+    * floor joined with `bound`), its spend counting the caps its earlier children were granted;
+    * the room and the type's cap read there are the ones the later steps use, however the
+    * deployment changes after. It is made and started once however often it is rerun; its
     * end taken from its ring ([[SpawnInbox.returned]]), else read after each [[Every]] that
     * passes without one, up to [[Within]]; its reply and spend read in the
     * parent's transaction. At most 21 steps. In a rehearsal, whose waits return at once and whose
@@ -123,16 +127,12 @@ object Spawning {
     * next, so two run at once both count the children before either.
     */
   def spawn[I](steps: SpawnSteps[I], asked: I -> Request): Flow[SpawnEnv, I, Nothing, Delegated] = {
-    val direct: Flow[Any, I, Delegated, I] = Flow.fromEither { i =>
-      val room = roomOf(asked(i))
-      if (room.direct) Left(Delegated.Refused(Delegation.Refused.Direct(room))) else Right(i)
-    }
     val narrow =
       Step.transact[SpawnEnv, I, Narrowing](steps.narrow, i => asked(i).parent.subject)(env =>
-        i => narrowing(env.spawns, asked(i))
+        i => narrowing(env, asked(i))
       )
     val made = Step[SpawnEnv, Narrowed[I], Made](steps.spawn.on(_.in))(env =>
-      n => making(env.spawns, asked(n.in), n.at)
+      n => making(env.spawns, asked(n.in), n)
     )
     val ended = Step[SpawnEnv, Child[I], Either[String, Option[TurnEnding]]](
       steps.ended.on(_.in)
@@ -143,7 +143,7 @@ object Spawning {
     )(env => e => reading(env.spawns, asked(e.in).bound, e.child))
     val unrung: Flow[SpawnEnv, Child[I], Ended[I], Child[I]] =
       Flow.decide(ended) {
-        case (c, Right(Some(ending))) => Left(Ended(c.in, c.child, ending))
+        case (c, Right(Some(ending))) => Left(Ended(c.in, c.child, c.cap, ending))
         case (c, _) => Right(c)
       }
     // A ring carries the child's ending, sent from inside its workflow before that workflow's
@@ -155,7 +155,10 @@ object Spawning {
         .keeping
         .andThen(
           Flow.branch((at: (Child[I], Option[String])) =>
-            at._2.flatMap(TurnEnding.read).map(Ended(at._1.in, at._1.child, _)).toLeft(at._1)
+            at._2
+              .flatMap(TurnEnding.read)
+              .map(Ended(at._1.in, at._1.child, at._1.cap, _))
+              .toLeft(at._1)
           )(Flow.fromEither[Ended[I], Ended[I], Child[I]](Left(_)), unrung)
         )
     val waited: Flow[SpawnEnv, Child[I], Ended[I], Delegated] =
@@ -163,17 +166,17 @@ object Spawning {
         .foldLeft(rung)((f, _) => f.andThen(rung))
         .map(c => Delegated.Unanswered(c.child))
     val answered: Flow[SpawnEnv, Ended[I], Nothing, Delegated] =
-      Flow.decide(read)((e, r) => Right(delegated(asked(e.in).as.spendCap, e, r)))
+      Flow.decide(read)((e, r) => Right(delegated(e, r)))
     val whole: Flow[SpawnEnv, I, Delegated, Delegated] =
-      direct
-        .andThen(Flow.decide(narrow) {
-          case (i, Narrowing.Go(at)) => Right(Narrowed(i, at))
+      Flow
+        .decide(narrow) {
+          case (i, Narrowing.Go(at, within, cap)) => Right(Narrowed(i, at, within, cap))
           case (_, Narrowing.Refused(why)) => Left(Delegated.Refused(why))
           case (_, Narrowing.OverLimit(most)) => Left(Delegated.OverLimit(most))
           case (_, Narrowing.Failed(why)) => Left(Delegated.Unspawned(why))
-        })
+        }
         .andThen(Flow.decide(made) {
-          case (n, Made.Child(child)) => Right(Child(n.in, child))
+          case (n, Made.Child(child)) => Right(Child(n.in, child, n.cap))
           case (_, Made.Above(at, room)) =>
             Left(Delegated.Refused(Delegation.Refused.Above(at, room)))
           case (_, Made.Unmade(why)) => Left(Delegated.Unspawned(why))
@@ -183,11 +186,18 @@ object Spawning {
     Flow.attempt(whole).map(_.merge)
   }
 
-  /** The room a child of `r` is made in: its type's repository, or its parent's room. */
-  private def roomOf(r: Request): Place = r.as.tools match {
+  /** The room a child of `as` is made in: its repository, or its parent's room, as `origin` says. */
+  private def roomOf(as: Subagent, origin: Origin): Place = as.tools match {
     case Subagent.Tools.Coding(_, repository, _) => repository.place
-    case Subagent.Tools.Services(_) => r.origin.room
+    case Subagent.Tools.Services(_) => origin.room
   }
+
+  /** Why a spawn is not made when its parent's conversation is gone. */
+  private val Gone = "its parent's conversation is gone"
+
+  /** Why a spawn is not made when its type is not among the env's subagents. */
+  private def undeclared(agent: AgentType): String =
+    s"no subagent of the type ${AgentType.value(agent)} is declared"
 
   /** `s{round}-{index}-{h}`, `h` the first 16 hex digits of the SHA-256 of the parent turn's
     * `conversation:seq`: unique across parents, at most 40 characters, starting with a letter.
@@ -202,40 +212,52 @@ object Spawning {
   }
 
   /** What the parent's transaction decides of `r`. */
-  private def narrowing(inbox: SpawnInbox^, r: Request)(using Tx^): Narrowing = {
+  private def narrowing(env: SpawnEnv^, r: Request)(using Tx^): Narrowing = {
     val at = r.bound.fold(Tx.classification.label)(Tx.locked(_).label)
     val parent = r.call.turn
-    inbox.spent(parent).flatMap(own => inbox.granted(parent).map(caps => (own, caps))) match {
-      case Left(e) => Narrowing.Failed(e.described)
-      case Right((_, caps)) if caps.size >= PerTurn => Narrowing.OverLimit(PerTurn)
-      case Right((own, caps)) =>
-        Delegation
-          .narrowed(
-            r.parent,
-            r.as,
-            r.briefed,
-            parentAt = at,
-            room = Tx.roomLabel(roomOf(r)),
-            origin = r.origin,
-            spent = caps.foldLeft(own)((c, cap) => c + Cost.Exact(cap.usd))
-          )
-          .fold(Narrowing.Refused(_), _ => Narrowing.Go(at))
+    val read = for {
+      conversation <- env.conversations.get(parent.conversationId)
+      own <- env.spawns.spent(parent)
+      caps <- env.spawns.granted(parent)
+    } yield (conversation, own, caps)
+    (env.subagents(r.agent), read) match {
+      case (None, _) => Narrowing.Failed(undeclared(r.agent))
+      case (_, Left(e)) => Narrowing.Failed(e.described)
+      case (_, Right((None, _, _))) => Narrowing.Failed(Gone)
+      case (Some(as), Right((Some(conversation), own, caps))) =>
+        val origin = conversation.origin
+        val room = roomOf(as, origin)
+        if (room.direct) Narrowing.Refused(Delegation.Refused.Direct(room))
+        else if (caps.size >= PerTurn) Narrowing.OverLimit(PerTurn)
+        else
+          Delegation
+            .narrowed(
+              r.parent,
+              as,
+              r.briefed,
+              parentAt = at,
+              room = Tx.roomLabel(room),
+              origin = origin,
+              spent = caps.foldLeft(own)((c, cap) => c + Cost.Exact(cap.usd))
+            )
+            .fold(Narrowing.Refused(_), _ => Narrowing.Go(at, room, as.spendCap))
     }
   }
 
-  /** `r`'s child recorded and started, classified `at`. */
-  private def making(inbox: SpawnInbox^, r: Request, at: Label): Made =
+  /** `r`'s child recorded and started as `n` decided: classified `n.at`, in `n.within`, capped
+    * at `n.cap`.
+    */
+  private def making(inbox: SpawnInbox^, r: Request, n: Narrowed[?]): Made =
     nameOf(r.call).fold(
       Made.Unmade(_),
       name =>
         inbox.spawned(
-          Origin.Spawned(r.call.turn, name, roomOf(r)),
-          r.as.agent,
+          Origin.Spawned(r.call.turn, name, n.within),
+          r.agent,
           r.brief,
-          r.as.spendCap,
+          n.cap,
           Delegation.believed(r.parent, r.briefed),
-          at,
-          r.by
+          n.at
         ) match {
           case Right(child) => Made.Child(child)
           case Left(InboxError.Above(classification, room)) => Made.Above(classification, room)
@@ -254,8 +276,8 @@ object Spawning {
         } yield Read.Kept(reply, spent)).fold(e => Read.Failed(e.described), identity)
     }
 
-  /** What a child capped at `cap`, ended as `e`, comes to, its reply and spend `r`. */
-  private def delegated(cap: SpendCap, e: Ended[?], r: Read): Delegated = r match {
+  /** What a child ended as `e`, capped at `e.cap`, comes to, its reply and spend `r`. */
+  private def delegated(e: Ended[?], r: Read): Delegated = r match {
     case Read.Beyond(_) => Delegated.Unread(e.child)
     case Read.Failed(why) => Delegated.Failed(e.child, why)
     case Read.Kept(SpawnReply.Unread, _) => Delegated.Unread(e.child)
@@ -267,7 +289,7 @@ object Spawning {
       (e.ending, said) match {
         case (TurnEnding.Answered, Some(text)) => Delegated.Replied(e.child, text, spent)
         case (TurnEnding.AtLimit, _) => Delegated.Limited(e.child, said, spent)
-        case (_, _) if !cap.admits(spent) => Delegated.Limited(e.child, said, spent)
+        case (_, _) if !e.cap.admits(spent) => Delegated.Limited(e.child, said, spent)
         case (TurnEnding.Answered, None) => Delegated.Failed(e.child, NoReply)
         case (TurnEnding.Otherwise, _) => Delegated.Failed(e.child, Unfinished)
       }
@@ -276,13 +298,15 @@ object Spawning {
   private val NoReply = "it ended saying nothing"
   private val Unfinished = "it ended without finishing its task"
 
-  private final case class Narrowed[I](in: I, at: Label)
-  private final case class Child[I](in: I, child: TurnRef)
-  private final case class Ended[I](in: I, child: TurnRef, ending: TurnEnding)
+  private final case class Narrowed[I](in: I, at: Label, within: Place, cap: SpendCap)
+  private final case class Child[I](in: I, child: TurnRef, cap: SpendCap)
+  private final case class Ended[I](in: I, child: TurnRef, cap: SpendCap, ending: TurnEnding)
 
-  /** What the parent's transaction decided: go, at what its model has read, or why not. */
+  /** What the parent's transaction decided: go, at what its model has read, in the room
+    * `within`, capped at its type's `cap`; or why not.
+    */
   private enum Narrowing extends caps.Pure {
-    case Go(at: Label)
+    case Go(at: Label, within: Place, cap: SpendCap)
     case Refused(why: Delegation.Refused)
     case OverLimit(most: Int)
     case Failed(why: String)
@@ -304,8 +328,8 @@ object Spawning {
 
   // The recorded forms. A run in flight reads back what an earlier build wrote, so a form here is
   // never changed, only added to. SpawningTests pins each form its runs reach, and replays it;
-  // none reaches a narrowing's or a read's `store`, a read's `beyond`, a spawn's `above` or
-  // `unspawned`, or a `notWorking` or `direct` refusal, which are unpinned.
+  // none reaches a read's `store` or `beyond`, a spawn's `unspawned`, or a `notWorking`
+  // refusal, which are unpinned.
 
   private def cost(c: Cost): ujson.Value = c match {
     case Cost.Exact(usd) => ujson.Obj("exact" -> usd.bigDecimal.toPlainString)
@@ -401,10 +425,19 @@ object Spawning {
       .map(_ => s"recorded: no refusal: $v")
   }
 
-  /** `{"go":{"at":l}}`, `{"refused":r}`, `{"overLimit":n}` or `{"store":w}`. */
+  /** `{"go":{"at":l,"within":p,"cap":c}}`, `{"refused":r}`, `{"overLimit":n}` or
+    * `{"store":w}`.
+    */
   private given Journaled[Narrowing] = Journaled.json(
     {
-      case Narrowing.Go(at) => ujson.Obj("go" -> ujson.Obj("at" -> Label.written(at)))
+      case Narrowing.Go(at, within, cap) =>
+        ujson.Obj(
+          "go" -> ujson.Obj(
+            "at" -> Label.written(at),
+            "within" -> within.written,
+            "cap" -> cap.usd.bigDecimal.toPlainString
+          )
+        )
       case Narrowing.Refused(why) => ujson.Obj("refused" -> refused(why))
       case Narrowing.OverLimit(most) => ujson.Obj("overLimit" -> ujson.Num(most.toDouble))
       case Narrowing.Failed(why) => ujson.Obj("store" -> why)
@@ -412,8 +445,14 @@ object Spawning {
     v => {
       val f = Fields("a spawn's narrowing", v)
       f.obj("go")
-        .flatMap(o => label(Fields("go", o), "at"))
-        .map(Narrowing.Go(_))
+        .flatMap { o =>
+          val g = Fields("go", o)
+          for {
+            at <- label(g, "at")
+            within <- g.str("within").flatMap(Place.read)
+            cap <- capOf(g, "cap")
+          } yield Narrowing.Go(at, within, cap)
+        }
         .orElse(f.field("refused").flatMap(refusedOf).map(Narrowing.Refused(_)))
         .orElse(f.int("overLimit").map(Narrowing.OverLimit(_)))
         .orElse(f.str("store").map(Narrowing.Failed(_)))

@@ -324,12 +324,11 @@ final class SqlInbox(
       brief: String,
       spendCap: SpendCap,
       believed: Integrity,
-      classification: Label,
-      by: Account
+      classification: Label
   ): Either[InboxError, TurnRef] = {
     val now = clock.now()
     inTransaction(
-      recorder.spawned(origin, agent, brief, spendCap, believed, classification, by, now)
+      recorder.spawned(origin, agent, brief, spendCap, believed, classification, now)
     )
       .flatMap(identity)
       .flatMap(turn => startTurn(turn).map(_ => turn))

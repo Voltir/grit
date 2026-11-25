@@ -218,8 +218,8 @@ private[engine] final class Recorder(
     } yield first.zip(wrote)
 
   /** A spawned child's root recorded at `at` as [[grit.core.inbox.SpawnInbox.spawned]] says,
-    * through `by`, believed at `believed`, and refused as it says, before its conversation is
-    * made.
+    * through the account that wrote its parent's first entry, believed at `believed`, and
+    * refused as it says, before its conversation is made.
     */
   def spawned(
       origin: Origin.Spawned,
@@ -228,44 +228,40 @@ private[engine] final class Recorder(
       spendCap: SpendCap,
       believed: Integrity,
       classification: Label,
-      by: Account,
       at: Instant
   )(using Tx^): Either[StoreError, Either[InboxError, TurnRef]] =
     if (origin.within.direct)
       Right(Left(InboxError.Invalid("a child is never spawned within a direct message's room")))
     else
-      firstOf(origin.parent).flatMap {
-        case Some((_, account)) if account == SqlIdentities.written(by) =>
-          for {
-            known <- conversations.find(origin)
-            label <- known.fold(roomOf(origin))(c => Right(c.label))
-            over <- known.fold(overCapAt(at))(_ => Right(None))
-            turn <- (label.dominates(classification), over) match {
-              case (false, _) => Right(Left(InboxError.Above(classification, label)))
-              case (true, Some(refused)) => Right(Left(refused))
-              case (true, None) =>
-                recorded(
-                  origin,
-                  Recorder.SpawnSource,
-                  Payload.Spawn(agent, brief, spendCap),
-                  by,
-                  label,
-                  Some(believed),
-                  at,
-                  capped = true,
-                  None
-                )
-            }
-          } yield turn
-        case _ =>
-          Right(
-            Left(
-              InboxError.Invalid(
-                "a child is spawned only by whoever wrote its parent's first entry"
-              )
-            )
-          )
-      }
+      firstOf(origin.parent)
+        .map(
+          _.flatMap((_, account) => Account.read(account).toOption).filter(_ != Account.Grit)
+        )
+        .flatMap {
+          case Some(by) =>
+            for {
+              known <- conversations.find(origin)
+              label <- known.fold(roomOf(origin))(c => Right(c.label))
+              over <- known.fold(overCapAt(at))(_ => Right(None))
+              turn <- (label.dominates(classification), over) match {
+                case (false, _) => Right(Left(InboxError.Above(classification, label)))
+                case (true, Some(refused)) => Right(Left(refused))
+                case (true, None) =>
+                  recorded(
+                    origin,
+                    Recorder.SpawnSource,
+                    Payload.Spawn(agent, brief, spendCap),
+                    by,
+                    label,
+                    Some(believed),
+                    at,
+                    capped = true,
+                    None
+                  )
+              }
+            } yield turn
+          case None => Right(Left(InboxError.Invalid(InboxError.Unwritten)))
+        }
 
   /** `occasion`, `plugin`'s, recorded at `at` as [[grit.core.inbox.Inbox.occasion]] says, grit's
     * own, believed at `believed`, never refused over the cap.

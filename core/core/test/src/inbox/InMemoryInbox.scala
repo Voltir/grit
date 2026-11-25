@@ -624,8 +624,7 @@ final class InMemoryInbox(
       brief: String,
       spendCap: SpendCap,
       believed: Integrity,
-      classification: Label,
-      by: Account
+      classification: Label
   ): Either[InboxError, TurnRef] =
     if (down) unavailable
     else if (origin.within.direct)
@@ -635,11 +634,11 @@ final class InMemoryInbox(
         for {
           first <- entries.ofTurn(origin.parent).map(_.minByOption(e => EntrySeq.value(e.seq)))
           known <- found(origin)
-        } yield (first, known)
+        } yield (first.flatMap(f => principals.author(f.id)).filter(_ != Account.Grit), known)
       }.left
         .map(InboxError.stored)
         .flatMap {
-          case (Some(first), known) if principals.author(first.id).contains(by) =>
+          case (Some(by), known) =>
             val label = known.fold(labelOf(origin))(_.label)
             if (!label.dominates(classification)) Left(InboxError.Above(classification, label))
             else
@@ -654,11 +653,7 @@ final class InMemoryInbox(
                 capped = true,
                 None
               ).flatMap(turn => startTurn(turn).map(_ => turn))
-          case _ =>
-            Left(
-              InboxError
-                .Invalid("a child is spawned only by whoever wrote its parent's first entry")
-            )
+          case (None, _) => Left(InboxError.Invalid(InboxError.Unwritten))
         }
 
   def ended(child: TurnRef): Either[InboxError, Option[TurnEnding]] =

@@ -8,6 +8,7 @@ import scala.concurrent.duration.DurationInt
 import grit.act.phase.{Delegated, SpawnEnv, SpawnSteps, Spawning}
 import grit.core.act.{Acting, ActsFor, Allowance, Gates}
 import grit.core.agent.SubagentFixtures.{ok, scholar, services, subagent}
+import grit.core.agent.Subagents
 import grit.core.durable.{Durable, Flows, StepName}
 import grit.core.id.{CallSlot, SourceId, TurnRef, WorkflowId}
 import grit.core.identity.TestAccounts
@@ -38,8 +39,12 @@ object SpawnRingLiveTests extends TestSuite {
     StepName.keyed[Spawning.Request]("read")(key)
   )
 
+  /** The one type the parent may spawn: a scholar. */
+  private val scholars: Subagents =
+    ok(Subagents.of(Vector(ok(subagent(scholar, services, Integrity.Outside)))))
+
   /** A scholar child of `turn`, asked at its first call by a parent acting for its asker. */
-  private def request(turn: TurnRef, origin: Origin): Spawning.Request =
+  private def request(turn: TurnRef): Spawning.Request =
     CallSlot
       .of(turn, 0, 0)
       .flatMap(call =>
@@ -52,11 +57,9 @@ object SpawnRingLiveTests extends TestSuite {
             Gates.Asker(1.minute),
             Integrity.Authority
           ),
-          origin,
-          ok(subagent(scholar, services, Integrity.Outside)),
+          scholar,
           "Find the paper.",
           Integrity.Member,
-          ana,
           None
         )
       )
@@ -91,7 +94,8 @@ object SpawnRingLiveTests extends TestSuite {
               asked.get() match {
                 case Some(r) if r.call.turn == turn =>
                   val began = System.nanoTime()
-                  val got = Flows.run(Spawning.spawn(steps, identity), SpawnEnv(engine), r).merge
+                  val env = SpawnEnv(engine, scholars, engine.conversations)
+                  val got = Flows.run(Spawning.spawn(steps, identity), env, r).merge
                   came.put((got, (System.nanoTime() - began) / 1000000L))
                   released.countDown()
                   got.toString
@@ -103,7 +107,7 @@ object SpawnRingLiveTests extends TestSuite {
         val parent = engine.inbox
           .ingest(origin, SourceId("p"), Message.User("look it up"), ana, None)
           .fold(e => throw new java.lang.AssertionError(e), identity)
-        asked.set(Some(request(parent, origin)))
+        asked.set(Some(request(parent)))
         val _ = engine.inbox.startTurn(parent)
         // The child writes no reply, so the parent reads it as ending with none: Failed.
         val ended = Option(came.poll(60, TimeUnit.SECONDS)).map((got, millis) =>

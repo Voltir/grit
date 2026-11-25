@@ -14,7 +14,7 @@ import grit.core.durable.Durable
 import grit.core.edge.{Desk, DeskError, Holder}
 import grit.core.host.ProcessIdentity
 import grit.core.id.{AgentType, PluginName, PrincipalId, TurnRef, WorkflowId}
-import grit.core.identity.{Account, Domain, Identities, Realm}
+import grit.core.identity.{Domain, Identities, Realm}
 import grit.core.inbox.{Inbox, InboxError, SpawnReply, TurnEnding}
 import grit.core.message.{Cost, SpendCap}
 import grit.core.occasion.Occasion
@@ -140,10 +140,9 @@ final class Engine private (
       brief: String,
       spendCap: SpendCap,
       believed: Integrity,
-      classification: Label,
-      by: Account
+      classification: Label
   ): Either[InboxError, TurnRef] =
-    sqlInbox.spawned(origin, agent, brief, spendCap, believed, classification, by)
+    sqlInbox.spawned(origin, agent, brief, spendCap, believed, classification)
 
   /** [[grit.core.inbox.SpawnInbox.ended]], through this engine's inbox. */
   def ended(child: TurnRef): Either[InboxError, Option[TurnEnding]] = sqlInbox.ended(child)

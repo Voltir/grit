@@ -1029,18 +1029,31 @@ abstract class InboxContract extends TestSuite {
     }
 
     test(
-      "a spawned child's root is recorded once, through its parent's asker; anyone else, or a direct message's room, is refused, recording nothing"
+      "a spawned child's root is recorded once, through whoever wrote its parent turn's first entry; a parent grit began, or a direct message's room, is refused, recording nothing"
     ) {
       withInbox(Uncapped) { (inbox, store) =>
         val here = Origin.Task("inbox", "spawning")
         val ana = TestAccounts.account("task:ana-spawning")
         val bo = TestAccounts.account("task:bo-spawning")
         store.name(ana, "Ana")
-        val parent = inbox
-          .ingest(here, SourceId("p"), said("fix it"), ana, None)
-          .fold(e => throw new java.lang.AssertionError(e), identity)
+        store.name(bo, "Bo")
+        def begun(started: Either[InboxError, TurnRef]) =
+          started.fold(e => throw new java.lang.AssertionError(e), identity)
+        // Ana began the conversation; Bo's message begins the turn that spawns.
+        val _ = begun(inbox.ingest(here, SourceId("p"), said("fix it"), ana, None))
+        val parent = begun(inbox.ingest(here, SourceId("q"), said("and this"), bo, None))
+        val room = Origin.Room("T1", "spawned-by-grit")
+        val occasioned = begun(
+          inbox.occasion(
+            room,
+            InboxContract.Plugin,
+            InboxContract.occasion("ahead:spawning"),
+            PostedAt,
+            Integrity.Member
+          )
+        )
         val child = InboxContract.child(parent, "s1-0-spawning", here.room)
-        val other = InboxContract.child(parent, "s1-1-spawning", here.room)
+        val grits = InboxContract.child(occasioned, "s1-1-spawning", room.room)
         val direct = InboxContract.child(
           parent,
           "s1-2-spawning",
@@ -1048,38 +1061,37 @@ abstract class InboxContract extends TestSuite {
             .read("direct:slack/T1/U-ana")
             .fold(e => throw new java.lang.AssertionError(e), identity)
         )
-        def spawn(o: Origin.Spawned, by: Account) =
+        def spawn(o: Origin.Spawned) =
           store.spawns.spawned(
             o,
             InboxContract.Coder,
             "Fix the typo.",
             InboxContract.Cap,
             Integrity.Member,
-            Label.Public,
-            by
+            Label.Public
           )
-        val first = spawn(child, ana)
+        val first = spawn(child)
         (
+          parent.turnSeq == TurnSeq.First,
           first.map(_.turnSeq),
-          spawn(child, ana),
-          spawn(other, bo),
-          spawn(direct, ana)
+          spawn(child),
+          spawn(grits),
+          spawn(direct)
         ) ==> (
+          false,
           Right(TurnSeq.First),
           first,
-          Left(
-            InboxError.Invalid("a child is spawned only by whoever wrote its parent's first entry")
-          ),
+          Left(InboxError.Invalid(InboxError.Unwritten)),
           Left(InboxError.Invalid("a child is never spawned within a direct message's room"))
         )
         (
           store.written(child),
           store.believed(child),
-          store.exists(other),
+          store.exists(grits),
           store.exists(direct)
         ) ==> (
           Vector(
-            (Payload.Spawn(InboxContract.Coder, "Fix the typo.", InboxContract.Cap), Some("Ana"))
+            (Payload.Spawn(InboxContract.Coder, "Fix the typo.", InboxContract.Cap), Some("Bo"))
           ),
           Vector(Integrity.Member),
           false,
@@ -1104,8 +1116,7 @@ abstract class InboxContract extends TestSuite {
             "Fix the typo.",
             InboxContract.Cap,
             Integrity.Member,
-            Label.Public,
-            ana
+            Label.Public
           )
           .fold(e => throw new java.lang.AssertionError(e), identity)
         store.started(spawned) ==> true
@@ -1172,8 +1183,7 @@ abstract class InboxContract extends TestSuite {
             "Fix the typo.",
             InboxContract.Cap,
             Integrity.Member,
-            Label.Public,
-            ana
+            Label.Public
           )
           .fold(e => throw new java.lang.AssertionError(e), identity)
         val unknown = InboxContract.child(parent, "s1-0-never", here.room)
@@ -1216,8 +1226,7 @@ abstract class InboxContract extends TestSuite {
             "Fix the typo.",
             InboxContract.Cap,
             Integrity.Member,
-            Label.Public,
-            ana
+            Label.Public
           )
           .fold(e => throw new java.lang.AssertionError(e), identity)
         store.spawns.returned(spawned, TurnEnding.Otherwise) ==> Left(
@@ -1240,8 +1249,7 @@ abstract class InboxContract extends TestSuite {
             "Fix the typo.",
             InboxContract.Cap,
             Integrity.Member,
-            Label.Public,
-            ana
+            Label.Public
           )
           .fold(e => throw new java.lang.AssertionError(e), identity)
         store.spendIn(spawned, BigDecimal("0.01"))
@@ -1268,8 +1276,7 @@ abstract class InboxContract extends TestSuite {
             "Fix the typo.",
             InboxContract.Cap,
             Integrity.Member,
-            Internal,
-            ana
+            Internal
           ),
           store.exists(child)
         ) ==> (Left(InboxError.Above(Internal, Label.Public)), false)
@@ -1294,8 +1301,7 @@ abstract class InboxContract extends TestSuite {
               "Fix the typo.",
               InboxContract.Cap,
               Integrity.Member,
-              Label.Public,
-              ana
+              Label.Public
             )
             .left
             .map {
@@ -1332,8 +1338,7 @@ abstract class InboxContract extends TestSuite {
             "Fix the typo.",
             InboxContract.Cap,
             Integrity.Member,
-            Internal,
-            ana
+            Internal
           )
           .fold(e => throw new java.lang.AssertionError(e), identity)
         val replied = spawn("s1-0-internal")
@@ -1384,8 +1389,7 @@ abstract class InboxContract extends TestSuite {
             "Fix the typo.",
             cap,
             Integrity.Member,
-            at,
-            ana
+            at
           )
           .fold(e => throw new java.lang.AssertionError(e), identity)
         val _ = spawn(parent, "s1-0-granted", here.room, InboxContract.Cap, Label.Public)

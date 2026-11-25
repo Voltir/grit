@@ -79,9 +79,8 @@ object TurnSpawnTests extends TestSuite {
           brief: String,
           spendCap: grit.core.message.SpendCap,
           believed: Integrity,
-          classification: Label,
-          by: grit.core.identity.Account
-      ) = inbox.spawned(origin, agent, brief, spendCap, believed, classification, by)
+          classification: Label
+      ) = inbox.spawned(origin, agent, brief, spendCap, believed, classification)
       def ended(child: grit.core.id.TurnRef) = inbox.ended(child)
       def reply(child: grit.core.id.TurnRef)(using grit.core.store.Tx^) = inbox.reply(child)
       def spent(turn: grit.core.id.TurnRef)(using grit.core.store.Tx^) = inbox.spent(turn)

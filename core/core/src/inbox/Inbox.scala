@@ -52,14 +52,14 @@ trait SpawnInbox extends caps.SharedCapability {
 
   /** Records `brief` as grit's note beginning the first turn of `origin`'s new conversation
     * ([[grit.core.store.Payload.Spawn]]) and starts that turn, as [[Inbox.startTurn]] does,
-    * through `by`, who must have written `origin`'s parent's first entry, so the child answers
-    * its parent's asker; the conversation made at its room's label, the brief believed at
+    * through the account that wrote `origin`'s parent's first entry, so the child answers its
+    * parent's asker; the conversation made at its room's label, the brief believed at
     * `believed`. A rerun returns the same turn, recorded once, and starts it, so a rerun after a
     * failed start starts it: `origin`'s place is the key. [[InboxError.Above]] when the room's
     * label does not dominate `classification`, the parent's; [[InboxError.OverCap]] as
-    * [[Inbox.ingest]] refuses a new message; [[InboxError.Invalid]] when `by` did not write the
-    * parent's first entry, or `origin` is within a direct message's room. A refusal records
-    * nothing.
+    * [[Inbox.ingest]] refuses a new message; [[InboxError.Invalid]] when no account wrote the
+    * parent's first entry (it has none, or grit wrote it), or `origin` is within a direct
+    * message's room. A refusal records nothing.
     */
   def spawned(
       origin: Origin.Spawned,
@@ -67,8 +67,7 @@ trait SpawnInbox extends caps.SharedCapability {
       brief: String,
       spendCap: SpendCap,
       believed: Integrity,
-      classification: Label,
-      by: Account
+      classification: Label
   ): Either[InboxError, TurnRef]
 
   /** How `child` ended, from its workflow alone; `None` until it has. Its reply is not read. */
@@ -325,6 +324,9 @@ enum InboxError {
 }
 
 object InboxError {
+
+  /** Why [[SpawnInbox.spawned]] refuses a child whose parent's first entry no account wrote. */
+  val Unwritten: String = "a child is spawned only from a turn a person's account began"
 
   /** Why `by` may not answer the gated call `call` of `workflow`'s turn, whose entries are
     * `entries`, as its transaction reads them, and whose asker is `asker`, at `now`, as
