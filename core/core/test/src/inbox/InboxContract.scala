@@ -1097,9 +1097,6 @@ abstract class InboxContract extends TestSuite {
         val parent = inbox
           .ingest(here, SourceId("p"), said("fix it"), ana, None)
           .fold(e => throw new java.lang.AssertionError(e), identity)
-        val unstarted = inbox
-          .ingest(here, SourceId("q"), said("and this"), ana, None)
-          .fold(e => throw new java.lang.AssertionError(e), identity)
         val spawned = store.spawns
           .spawned(
             InboxContract.child(parent, "s1-0-ended", here.room),
@@ -1111,7 +1108,7 @@ abstract class InboxContract extends TestSuite {
             ana
           )
           .fold(e => throw new java.lang.AssertionError(e), identity)
-        (store.started(spawned), store.started(unstarted)) ==> (true, false)
+        store.started(spawned) ==> true
         store.end(spawned)
         val public = Clearance.of(Label.Public)
         val silent = store.replyAt(spawned, public)
@@ -1122,20 +1119,37 @@ abstract class InboxContract extends TestSuite {
           store.spawns.returned(spawned, TurnEnding.Answered)
         )
         (
-          store.spawns.ended(unstarted),
           store.spawns.ended(spawned),
           silent,
           store.replyAt(spawned, public),
           rings,
-          store.rung(parent, spawned),
-          store.spawns.returned(parent, TurnEnding.Answered)
+          store.rung(parent, spawned)
         ) ==> (
-          Right(None),
           Right(Some(TurnEnding.Otherwise)),
           Right(SpawnReply.Silent),
           Right(SpawnReply.Said("Fixed.", Integrity.Member)),
           (Right(()), Right(())),
-          Vector(TurnEnding.Otherwise),
+          Vector(TurnEnding.Otherwise)
+        )
+      }
+    }
+
+    test(
+      "a turn not started has not ended, and a turn no spawn made returns to no parent: Invalid"
+    ) {
+      withInbox(Uncapped) { (inbox, store) =>
+        val here = Origin.Task("inbox", "unspawned-unstarted")
+        val ana = TestAccounts.account("task:ana-unspawned-unstarted")
+        val unstarted = inbox
+          .ingest(here, SourceId("q"), said("and this"), ana, None)
+          .fold(e => throw new java.lang.AssertionError(e), identity)
+        (
+          store.started(unstarted),
+          store.spawns.ended(unstarted),
+          store.spawns.returned(unstarted, TurnEnding.Answered)
+        ) ==> (
+          false,
+          Right(None),
           Left(InboxError.Invalid("only a spawned child returns to a parent"))
         )
       }
