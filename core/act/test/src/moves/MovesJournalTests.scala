@@ -980,11 +980,21 @@ object MovesJournalTests extends TestSuite {
     }
 
     // The check and baseline digests a screen made while Fenced.Rule named no <reply>.
-    test("a check or baseline recorded before the rule named <reply> is the same as one made now") {
+    test(
+      "a check, baseline or retry recorded before the rule named <reply> is the same as one made now"
+    ) {
       val source = DocumentVersionId.of(7).getOrElse(sys.error("no version"))
       val team = DeclassificationPolicy.Over.Compartment(TestLabels.compartment("team"))
       val applied = PolicyApplication(DeclassificationPolicy(team, 1), TestPieces.pointer("f"), 1)
       val rewrite = DocText.of("The team meets offsite.").getOrElse(sys.error("no text"))
+      val floor = (for {
+        text <- DocText.of("The draft.").left.map(_.toString)
+        screened <- Screen
+          .read(Screen.Shape(2, Vector(Must.Present)), Vector(0.5, 0.0, 0.9).map(Judged.YesNo(_)))
+          .left
+          .map(_.said)
+        a <- Declassifying.Again.of(text, "m", screened.fired(None)).toRight("no retry")
+      } yield a).fold(e => throw new java.lang.AssertionError(e), identity)
       (
         MovesJournal.sameCheck(
           "v3:578fd7f4a48a141384949c7b5e49bc4eafa1099896c65fdfbe3e16ec2ae4111c",
@@ -999,8 +1009,17 @@ object MovesJournalTests extends TestSuite {
           source,
           "r1",
           applied
-        )
-      ) ==> (true, true)
+        ),
+        MovesJournal.sameRewrite(
+          "v3:9aff33c40a74726f94c83278d62e859168ba27b51f15baee15a5dd1cc1499d64",
+          source,
+          "r1",
+          applied,
+          Some(floor)
+        ),
+        MovesJournal.retry(source, "r1", applied, floor) ==
+          "v3:9aff33c40a74726f94c83278d62e859168ba27b51f15baee15a5dd1cc1499d64"
+      ) ==> (true, true, true, false)
     }
 
     // The check, baseline and retry digests a screen and a retry made while Fenced.Rule named

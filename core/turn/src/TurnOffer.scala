@@ -477,7 +477,9 @@ object TurnOffer {
         .orElse(tooling.operator.tool(entry.name))
         .orElse(tooling.administering.tool(entry.name))
         .orElse[Tool.Offered^{C}](
-          TurnDelegate.tool(tooling.subagents).filter(_ => entry.name == TurnDelegate.Name)
+          Option
+            .when(entry.name == TurnDelegate.Name)(())
+            .flatMap(_ => TurnDelegate.tool(tooling.subagents))
         ) match {
         case Some(own) => own
         case None =>

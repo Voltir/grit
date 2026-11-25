@@ -278,6 +278,9 @@ private[turn] final class Rounding[C^](
       (Bound.Runs | Bound.Hosted | Bound.Keeping | Bound.Delegating)^{C, env, tooling, reads, X}
     ] =
       read[X](pending, answer) match {
+        // Unreachable today: closed gates are a child's, whose own toolbox is Toolbox.Empty
+        // (TurnTooling.at), so only its hosted tools can ask. Kept so a local tool that asks
+        // fails closed should a child ever be given one.
         case Right(asks: Bound.Gated) => gated(asks).toLeft(asks)
         case Right(asks: Bound.Hosted) => gated(asks).toLeft(asks)
         case other => other
