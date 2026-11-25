@@ -109,7 +109,8 @@ object Stubbing {
   object Recorded {
 
     /** `sent` as [[replay]] reads it: each of its calls whose ledger row is kept
-      * ([[TurnSent.requests]]), its own messages after its window's.
+      * ([[TurnSent.requests]]), its own messages after its window's, priced as
+      * [[TurnRates.of]] prices it.
       */
     def of(sent: TurnSent): Recorded =
       Recorded(
@@ -123,7 +124,7 @@ object Stubbing {
         sent.tools.filter(_.readOnly).map(e => ToolName.value(e.name)).toSet,
         sent.shown,
         sent.limit,
-        sent.pricing
+        TurnRates.of(sent).map(_.pricing)
       )
   }
 

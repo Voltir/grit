@@ -102,16 +102,28 @@ object Breakdown {
       estimator: TokenEstimator
   ): Breakdown =
     request.messages.zipWithIndex.drop(from).foldLeft(Zero) { case (sum, (m, i)) =>
-      val cost = estimator.message(m)
-      sum + (window.lift(i) match {
-        case Some(WindowMessage.Brief) => Zero.copy(asks = cost)
-        case Some(WindowMessage.Recalled) => Zero.copy(recalled = cost)
-        case None =>
-          m match {
-            case _: Message.User => Zero.copy(asks = cost)
-            case _: Message.Assistant => Zero.copy(calls = cost)
-            case _: Message.ToolResult => Zero.copy(results = cost)
-          }
-      })
+      sum + message(m, i, window, estimator)
     }
+
+  /** `m`, message `i` of its request, costed by `estimator` and placed as [[messages]] places
+    * it: in one part.
+    */
+  def message(
+      m: Message,
+      i: Int,
+      window: Vector[WindowMessage],
+      estimator: TokenEstimator
+  ): Breakdown = {
+    val cost = estimator.message(m)
+    window.lift(i) match {
+      case Some(WindowMessage.Brief) => Zero.copy(asks = cost)
+      case Some(WindowMessage.Recalled) => Zero.copy(recalled = cost)
+      case None =>
+        m match {
+          case _: Message.User => Zero.copy(asks = cost)
+          case _: Message.Assistant => Zero.copy(calls = cost)
+          case _: Message.ToolResult => Zero.copy(results = cost)
+        }
+    }
+  }
 }

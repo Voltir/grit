@@ -14,6 +14,7 @@ import grit.eval.harness.sent.{
   ConversationSent,
   Cut,
   HeardSent,
+  InputSplit,
   KnowledgeJson,
   PersonaJson,
   Redrawn,
@@ -21,6 +22,7 @@ import grit.eval.harness.sent.{
   Stubbing,
   TaskLines,
   TaskTurn,
+  TurnRates,
   TurnSent
 }
 import grit.turn.Turn
@@ -111,11 +113,14 @@ private[main] object ContextCommands {
       stubbed = sent.turns.filter(_.requests.nonEmpty).flatMap { t =>
         val recorded = Stubbing.Recorded.of(t)
         val limit = t.limit.fold("none")(l => Tokens.value(l).toString)
-        val priced = t.pricing.fold("unpriced, at Anthropic's ratios")(_ => "priced by its pin")
+        val rated = TurnRates.of(t)
+        val priced =
+          if (rated.isEmpty) "unpriced, triggered at Anthropic's ratios"
+          else TurnRates.described(rated)
         val unrowed = t.requests.size - recorded.calls.size
         val heading = s"turn ${TurnSeq.value(t.turn.turnSeq)}: ${recorded.calls.size} calls, " +
           s"$unrowed without a ledger row, limit $limit, $priced"
-        heading +:
+        (heading +: InputSplit.lines(t, CharEstimate)) ++
           Stubbing.lines(Stubbing.replay(rule, recorded, CharEstimate))
       }
       _ <- mkdirs(out.getParent)
