@@ -5,10 +5,10 @@ import java.time.{Instant, ZoneOffset}
 import grit.core.act.Allowance
 import grit.core.clock.SetClock
 import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
-import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.message.{AssistantBlock, Message, SpendCap, StopReason, Tokens, Usage}
 import grit.core.model.Grade
 import grit.core.provider.{Delta, ModelRequest, Provider, ProviderError}
-import grit.core.spend.{Budget, DailyCap, Day, Spend, SpendCap, Spending, TurnSpend}
+import grit.core.spend.{Budget, DailyCap, Day, Spend, Spending, TurnSpend}
 import grit.core.store.{InMemoryUsageLedger, StoreError, Tx, UsageLedger}
 import grit.dbos.sql.TestTx
 

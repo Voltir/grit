@@ -3,7 +3,8 @@ package grit.core.act
 import scala.concurrent.duration.FiniteDuration
 
 import grit.core.id.{ScheduleId, TurnRef}
-import grit.core.spend.{Budget, SpendCap}
+import grit.core.message.SpendCap
+import grit.core.spend.Budget
 import grit.core.visibility.{Integrity, Subject}
 
 /** Who acts, and within what (ADR 0068): every ask, call, keep and occasion is made under one. Its

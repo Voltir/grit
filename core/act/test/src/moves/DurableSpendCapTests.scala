@@ -4,8 +4,7 @@ import grit.core.act.MoveError
 import grit.core.act.MovesFixtures.Judging
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{ConversationId, TurnRef}
-import grit.core.message.{Tokens, Usage}
-import grit.core.spend.SpendCap
+import grit.core.message.{SpendCap, Tokens, Usage}
 import grit.dbos.sql.TestTx
 
 import utest.*

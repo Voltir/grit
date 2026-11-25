@@ -2,10 +2,10 @@ package grit.core.agent
 
 import grit.core.host.Allowlist
 import grit.core.id.AgentType
+import grit.core.message.SpendCap
 import grit.core.model.Pins
 import grit.core.persona.Persona
 import grit.core.place.{Repository, Service}
-import grit.core.spend.SpendCap
 import grit.core.visibility.Integrity
 
 /** A kind of agent a turn may start for one task: the persona it is told it is, the tools it is

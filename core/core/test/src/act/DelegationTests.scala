@@ -15,9 +15,9 @@ import grit.core.agent.SubagentFixtures.{
   subagent
 }
 import grit.core.id.{ConversationId, TurnRef, TurnSeq}
-import grit.core.message.Cost
+import grit.core.message.{Cost, SpendCap}
 import grit.core.place.{Repository, WorkName}
-import grit.core.spend.{Budget, SpendCap}
+import grit.core.spend.Budget
 import grit.core.store.Origin
 import grit.core.visibility.{Compartment, Integrity, Label, Level}
 

@@ -292,7 +292,7 @@ object ActCaptureTests extends TestSuite {
       |}
       |def pure[A <: caps.Pure](a: A): A = a
       |def child(turn: TurnRef): Acting = pure(Acting(turn, ActsFor.Asker, Allowance.Admitted, Gates.Asker(1.minute), Integrity.Authority))
-      |def capped(turn: TurnRef, cap: grit.core.spend.SpendCap): Acting = pure(Acting(turn, ActsFor.Asker, Allowance.Capped(cap), Gates.Closed, Integrity.Member))
+      |def capped(turn: TurnRef, cap: grit.core.message.SpendCap): Acting = pure(Acting(turn, ActsFor.Asker, Allowance.Capped(cap), Gates.Closed, Integrity.Member))
       |def delegated(parent: Acting, as: grit.core.agent.Subagent, at: Label, origin: Origin): Either[Delegation.Refused, TurnRef -> Acting] =
       |  Delegation.narrowed(parent, as, Integrity.Member, at, at, origin, Cost.Zero).map(made => turn => pure(made(turn)))
       |def refused(r: Delegation.Refused): Delegation.Refused = pure(r)

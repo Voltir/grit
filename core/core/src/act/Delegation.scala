@@ -2,9 +2,8 @@ package grit.core.act
 
 import grit.core.agent.Subagent
 import grit.core.id.TurnRef
-import grit.core.message.Cost
+import grit.core.message.{Cost, SpendCap}
 import grit.core.place.Repository
-import grit.core.spend.SpendCap
 import grit.core.store.Origin
 import grit.core.visibility.{Integrity, Label}
 

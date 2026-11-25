@@ -75,12 +75,12 @@ import grit.core.id.{
 import grit.core.identity.Principal
 import grit.core.inbox.InMemoryInbox
 import grit.core.job.{InMemorySchedules, Schedule}
-import grit.core.message.{Message, StopReason}
+import grit.core.message.{Message, SpendCap, StopReason}
 import grit.core.need.Needs
 import grit.core.place.Place
 import grit.core.provider.{ModelRequest, Models}
 import grit.core.speech.{Speaking, Unprompted}
-import grit.core.spend.{Budget, DailyCap, Day, Spend, SpendCap, Spending, TurnSpend}
+import grit.core.spend.{Budget, DailyCap, Day, Spend, Spending, TurnSpend}
 import grit.core.stitch.StrandWorld
 import grit.core.store.{Askers, InMemoryToolSets, InMemoryUsageLedger, Jot, StoreError, TestJot, Tx}
 import grit.core.tool.{Outcome, Retry, ToolSet}

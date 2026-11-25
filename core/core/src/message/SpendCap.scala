@@ -1,6 +1,4 @@
-package grit.core.spend
-
-import grit.core.message.Cost
+package grit.core.message
 
 /** The most one run may spend on model calls, in US dollars: a subagent's, set by its type. */
 final case class SpendCap private (usd: BigDecimal) extends caps.Pure {

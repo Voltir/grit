@@ -12,10 +12,9 @@ import scala.util.matching.Regex
 import grit.core.clock.Clock
 import grit.core.host.{Argv, Handing, Memory, Processes, Ran, RelPath, Variables}
 import grit.core.id.{Harness, SessionId}
-import grit.core.message.{Cost, Tokens, Usage}
+import grit.core.message.{Cost, SpendCap, Tokens, Usage}
 import grit.core.model.{Grade, ModelId, ModelRef, Upstream}
 import grit.core.secret.{Secret, Variable}
-import grit.core.spend.SpendCap
 import grit.dbos.internal.TrialRows
 import grit.dbos.sql.DbConfig
 import grit.kit.environment.DotEnv

@@ -4,10 +4,10 @@ import scala.concurrent.duration.*
 
 import grit.core.host.{Allowlist, Argv}
 import grit.core.id.AgentType
+import grit.core.message.SpendCap
 import grit.core.model.*
 import grit.core.persona.Persona
 import grit.core.place.{Repository, Service}
-import grit.core.spend.SpendCap
 import grit.core.visibility.Integrity
 
 /** Subagents' parts as tests build them: two types, one persona and pin, a spend cap of

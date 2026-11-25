@@ -1,6 +1,4 @@
-package grit.core.spend
-
-import grit.core.message.Cost
+package grit.core.message
 
 import utest.*
 
