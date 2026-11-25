@@ -3,7 +3,7 @@ package grit.dbos.engine
 import grit.core.clock.Clock
 import grit.core.durable.Durable
 import grit.core.id.{JobName, PluginName, TurnRef, WorkflowId}
-import grit.core.inbox.{InboxError, OccasionInbox}
+import grit.core.inbox.{InboxError, OccasionInbox, SpawnInbox}
 import grit.core.job.ScheduleDesk
 import grit.core.plugin.Plugin
 import grit.core.stitch.Placements
@@ -11,12 +11,13 @@ import grit.core.store.{Db, Jot}
 import grit.core.triage.Shadowing
 
 /** What a launch runs on: the stores, openers and clock of a database's [[Engine]], or of a
-  * [[Rehearsing]] session over it, and the workflows' bodies, handed over by [[launch]]. Every
+  * [[Rehearsing]] session over it, where its spawned children are recorded, and the workflows'
+  * bodies, handed over by [[launch]]. Every
   * workflow runs with the body it was given; what runs one, and when, is the implementation's:
   * an engine runs each as a durable workflow, a session's rehearsal runs each once, inside the
   * session.
   */
-trait Runtime extends Stores, OccasionInbox, caps.SharedCapability {
+trait Runtime extends Stores, OccasionInbox, SpawnInbox, caps.SharedCapability {
 
   /** Short read transactions. */
   val db: Db

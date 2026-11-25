@@ -4,6 +4,7 @@ import java.time.{Instant, ZoneOffset}
 
 import grit.core.approval.Approval
 import grit.core.id.{
+  AgentType,
   CallSlot,
   ConversationId,
   Declarer,
@@ -22,15 +23,16 @@ import grit.core.identity.{Account, Domain, Email, Realm, Standing, TestAccounts
 import grit.core.job.JobTests.{Count, Counting}
 import grit.core.job.ScheduleContract.hour
 import grit.core.job.{Declared, Ending, Schedule, Slot, SlotRule}
-import grit.core.message.{Cost, Message}
+import grit.core.message.{Cost, Message, SpendCap}
 import grit.core.occasion.{Occasion, OccasionBrief, OccasionKey, TestOccasions}
 import grit.core.period.{Period, PeriodState}
-import grit.core.place.Place
+import grit.core.place.{Place, WorkName}
 import grit.core.speech.{Reach, ReplyTo}
 import grit.core.spend.{Budget, DailyCap}
-import grit.core.store.{Origin, Payload, TestWentOn, WentOn}
+import grit.core.store.{Origin, Payload, StoreError, TestWentOn, WentOn}
 import grit.core.visibility.{
   Cap,
+  Clearance,
   Compartments,
   Grant,
   Group,
@@ -1025,6 +1027,246 @@ abstract class InboxContract extends TestSuite {
         inbox.overCap()
       } ==> Right(None)
     }
+
+    test(
+      "a spawned child's root is grit's note beginning its own conversation's first turn, written through its parent's asker and believed as given; a rerun is that turn; anyone else, or a direct message's room, is refused, recording nothing"
+    ) {
+      withInbox(Uncapped) { (inbox, store) =>
+        val here = Origin.Task("inbox", "spawning")
+        val ana = TestAccounts.account("task:ana-spawning")
+        val bo = TestAccounts.account("task:bo-spawning")
+        store.name(ana, "Ana")
+        val parent = inbox
+          .ingest(here, SourceId("p"), said("fix it"), ana, None)
+          .fold(e => throw new java.lang.AssertionError(e), identity)
+        val child = InboxContract.child(parent, "s1-0-spawning", here.room)
+        val other = InboxContract.child(parent, "s1-1-spawning", here.room)
+        val direct = InboxContract.child(
+          parent,
+          "s1-2-spawning",
+          Place
+            .read("direct:slack/T1/U-ana")
+            .fold(e => throw new java.lang.AssertionError(e), identity)
+        )
+        def spawn(o: Origin.Spawned, by: Account) =
+          store.spawns.spawned(
+            o,
+            InboxContract.Coder,
+            "Fix the typo.",
+            InboxContract.Cap,
+            Integrity.Member,
+            Label.Public,
+            by
+          )
+        val first = spawn(child, ana)
+        (
+          first.map(_.turnSeq),
+          spawn(child, ana),
+          spawn(other, bo),
+          spawn(direct, ana)
+        ) ==> (
+          Right(TurnSeq.First),
+          first,
+          Left(
+            InboxError.Invalid("a child is spawned only by whoever wrote its parent's first entry")
+          ),
+          Left(InboxError.Invalid("a child is never spawned within a direct message's room"))
+        )
+        (
+          store.written(child),
+          store.believed(child),
+          store.exists(other),
+          store.exists(direct)
+        ) ==> (
+          Vector(
+            (Payload.Spawn(InboxContract.Coder, "Fix the typo.", InboxContract.Cap), Some("Ana"))
+          ),
+          Vector(Integrity.Member),
+          false,
+          false
+        )
+      }
+    }
+
+    test(
+      "a spawned child is started: ended is None for a turn never started, and how it ended once it has; its reply is Silent until it writes one, then Said as written; it rings its parent once"
+    ) {
+      withInbox(Uncapped) { (inbox, store) =>
+        val here = Origin.Task("inbox", "spawned-ended")
+        val ana = TestAccounts.account("task:ana-spawned-ended")
+        val parent = inbox
+          .ingest(here, SourceId("p"), said("fix it"), ana, None)
+          .fold(e => throw new java.lang.AssertionError(e), identity)
+        val unstarted = inbox
+          .ingest(here, SourceId("q"), said("and this"), ana, None)
+          .fold(e => throw new java.lang.AssertionError(e), identity)
+        val spawned = store.spawns
+          .spawned(
+            InboxContract.child(parent, "s1-0-ended", here.room),
+            InboxContract.Coder,
+            "Fix the typo.",
+            InboxContract.Cap,
+            Integrity.Member,
+            Label.Public,
+            ana
+          )
+          .fold(e => throw new java.lang.AssertionError(e), identity)
+        store.end(spawned)
+        val public = Clearance.of(Label.Public)
+        val silent = store.replyAt(spawned, public)
+        store.append(spawned, spawned.replyId, Payload.Message(Message.said("Fixed.", "m")))
+        val _ = inbox.startTurn(parent)
+        val rings = (store.spawns.returned(spawned), store.spawns.returned(spawned))
+        (
+          store.spawns.ended(unstarted),
+          store.spawns.ended(spawned),
+          silent,
+          store.replyAt(spawned, public),
+          rings,
+          store.rung(parent, spawned),
+          store.spawns.returned(parent)
+        ) ==> (
+          Right(None),
+          Right(Some(TurnEnding.Otherwise)),
+          Right(SpawnReply.Silent),
+          Right(SpawnReply.Said("Fixed.", Integrity.Member)),
+          (Right(()), Right(())),
+          1,
+          Left(InboxError.Invalid("only a spawned child returns to a parent"))
+        )
+      }
+    }
+
+    test(
+      "a spawned child whose parent never ran rings no one: NoSuchTurn; what its conversation's calls cost is its spend"
+    ) {
+      withInbox(Uncapped) { (inbox, store) =>
+        val here = Origin.Task("inbox", "spawned-orphan")
+        val ana = TestAccounts.account("task:ana-spawned-orphan")
+        val parent = inbox
+          .ingest(here, SourceId("p"), said("fix it"), ana, None)
+          .fold(e => throw new java.lang.AssertionError(e), identity)
+        val spawned = store.spawns
+          .spawned(
+            InboxContract.child(parent, "s1-0-orphan", here.room),
+            InboxContract.Coder,
+            "Fix the typo.",
+            InboxContract.Cap,
+            Integrity.Member,
+            Label.Public,
+            ana
+          )
+          .fold(e => throw new java.lang.AssertionError(e), identity)
+        store.spendIn(spawned, BigDecimal("0.01"))
+        store.spendIn(spawned, BigDecimal("0.02"))
+        store.spendIn(parent, BigDecimal("0.5"))
+        (store.spawns.returned(spawned), store.spentOf(spawned)) ==> (
+          Left(InboxError.NoSuchTurn(parent.workflowId)),
+          Right(Cost.Exact(BigDecimal("0.03")))
+        )
+      }
+    }
+
+    test(
+      "a child is refused Above when its room's label does not dominate its parent's classification, and OverCap once the day's spend reaches the cap, each recording nothing"
+    ) {
+      withInbox(Uncapped) { (inbox, store) =>
+        val here = Origin.Task("inbox", "spawned-above")
+        val ana = TestAccounts.account("task:ana-spawned-above")
+        val parent = inbox
+          .ingest(here, SourceId("p"), said("fix it"), ana, None)
+          .fold(e => throw new java.lang.AssertionError(e), identity)
+        val child = InboxContract.child(parent, "s1-0-above", here.room)
+        (
+          store.spawns.spawned(
+            child,
+            InboxContract.Coder,
+            "Fix the typo.",
+            InboxContract.Cap,
+            Integrity.Member,
+            Internal,
+            ana
+          ),
+          store.exists(child)
+        ) ==> (Left(InboxError.Above(Internal, Label.Public)), false)
+      }
+      val cap = DailyCap.of("1").fold(e => throw new java.lang.AssertionError(e), identity)
+      withInbox(Budget(ZoneOffset.UTC, Some(cap))) { (inbox, store) =>
+        val here = Origin.Task("inbox", "spawned-capped")
+        val ana = TestAccounts.account("task:ana-spawned-capped")
+        val parent = inbox
+          .ingest(here, SourceId("p"), said("fix it"), ana, None)
+          .fold(e => throw new java.lang.AssertionError(e), identity)
+        store.spend(BigDecimal("1"))
+        val child = InboxContract.child(parent, "s1-0-capped", here.room)
+        (
+          store.spawns
+            .spawned(
+              child,
+              InboxContract.Coder,
+              "Fix the typo.",
+              InboxContract.Cap,
+              Integrity.Member,
+              Label.Public,
+              ana
+            )
+            .left
+            .map {
+              case InboxError.OverCap(_, c, _) => c
+              case other => other
+            },
+          store.exists(child)
+        ) ==> (Left(cap), false)
+      }
+    }
+
+    test(
+      "a spawned child's reply kept above the reader's clearance is Unread, never its text, and Said to a reader cleared for it; one that wrote none is Silent to either"
+    ) {
+      val room = TestLabels.place("task:spawned-internal")
+      val visibility = (for {
+        compartments <- Compartments.of(Vector.empty).left.map(_.toString)
+        rooms <- RoomLabels
+          .of(Vector(room -> Internal), Labelled.Mapped(Label.Public))
+          .left
+          .map(_.toString)
+        v <- Visibility.of(compartments, rooms, Vector.empty, Vector.empty).left.map(_.toString)
+      } yield v).fold(e => throw new java.lang.AssertionError(e), identity)
+      withInbox(Uncapped, visibility) { (inbox, store) =>
+        val here = Origin.Task("spawned-internal", "parent")
+        val ana = TestAccounts.account("task:ana-spawned-internal")
+        val parent = inbox
+          .ingest(here, SourceId("p"), said("fix it"), ana, None)
+          .fold(e => throw new java.lang.AssertionError(e), identity)
+        def spawn(name: String) = store.spawns
+          .spawned(
+            InboxContract.child(parent, name, room),
+            InboxContract.Coder,
+            "Fix the typo.",
+            InboxContract.Cap,
+            Integrity.Member,
+            Internal,
+            ana
+          )
+          .fold(e => throw new java.lang.AssertionError(e), identity)
+        val replied = spawn("s1-0-internal")
+        val quiet = spawn("s1-1-internal")
+        store.append(replied, replied.replyId, Payload.Message(Message.said("Fixed.", "m")))
+        val public = Clearance.of(Label.Public)
+        val internal = Clearance.of(Internal)
+        (
+          store.replyAt(replied, public),
+          store.replyAt(replied, internal),
+          store.replyAt(quiet, public),
+          store.replyAt(quiet, internal)
+        ) ==> (
+          Right(SpawnReply.Unread),
+          Right(SpawnReply.Said("Fixed.", Integrity.Member)),
+          Right(SpawnReply.Silent),
+          Right(SpawnReply.Silent)
+        )
+      }
+    }
   }
 }
 
@@ -1046,6 +1288,22 @@ object InboxContract {
 
   private def realm(within: String): Realm =
     Realm.of("slack", within).fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** The type every spawned child of the contract is spawned as. */
+  val Coder: AgentType =
+    AgentType.of("coder").fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** The spend cap every spawned child of the contract is spawned under. */
+  val Cap: SpendCap =
+    SpendCap.of(BigDecimal("0.05")).fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** A child of `parent`, named `name`, within `room`. */
+  def child(parent: TurnRef, name: String, room: Place): Origin.Spawned =
+    Origin.Spawned(
+      parent,
+      WorkName.of(name).fold(e => throw new java.lang.AssertionError(e), identity),
+      room
+    )
 
   /** The realms whose word [[Store.vouch]] records. */
   val T1: Realm = realm("T1")
@@ -1076,7 +1334,11 @@ object InboxContract {
     * conversation's entries was recorded with, in order, as its speakers read it; `append`
     * adds an entry holding a payload to a turn, after everything in its conversation, as the
     * turn itself would write it; `answers`, how many answers have reached a turn's workflow
-    * for a call.
+    * for a call; `spawns`, where the inbox's spawned children are recorded; `replyAt`, a
+    * child's reply read in a transaction at a clearance; `spentOf`, what a child's
+    * conversation's calls cost; `spendIn` records a call of a turn that
+    * cost that many dollars now; `rung`, how many rings of a child have reached its parent's
+    * workflow.
     */
   final case class Store(
       spend: BigDecimal => Unit,
@@ -1100,6 +1362,11 @@ object InboxContract {
       quiet: Place => Unit,
       linked: Origin => Vector[Option[Href]],
       append: (TurnRef, EntryId, Payload) => Unit,
-      answers: (TurnRef, ToolCallId) => Int
+      answers: (TurnRef, ToolCallId) => Int,
+      spawns: SpawnInbox^,
+      replyAt: (TurnRef, Clearance) => Either[StoreError, SpawnReply],
+      spentOf: TurnRef => Either[StoreError, Cost],
+      spendIn: (TurnRef, BigDecimal) => Unit,
+      rung: (TurnRef, TurnRef) => Int
   )
 }

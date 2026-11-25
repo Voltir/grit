@@ -431,6 +431,16 @@ of the same build.
   under `any`; `->` says it captures nothing.
 - *Fix:* name what it captures: `Console^ ->{under, clock, fresh} Either[String, Unit]`.
 
+**A pair taken apart by a pattern when one half is a capability the other captures.**
+
+- *Symptom:* the compiler crashes rechecking the pattern's synthetic `val $2$`:
+  `java.lang.AssertionError: assertion failed: attempting to add any to {any} of value $2$`,
+  from `CaptureSet$VarInTypeTree.hideIn`. Met in `InMemoryInboxTests.withInbox`, on
+  `val (inbox, store) = opened(…)` once `InboxContract.Store` held the inbox as a field.
+- *Cause:* not known; a checker fault, not a rejection.
+- *Fix:* keep the pair whole and read its fields (`val both = opened(…)`, then `both._1`,
+  `both._2`).
+
 **`grit/*` inside a Scaladoc comment.** Not a capture-checking trap, but a compile trap of the
 same build.
 

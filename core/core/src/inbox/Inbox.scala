@@ -4,6 +4,7 @@ import java.time.Instant
 
 import grit.core.approval.Approval
 import grit.core.id.{
+  AgentType,
   CallSlot,
   EntryId,
   Href,
@@ -17,12 +18,12 @@ import grit.core.id.{
 }
 import grit.core.identity.{Account, Principal}
 import grit.core.job.Slot
-import grit.core.message.Message
+import grit.core.message.{Cost, Message, SpendCap}
 import grit.core.occasion.Occasion
 import grit.core.speech.Reach
 import grit.core.spend.{Budget, DailyCap, Day, Spend}
-import grit.core.store.{Entry, Origin, Payload, StoreError, WentOn}
-import grit.core.visibility.Integrity
+import grit.core.store.{Entry, Origin, Payload, StoreError, Tx, WentOn}
+import grit.core.visibility.{Integrity, Label}
 
 /** Where a plugin's occasion is recorded as a turn of its own: the one inbox write a keeping
   * job's occasion move makes ([[grit.core.act.Keeping.occasion]]).
@@ -43,6 +44,65 @@ trait OccasionInbox extends caps.SharedCapability {
       at: Instant,
       believed: Integrity
   ): Either[InboxError, TurnRef]
+}
+
+/** Where a spawned child is recorded and started, its end told, and its reply read. */
+trait SpawnInbox extends caps.SharedCapability {
+
+  /** Records `brief` as grit's note beginning the first turn of `origin`'s new conversation
+    * ([[grit.core.store.Payload.Spawn]]) and starts that turn, as [[Inbox.startTurn]] does,
+    * through `by`, who must have written `origin`'s parent's first entry, so the child answers
+    * its parent's asker; the conversation made at its room's label, the brief believed at
+    * `believed`. A rerun returns the same turn, recorded once, and starts it, so a rerun after a
+    * failed start starts it: `origin`'s place is the key. [[InboxError.Above]] when the room's
+    * label does not dominate `at`, the parent's classification; [[InboxError.OverCap]] as
+    * [[Inbox.ingest]] refuses a new message; [[InboxError.Invalid]] when `by` did not write the
+    * parent's first entry, or `origin` is within a direct message's room. A refusal records
+    * nothing.
+    */
+  def spawned(
+      origin: Origin.Spawned,
+      agent: AgentType,
+      brief: String,
+      spendCap: SpendCap,
+      believed: Integrity,
+      at: Label,
+      by: Account
+  ): Either[InboxError, TurnRef]
+
+  /** How `child` ended, from its workflow alone; `None` until it has. Its reply is not read. */
+  def ended(child: TurnRef): Either[InboxError, Option[TurnEnding]]
+
+  /** `child`'s reply, as the transaction's clearance may read it. */
+  def reply(child: TurnRef)(using Tx^): Either[StoreError, SpawnReply]
+
+  /** What `child`'s conversation's recorded calls cost. */
+  def spent(child: TurnRef)(using Tx^): Either[StoreError, Cost]
+
+  /** Rings `child`'s parent, named by its origin, on [[SpawnInbox.topic]], that it ended; once
+    * per child, however often called. [[InboxError.Invalid]] when `child`'s conversation is not
+    * a spawned child's; [[InboxError.NoSuchTurn]] when its parent never ran.
+    */
+  def returned(child: TurnRef): Either[InboxError, Unit]
+}
+
+object SpawnInbox {
+
+  /** The topic a child's ring reaches its parent's workflow on: one per child. */
+  def topic(child: TurnRef): String = s"returned:${WorkflowId.value(child.workflowId)}"
+}
+
+/** A child's reply as one transaction may read it. */
+enum SpawnReply extends caps.Pure {
+
+  /** Its reply's text, believed as its entry was written. */
+  case Said(text: String, believed: Integrity)
+
+  /** Ended with no reply. */
+  case Silent
+
+  /** Its reply is above the transaction's clearance. */
+  case Unread
 }
 
 /** How an edge hands the engine work (ADR 0002). Every operation is idempotent, so an edge
@@ -237,6 +297,12 @@ enum InboxError {
     * they are now: it takes no more messages ([[InboxError.SealedReply]] says so to them).
     */
   case Sealed(origin: Origin.Direct)
+
+  /** A child of a turn classified `classification` would be made in a room labelled `room`,
+    * which does not dominate it, and would write what it was told down to it. Retrying does not
+    * help.
+    */
+  case Above(classification: Label, room: Label)
 
   /** `by` is no account of the turn's asker: only the person a turn answers may answer its asks. */
   case NotAsker(by: Account)

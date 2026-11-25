@@ -2,10 +2,20 @@ package grit.dbos.engine
 
 import java.time.Instant
 
-import grit.core.id.{EntryId, EntrySeq, Href, PluginName, SourceId, TriageRef, TurnRef, TurnSeq}
+import grit.core.id.{
+  AgentType,
+  EntryId,
+  EntrySeq,
+  Href,
+  PluginName,
+  SourceId,
+  TriageRef,
+  TurnRef,
+  TurnSeq
+}
 import grit.core.identity.Account
 import grit.core.inbox.{InboundId, InboxError}
-import grit.core.message.Message
+import grit.core.message.{Message, SpendCap}
 import grit.core.occasion.{Occasion, OccasionKey}
 import grit.core.speech.{Reach, SpeechStore}
 import grit.core.spend.{Budget, Spending}
@@ -143,19 +153,10 @@ private[engine] final class Recorder(
       case None => Right(Left(InboxError.Invalid("no conversation to continue a task in")))
       case Some(c) =>
         for {
-          first <- entries
-            .ofTurn(TurnRef(c.id, task))
-            .map(_.minByOption(e => EntrySeq.value(e.seq)))
-          wrote <- first.fold[Either[StoreError, Option[String]]](Right(None))(f =>
-            SqlStatements
-              .many("SELECT account FROM grit.inbound WHERE entry_id = ?")(
-                _.setString(1, EntryId.value(f.id))
-              )(_.getString(1))
-              .map(_.headOption)
-          )
+          first <- firstOf(TurnRef(c.id, task))
           integrity <- integrityOf(by)
-          result <- (first, wrote) match {
-            case (Some(f), Some(account)) if account == SqlIdentities.written(by) =>
+          result <- first match {
+            case Some((f, account)) if account == SqlIdentities.written(by) =>
               recorded(
                 origin,
                 source,
@@ -200,6 +201,71 @@ private[engine] final class Recorder(
   /** The label a conversation an edge's message begins from `origin` is created at. */
   def roomOf(origin: Origin)(using Tx^): Either[StoreError, Label] =
     SqlRooms.label(origin)
+
+  /** `turn`'s first entry and the account that wrote it, as `grit.inbound` keeps it; `None` for
+    * a turn with no first entry this transaction reads, or one no account is kept for.
+    */
+  private def firstOf(turn: TurnRef)(using Tx^): Either[StoreError, Option[(Entry, String)]] =
+    for {
+      first <- entries.ofTurn(turn).map(_.minByOption(e => EntrySeq.value(e.seq)))
+      wrote <- first.fold[Either[StoreError, Option[String]]](Right(None))(f =>
+        SqlStatements
+          .many("SELECT account FROM grit.inbound WHERE entry_id = ?")(
+            _.setString(1, EntryId.value(f.id))
+          )(_.getString(1))
+          .map(_.headOption)
+      )
+    } yield first.zip(wrote)
+
+  /** A spawned child's root recorded at `at` as [[grit.core.inbox.SpawnInbox.spawned]] says,
+    * through `by`, believed at `believed`, and refused as it says, before its conversation is
+    * made.
+    */
+  def spawned(
+      origin: Origin.Spawned,
+      agent: AgentType,
+      brief: String,
+      spendCap: SpendCap,
+      believed: Integrity,
+      classification: Label,
+      by: Account,
+      at: Instant
+  )(using Tx^): Either[StoreError, Either[InboxError, TurnRef]] =
+    if (origin.within.direct)
+      Right(Left(InboxError.Invalid("a child is never spawned within a direct message's room")))
+    else
+      firstOf(origin.parent).flatMap {
+        case Some((_, account)) if account == SqlIdentities.written(by) =>
+          for {
+            known <- conversations.find(origin)
+            label <- known.fold(roomOf(origin))(c => Right(c.label))
+            over <- known.fold(overCapAt(at))(_ => Right(None))
+            turn <- (label.dominates(classification), over) match {
+              case (false, _) => Right(Left(InboxError.Above(classification, label)))
+              case (true, Some(refused)) => Right(Left(refused))
+              case (true, None) =>
+                recorded(
+                  origin,
+                  Recorder.SpawnSource,
+                  Payload.Spawn(agent, brief, spendCap),
+                  by,
+                  label,
+                  Some(believed),
+                  at,
+                  capped = true,
+                  None
+                )
+            }
+          } yield turn
+        case _ =>
+          Right(
+            Left(
+              InboxError.Invalid(
+                "a child is spawned only by whoever wrote its parent's first entry"
+              )
+            )
+          )
+      }
 
   /** `occasion`, `plugin`'s, recorded at `at` as [[grit.core.inbox.Inbox.occasion]] says, grit's
     * own, believed at `believed`, never refused over the cap.
@@ -309,6 +375,9 @@ private[engine] final class Recorder(
 }
 
 private[dbos] object Recorder {
+
+  /** The source a spawned child's root is recorded under: one root to its conversation. */
+  val SpawnSource: SourceId = SourceId("spawn")
 
   /** Records that the inbound entry `id` was written through `by`, with `link`, kept as a new
     * person's one account when not seen before.

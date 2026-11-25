@@ -9,6 +9,7 @@ import scala.util.control.NonFatal
 import grit.core.approval.Approval
 import grit.core.clock.Clock
 import grit.core.id.{
+  AgentType,
   CallSlot,
   ConversationId,
   EntryId,
@@ -23,9 +24,18 @@ import grit.core.id.{
   WorkflowId
 }
 import grit.core.identity.Account
-import grit.core.inbox.{InboundId, Inbox, InboxError, Progress, Slotted}
+import grit.core.inbox.{
+  InboundId,
+  Inbox,
+  InboxError,
+  Progress,
+  Slotted,
+  SpawnInbox,
+  SpawnReply,
+  TurnEnding
+}
 import grit.core.job.{InFlight, LastRun, Slot, Starting}
-import grit.core.message.Message
+import grit.core.message.{AssistantBlock, Cost, Message, SpendCap}
 import grit.core.occasion.Occasion
 import grit.core.speech.{Reach, SpeechStore}
 import grit.core.spend.{Budget, Spending}
@@ -49,7 +59,7 @@ import dev.dbos.transact.exceptions.DBOSNonExistentWorkflowException
 import dev.dbos.transact.workflow.WorkflowState
 import dev.dbos.transact.{DBOSClient, EnqueueOptions}
 
-/** [[Inbox]] over Postgres alone, so an edge in another process can use it: ingest is one
+/** [[Inbox]] and [[SpawnInbox]] over Postgres alone, so an edge in another process can use it: ingest is one
   * short transaction, which refuses a new message once `spending` says today's spend has
   * reached `budget`'s cap (today by `clock`, in `budget`'s zone), an ingested message dated by
   * `clock`, and a turn is started by enqueueing it through `client`. A conversation it creates for an edge's origin is
@@ -67,7 +77,8 @@ final class SqlInbox(
     schedules: SqlSchedules,
     visibility: Visibility,
     clock: Clock^
-) extends Inbox {
+) extends Inbox,
+      SpawnInbox {
   import SqlInbox.Begun
 
   private val opener = new grit.dbos.sql.Opener(visibility)
@@ -272,21 +283,9 @@ final class SqlInbox(
       }
     }
 
-  /** From the turn's workflow status (a workflow DBOS has not heard of, queued or running is
-    * Open), and, once it has ended, its reply entry. A status that cannot be read is
-    * `Unavailable`, never read as the turn's end.
-    */
-  def progress(turn: TurnRef): Either[InboxError, Progress] = {
-    val ended: Either[InboxError, Option[String]] =
-      try {
-        val handle = client.retrieveWorkflow[String, Exception](WorkflowId.value(turn.workflowId))
-        Right(Option(handle.getStatus()).map(_.status()) match {
-          case Some(WorkflowState.SUCCESS) => Some(handle.getResult())
-          case Some(state) if !state.isActive() => Some(s"workflow ${state.name.toLowerCase}")
-          case _ => None
-        })
-      } catch { case NonFatal(e) => Left(SqlInbox.unavailable(e)) }
-    ended.flatMap {
+  /** From the turn's workflow status ([[outcome]]), and, once it has ended, its reply entry. */
+  def progress(turn: TurnRef): Either[InboxError, Progress] =
+    outcome(turn).flatMap {
       case None => Right(Progress.Open)
       case Some(outcome) =>
         inTransaction(entries.get(turn.replyId)).map { entry =>
@@ -295,7 +294,71 @@ final class SqlInbox(
           Progress.Done(reply, outcome)
         }
     }
+
+  /** `turn`'s outcome as its workflow returned it, or why it returned none, once it has ended;
+    * `None` while DBOS has not heard of it, or it is queued or running. A status that cannot be
+    * read is `Unavailable`, never read as the turn's end.
+    */
+  private def outcome(turn: TurnRef): Either[InboxError, Option[String]] =
+    try {
+      val handle = client.retrieveWorkflow[String, Exception](WorkflowId.value(turn.workflowId))
+      Right(Option(handle.getStatus()).map(_.status()) match {
+        case Some(WorkflowState.SUCCESS) => Some(handle.getResult())
+        case Some(state) if !state.isActive() => Some(s"workflow ${state.name.toLowerCase}")
+        case _ => None
+      })
+    } catch { case NonFatal(e) => Left(SqlInbox.unavailable(e)) }
+
+  def spawned(
+      origin: Origin.Spawned,
+      agent: AgentType,
+      brief: String,
+      spendCap: SpendCap,
+      believed: Integrity,
+      at: Label,
+      by: Account
+  ): Either[InboxError, TurnRef] = {
+    val now = clock.now()
+    inTransaction(recorder.spawned(origin, agent, brief, spendCap, believed, at, by, now))
+      .flatMap(identity)
+      .flatMap(turn => startTurn(turn).map(_ => turn))
   }
+
+  /** From the child's workflow status alone ([[outcome]]). */
+  def ended(child: TurnRef): Either[InboxError, Option[TurnEnding]] =
+    outcome(child).map(_.map(TurnEnding.of))
+
+  def reply(child: TurnRef)(using Tx^): Either[StoreError, SpawnReply] =
+    SqlInbox.replyOf(entries, child)
+
+  def spent(child: TurnRef)(using Tx^): Either[StoreError, Cost] =
+    spending.conversation(child.conversationId).map(_.cost)
+
+  /** One `DBOSClient.send` to the parent's workflow, under an idempotency key fixed by the
+    * child ([[SqlInbox.returnedKey]]): DBOS keeps one notification per key, as [[answer]]'s.
+    */
+  def returned(child: TurnRef): Either[InboxError, Unit] =
+    inTransaction(conversations.get(child.conversationId)).flatMap {
+      case Some(c) =>
+        c.origin match {
+          case Origin.Spawned(parent, _, _) =>
+            try {
+              client.send(
+                WorkflowId.value(parent.workflowId),
+                WorkflowId.value(child.workflowId),
+                SpawnInbox.topic(child),
+                SqlInbox.returnedKey(child)
+              )
+              Right(())
+            } catch {
+              case _: DBOSNonExistentWorkflowException =>
+                Left(InboxError.NoSuchTurn(parent.workflowId))
+              case NonFatal(e) => Left(SqlInbox.unavailable(e))
+            }
+          case _ => Left(InboxError.Invalid("only a spawned child returns to a parent"))
+        }
+      case None => Left(InboxError.Invalid("only a spawned child returns to a parent"))
+    }
 
   def startTurn(turn: TurnRef): Either[InboxError, Unit] =
     inTransaction(conversations.get(turn.conversationId)).flatMap { found =>
@@ -567,6 +630,34 @@ private[dbos] object SqlInbox {
       }
     }
   }
+
+  /** The idempotency key of every ring `child` sends its parent: one per child. */
+  def returnedKey(child: TurnRef): String = s"returned:${WorkflowId.value(child.workflowId)}"
+
+  /** `child`'s reply as the transaction's clearance reads it ([[SpawnInbox.reply]]): its reply
+    * entry when it reads it, else [[SpawnReply.Unread]] when one is kept ([[kept]]) and
+    * [[SpawnReply.Silent]] when none is.
+    */
+  private[engine] def replyOf(entries: EntryStore, child: TurnRef)(using
+      Tx^
+  ): Either[StoreError, SpawnReply] =
+    entries.get(child.replyId).flatMap {
+      case Some(e) =>
+        Right(e.payload match {
+          case Payload.Message(a: Message.Assistant) =>
+            SpawnReply.Said(AssistantBlock.text(a.blocks), e.integrity)
+          case _ => SpawnReply.Silent
+        })
+      case None => kept(child.replyId).map(if (_) SpawnReply.Unread else SpawnReply.Silent)
+    }
+
+  /** Whether an entry `id` is kept, whatever the transaction's clearance: the one bit
+    * [[replyOf]] tells apart as `Unread`, never what it holds.
+    */
+  private def kept(id: EntryId)(using Tx^): Either[StoreError, Boolean] =
+    SqlStatements
+      .many("SELECT 1 FROM grit.entries WHERE id = ?")(_.setString(1, EntryId.value(id)))(_ => ())
+      .map(_.nonEmpty)
 
   /** The idempotency key of every answer to `call` of `workflow`: one per call. */
   def answerKey(workflow: WorkflowId, call: ToolCallId): String =

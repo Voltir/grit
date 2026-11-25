@@ -4,6 +4,7 @@ import java.time.Instant
 
 import grit.core.approval.Approval
 import grit.core.id.{
+  AgentType,
   CallSlot,
   EntrySeq,
   Href,
@@ -18,7 +19,7 @@ import grit.core.id.{
 }
 import grit.core.identity.{Account, Principal, TestAccounts}
 import grit.core.job.{InFlight, InMemorySchedules, LastRun, Slot, Starting}
-import grit.core.message.Message
+import grit.core.message.{AssistantBlock, Cost, Message, SpendCap}
 import grit.core.occasion.{Occasion, OccasionKey}
 import grit.core.place.Place
 import grit.core.speech.{InMemorySpeechStore, Reach}
@@ -37,16 +38,17 @@ import grit.core.store.{
   Tx,
   WentOn
 }
-import grit.core.visibility.{Clearance, InMemoryRecorded, Integrity, Label, Visibility}
+import grit.core.visibility.{Clearance, InMemoryRecorded, Integrity, Item, Label, Visibility}
 import grit.dbos.sql.TestTx
 
-/** An in-memory [[Inbox]] for tests, keeping [[InboxContract]], over the in-memory stores it
+/** An in-memory [[Inbox]] and [[SpawnInbox]] for tests, keeping [[InboxContract]], over the in-memory stores it
   * is given: an ingested or heard message is an entry of its conversation, in its open period
   * ([[periods]], opened by the message when none is), its author told to `principals`, its
   * conversation created at its room's label as `visibility` gives it, a direct message's at its
   * person's clearance, the person `person` takes its account to be, and a new one is refused
   * once `ledger`'s spend today reaches `budget`'s cap, today being the day `ledger.now` falls
-  * on. No turn runs: a test ends one with [[finish]].
+  * on. No turn runs: a test ends one with [[finish]], and a spawned child's ring is kept in
+  * [[returns]].
   *
   * `principals` names an account's speaker by its spelling, linking no two accounts; only
   * `person` can model linking ([[grit.core.store.InMemoryVoucher.principal]]), and the default,
@@ -64,7 +66,8 @@ final class InMemoryInbox(
     initially: Visibility,
     person: Account -> Principal,
     records: InMemoryRecorded
-) extends Inbox {
+) extends Inbox,
+      SpawnInbox {
 
   // An immutable value, written and read only on the test's own thread, through the calls it
   // makes and waits on.
@@ -117,6 +120,10 @@ final class InMemoryInbox(
 
   @caps.unsafe.untrackedCaptures
   private var finished = Map.empty[TurnRef, Progress.Done]
+
+  /** Each spawned child that rang its parent, with that parent, in order: once per child. */
+  @caps.unsafe.untrackedCaptures
+  var returns = Vector.empty[(TurnRef, TurnRef)]
 
   /** Ends `turn` with `reply` (written as its reply entry) and `outcome`. */
   def finish(turn: TurnRef, reply: Option[Message.Assistant], outcome: String): Unit = inTx {
@@ -565,6 +572,87 @@ final class InMemoryInbox(
           .map(e => TurnRef(e.conversationId, e.turnSeq))
       }
     }
+
+  def spawned(
+      origin: Origin.Spawned,
+      agent: AgentType,
+      brief: String,
+      spendCap: SpendCap,
+      believed: Integrity,
+      at: Label,
+      by: Account
+  ): Either[InboxError, TurnRef] =
+    if (down) unavailable
+    else if (origin.within.direct)
+      Left(InboxError.Invalid("a child is never spawned within a direct message's room"))
+    else
+      inTx {
+        for {
+          first <- entries.ofTurn(origin.parent).map(_.minByOption(e => EntrySeq.value(e.seq)))
+          known <- found(origin)
+        } yield (first, known)
+      }.left
+        .map(InboxError.stored)
+        .flatMap {
+          case (Some(first), known) if principals.author(first.id).contains(by) =>
+            val label = known.fold(labelOf(origin))(_.label)
+            if (!label.dominates(at)) Left(InboxError.Above(at, label))
+            else
+              recorded(
+                origin,
+                SourceId("spawn"),
+                Payload.Spawn(agent, brief, spendCap),
+                by,
+                label,
+                Some(believed),
+                java.time.Instant.EPOCH,
+                capped = true,
+                None
+              ).flatMap(turn => startTurn(turn).map(_ => turn))
+          case _ =>
+            Left(
+              InboxError
+                .Invalid("a child is spawned only by whoever wrote its parent's first entry")
+            )
+        }
+
+  def ended(child: TurnRef): Either[InboxError, Option[TurnEnding]] =
+    if (down) unavailable else Right(finished.get(child).map(_.ending))
+
+  /** As the SQL inbox reads it: a reply entry kept at its conversation's label, `Unread` when
+    * the transaction's clearance does not read that label in its room (the entry store under
+    * this fake keeps no label of its own).
+    */
+  def reply(child: TurnRef)(using tx: Tx^): Either[StoreError, SpawnReply] =
+    Right(entries.everything.find(_.id == child.replyId) match {
+      case None => SpawnReply.Silent
+      case Some(e) =>
+        val read = conversations.all
+          .find(_.id == child.conversationId)
+          .forall(c => Tx.clearance(tx).reads(Item.InRoom(c.origin.room), c.label))
+        e.payload match {
+          case _ if !read => SpawnReply.Unread
+          case Payload.Message(a: Message.Assistant) =>
+            SpawnReply.Said(AssistantBlock.text(a.blocks), e.integrity)
+          case _ => SpawnReply.Silent
+        }
+    })
+
+  def spent(child: TurnRef)(using Tx^): Either[StoreError, Cost] =
+    ledger.conversation(child.conversationId).map(_.cost)
+
+  def returned(child: TurnRef): Either[InboxError, Unit] =
+    if (down) unavailable
+    else
+      inTx(conversations.get(child.conversationId)).left.map(InboxError.stored).flatMap {
+        case Some(Conversation(_, Origin.Spawned(parent, _, _), _, _, _)) =>
+          if (!started.contains(parent)) Left(InboxError.NoSuchTurn(parent.workflowId))
+          else {
+            if (!returns.exists(_._2 == child)) returns = returns :+ (parent, child)
+            Right(())
+          }
+        case _ => Left(InboxError.Invalid("only a spawned child returns to a parent"))
+      }
 
   def startTurn(turn: TurnRef): Either[InboxError, Unit] =
     if (down) unavailable

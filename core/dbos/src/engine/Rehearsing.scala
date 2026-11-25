@@ -11,10 +11,10 @@ import scala.util.control.NonFatal
 
 import grit.core.clock.Clock
 import grit.core.durable.Durable
-import grit.core.id.{PluginName, SourceId, TurnRef, WorkflowId}
+import grit.core.id.{AgentType, PluginName, SourceId, TurnRef, WorkflowId}
 import grit.core.identity.Account
-import grit.core.inbox.InboxError
-import grit.core.message.Message
+import grit.core.inbox.{InboxError, SpawnReply, TurnEnding}
+import grit.core.message.{Cost, Message, SpendCap}
 import grit.core.occasion.Occasion
 import grit.core.plugin.Plugin
 import grit.core.speech.Reach
@@ -22,7 +22,7 @@ import grit.core.spend.Budget
 import grit.core.stitch.Placements
 import grit.core.store.{Db, Jot, Origin, StoreError, Tx}
 import grit.core.triage.Shadowing
-import grit.core.visibility.{Integrity, Subject, Visibility}
+import grit.core.visibility.{Integrity, Label, Subject, Visibility}
 import grit.dbos.sql.{DbConfig, SqlEntryStore, SqlStatements}
 
 import org.postgresql.ds.PGSimpleDataSource
@@ -93,6 +93,37 @@ final class Rehearsing private (
           .map(InboxError.stored)
           .flatMap(identity)
       )
+
+  /** `origin`'s child recorded as [[grit.core.inbox.SpawnInbox.spawned]] records it, in this
+    * session, and handed to its runner as [[startTurn]] hands a turn.
+    */
+  def spawned(
+      origin: Origin.Spawned,
+      agent: AgentType,
+      brief: String,
+      spendCap: SpendCap,
+      believed: Integrity,
+      at: Label,
+      by: Account
+  ): Either[InboxError, TurnRef] =
+    maintained(recorder.spawned(origin, agent, brief, spendCap, believed, at, by, clock.now())).left
+      .map(InboxError.stored)
+      .flatMap(identity)
+      .flatMap(turn => startTurn(turn).map(_ => turn))
+
+  /** Always `None`: its runner runs a turn a body started only after that body returns, so no
+    * child a running body spawned has ended.
+    */
+  def ended(child: TurnRef): Either[InboxError, Option[TurnEnding]] = Right(None)
+
+  def reply(child: TurnRef)(using Tx^): Either[StoreError, SpawnReply] =
+    SqlInbox.replyOf(entries, child)
+
+  def spent(child: TurnRef)(using Tx^): Either[StoreError, Cost] =
+    spending.conversation(child.conversationId).map(_.cost)
+
+  /** Rings nothing: a session runs no workflow to ring. */
+  def returned(child: TurnRef): Either[InboxError, Unit] = Right(())
 
   /** Hands every body to its runner ([[Rehearsing.Runner.launched]]), which runs the
     * situation's workflows through them, in this session, before this returns; `plugins` and

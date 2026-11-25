@@ -20,17 +20,19 @@ object InMemoryInboxTests extends InboxContract {
   protected def withInbox[A](budget: Budget, visibility: Visibility)(
       body: (Inbox, InboxContract.Store^) => A
   ): A = {
-    val (inbox, store) = opened(budget, visibility)
-    body(inbox, store)
+    // Taken apart by its fields: a pattern over a pair holding a capability that captures the
+    // other crashes the capture checker (CaptureSet.VarInTypeTree.hideIn).
+    val both = opened(budget, visibility)
+    body(both._1, both._2)
   }
 
   protected def reopening[A, B](budget: Budget, was: Visibility, now: Visibility)(
       before: (Inbox, InboxContract.Store^) => A
   )(after: (A, Inbox, InboxContract.Store^) => B): B = {
-    val (inbox, store) = opened(budget, was)
-    val a = before(inbox, store)
-    inbox.reopen(now)
-    after(a, inbox, store)
+    val both = opened(budget, was)
+    val a = before(both._1, both._2)
+    both._1.reopen(now)
+    after(a, both._1, both._2)
   }
 
   /** A fresh inbox under `visibility`, its people resolved as linking does by a voucher of the
@@ -46,15 +48,16 @@ object InMemoryInboxTests extends InboxContract {
       visibility
     )
     val inbox = InMemoryInbox.fresh(budget, visibility, voucher.principal)
-    def spend(usd: BigDecimal): Unit = {
+    def spendIn(turn: TurnRef, usd: BigDecimal): Unit = {
       val entry = EntryId(s"spent:${inbox.ledger.rows.size}")
-      val turn = TurnRef(ConversationId("elsewhere"), TurnSeq.First)
       val usage = Usage(Tokens(1), Tokens(1), Tokens.Zero, Some(usd))
       val _ =
         inbox.ledger.record(entry, turn, turn.workflowId, "m", None, None, usage, Tokens(1))(using
           TestTx.fake
         )
     }
+    def spend(usd: BigDecimal): Unit =
+      spendIn(TurnRef(ConversationId("elsewhere"), TurnSeq.First), usd)
     def written(origin: Origin): Vector[(Payload, Option[String])] =
       inbox.conversations.all.find(_.origin == origin).toVector.flatMap { c =>
         val tx = TestTx.fake
@@ -186,7 +189,12 @@ object InMemoryInboxTests extends InboxContract {
         room => inbox.quiet(room),
         linked,
         append,
-        (turn, call) => inbox.answers.count((w, c, _) => w == turn.workflowId && c == call)
+        (turn, call) => inbox.answers.count((w, c, _) => w == turn.workflowId && c == call),
+        inbox,
+        (child, clearance) => inbox.reply(child)(using TestTx.fake(clearance, visibility)),
+        child => inbox.spent(child)(using TestTx.fake),
+        spendIn,
+        (parent, child) => inbox.returns.count(_ == (parent, child))
       )
     )
   }

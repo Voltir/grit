@@ -13,16 +13,17 @@ import grit.core.clock.Clock
 import grit.core.durable.Durable
 import grit.core.edge.{Desk, DeskError, Holder}
 import grit.core.host.ProcessIdentity
-import grit.core.id.{PluginName, PrincipalId, TurnRef, WorkflowId}
-import grit.core.identity.{Domain, Identities, Realm}
-import grit.core.inbox.{Inbox, InboxError}
+import grit.core.id.{AgentType, PluginName, PrincipalId, TurnRef, WorkflowId}
+import grit.core.identity.{Account, Domain, Identities, Realm}
+import grit.core.inbox.{Inbox, InboxError, SpawnReply, TurnEnding}
+import grit.core.message.{Cost, SpendCap}
 import grit.core.occasion.Occasion
 import grit.core.place.Place
 import grit.core.plugin.Plugin
 import grit.core.spend.Budget
-import grit.core.store.{Db, Jot, Linking, Origin, StoreError, Voucher}
+import grit.core.store.{Db, Jot, Linking, Origin, StoreError, Tx, Voucher}
 import grit.core.triage.Shadowing
-import grit.core.visibility.{Compartment, Integrity, Visibility}
+import grit.core.visibility.{Compartment, Integrity, Label, Visibility}
 import grit.dbos.sql.{DbConfig, Opener, Pool, SqlDb, SqlJot, SqlLabels, SqlVoucher}
 import grit.dbos.workflow.{
   Closes,
@@ -115,7 +116,7 @@ final class Engine private (
   // dequeues for this executor's application by `application_name = 'grit' OR IS NULL`.
   private[engine] val client = new DBOSClient(dataSource)
 
-  val inbox: Inbox =
+  private val sqlInbox =
     new SqlInbox(
       dataSource,
       client,
@@ -129,6 +130,32 @@ final class Engine private (
       visibility,
       clock
     )
+
+  val inbox: Inbox = sqlInbox
+
+  /** [[grit.core.inbox.SpawnInbox.spawned]], through this engine's inbox. */
+  def spawned(
+      origin: Origin.Spawned,
+      agent: AgentType,
+      brief: String,
+      spendCap: SpendCap,
+      believed: Integrity,
+      at: Label,
+      by: Account
+  ): Either[InboxError, TurnRef] =
+    sqlInbox.spawned(origin, agent, brief, spendCap, believed, at, by)
+
+  /** [[grit.core.inbox.SpawnInbox.ended]], through this engine's inbox. */
+  def ended(child: TurnRef): Either[InboxError, Option[TurnEnding]] = sqlInbox.ended(child)
+
+  /** [[grit.core.inbox.SpawnInbox.reply]], through this engine's inbox. */
+  def reply(child: TurnRef)(using Tx^): Either[StoreError, SpawnReply] = sqlInbox.reply(child)
+
+  /** [[grit.core.inbox.SpawnInbox.spent]], through this engine's inbox. */
+  def spent(child: TurnRef)(using Tx^): Either[StoreError, Cost] = sqlInbox.spent(child)
+
+  /** [[grit.core.inbox.SpawnInbox.returned]], through this engine's inbox. */
+  def returned(child: TurnRef): Either[InboxError, Unit] = sqlInbox.returned(child)
 
   /** Where each opening is placed, by the `stitch` workflow [[launch]] registers. */
   val placements: grit.core.stitch.Placements = new DbosPlacements(client)

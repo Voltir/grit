@@ -20,7 +20,7 @@ import grit.core.id.{
   WorkflowId
 }
 import grit.core.identity.{Account, Standing, TestAccounts, Vouched}
-import grit.core.inbox.{Inbox, InboxContract}
+import grit.core.inbox.{Inbox, InboxContract, SpawnInbox}
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.{CloseReason, Period, TestClosings}
 import grit.core.place.Place
@@ -143,8 +143,9 @@ object SqlInboxContractTests extends InboxContract, caps.SharedCapability {
   private def under[A](engine: Engine^, db: DbConfig)(
       body: (Inbox, InboxContract.Store^) => A
   ): A = {
-    def spend(usd: BigDecimal): Unit = {
-      val turn = TurnRef(ConversationId(UUID.randomUUID().toString), TurnSeq.First)
+    def spend(usd: BigDecimal): Unit =
+      spendIn(TurnRef(ConversationId(UUID.randomUUID().toString), TurnSeq.First), usd)
+    def spendIn(turn: TurnRef, usd: BigDecimal): Unit = {
       val usage = Usage(Tokens(1), Tokens(1), Tokens.Zero, Some(usd))
       engine.jot
         .write(Subject.Public)(
@@ -302,6 +303,19 @@ object SqlInboxContractTests extends InboxContract, caps.SharedCapability {
           Using.resource(ps.executeQuery())(rs => if (rs.next()) rs.getInt(1) else 0)
         }
       }
+    def rung(parent: TurnRef, child: TurnRef): Int =
+      LiveDb.transaction(db) { (tx: Tx^) ?=>
+        val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+        Using.resource(
+          conn.prepareStatement(
+            "SELECT count(*) FROM dbos.notifications WHERE destination_uuid = ? AND topic = ?"
+          )
+        ) { ps =>
+          ps.setString(1, WorkflowId.value(parent.workflowId))
+          ps.setString(2, SpawnInbox.topic(child))
+          Using.resource(ps.executeQuery())(rs => if (rs.next()) rs.getInt(1) else 0)
+        }
+      }
     body(
       engine.inbox,
       InboxContract.Store(
@@ -355,7 +369,12 @@ object SqlInboxContractTests extends InboxContract, caps.SharedCapability {
         room => quieted(engine, room),
         linked,
         append,
-        answers
+        answers,
+        engine,
+        (child, clearance) => LiveDb.transaction(db, clearance)(engine.reply(child)),
+        child => LiveDb.transaction(db)(engine.spent(child)),
+        spendIn,
+        rung
       )
     )
   }
