@@ -1105,6 +1105,23 @@ object RigTests extends TestSuite {
     }
 
     test(
+      "caps are read from their flags, rounds from --max-rounds; --max-turns is refused naming it"
+    ) {
+      val flags = Map("model" -> "claude-haiku-5-5", "max-budget-usd" -> "0.05")
+      (
+        Caps.read(flags.updated("max-rounds", "6")).map(_.maxRounds),
+        Caps.read(flags.updated("max-turns", "6")),
+        Caps.read(flags.updated("max-rounds", "6").updated("max-turns", "6")),
+        Caps.read(flags)
+      ) ==> (
+        Right(6),
+        Left("--max-turns is now --max-rounds, the rounds of a turn"),
+        Left("--max-turns is now --max-rounds, the rounds of a turn"),
+        Left("--max-rounds is required")
+      )
+    }
+
+    test(
       "an OpenRouter grit coder runs its pair's upstream in every role it sets, handed its key as OPENROUTER_API_KEY"
     ) {
       withTask { f =>
@@ -1142,9 +1159,11 @@ object RigTests extends TestSuite {
       }
     }
 
-    test("grit is refused fewer than 2 turns, a model with no rates, and the operator's database") {
+    test(
+      "grit is refused fewer than 2 rounds, a model with no rates, and the operator's database"
+    ) {
       withTask { f =>
-        val oneTurn = Caps.of("claude-haiku-5-5", None, "0.05", "1").getOrElse(cap)
+        val oneRound = Caps.of("claude-haiku-5-5", None, "0.05", "1").getOrElse(cap)
         val unpriced = Caps.of("claude-unknown-9", None, "0.05", "4").getOrElse(cap)
         val passed = Variables.of(Map.empty).getOrElse(throw new java.lang.AssertionError())
         def database(url: String) =
@@ -1153,13 +1172,13 @@ object RigTests extends TestSuite {
             .flatMap(Arm.Grit.of("/bin/grit", "/usr/bin/true", _, url, 8192, passed))
             .map(_ => url)
         (
-          gritTrial(f, GritFake(gritLines), oneTurn),
+          gritTrial(f, GritFake(gritLines), oneRound),
           gritTrial(f, GritFake(gritLines), unpriced),
           database("jdbc:postgresql://localhost:5432/grit"),
           database("jdbc:postgresql://localhost:5432/"),
           f.exists("gargv")
         ) ==> (
-          Left("grit takes at least 2 turns, its first call and one after a tool's; not 1"),
+          Left("grit takes at least 2 rounds, its first call and one after a tool's; not 1"),
           Left("grit's rates price no model claude-unknown-9, so its cap could not stop it"),
           Left("the grit coder's database grit is the operator's own; name one of the bench's"),
           Left("the grit coder's database URL names no database"),

@@ -45,8 +45,8 @@ import Engines.*
 private[main] object BenchCommands {
 
   /** `bench --tasks <dir> --task <name> --repository <path> --work <dir>`, then either `--known
-    * true`, or `--model <id> [--upstream <slug>] --max-budget-usd <usd> --max-turns <n> --scout
-    * <program>` ([[Caps.of]]) and a
+    * true`, or `--model <id> [--upstream <slug>] --max-budget-usd <usd> --max-rounds <n> --scout
+    * <program>` ([[Caps.read]], `<n>` a turn's rounds) and a
     * harness: `--harness claude-code` (the default) with `--claude <program> --agent <file>`, or
     * `--harness grit` with `--grit <launcher> --java-home <dir> --standing <file> --coder-url
     * <jdbc> --max-tokens <n> [--max-memory-gb <n>] [--window-tokens <n>] [--work-turns <n>]
@@ -106,10 +106,7 @@ private[main] object BenchCommands {
           }
         else
           for {
-            model <- need(f, "model")
-            budget <- need(f, "max-budget-usd")
-            turns <- need(f, "max-turns")
-            cap <- Caps.of(model, f.get("upstream"), budget, turns)
+            cap <- Caps.read(f)
             scout <- need(f, "scout")
             output = root.resolve(s"${RelPath.value(dir)}.log")
             _ <- f.getOrElse("harness", "claude-code") match {

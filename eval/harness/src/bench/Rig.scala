@@ -26,13 +26,13 @@ import grit.models.{AnthropicProvider, AnthropicRates, ModelRole, OpenRouterConf
   * Claude Code's own estimate; grit's, each call priced by [[grit.models.AnthropicRates]] where
   * it has the model, else by the cost its provider reported, as each call answers, and stopped
   * once its calls reach it, so by at most the call that reached it and one then in flight); and
-  * its most turns (grit's tool rounds).
+  * its most rounds of a turn (grit's tool rounds, and Claude Code's `--max-turns`).
   */
 final case class Caps private (
     model: ModelId,
     upstream: Upstream,
     budget: SpendCap,
-    maxTurns: Int
+    maxRounds: Int
 ) extends caps.Pure {
 
   def pair: ModelRef = ModelRef(model, Some(upstream))
@@ -60,13 +60,13 @@ object Caps {
   /** The caps of these, or why not: with no upstream, a model not a Claude model's id, which runs
     * at the Anthropic API (`claude-haiku-5-5`); with one, a model not an OpenRouter model's id
     * (`deepseek/deepseek-v4.1-flash-20260910`) or an upstream not an OpenRouter slug
-    * (`fireworks`); a budget not a decimal above 0; or turns not a whole number of at least 1.
+    * (`fireworks`); a budget not a decimal above 0; or rounds not a whole number of at least 1.
     */
   def of(
       model: String,
       upstream: Option[String],
       maxBudgetUsd: String,
-      maxTurns: String
+      maxRounds: String
   ): Either[String, Caps] = {
     val OpenRouterExample = "deepseek/deepseek-v4.1-flash-20260910"
     for {
@@ -99,9 +99,28 @@ object Caps {
       b <- Try(BigDecimal(maxBudgetUsd)).toOption
         .flatMap(SpendCap.of(_).toOption)
         .toRight(s"the budget $maxBudgetUsd is not an amount of USD above 0")
-      t <- maxTurns.toIntOption.filter(_ >= 1).toRight(s"the turns $maxTurns are not 1 or more")
+      r <- maxRounds.toIntOption.filter(_ >= 1).toRight(s"the rounds $maxRounds are not 1 or more")
       (id, u) = m
-    } yield Caps(id, u, b, t)
+    } yield Caps(id, u, b, r)
+  }
+
+  /** The caps `--model`, `--upstream` (optional), `--max-budget-usd` and `--max-rounds` give, by
+    * flag name without its `--` ([[of]]); a required one missing is refused naming it, and
+    * `--max-turns`, the old name of `--max-rounds`, is refused naming that.
+    */
+  def read(flags: Map[String, String]): Either[String, Caps] = {
+    def need(k: String) = flags.get(k).toRight(s"--$k is required")
+    for {
+      _ <- Either.cond(
+        !flags.contains("max-turns"),
+        (),
+        "--max-turns is now --max-rounds, the rounds of a turn"
+      )
+      model <- need("model")
+      budget <- need("max-budget-usd")
+      rounds <- need("max-rounds")
+      cap <- of(model, flags.get("upstream"), budget, rounds)
+    } yield cap
   }
 }
 
@@ -786,16 +805,16 @@ object Rig {
       .map(e => s"grit's output was not written to $output: ${e.getClass.getName}")
       .map(_ => ())
 
-  /** `Right` when grit can run under `cap`: at least 2 turns, and at the Anthropic API a model
+  /** `Right` when grit can run under `cap`: at least 2 rounds, and at the Anthropic API a model
     * whose calls [[AnthropicRates]] prices, since the cap is kept by that price; elsewhere each
     * call is priced as it answers, by the cost its provider reported ([[spent]]).
     */
   private def gritCapped(cap: Caps): Either[String, Unit] =
     for {
       _ <- Either.cond(
-        cap.maxTurns >= 2,
+        cap.maxRounds >= 2,
         (),
-        s"grit takes at least 2 turns, its first call and one after a tool's; not ${cap.maxTurns}"
+        s"grit takes at least 2 rounds, its first call and one after a tool's; not ${cap.maxRounds}"
       )
       _ <- cap.claudeModel
         .filter(AnthropicRates.pricing(_).isEmpty)
@@ -853,7 +872,7 @@ object Rig {
       "GRIT_TOOLS" -> "allowlist",
       "GRIT_SCOUT" -> arm.scout,
       ModelRole.Turn.maxTokensVar -> arm.maxTokens.toString,
-      "GRIT_TOOL_ROUNDS" -> cap.maxTurns.toString,
+      "GRIT_TOOL_ROUNDS" -> cap.maxRounds.toString,
       "GRIT_ASSEMBLER" -> "linear",
       "GRIT_SESSION" -> "bench",
       "GRIT_SWEEP" -> "24h"
@@ -1098,8 +1117,10 @@ object Rig {
       model,
       "--max-budget-usd",
       cap.budget.usd.toString,
+      // Claude Code's "agentic turn" is a round: its --max-turns and the bench's --max-rounds
+      // count the same model calls.
       "--max-turns",
-      cap.maxTurns.toString
+      cap.maxRounds.toString
     )
   }
 
