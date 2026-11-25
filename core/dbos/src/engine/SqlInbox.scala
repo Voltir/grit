@@ -340,20 +340,18 @@ final class SqlInbox(
   def granted(parent: TurnRef)(using Tx^): Either[StoreError, Vector[SpendCap]] =
     SqlInbox.grantedOf(parent)
 
-  /** One `DBOSClient.send` to the parent's workflow, under an idempotency key fixed by the
-    * child ([[SqlInbox.returnedKey]]): DBOS keeps one notification per key, as [[answer]]'s.
-    */
   def returned(child: TurnRef): Either[InboxError, Unit] =
     inTransaction(conversations.get(child.conversationId)).flatMap {
       case Some(c) =>
         c.origin match {
           case Origin.Spawned(parent, _, _) =>
             try {
+              // The topic, one per child, doubles as the idempotency key: DBOS keeps one ring.
               client.send(
                 WorkflowId.value(parent.workflowId),
                 WorkflowId.value(child.workflowId),
                 SpawnInbox.topic(child),
-                SqlInbox.returnedKey(child)
+                SpawnInbox.topic(child)
               )
               Right(())
             } catch {
@@ -636,9 +634,6 @@ private[dbos] object SqlInbox {
       }
     }
   }
-
-  /** The idempotency key of every ring `child` sends its parent: one per child. */
-  def returnedKey(child: TurnRef): String = s"returned:${WorkflowId.value(child.workflowId)}"
 
   /** `child`'s reply as the transaction's clearance reads it ([[SpawnInbox.reply]]): its reply
     * entry when it reads it, else [[SpawnReply.Unread]] when one is kept ([[kept]]) and
