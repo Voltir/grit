@@ -19,7 +19,9 @@ enum MoveError {
   /** The run reached its limit of `limit` moves of `kind`. */
   case OverLimit(kind: MoveKind, limit: Int)
 
-  /** The acting's allowance did not admit an ask: the day's recorded spend reached its cap. */
+  /** The acting's allowance did not admit an ask: the spend it is held to (the day's, or its
+    * conversation's under a spend cap) reached its cap, or under a spend cap was not all priced.
+    */
   case Capped
 
   /** No catalog could be read, the provider or classifier failed after its retries, or the
@@ -64,7 +66,7 @@ object MoveError {
     case Repeated(name) => s"the move ${MoveName.value(name)} was made already"
     case RoomTaken(room) => s"the run named one occasion in ${room.written} already"
     case OverLimit(kind, limit) => s"the run reached its limit of $limit ${plural(kind)}"
-    case Capped => "the day's recorded spend reached its cap"
+    case Capped => "the recorded spend reached its cap, or was not all priced"
     case Model(why) => why
     case Uncleared(at) => s"no model is cleared for ${Label.shown(at)}"
     case Store(why) => why

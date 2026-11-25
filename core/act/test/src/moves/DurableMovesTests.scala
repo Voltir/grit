@@ -80,7 +80,7 @@ import grit.core.need.Needs
 import grit.core.place.Place
 import grit.core.provider.{ModelRequest, Models}
 import grit.core.speech.{Speaking, Unprompted}
-import grit.core.spend.{Budget, DailyCap, Day, Spend, Spending, TurnSpend}
+import grit.core.spend.{Budget, DailyCap, Day, Spend, SpendCap, Spending, TurnSpend}
 import grit.core.stitch.StrandWorld
 import grit.core.store.{Askers, InMemoryToolSets, InMemoryUsageLedger, Jot, StoreError, TestJot, Tx}
 import grit.core.tool.{Outcome, Retry, ToolSet}
@@ -298,7 +298,8 @@ final class MovesWorld(
     recorded: Recorded = Recorded.Empty,
     inbox: InMemoryInbox = InMemoryInbox.fresh(),
     speaking: Speaking = Speaking.Off,
-    refusing: Option[String] = None
+    refusing: Option[String] = None,
+    spendCap: Option[SpendCap] = None
 ) extends caps.SharedCapability {
   import MovesContract.*
   import MovesWorld.*
@@ -386,13 +387,15 @@ final class MovesWorld(
     )
 
   /** The acting of [[Turn]]: its asker's, closed, admitted, or daily under a cap when
-    * `broken`, starting at `integrity`.
+    * `broken`, or held to `spendCap` when given, starting at `integrity`.
     */
   val acting: Acting = Acting(
     Turn,
     ActsFor.Asker,
-    if (broken) Allowance.Daily(Budget(ZoneOffset.UTC, DailyCap.of("1").toOption))
-    else Allowance.Admitted,
+    spendCap.fold(
+      if (broken) Allowance.Daily(Budget(ZoneOffset.UTC, DailyCap.of("1").toOption))
+      else Allowance.Admitted
+    )(Allowance.Capped(_)),
     Gates.Closed,
     integrity
   )

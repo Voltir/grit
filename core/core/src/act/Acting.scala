@@ -3,7 +3,7 @@ package grit.core.act
 import scala.concurrent.duration.FiniteDuration
 
 import grit.core.id.{ScheduleId, TurnRef}
-import grit.core.spend.Budget
+import grit.core.spend.{Budget, SpendCap}
 import grit.core.visibility.{Integrity, Subject}
 
 /** Who acts, and within what (ADR 0068): every ask, call, keep and occasion is made under one. Its
@@ -57,6 +57,12 @@ enum Allowance {
     * not admit it.
     */
   case Daily(budget: Budget)
+
+  /** Each ask admitted while its conversation's recorded calls
+    * ([[grit.core.spend.Spending.conversation]]) were all priced and cost less than `cap`;
+    * refused, and no model called, once they do not, or once one of them was not priced.
+    */
+  case Capped(cap: SpendCap)
 }
 
 /** What becomes of a call whose tool asks a person first ([[grit.core.tool.Gate.Ask]]). */

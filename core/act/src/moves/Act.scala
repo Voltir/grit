@@ -43,6 +43,7 @@ import grit.core.files.{FileError, PieceKeeper, Understood}
 import grit.core.flow.{Downgrade, Mint}
 import grit.core.id.{
   CallSlot,
+  ConversationId,
   DocumentVersionId,
   EntryId,
   FileHandle,
@@ -900,9 +901,21 @@ private[moves] object Act {
       acting: Acting,
       digest: String
   ): Either[AskMade, (Label, Routed)] =
-    admission(records, db, clock, acting.allowance, acting.subject) match {
+    admission(
+      records,
+      db,
+      clock,
+      acting.allowance,
+      acting.turn.conversationId,
+      acting.subject
+    ) match {
       case Left(e) => Left(AskMade.Refused(AskMade.Kind.Store, e.described, digest))
-      case Right((false, _, _)) => Left(AskMade.Refused(AskMade.Kind.Capped, Capped, digest))
+      case Right((false, _, _)) =>
+        val why = acting.allowance match {
+          case Allowance.Capped(_) => SpendCapped
+          case Allowance.Admitted | Allowance.Daily(_) => Capped
+        }
+        Left(AskMade.Refused(AskMade.Kind.Capped, why, digest))
       case Right((true, at, routed)) => Right((at, routed))
     }
 
@@ -914,10 +927,13 @@ private[moves] object Act {
       db: Db^,
       clock: Clock^,
       allowance: Allowance,
+      conversation: ConversationId,
       subject: Subject
   ): Either[StoreError, (Boolean, Label, Routed)] =
     db.read(subject)((tx: Tx^) ?=>
-      Asking.admits(allowance, records.spending, clock.now()).map((_, Tx.floor(tx), Routed.of))
+      Asking
+        .admits(allowance, conversation, records.spending, clock.now())
+        .map((_, Tx.floor(tx), Routed.of))
     )
 
   /** The cost of a classifier's call, replying `reply` to `request`, served by `upstream`:
@@ -1076,5 +1092,8 @@ private[moves] object Act {
   private val Unsorted = "it read nothing to place, or nothing to place it among"
 
   private[moves] val Capped = "The day's spend reached its cap, so no model was asked."
+
+  private val SpendCapped =
+    "The conversation's spend reached its spend cap, or some of it was not priced, so no model was asked."
 
 }

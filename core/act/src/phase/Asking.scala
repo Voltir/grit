@@ -6,8 +6,8 @@ import scala.concurrent.duration.*
 
 import grit.core.act.Allowance
 import grit.core.clock.Clock
-import grit.core.id.{EntryId, TurnRef, WorkflowId}
-import grit.core.message.{Message, Tokens, Usage}
+import grit.core.id.{ConversationId, EntryId, TurnRef, WorkflowId}
+import grit.core.message.{Cost, Message, Tokens, Usage}
 import grit.core.model.Grade
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.spend.Spending
@@ -51,14 +51,26 @@ object Asking {
   }
 
   /** Whether `allowance` admits an ask at `now`: always when `Admitted`, reading nothing; when
-    * `Daily`, as its budget admits what `spending` recorded that day.
+    * `Daily`, as its budget admits what `spending` recorded that day; when `Capped`, while what
+    * `spending` recorded for `conversation` was all priced and below its cap. It is checked
+    * before each ask, so a conversation can end above its cap by that ask's calls.
     */
-  def admits(allowance: Allowance, spending: Spending, now: Instant)(using
-      Tx^
-  ): Either[StoreError, Boolean] =
+  def admits(
+      allowance: Allowance,
+      conversation: ConversationId,
+      spending: Spending,
+      now: Instant
+  )(using Tx^): Either[StoreError, Boolean] =
     allowance match {
       case Allowance.Admitted => Right(true)
       case Allowance.Daily(budget) => spending.on(budget.today(now)).map(budget.admits)
+      case Allowance.Capped(cap) =>
+        spending
+          .conversation(conversation)
+          .map(_.cost match {
+            case Cost.Exact(usd) => usd < cap.usd
+            case Cost.AtLeast(_) => false
+          })
     }
 
   /** The cost of `reply`, the response held by `entry` (an entry's id, or a move's), recorded

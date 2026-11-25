@@ -121,7 +121,7 @@ object Judging {
             case Pose.Asking(cleared, routed, request, read) =>
               val env: MovesEnv^{r} = moves(r)
               val asked: (Either[ClassifierError, Reply], FiniteDuration) =
-                admitted(env, budget(r), p.charged.subject) match {
+                admitted(env, budget(r), p.charged) match {
                   case Left(why) => (Left(ClassifierError.Unavailable(why)), Duration.Zero)
                   case Right(()) =>
                     val start = env.clock.millis()
@@ -140,7 +140,7 @@ object Judging {
             case Pose.Writing(models, routed, pins, request, read) =>
               val env: MovesEnv^{r} = moves(r)
               val reply: Either[String, Message.Assistant] = for {
-                _ <- admitted(env, budget(r), p.charged.subject)
+                _ <- admitted(env, budget(r), p.charged)
                 cleared <- routed
                   .cleared(pins)
                   .toRight(s"no model cleared for ${Label.written(routed.classification.label)}")
@@ -180,9 +180,16 @@ object Judging {
   def made[B](output: String)(using Journaled[B]): Either[String, B] =
     MovesJournal.posed[B].decode(output).map(_.made)
 
-  /** Whether `budget`'s daily cap admits an ask for `subject` now; `Left`, why not. */
-  private def admitted(env: MovesEnv^, budget: Budget, subject: Subject): Either[String, Unit] =
-    Act.admission(env.records, env.db, env.clock, Allowance.Daily(budget), subject) match {
+  /** Whether `budget`'s daily cap admits an ask for `charged`'s subject now; `Left`, why not. */
+  private def admitted(env: MovesEnv^, budget: Budget, charged: Charged): Either[String, Unit] =
+    Act.admission(
+      env.records,
+      env.db,
+      env.clock,
+      Allowance.Daily(budget),
+      charged.turn.conversationId,
+      charged.subject
+    ) match {
       case Left(e) => Left(s"the day's spend is unread: ${e.described}")
       case Right((false, _, _)) => Left(Act.Capped)
       case Right((true, _, _)) => Right(())

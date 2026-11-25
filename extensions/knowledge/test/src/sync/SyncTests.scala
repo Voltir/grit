@@ -1150,7 +1150,8 @@ object SyncTests extends TestSuite {
         line(
           written = 1,
           left = 1,
-          stopped = Some("summarising docs/b.md: the day's recorded spend reached its cap")
+          stopped =
+            Some("summarising docs/b.md: the recorded spend reached its cap, or was not all priced")
         ),
         // A card's text begins with its path (Card.text).
         Vector(("docs/a.md", "docs/a.md\n\nWhat the file holds.\n\nTerms: a term", true))
