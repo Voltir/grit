@@ -52,6 +52,11 @@ enum Delegated extends caps.Pure {
     */
   case Unspawned(why: String)
 
+  /** No child was made: the deployment's spend today reached its daily cap
+    * ([[InboxError.OverCap]]).
+    */
+  case OverDailyCap
+
   /** Not ended within [[Spawning.Within]]. */
   case Unanswered(child: TurnRef)
 
@@ -179,6 +184,7 @@ object Spawning {
           case (n, Made.Child(child)) => Right(Child(n.in, child, n.cap))
           case (_, Made.Above(at, room)) =>
             Left(Delegated.Refused(Delegation.Refused.Above(at, room)))
+          case (_, Made.OverDailyCap(_)) => Left(Delegated.OverDailyCap)
           case (_, Made.Unmade(why)) => Left(Delegated.Unspawned(why))
         })
         .andThen(Flow.attempt(waited))
@@ -261,6 +267,7 @@ object Spawning {
         ) match {
           case Right(child) => Made.Child(child)
           case Left(InboxError.Above(classification, room)) => Made.Above(classification, room)
+          case Left(e: InboxError.OverCap) => Made.OverDailyCap(InboxError.told(e))
           case Left(e) => Made.Unmade(InboxError.told(e))
         }
     )
@@ -316,6 +323,7 @@ object Spawning {
   private enum Made extends caps.Pure {
     case Child(child: TurnRef)
     case Above(classification: Label, room: Label)
+    case OverDailyCap(why: String)
     case Unmade(why: String)
   }
 
@@ -328,8 +336,8 @@ object Spawning {
 
   // The recorded forms. A run in flight reads back what an earlier build wrote, so a form here is
   // never changed, only added to. SpawningTests pins each form its runs reach, and replays it;
-  // none reaches a read's `store` or `beyond`, a spawn's `unspawned`, or a `notWorking`
-  // refusal, which are unpinned.
+  // none reaches a read's `store` or `beyond`, a spawn's `unspawned` or `overDailyCap`, or a
+  // `notWorking` refusal, which are unpinned.
 
   private def cost(c: Cost): ujson.Value = c match {
     case Cost.Exact(usd) => ujson.Obj("exact" -> usd.bigDecimal.toPlainString)
@@ -461,7 +469,9 @@ object Spawning {
     }
   )
 
-  /** `{"child":t}`, `{"above":{"classification":l,"room":l}}` or `{"unspawned":w}`. */
+  /** `{"child":t}`, `{"above":{"classification":l,"room":l}}`, `{"overDailyCap":w}` or
+    * `{"unspawned":w}`.
+    */
   private given Journaled[Made] = Journaled.json(
     {
       case Made.Child(child) => ujson.Obj("child" -> turn(child))
@@ -472,6 +482,7 @@ object Spawning {
             "room" -> Label.written(room)
           )
         )
+      case Made.OverDailyCap(why) => ujson.Obj("overDailyCap" -> why)
       case Made.Unmade(why) => ujson.Obj("unspawned" -> why)
     },
     v => {
@@ -488,6 +499,7 @@ object Spawning {
             } yield Made.Above(c, r)
           }
         )
+        .orElse(f.str("overDailyCap").map(Made.OverDailyCap(_)))
         .orElse(f.str("unspawned").map(Made.Unmade(_)))
         .left
         .map(_ => s"recorded: no spawn: $v")

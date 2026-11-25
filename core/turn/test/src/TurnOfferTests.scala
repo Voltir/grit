@@ -183,7 +183,9 @@ object TurnOfferTests extends TestSuite {
   private def names(
       origin: Origin,
       root: Option[Payload] = None,
-      answering: Boolean = false
+      answering: Boolean = false,
+      subagents: Spawnable = Spawnable.empty,
+      principals: InMemoryPrincipals = new InMemoryPrincipals
   ): Vector[String] = {
     given grit.core.store.Tx = TestTx.fake
     val conversations = new InMemoryConversationStore
@@ -207,7 +209,8 @@ object TurnOfferTests extends TestSuite {
       new TestJot,
       budget(5),
       administering =
-        box(tool(ToolName("label_room"), asks = true), tool(ToolName("quiet_room"), asks = true))
+        box(tool(ToolName("label_room"), asks = true), tool(ToolName("quiet_room"), asks = true)),
+      subagents = subagents
     )
     val entries = new InMemoryEntryStore
     root.foreach(payload =>
@@ -228,7 +231,7 @@ object TurnOfferTests extends TestSuite {
       .decide(
         hosting,
         entries,
-        new InMemoryPrincipals,
+        principals,
         java.time.ZoneOffset.UTC,
         tooling,
         TurnRef(c, TurnSeq.First),
@@ -852,6 +855,46 @@ object TurnOfferTests extends TestSuite {
         Vector("about", "propose", "probe"),
         Vector("about")
       )
+    }
+
+    test(
+      "delegate is offered over declared runs only to a turn a person's account began, in no direct message's room: never one grit began, an occasion's or a child's"
+    ) {
+      val ana = TestAccounts.account("task:ana-offer")
+      val dm = TestAccounts.sourced("slack:T1/U-ana")
+      val said = Some(Payload.Message(Message.User("look it up")))
+      val occasion = for {
+        about <- grit.core.id.DocumentVersionId.of(1)
+        key <- grit.core.occasion.OccasionKey.of("ahead:offer")
+      } yield Payload.Occasion(grit.core.occasion.TestOccasions.Brief, about, key)
+      val spawn = Some(
+        Payload.Spawn(
+          grit.core.agent.SubagentFixtures.scholar,
+          "Find it.",
+          grit.core.agent.SubagentFixtures.spendCap
+        )
+      )
+      def authored(who: Option[Account]): InMemoryPrincipals = {
+        val p = new InMemoryPrincipals
+        who.foreach(p.authored(EntryId("root"), _))
+        p
+      }
+      def offers(
+          origin: Origin,
+          root: Option[Payload],
+          who: Option[Account],
+          subagents: Spawnable = TurnFixtures.scholars
+      ): Boolean =
+        names(origin, root, subagents = subagents, principals = authored(who)).contains("delegate")
+      (
+        offers(slack, said, Some(ana)),
+        offers(slack, said, Some(ana), Spawnable.empty),
+        offers(slack, said, None),
+        offers(slack, said, Some(Account.Grit)),
+        offers(Origin.Direct(dm, "1.0"), said, Some(dm)),
+        offers(slack, occasion, Some(ana)),
+        offers(slack, spawn, Some(ana))
+      ) ==> (true, false, false, false, false, false, false)
     }
 
     test(

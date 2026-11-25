@@ -61,6 +61,8 @@ object TurnDelegate {
           s"$run was not started: it works only in a conversation working in the repository " +
             s"${repository.name}, and this one is not."
         )
+      case Delegated.OverDailyCap =>
+        Outcome.Failed(s"$run was not started: today's spending limit is reached.")
       case Delegated.OverLimit(most) =>
         Outcome.Failed(
           s"No run was started: you have already started $most runs while replying to this " +

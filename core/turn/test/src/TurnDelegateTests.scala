@@ -1,8 +1,9 @@
 package grit.turn
 
+import grit.act.phase.Delegated
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{AgentType, SourceId, ToolCallId, TurnRef}
-import grit.core.identity.TestAccounts
+import grit.core.identity.{Account, TestAccounts}
 import grit.core.inbox.{InMemoryInbox, InboxError, SpawnInbox, TurnEnding}
 import grit.core.message.{AssistantBlock, Message, SpendCap, StopReason, Tokens, Usage}
 import grit.core.place.Place
@@ -21,11 +22,18 @@ object TurnDelegateTests extends TestSuite {
 
   private val ana = TestAccounts.account("task:ana-delegating")
 
-  /** A reply calling `delegate` with `args`, then, on every later call, answering `done`. */
-  private def delegating(args: ujson.Value): Scripted =
+  /** A reply calling `delegate` with each of `args`, then, on every later call, answering
+    * `done`.
+    */
+  private def delegating(args: ujson.Value*): Scripted =
     new Scripted((_, n) =>
       Right(
-        if (n == 0) said("", AssistantBlock.ToolCall(ToolCallId("d1"), "delegate", args))
+        if (n == 0)
+          said(
+            "",
+            args.zipWithIndex
+              .map((a, i) => AssistantBlock.ToolCall(ToolCallId(s"d$i"), "delegate", a))*
+          )
         else said("done")
       )
     )
@@ -51,9 +59,10 @@ object TurnDelegateTests extends TestSuite {
       )
       .fold(scholars)(Spawnable.of(_, _ => Vector.empty))
 
-  /** A parent's conversation of `origin` in an in-memory inbox, its first message ana's, run in
-    * `durable`: each child it spawns is run at once by `child`, unless `children` is false, and
-    * rings its parent; the first read of a child's end dies when `crashing`.
+  /** A parent's conversation of `origin` in an in-memory inbox under `budget`, begun by a
+    * message of `by`'s, run in `durable`, offered `subagents`: each child it spawns is run at
+    * once by `child`, unless `children` is false, and rings its parent; the first read of a
+    * child's end dies when `crashing`.
     */
   private final class Parenting(
       durable: InMemoryDurable,
@@ -61,11 +70,13 @@ object TurnDelegateTests extends TestSuite {
       origin: Origin = Origin.Task("delegating", "parent"),
       children: Boolean = true,
       crashing: Boolean = false,
-      subagents: Spawnable = scholarsAt(Integrity.Outside)
+      subagents: Spawnable = scholarsAt(Integrity.Outside),
+      budget: grit.core.spend.Budget = grit.core.spend.Budget(java.time.ZoneOffset.UTC, None),
+      by: Account = ana
   ) {
-    val inbox: InMemoryInbox = InMemoryInbox.fresh()
+    val inbox: InMemoryInbox = InMemoryInbox.fresh(budget = budget)
     val parent: TurnRef = inbox
-      .ingest(origin, SourceId("p"), Message.User("look it up"), ana, None)
+      .ingest(origin, SourceId("p"), Message.User("look it up"), by, None)
       .fold(e => throw new java.lang.AssertionError(e), identity)
     // The parent runs, so a child's ring reaches it.
     inbox.started = Vector(parent)
@@ -192,6 +203,99 @@ object TurnDelegateTests extends TestSuite {
             "minutes; its reply will not reach you here."
         )
       )
+    }
+
+    test("a type needing more than the parent has read is refused Below, no run made") {
+      val world = new Parenting(
+        new InMemoryDurable,
+        new Scripted((_, _) => Right(said("x"))),
+        subagents = scholarsAt(Integrity.Authority)
+      )
+      val _ = world.run(delegating(asked))
+      (world.results, world.kept) ==> (
+        Vector(
+          "The scholar run was not started: what this conversation has read is not trusted " +
+            "enough to hand to it."
+        ),
+        0
+      )
+    }
+
+    test("a coding type asked from a conversation not working in its repository is NotWorking") {
+      val world = new Parenting(
+        new InMemoryDurable,
+        new Scripted((_, _) => Right(said("x"))),
+        subagents = coders,
+        by = Account.Local
+      )
+      val _ = world.run(delegating(ujson.Obj("agent" -> "coder", "task" -> "Fix the typo.")))
+      (world.results, world.kept) ==> (
+        Vector(
+          "The coder run was not started: it works only in a conversation working in the " +
+            "repository scratch, and this one is not."
+        ),
+        0
+      )
+    }
+
+    test("a reply's call past the most a turn starts is refused OverLimit, the first ones made") {
+      val world = new Parenting(new InMemoryDurable, new Scripted((_, _) => Right(said("Hi."))))
+      val _ = world.run(delegating(Vector.fill(grit.act.phase.Spawning.PerTurn + 1)(asked)*))
+      (world.results.lastOption, world.kept) ==> (
+        Some(
+          s"No run was started: you have already started ${grit.act.phase.Spawning.PerTurn} " +
+            "runs while replying to this message, the most allowed."
+        ),
+        grit.act.phase.Spawning.PerTurn
+      )
+    }
+
+    test("a run the day's spending cap refuses is not started, and says so") {
+      val cap = grit.core.spend.DailyCap
+        .of("0.0005")
+        .fold(why => throw new java.lang.AssertionError(why), identity)
+      val world = new Parenting(
+        new InMemoryDurable,
+        new Scripted((_, _) => Right(said("x"))),
+        budget = grit.core.spend.Budget(java.time.ZoneOffset.UTC, Some(cap))
+      )
+      val _ = world.run(delegating(asked))
+      (world.results, world.kept) ==> (
+        Vector("The scholar run was not started: today's spending limit is reached."),
+        0
+      )
+    }
+
+    test("a parent's room above where its child works is refused Above, in its line") {
+      val above = Delegated.Refused(
+        grit.core.act.Delegation.Refused
+          .Above(Label.at(grit.core.visibility.Level.Internal), Label.Public)
+      )
+      TurnDelegate.answer(grit.core.agent.SubagentFixtures.scholar, above) ==>
+        grit.core.tool.Outcome.Failed(
+          "The scholar run was not started: this conversation holds material more confidential " +
+            "than where it works may receive."
+        )
+    }
+
+    test(
+      "a turn in a direct message's room is offered no delegate, though its deployment declares runs"
+    ) {
+      // Whether the turn's first request offered delegate; `None` when it made none.
+      def offers(world: Parenting^): Option[Boolean] = {
+        val model = delegating(asked)
+        val _ = world.run(model)
+        model.requests.headOption.map(_.tools.exists(_.name == "delegate"))
+      }
+      val account = TestAccounts.sourced("slack:T1/U-ana")
+      val direct = new Parenting(
+        new InMemoryDurable,
+        new Scripted((_, _) => Right(said("x"))),
+        origin = Origin.Direct(account, "t1"),
+        by = account
+      )
+      val ordinary = new Parenting(new InMemoryDurable, new Scripted((_, _) => Right(said("x"))))
+      (offers(direct), offers(ordinary)) ==> (Some(false), Some(true))
     }
   }
 }
