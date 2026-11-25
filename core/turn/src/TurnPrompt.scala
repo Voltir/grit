@@ -234,7 +234,7 @@ object TurnPrompt {
 
   /** Who reads a reply from `origin`'s edge, and what it renders: one person in a terminal,
     * several people in a Slack thread or channel, one person in a direct message, or nobody until a
-    * task's run, a run of work or a subagent's run ends.
+    * task's run, a run of work or a spawned child's run ends.
     */
   def edge(origin: Origin): Fragment = {
     val unread =
@@ -257,7 +257,11 @@ object TurnPrompt {
       case _: Origin.Task => s"This is a triggered task's run: $unread"
       case Origin.Work(repository, _) =>
         s"This is a run of work in the repository ${repository.name}: $unread"
-      case _: Origin.Spawned => s"This is a subagent's run, briefed by another turn: $unread"
+      case _: Origin.Spawned =>
+        "This run does one task for another conversation, which wrote that task in grit's " +
+          "note at the start of your messages. Your last reply is passed back to that " +
+          "conversation when the run ends, and nobody can answer a question here, so do not " +
+          "ask one: finish the task, then say what you did and what you found."
       case _: Origin.Direct =>
         "You are in a direct message with one person, who alone reads it. Your replies are " +
           "rendered from Markdown; keep them short."
@@ -325,16 +329,19 @@ object TurnPrompt {
 
   /** What a turn at `origin` is told it is called, `persona`'s name, as an edge-layer fragment
     * of its own: "In this workspace you are called {name}." in a Slack thread or a direct
-    * message; `None` for a terminal or a task, whose one reader started grit.
+    * message; "In this run you are called {name}." in a spawned child's run, `persona` its
+    * type's; `None` for a terminal or a task, whose one reader started grit.
     */
   // Its own fragment (not a sentence in `edge`'s Slack text) so that measured text stays
   // byte-identical; checked for gross regression on the forgery check, 2026-09-28.
-  def called(persona: Persona, origin: Origin): Option[Fragment] = origin.audience match {
-    case Audience.Colleagues | Audience.Person =>
+  def called(persona: Persona, origin: Origin): Option[Fragment] = (origin, origin.audience) match {
+    case (_: Origin.Spawned, _) =>
+      Some(Fragment(Layer.Edge, Fragment.Grit, s"In this run you are called ${persona.name}."))
+    case (_, Audience.Colleagues | Audience.Person) =>
       Some(
         Fragment(Layer.Edge, Fragment.Grit, s"In this workspace you are called ${persona.name}.")
       )
-    case Audience.Operator | Audience.Nobody => None
+    case (_, Audience.Operator | Audience.Nobody) => None
   }
 
   /** How a turn whose reply people read (a Slack thread's or a direct message's) is told to

@@ -25,7 +25,8 @@ object Shown {
     * begins with as one user message, [[PostedLead]] then the post as [[pasted]] shows it, so
     * no window opens with an assistant message; grit's continuation note as one user message,
     * [[Continuing]] after a turn at its limit, [[checkFailed]] after a failed check, [[Unpushed]] or
-    * [[Unopened]] after a check passed with its branch not offered;
+    * [[Unopened]] after a check passed with its branch not offered; a spawned child's note as one
+    * user message, [[Spawned]] then the task its parent wrote, as [[pasted]] shows it;
     * a closing entry as one user message, "[record] this conversation
     * so far, written by grit (closed {its UTC date}):", then its prose, its outcome, the
     * lines it resolved and how, and the balance's open lines, its standing lines (those
@@ -53,6 +54,7 @@ object Shown {
       Some(Message.User(checkFailed(failed)))
     case Payload.Continuation(_, _, WentOn.Unpushed) => Some(Message.User(Unpushed))
     case Payload.Continuation(_, _, WentOn.Unopened) => Some(Message.User(Unopened))
+    case Payload.Spawn(_, task, _) => Some(Message.User(s"$Spawned\n${pasted(task)}"))
     case _ => None
   }
 
@@ -119,6 +121,16 @@ object Shown {
 
   /** What follows a heard message's author on the line above its text ([[of]]). */
   val NotToYou: String = " said, not to you:"
+
+  /** grit's note a spawned child's task follows ([[Payload.Spawn]]): grit's own words, fenced
+    * as its note, never escaped.
+    */
+  val Spawned: String = Fenced.noted(
+    Vector(
+      "Another conversation started this run to do one task. The task, as that conversation " +
+        "wrote it, follows this note."
+    )
+  )
 
   /** What introduces grit's post a conversation begins with ([[of]]). */
   val PostedLead: String =
@@ -368,7 +380,8 @@ object Shown {
   private val Numbered = """^\s*\d+\t""".r
 
   /** The turn's own `entries` as the model is shown them, in order: the person's messages,
-    * the heard message a turn is rooted on among them, as [[of]] shows them with `speakers`,
+    * the heard message or spawned child's note a turn is rooted on among them, as [[of]] shows
+    * them with `speakers`,
     * its replies that called tools as they are, and each tool result's content fenced in
     * `<tool_output source="{its call, as a person is shown it}">` ([[Fenced]]), after
     * [[result]]'s lead-in when it has one; a declined call's reason ([[Payload.Declined]]) as
@@ -386,7 +399,8 @@ object Shown {
       case ((out, held), e) =>
         val message = e.payload match {
           case Payload.Message(Message.User(text)) => Some(said(e, text, speakers))
-          case Payload.Heard(_) | Payload.Posted(_) | Payload.Continuation(_, _, _) =>
+          case Payload.Heard(_) | Payload.Posted(_) | Payload.Continuation(_, _, _) |
+              Payload.Spawn(_, _, _) =>
             of(e, speakers)
           case Payload.Message(m) => Some(m)
           case Payload.Exchange(reply) => Some(reply)

@@ -78,6 +78,50 @@ object TurnSpawnTests extends TestSuite {
       (offered(provider) -- every, edge.sent) ==> (Set.empty[String], Vector.empty)
     }
 
+    test(
+      "a child's first request opens with its task under grit's note, and its prompt says whose task it is and what it is called"
+    ) {
+      val entries = new InMemoryEntryStore
+      val turn = spawn(entries, SubagentFixtures.coder, "Fix the typo in README.md.")
+      val durable = new InMemoryDurable
+      val provider = model()
+      durable.run(turn.workflowId)(
+        spawnedBody(
+          entries,
+          provider,
+          edgeAt(durable, repository),
+          new Files(Map.empty),
+          coders,
+          spawnedFrom(repository)
+        )
+      )
+      val first = provider.requests.headOption
+      // After the note every turn's first message is dated by.
+      val task = first.flatMap(_.messages.drop(1).headOption)
+      (
+        task,
+        first.exists(
+          _.system.contains(
+            "This run does one task for another conversation, which wrote that task in grit's " +
+              "note at the start of your messages. Your last reply is passed back to that " +
+              "conversation when the run ends, and nobody can answer a question here, so do " +
+              "not ask one: finish the task, then say what you did and what you found."
+          )
+        ),
+        first.exists(_.system.contains("In this run you are called Coder."))
+      ) ==> (
+        Some(
+          Message.User(
+            "<grit_note>\nAnother conversation started this run to do one task. The task, as " +
+              "that conversation wrote it, follows this note.\n</grit_note>\n" +
+              "Fix the typo in README.md."
+          )
+        ),
+        true,
+        true
+      )
+    }
+
     test("a child's calls are made under its type's pin, not its deployment's turn pin") {
       val entries = new InMemoryEntryStore
       val turn = spawn(entries, SubagentFixtures.coder, "Fix the typo.")
