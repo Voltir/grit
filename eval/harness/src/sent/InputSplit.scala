@@ -32,8 +32,9 @@ object InputSplit {
 
   val Zero: InputSplit = InputSplit(Breakdown.Zero, Breakdown.Zero, Breakdown.Zero)
 
-  /** `request`, sent with `usage`, by part: its system prompt, its tools, then each message as
-    * [[Breakdown.message]] places it, in that order, costed by `estimator` and scaled to
+  /** `request`, sent with `usage`, by part: its tools, its system prompt, then each message as
+    * [[Breakdown.message]] places it, in that order, the cache prefix's (as
+    * `grit.models.AnthropicJson` sends them), costed by `estimator` and scaled to
     * `usage.input`; of that order, the first `usage.cacheRead` tokens read from the cache,
     * the next `usage.cacheWrite` written to it, and the rest uncached, each summing to its
     * count exactly. `None` when the request estimates 0 or the input is 0.
@@ -45,8 +46,8 @@ object InputSplit {
       estimator: TokenEstimator
   ): Option[InputSplit] = {
     val segments =
-      Breakdown.Zero.copy(system = estimator.system(request.system)) +:
-        Breakdown.Zero.copy(tools = estimator.tools(request.tools)) +:
+      Breakdown.Zero.copy(tools = estimator.tools(request.tools)) +:
+        Breakdown.Zero.copy(system = estimator.system(request.system)) +:
         request.messages.zipWithIndex.map((m, i) => Breakdown.message(m, i, window, estimator))
     val whole = segments.map(s => Tokens.value(s.total)).sum
     val input = Tokens.value(usage.input)
@@ -128,7 +129,11 @@ object InputSplit {
       case (Some(parts), Some(out)) =>
         s"  cost: ${Labels.zip(parts).map((l, c) => s"$l ${Cost.cents(c)}").mkString(", ")}; " +
           s"output $output tokens ${Cost.cents(out)}; in all ${Cost.cents(parts.sum + out)}, " +
-          s"the ledger's ${recorded.fold("unknown")(Cost.cents)}"
+          s"the ledger's ${recorded.fold("unknown")(Cost.cents)}" +
+          (rated.map(_.source) match {
+            case Some(TurnRates.Source.Fitted(_)) => " (fitted to it)"
+            case _ => ""
+          })
       case _ => "  cost: unpriced"
     }
     (s"input by part, read from the cache (r), written to it (w) and uncached (u), " +

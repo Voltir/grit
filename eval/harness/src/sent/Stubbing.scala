@@ -110,7 +110,8 @@ object Stubbing {
 
     /** `sent` as [[replay]] reads it: each of its calls whose ledger row is kept
       * ([[TurnSent.requests]]), its own messages after its window's, priced as
-      * [[TurnRates.of]] prices it.
+      * [[TurnRates.of]] prices it. Hindsight reads the last of them: where the final request
+      * has no row, what its reply and the answer point at or repeat is not counted.
       */
     def of(sent: TurnSent): Recorded =
       Recorded(
@@ -289,10 +290,9 @@ object Stubbing {
     val first = chosen.map(_.result.at).minOption
     val tail = first.fold(0L) { f =>
       val after = messages.drop(f).map(m => Tokens.value(estimator.message(m))).sum
-      val stubbedAfter = judged
-        .filter(j => j.result.at >= f && (already.contains(j.result.call) || chosen.contains(j)))
-        .map(j => saving.getOrElse(j.result.call, 0L))
-        .sum
+      // Earlier stubs all lie before `f`: a result older than one stubbed was kept for good
+      // (not read-only, small, or pointed at), so only the ones chosen now shorten the tail.
+      val stubbedAfter = chosen.map(j => saving.getOrElse(j.result.call, 0L)).sum
       after - stubbedAfter
     }
     Step(

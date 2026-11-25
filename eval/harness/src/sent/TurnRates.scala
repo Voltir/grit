@@ -47,6 +47,6 @@ object TurnRates {
     case Rated(p, Source.Fitted(model)) =>
       val r = p.at(grit.core.message.Tokens.Zero)
       s"priced at rates fitted to $model's ledger rows ($$${r.input}/M uncached, " +
-        s"$$${r.read}/M read, $$${r.output}/M output)"
+        s"$$${r.read}/M read, $$${r.output}/M output; writes priced as uncached)"
   }
 }

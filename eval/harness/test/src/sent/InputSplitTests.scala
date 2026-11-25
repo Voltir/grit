@@ -4,7 +4,7 @@ import grit.assembly.estimate.CharEstimate
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.Rates
-import grit.core.provider.ModelRequest
+import grit.core.provider.{ModelRequest, ToolSchema}
 
 import utest.*
 
@@ -68,6 +68,17 @@ object InputSplitTests extends TestSuite {
           BigDecimal(est(result)),
           BigDecimal(0)
         ).map(_ / 1000000)
+      )
+    }
+    test("the cache's prefix is the tools, then the system prompt, then the messages") {
+      val offered = Vector(ToolSchema("read", "Reads a file.", ujson.Obj("type" -> "object")))
+      val tooled = request.copy(tools = offered)
+      val tools = Tokens.value(estimator.tools(offered))
+      // A read shorter than the system prompt and tools together: the tools alone.
+      InputSplit
+        .of(tooled, Vector.empty, usage(whole + tools, tools, 0), estimator)
+        .map(s => s.read.parts.map(t => Tokens.value(t))) ==> Some(
+        Vector(0L, tools, 0L, 0L, 0L, 0L)
       )
     }
     test("a request with no input has no split") {
