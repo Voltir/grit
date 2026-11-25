@@ -74,9 +74,10 @@ object TurnDelegateTests extends TestSuite {
       subagents: Spawnable = scholarsAt(Integrity.Outside),
       budget: grit.core.spend.Budget = grit.core.spend.Budget(java.time.ZoneOffset.UTC, None),
       by: Account = ana,
-      workspace: Place = Place.Everywhere
+      workspace: Place = Place.Everywhere,
+      visibility: grit.core.visibility.Visibility = grit.core.visibility.Visibility.Shipped
   ) {
-    val inbox: InMemoryInbox = InMemoryInbox.fresh(budget = budget)
+    val inbox: InMemoryInbox = InMemoryInbox.fresh(budget = budget, visibility = visibility)
 
     /** The edge serving `workspace`, advertising [[hostedTools]], answering each call at once. */
     val edge: Served = {
@@ -179,6 +180,20 @@ object TurnDelegateTests extends TestSuite {
         .named(durable.recordedSteps(parent.workflowId))
         .filter(_.startsWith("call:0:0"))
 
+    /** What each call the parent's conversation kept is believed at, in order. */
+    def believed: Vector[Integrity] = {
+      given Tx = TestTx.fake
+      inbox.entries.list(parent.conversationId).toOption.toVector.flatten.collect {
+        case e @ Entry(_, _, _, _, _, Payload.Result(_, _), _, _) => e.integrity
+      }
+    }
+
+    /** What the parent's first entry is believed at. */
+    def rooted: Option[Integrity] = {
+      given Tx = TestTx.fake
+      inbox.entries.ofTurn(parent).toOption.flatMap(_.headOption).map(_.integrity)
+    }
+
     /** The children the inbox keeps. */
     def kept: Int =
       inbox.conversations.all.count(_.origin.isInstanceOf[Origin.Spawned])
@@ -241,6 +256,38 @@ object TurnDelegateTests extends TestSuite {
       (crashed, world.results) ==> (
         true,
         Vector("The scholar run replied, spending $0.001:\n<reply>\nFound it.\n</reply>")
+      )
+    }
+
+    test(
+      "a run that read what is believed below its parent has its reply kept at the reply's integrity, not the parent's"
+    ) {
+      val scratch = grit.core.agent.SubagentFixtures.scratch
+      val work = grit.core.place.WorkName.of("fix-typo").fold(sys.error, identity)
+      // The run reads a file its edge serves, believed at what no cap declares, then replies.
+      val reading = new Scripted((_, n) =>
+        Right(
+          if (n == 0)
+            said(
+              "",
+              AssistantBlock.ToolCall(ToolCallId("r0"), "fetch", ujson.Obj("path" -> "a.txt"))
+            )
+          else said("Fixed.")
+        )
+      )
+      val world = new Parenting(
+        new InMemoryDurable,
+        reading,
+        origin = Origin.Work(scratch, work),
+        subagents = coders,
+        by = Account.Local,
+        workspace = scratch.place
+      )
+      val _ = world.run(delegating(ujson.Obj("agent" -> "coder", "task" -> "Fix the typo.")))
+      (world.rooted, world.believed, world.results) ==> (
+        Some(Integrity.Authority),
+        Vector(Integrity.Untrusted),
+        Vector("The coder run replied, spending $0.002:\n<reply>\nFixed.\n</reply>")
       )
     }
 
