@@ -657,20 +657,17 @@ private[dbos] object SqlInbox {
       case None => kept(child.replyId).map(if (_) SpawnReply.Unread else SpawnReply.Silent)
     }
 
-  /** Whether an entry `id` is kept, whatever the transaction's clearance: the one bit
-    * [[replyOf]] tells apart as `Unread`, never what it holds.
-    */
   /** [[SpawnInbox.granted]]: the caps of the root notes of the conversations whose origin names
-    * `parent`, by their origin's fields and in the order they were made, whatever the
-    * transaction's clearance. No index serves the origin's fields: it reads every conversation.
+    * `parent`, by containment of their origin's fields and in the order they were made, whatever
+    * the transaction's clearance. No index serves the origin yet: it reads every conversation.
     */
   private[engine] def grantedOf(parent: TurnRef)(using Tx^): Either[StoreError, Vector[SpendCap]] =
     SqlStatements
       .many(
         """SELECT e.payload->>'spendCap' FROM grit.conversations c
           |JOIN grit.entries e ON e.conversation_id = c.id
-          |WHERE c.origin->>'kind' = 'spawned' AND c.origin->>'conversation' = ?
-          |  AND (c.origin->>'turn')::bigint = ? AND e.payload->>'kind' = 'spawn'
+          |WHERE c.origin @> jsonb_build_object('kind', 'spawned', 'conversation', ?::text, 'turn', ?::bigint)
+          |  AND e.payload->>'kind' = 'spawn'
           |ORDER BY c.id""".stripMargin
       ) { s =>
         s.setString(1, ConversationId.value(parent.conversationId))
@@ -688,6 +685,9 @@ private[dbos] object SqlInbox {
         )
       )
 
+  /** Whether an entry `id` is kept, whatever the transaction's clearance: the one bit
+    * [[replyOf]] tells apart as `Unread`, never what it holds.
+    */
   private def kept(id: EntryId)(using Tx^): Either[StoreError, Boolean] =
     SqlStatements
       .many("SELECT 1 FROM grit.entries WHERE id = ?")(_.setString(1, EntryId.value(id)))(_ => ())
