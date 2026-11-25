@@ -320,7 +320,9 @@ object Tried {
     * the grade its turn's calls were routed to and the effort they asked, followed by
     * `(set <effort>)` when that is not what `settings` asked (`none` when unset); a pin asking
     * none at the Anthropic API as [[AnthropicProvider.DefaultEffort]], `(grit's default)`, the
-    * effort that provider sends then; the window a boundary draws (grit's own default when
+    * effort that provider sends then; the reasoning replay its pin sent under, in
+    * [[Arm.Settings.replayWord]]'s words, followed by `(set <replay>)` when `settings` set
+    * another; the window a boundary draws (grit's own default when
     * unset); and the input limit. What `ran` holds no record of is `not recorded`, and what did
     * not read `not read`.
     */
@@ -339,13 +341,23 @@ object Tried {
       case Right(None) => s"effort not recorded (set $set)"
       case Left(_) => s"effort not read (set $set)"
     }
+    val setReplay = settings.replay.map(Arm.Settings.replayWord)
+    def setBeside(sent: Option[String]) =
+      setReplay.filterNot(sent.contains).fold("")(s => s" (set $s)")
+    val replay = ran.pin match {
+      case Right(Some(p)) =>
+        val sent = Arm.Settings.replayWord(p.settings.replay)
+        s"replay $sent${setBeside(Some(sent))}"
+      case Right(None) => s"replay not recorded${setBeside(None)}"
+      case Left(_) => s"replay not read${setBeside(None)}"
+    }
     val window = Tokens.value(settings.window.getOrElse(LinearAssembler.DefaultBudget))
     val limit = ran.inputLimit match {
       case Right(Some(l)) => s"${Tokens.value(l)} tokens"
       case Right(None) => "not recorded"
       case Left(_) => "not read"
     }
-    s"under: $asked; window $window tokens; input limit $limit"
+    s"under: $asked; $replay; window $window tokens; input limit $limit"
   }
 
   /** What a person reads of what `consumed` spent, a line each: each call's tokens, then its cost

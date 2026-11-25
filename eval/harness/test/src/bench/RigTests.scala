@@ -821,7 +821,7 @@ object RigTests extends TestSuite {
               "[main] said",
               "[rig] the tail of grit's errors:",
               "a log line",
-              "[rig] under: effort not recorded (set none); window 100000 tokens; input limit 450000 tokens"
+              "[rig] under: effort not recorded (set none); replay not recorded; window 100000 tokens; input limit 450000 tokens"
             )
           )
         )
@@ -1052,26 +1052,42 @@ object RigTests extends TestSuite {
               val log = Files.readString(f.root.resolve("grit.log")).linesIterator.toVector
               (t.lines.filter(_.startsWith("under:")), log.filter(_.contains("under:")))
             }
-        def pin(grade: Grade, ref: ModelRef, effort: Option[Effort]) =
-          Pinned(CatalogVersion("v"), grade, Assignment(ref, 8192, effort), Settings.of(None))
+        def pin(grade: Grade, ref: ModelRef, effort: Option[Effort], replay: ReasoningReplay) =
+          Pinned(
+            CatalogVersion("v"),
+            grade,
+            Assignment(ref, 8192, effort),
+            Settings.of(None).copy(replay = replay)
+          )
         val (fireworks, anthropic) = (deepseek.pair, cap.pair)
         // Routed to its strong rung, which a hard root's allotment asks at high.
         val strong = RanUnder(
-          Right(Some(pin(Grade.Strong, fireworks, Some(Effort.High)))),
+          Right(Some(pin(Grade.Strong, fireworks, Some(Effort.High), ReasoningReplay.Details))),
           Right(Some(Tokens(450_000)))
         )
-        val defaulted =
-          RanUnder(Right(Some(pin(Grade.Standard, anthropic, None))), Right(None))
-        val high = "under: grade strong, effort high (set medium); window 100000 tokens; " +
-          "input limit 450000 tokens"
-        val medium = "under: grade standard, effort medium (grit's default); window 25000 " +
-          "tokens; input limit not recorded"
-        val unread = "under: effort not read (set medium); window 100000 tokens; input limit " +
-          "not read"
+        val defaulted = RanUnder(
+          Right(Some(pin(Grade.Standard, anthropic, None, ReasoningReplay.Latest))),
+          Right(None)
+        )
+        val high = "under: grade strong, effort high (set medium); replay all (set latest); " +
+          "window 100000 tokens; input limit 450000 tokens"
+        val medium = "under: grade standard, effort medium (grit's default); replay latest; " +
+          "window 25000 tokens; input limit not recorded"
+        val unread = "under: effort not read (set medium); replay not read (set none); window " +
+          "100000 tokens; input limit not read"
         (
-          under(Arm.Settings(effort = Some(Effort.Medium)), strong),
-          under(Arm.Settings(window = Some(Tokens(25_000))), defaulted),
-          under(Arm.Settings(effort = Some(Effort.Medium)), RanUnder(Left("gone"), Left("gone")))
+          under(
+            Arm.Settings(effort = Some(Effort.Medium), replay = Some(ReasoningReplay.Latest)),
+            strong
+          ),
+          under(
+            Arm.Settings(window = Some(Tokens(25_000)), replay = Some(ReasoningReplay.Latest)),
+            defaulted
+          ),
+          under(
+            Arm.Settings(effort = Some(Effort.Medium), replay = Some(ReasoningReplay.Dropped)),
+            RanUnder(Left("gone"), Left("gone"))
+          )
         ) ==> (
           Right((Vector(high), Vector(s"[rig] $high"))),
           Right((Vector(medium), Vector(s"[rig] $medium"))),

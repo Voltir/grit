@@ -87,6 +87,7 @@ check, and no check after it run). Every JVM grit's tree and the task's checks s
 machine's memory. grit's own output and the tail of its errors go to the run's log, then a line its
 report prints too (`Tried.under`): the grade and effort its last turn's calls asked, as the turn
 recorded its route (`TurnRecord.pinned`), with the `--effort` set beside it when the two differ;
+the replay its pin sent under, with the `--replay` set beside it when the two differ;
 the window a boundary draws (`--window-tokens`, or the linear assembler's default); and the input
 limit its last turn recorded with its window
 (`TurnLoop.inputLimit`: the pin's effective context or first price rise where its profile gives
