@@ -277,9 +277,17 @@ object SpawningTests extends TestSuite {
     test("a ring sent before the wait wakes the first rung, and the reply is read once") {
       val w = new World(does = Vector(replied("Found it.")))
       val (turn, origin) = w.parent("rung")
-      (w.spawn(request(turn, origin)), w.recorded(turn)) ==> (
+      val got = w.spawn(request(turn, origin))
+      val received = w.durable.history(turn.workflowId).collect {
+        case InMemoryDurable.Step(name, o) if name.startsWith("DBOS.") => name -> o
+      }
+      (got, w.recorded(turn), received) ==> (
         Vector("Replied(c2, Found it.@member, Exact(0.01))"),
-        Vector("narrow:0:0", "spawn:0:0", "ended:0:0", "read:0:0")
+        Vector("narrow:0:0", "spawn:0:0", "ended:0:0", "read:0:0"),
+        Vector(
+          "DBOS.recv" -> InMemoryDurable.Outcome.Output("rang"),
+          "DBOS.sleep" -> InMemoryDurable.Outcome.Output("300000")
+        )
       )
     }
 
