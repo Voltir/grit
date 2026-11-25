@@ -92,7 +92,8 @@ object DelegateLiveTests extends TestSuite {
         val results = right(engine.db.read(Subject.Turn(turn))(engine.entries.ofTurn(turn)))
           .map(_.payload)
           .collect { case Payload.Result(r, _) => r.content }
-        results ==> Vector("The scholar run replied, spending ≥ $0:\n<reply>\nFound it.\n</reply>")
+        // The stub prices nothing, so the reply says no spend.
+        results ==> Vector("The scholar run replied:\n<reply>\nFound it.\n</reply>")
       } finally engine.close()
     }
   }

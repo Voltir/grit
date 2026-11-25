@@ -5,6 +5,7 @@ import grit.core.act.Delegation
 import grit.core.agent.Subagent
 import grit.core.flow.{Tainted, Trusted}
 import grit.core.id.AgentType
+import grit.core.message.Cost
 import grit.core.place.Service
 import grit.core.prompt.{Fenced, Tag}
 import grit.core.tool.{Args, ArgsError, Field, Hosted, Outcome, Tool, ToolName, ToolSpec}
@@ -34,23 +35,28 @@ object TurnDelegate {
     */
   def answer(agent: AgentType, came: Delegated): Outcome = {
     val run = s"The ${AgentType.value(agent)} run"
+    // What it spent, when every call of it was priced; nothing, when one was not.
+    def priced(spent: Cost, said: String -> String): String = spent match {
+      case Cost.Exact(_) => said(spent.written)
+      case Cost.AtLeast(_) => ""
+    }
     came match {
       case Delegated.Replied(_, reply, spent) =>
-        Outcome.Done(s"$run replied, spending ${spent.written}:\n${fenced(reply)}")
+        Outcome.Done(s"$run replied${priced(spent, s => s", spending $s")}:\n${fenced(reply)}")
       case Delegated.Limited(_, Some(reply), spent) =>
         Outcome.Done(
-          s"$run stopped before finishing, at its spending or step limit, after spending " +
-            s"${spent.written}. What it handed back:\n${fenced(reply)}"
+          s"$run stopped before finishing, at its spending or step limit" +
+            s"${priced(spent, s => s", after spending $s")}. What it handed back:\n" +
+            fenced(reply)
         )
       case Delegated.Limited(_, None, spent) =>
         Outcome.Done(
-          s"$run stopped before finishing, at its spending or step limit, after spending " +
-            s"${spent.written}, and handed back nothing."
+          s"$run stopped before finishing, at its spending or step limit" +
+            s"${priced(spent, s => s", after spending $s")}, and handed back nothing."
         )
       case Delegated.Refused(Delegation.Refused.Below(_, _)) =>
         Outcome.Failed(
-          s"$run was not started: what this conversation has read is not trusted enough to " +
-            "hand to it."
+          s"$run was not started: this conversation is not trusted enough to hand it a task."
         )
       case Delegated.Refused(Delegation.Refused.Above(_, _)) =>
         Outcome.Failed(
@@ -73,11 +79,13 @@ object TurnDelegate {
       // whatever else kept it from starting is journaled, never shown.
       case Delegated.Refused(Delegation.Refused.Direct(_)) |
           Delegated.Refused(Delegation.Refused.OverCap(_, _, _)) | Delegated.Unspawned(_) =>
-        Outcome.Failed(s"$run could not be started.")
+        Outcome.Failed(
+          s"$run could not be started. Do the task yourself, or say it could not be done."
+        )
       case Delegated.Unanswered(_) =>
         Outcome.Failed(
-          s"$run did not finish within ${Spawning.Within.toMinutes} minutes; its reply will " +
-            "not reach you here."
+          s"$run has not finished after ${Spawning.Within.toMinutes} minutes, so this call has " +
+            "no reply. It may still be working; starting it again would start a second run."
         )
       case Delegated.Unread(_) | Delegated.Failed(_, _) =>
         Outcome.Failed(s"$run ended without a reply.")

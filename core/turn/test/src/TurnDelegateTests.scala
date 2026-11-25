@@ -219,7 +219,7 @@ object TurnDelegateTests extends TestSuite {
       )
     }
 
-    test("a parent killed while it waits for its child makes it once, and its rerun waits on") {
+    test("a parent that dies reading its child's end keeps one child and reads on") {
       val durable = new InMemoryDurable
       val world = new Parenting(
         durable,
@@ -234,8 +234,9 @@ object TurnDelegateTests extends TestSuite {
         true,
         1,
         Vector(
-          s"The scholar run did not finish within ${grit.act.phase.Spawning.Within.toMinutes} " +
-            "minutes; its reply will not reach you here."
+          s"The scholar run has not finished after ${grit.act.phase.Spawning.Within.toMinutes} " +
+            "minutes, so this call has no reply. It may still be working; starting it again " +
+            "would start a second run."
         )
       )
     }
@@ -300,8 +301,8 @@ object TurnDelegateTests extends TestSuite {
       val _ = world.run(delegating(asked))
       (world.results, world.kept) ==> (
         Vector(
-          "The scholar run was not started: what this conversation has read is not trusted " +
-            "enough to hand to it."
+          "The scholar run was not started: this conversation is not trusted enough to hand " +
+            "it a task."
         ),
         0
       )
@@ -349,6 +350,29 @@ object TurnDelegateTests extends TestSuite {
       (world.results, world.kept) ==> (
         Vector("The scholar run was not started: today's spending limit is reached."),
         0
+      )
+    }
+
+    test(
+      "a run not started for a reason the model cannot act on is told only that, and what to do; an unpriced spend is not stated"
+    ) {
+      val child =
+        grit.core.id.TurnRef(grit.core.id.ConversationId("c9"), grit.core.id.TurnSeq.First)
+      val unpriced = grit.core.message.Cost.AtLeast(BigDecimal(0))
+      (
+        TurnDelegate.answer(grit.core.agent.SubagentFixtures.scholar, Delegated.Unspawned("down")),
+        TurnDelegate.answer(
+          grit.core.agent.SubagentFixtures.scholar,
+          Delegated.Limited(child, None, unpriced)
+        )
+      ) ==> (
+        grit.core.tool.Outcome.Failed(
+          "The scholar run could not be started. Do the task yourself, or say it could not be done."
+        ),
+        grit.core.tool.Outcome.Done(
+          "The scholar run stopped before finishing, at its spending or step limit, and handed " +
+            "back nothing."
+        )
       )
     }
 
