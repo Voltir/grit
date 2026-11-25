@@ -79,6 +79,25 @@ object EdgesTests extends TestSuite {
       ) ==> Vector.fill(3)(Left(Refused.NoRoute(grit.place)))
     }
 
+    test(
+      "a repository's place routes a child spawned in that repository's room to the child's own run; one spawned in another room has no route"
+    ) {
+      val grit = repository("grit")
+      val other = repository("other")
+      val serving = by.copy(places = Set(grit.place))
+      val parent = TurnRef(ConversationId("p"), TurnSeq.First)
+      def child(within: Place) = Some(Origin.Spawned(parent, run("s1-0-0123456789abcdef"), within))
+      // A services child of a run of work is made in the same room; only its toolbox, which
+      // offers it no coding tools, keeps it out of a copy.
+      Vector(grit.place, other.place, Place.under(Namespace.Slack, Vector("acme", "dev"))).map(
+        within => Edges.authorize(request(grit.place), serving, child(within))
+      ) ==> Vector(
+        Right(Route.Repository(grit, run("s1-0-0123456789abcdef"))),
+        Left(Refused.NoRoute(grit.place)),
+        Left(Refused.NoRoute(grit.place))
+      )
+    }
+
     test("a place within a repository has no route, even for that repository's run") {
       val grit = repository("grit")
       val within = Place.under(Namespace.Repository, Vector("grit", "w1"))

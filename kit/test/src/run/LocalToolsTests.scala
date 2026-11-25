@@ -87,6 +87,19 @@ object LocalToolsTests extends TestSuite {
       tool: String,
       arguments: ujson.Value,
       destination: Place => Option[Place] = Some(_)
+  ): Outcome =
+    from(tools, repository, Origin.Work(of, run), tool, arguments, destination)
+
+  /** `tool` called with `arguments` by `tools` at `repository`'s place, from a conversation of
+    * `origin`, its request's destination `destination` of its workspace.
+    */
+  private def from(
+      tools: LocalTools^,
+      repository: Repository,
+      origin: Origin,
+      tool: String,
+      arguments: ujson.Value,
+      destination: Place => Option[Place] = Some(_)
   ): Outcome = {
     val turn = TurnRef(ConversationId("c"), TurnSeq.First)
     val q = ToolRequest(
@@ -106,7 +119,7 @@ object LocalToolsTests extends TestSuite {
       .authorize(
         q,
         Registration(EdgeId("e"), PrincipalId.Local, Set(q.workspace)),
-        Some(Origin.Work(of, run))
+        Some(origin)
       )
       .fold(r => throw new java.lang.AssertionError(r.toString), identity)
     tools.run(route, q, _ => ())
@@ -413,6 +426,73 @@ object LocalToolsTests extends TestSuite {
               .map(_.message)
           )
         } ==> (Outcome.Done("Wrote made.txt: 1 line."), Some("a\n"), false)
+      }
+    }
+
+    test(
+      "a coding child of a run writes, commits and offers its pull request in its own copy on grit/{name}, and the run's copy, holding changes never committed, is left as it was"
+    ) {
+      GitFixture.inRepository { repo =>
+        for ((k, v) <- Vector("user.name" -> "t", "user.email" -> "t@example.com"))
+          GitFixture.git(repo, repo.source, "config", k, v)
+        val remoteRepository = new GitFixture.FakeRemoteRepository(repo.origin.toString)
+        val w1 = GitFixture.work("w1")
+        val name = GitFixture.work("s1-0-0123456789abcdef")
+        val child = Origin.Spawned(
+          TurnRef(ConversationId("c-parent"), TurnSeq.First),
+          name,
+          GitFixture.repository.place
+        )
+        def asked(tool: String, arguments: ujson.Value, to: Place => Option[Place] = Some(_))(
+            tools: LocalTools^
+        ) = from(tools, GitFixture.repository, child, tool, arguments, to)
+        val (said, parentCopy) = pushingIn(repo, remoteRepository) { (tools, copies) =>
+          right(
+            copies
+              .held(w1) { mine =>
+                // The run's own work in progress, never committed.
+                val _ = Files.writeString(mine.resolve("draft.txt"), "draft\n")
+                val said = Vector(
+                  asked("write", made("fixed\n"))(tools),
+                  asked(
+                    "run",
+                    ujson.Obj("program" -> "git", "args" -> ujson.Arr("add", "made.txt"))
+                  )(
+                    tools
+                  ),
+                  asked(
+                    "run",
+                    ujson.Obj("program" -> "git", "args" -> ujson.Arr("commit", "-qm", "fix"))
+                  )(tools),
+                  asked("offer_pull_request", offer, _ => Some(remotePlace))(tools)
+                )
+                (
+                  said.map(_.getClass.getSimpleName),
+                  (
+                    Some(mine.resolve("draft.txt")).filter(Files.exists(_)).map(Files.readString),
+                    Files.exists(mine.resolve("made.txt"))
+                  )
+                )
+              }
+              .left
+              .map(_.message)
+          )
+        }
+        val branch = s"grit/${WorkName.value(name)}"
+        val local = GitFixture.git(repo, repo.source, "rev-parse", branch).output.text.trim
+        val pushed = GitFixture
+          .git(repo, repo.origin, "for-each-ref", "--format=%(objectname)", s"refs/heads/$branch")
+          .output
+          .text
+          .trim
+        val holds = GitFixture.git(repo, repo.source, "show", s"$branch:made.txt").output.text
+        (said, parentCopy, pushed == local, holds, remoteRepository.opens.size) ==> (
+          Vector("Done", "Done", "Done", "Done"),
+          (Some("draft\n"), false),
+          true,
+          "fixed\n",
+          1
+        )
       }
     }
 

@@ -52,9 +52,10 @@ object Edges {
 
   /** Whether `by` may run `request`, and where: an edge serves only the places it registered;
     * a directory place is routed to its directory, a service place to its service, and a
-    * repository's place to the run `origin` names there, `origin` being that of the
-    * conversation whose turn made `request` ([[Desk.origin]]). The one routing decision; the
-    * permission model will plug in here.
+    * repository's place to the run `origin` names there, or a child spawned within that
+    * repository, its run its name, `origin` being that of the conversation whose turn made
+    * `request` ([[Desk.origin]]). The one routing decision; the permission model will plug in
+    * here.
     */
   def authorize(
       request: ToolRequest,
@@ -66,9 +67,13 @@ object Edges {
       at.directory
         .map(Route.Directory(_))
         .orElse(at.service.map(Route.Service(_)))
-        .orElse(origin.collect {
+        .orElse(origin.flatMap {
           case Origin.Work(repository, work) if repository.place == at =>
-            Route.Repository(repository, work)
+            Some(Route.Repository(repository, work))
+          // A child's room is its repository's place exactly, as a run of work's is.
+          case Origin.Spawned(_, name, within) if within == at =>
+            at.repository.filter(_.place == at).map(Route.Repository(_, name))
+          case _ => None
         })
         .toRight(Refused.NoRoute(at))
     }
