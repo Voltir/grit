@@ -11,7 +11,16 @@ import grit.core.clock.Clock
 import grit.core.host.{Argv, Handing, HostError, Memory, Processes, RelPath, Variables}
 import grit.core.id.{Harness, ToolCallId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.model.{Assignment, CatalogVersion, Effort, Grade, ModelRef, Pinned, Settings}
+import grit.core.model.{
+  Assignment,
+  CatalogVersion,
+  Effort,
+  Grade,
+  ModelRef,
+  Pinned,
+  ReasoningReplay,
+  Settings
+}
 import grit.core.secret.{TestSecrets, Variable}
 import grit.dbos.internal.TrialRows
 import grit.host.checkout.{LocalHanding, LocalProcesses, Redaction}
@@ -1003,6 +1012,26 @@ object RigTests extends TestSuite {
           )
         (efforts(Arm.Settings(effort = Some(Effort.Medium))), efforts(Arm.Settings())) ==> (
           Right(Vector("GRIT_DREAM_EFFORT=medium", "GRIT_EFFORT=medium")),
+          Right(Vector.empty)
+        )
+      }
+    }
+
+    test(
+      "a grit trial's replay reaches grit in the catalog's word, and a trial with none sets none"
+    ) {
+      withTask { f =>
+        def replays(settings: Arm.Settings) =
+          gritTrial(f, GritFake(gritLines), settings = settings).map(_ =>
+            f.recorded("genv").linesIterator.filter(_.contains("REPLAY")).toVector
+          )
+        (
+          replays(Arm.Settings(replay = Some(ReasoningReplay.Latest))),
+          replays(Arm.Settings(replay = Some(ReasoningReplay.Dropped))),
+          replays(Arm.Settings())
+        ) ==> (
+          Right(Vector("GRIT_REPLAY=latest")),
+          Right(Vector("GRIT_REPLAY=dropped")),
           Right(Vector.empty)
         )
       }

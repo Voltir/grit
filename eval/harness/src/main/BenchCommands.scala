@@ -50,8 +50,9 @@ private[main] object BenchCommands {
     * harness: `--harness claude-code` (the default) with `--claude <program> --agent <file>`, or
     * `--harness grit` with `--grit <launcher> --java-home <dir> --standing <file> --coder-url
     * <jdbc> --max-tokens <n> [--max-memory-gb <n>] [--window-tokens <n>] [--work-turns <n>]
-    * [--effort <effort>]` ([[MemoryCap.of]], [[MemoryCap.Default]] when not given; the last three
-    * grit's [[Arm.Settings]], the effort a word [[CatalogJson.readEffort]] reads; a standing file
+    * [--effort <effort>] [--replay all|none|latest]` ([[MemoryCap.of]], [[MemoryCap.Default]] when
+    * not given; the last four grit's [[Arm.Settings]], the effort a word [[CatalogJson.readEffort]]
+    * reads, the replay one [[Arm.Settings.readReplay]] reads; a standing file
     * [[Standing.read]] refuses is refused before anything runs): the task
     * `<name>` of `<dir>` ([[BenchTask.of]], its `task.json` and `brief.md`), in a checkout under `<work>` named for it and `clock`'s now, of the repository
     * at `<path>`. With `--known`, its own commits through its checks ([[Rig.known]]). With `--dry
@@ -182,6 +183,11 @@ private[main] object BenchCommands {
                         .left
                         .map(why => s"--effort $e: $why")
                   }
+                  replay <- f.get("replay") match {
+                    case None => Right(None)
+                    case Some(r) =>
+                      Arm.Settings.readReplay(r).map(Some(_)).left.map(why => s"--replay $r $why")
+                  }
                   passed <- Variables.of(
                     Map(
                       "PATH" -> sys.env.getOrElse("PATH", "/usr/bin:/bin"),
@@ -196,7 +202,7 @@ private[main] object BenchCommands {
                     url,
                     maxTokens,
                     passed,
-                    Arm.Settings(window, workTurns, effort)
+                    Arm.Settings(window, workTurns, effort, replay)
                   )
                   _ <-
                     if (f.get("dry").contains("true"))

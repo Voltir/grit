@@ -14,7 +14,7 @@ import grit.core.clock.Clock
 import grit.core.host.{Argv, Handing, Memory, Processes, Ran, RelPath, Variables}
 import grit.core.id.{Harness, SessionId}
 import grit.core.message.{Cost, SpendCap, Tokens, Usage}
-import grit.core.model.{CatalogJson, Effort, Grade, ModelId, ModelRef, Upstream}
+import grit.core.model.{CatalogJson, Effort, Grade, ModelId, ModelRef, ReasoningReplay, Upstream}
 import grit.core.secret.{Secret, Variable}
 import grit.dbos.internal.TrialRows
 import grit.dbos.sql.DbConfig
@@ -184,13 +184,33 @@ object Arm {
     * (`effort`, `GRIT_EFFORT` and `GRIT_DREAM_EFFORT`; the turn's summary, query and heard roles,
     * the heard role the task classifier, follow the turn's); each unset leaves grit's own
     * default. A call routed to another rung, or allotted another effort, asks that one
-    * ([[Tried.under]] reports which).
+    * ([[Tried.under]] reports which). `replay` is how the turn's calls send earlier reasoning
+    * back (`GRIT_REPLAY`, [[grit.models.OpenRouterConfig.ReplayVar]]), unset its pair's profile's.
     */
   final case class Settings(
       window: Option[Tokens] = None,
       workTurns: Option[Int] = None,
-      effort: Option[Effort] = None
+      effort: Option[Effort] = None,
+      replay: Option[ReasoningReplay] = None
   )
+
+  object Settings {
+
+    /** How `--replay` names `replay`: `all`, `none`, `latest`. */
+    def replayWord(replay: ReasoningReplay): String = replay match {
+      case ReasoningReplay.Details => "all"
+      case ReasoningReplay.Dropped => "none"
+      case ReasoningReplay.Latest => "latest"
+    }
+
+    /** The replay [[replayWord]] spells `word`, or why there is none. */
+    def readReplay(word: String): Either[String, ReasoningReplay] = {
+      val replays = ReasoningReplay.values.toVector
+      replays
+        .find(replayWord(_) == word)
+        .toRight(s"is not one of ${replays.map(replayWord).mkString(", ")}")
+    }
+  }
 
   object Grit {
 
@@ -866,7 +886,8 @@ object Rig {
       s.workTurns.map(n => "GRIT_WORK_TURNS" -> n.toString) ++
       s.effort.toVector.flatMap(e =>
         Vector(ModelRole.Turn, ModelRole.Dream).map(_.effortVar -> CatalogJson.effort(e))
-      )
+      ) ++
+      s.replay.map(r => OpenRouterConfig.ReplayVar -> CatalogJson.replay(r))
 
   /** The script `sh -c` runs to start grit with its key: the key read from the file its first
     * argument names into `key`, then the rest of its arguments run in its place, so the key is in

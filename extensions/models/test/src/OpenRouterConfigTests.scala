@@ -269,5 +269,29 @@ object OpenRouterConfigTests extends TestSuite {
       OpenRouterConfig.Invalid.NotAnEffort("GRIT_EFFORT").message ==>
         "GRIT_EFFORT is not one of minimal, low, medium, high, xhigh, max"
     }
+
+    test(
+      "the replay variable sets every rung of the turn's ladder and no other role's; unset or blank changes nothing"
+    ) {
+      val graded = seedLike.copy(turn =
+        Ladder
+          .of(Vector(Rung(Grade.Standard, seedTurn), Rung(Grade.Strong, seedSummary)))
+          .getOrElse(throw new java.lang.AssertionError("ladder"))
+      )
+      def laid(env: (String, String)*) = OpenRouterConfig.policy(env.toMap, graded)
+      laid(OpenRouterConfig.ReplayVar -> "latest").map(p =>
+        (p.turn.rungs.map(_.assignment.replay), p.summary.first.assignment.replay)
+      ) ==> Right((Vector(Some(ReasoningReplay.Latest), Some(ReasoningReplay.Latest)), None))
+      // A role following the turn's model does not follow its replay.
+      laid(OpenRouterConfig.ReplayVar -> "dropped", "GRIT_MODEL" -> "x/y").map(p =>
+        p.summary.first.assignment.replay
+      ) ==> Right(None)
+      laid() ==> Right(graded)
+      laid(OpenRouterConfig.ReplayVar -> " ") ==> Right(graded)
+      laid(OpenRouterConfig.ReplayVar -> "all") ==>
+        Left(OpenRouterConfig.Invalid.NotAReplay(OpenRouterConfig.ReplayVar))
+      OpenRouterConfig.Invalid.NotAReplay(OpenRouterConfig.ReplayVar).message ==>
+        "GRIT_REPLAY is not one of details, dropped, latest"
+    }
   }
 }

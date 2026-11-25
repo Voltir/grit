@@ -64,7 +64,11 @@ turn's standard rung and its dreaming ask (`GRIT_EFFORT` and `GRIT_DREAM_EFFORT`
 catalog's holds, and the seed asks none. The effort a call asks is not always the one set: a turn
 routed to its strong or light rung asks that rung's, and the route's allotment can raise or lower
 it (`Allotment.Reasoning`); a pin asking none at the Anthropic API is sent
-`AnthropicProvider.DefaultEffort`, and elsewhere its provider thinks at its own default. Its turn is kept in `grit_bench_coder`, which
+`AnthropicProvider.DefaultEffort`, and elsewhere its provider thinks at its own default.
+`--replay` sets which of a turn's earlier replies send their reasoning back on its later calls
+(`GRIT_REPLAY`, laid over every rung of the turn's ladder and no other role's): `all`, `none`, or
+`latest`, the last reply's alone, so each call rewrites the cache from the previous reply on;
+unset, the pair's profile's holds (`details`, all, unless the catalog says otherwise). Its turn is kept in `grit_bench_coder`, which
 `scripts/eval` drops and makes afresh before each run (`--keep-coder` copies it as the run
 ends, for a report across its turns), and read back from there for the trial: the
 calls and bytes before its first edit, and each `run` that failed as a denial. Its calls are read

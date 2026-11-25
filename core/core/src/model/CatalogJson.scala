@@ -174,6 +174,12 @@ object CatalogJson {
   /** The effort written `v` ([[effort]]'s form), or why it is none. */
   def readEffort(v: ujson.Value): Either[String, Effort] = EffortWords.read(v, "an effort")
 
+  /** How the catalog writes `replay`: `details`, `dropped`, `latest`. */
+  def replay(replay: ReasoningReplay): String = ReplayWords.of(replay)
+
+  /** The replay written `v` ([[replay]]'s form), or why it is none. */
+  def readReplay(v: ujson.Value): Either[String, ReasoningReplay] = ReplayWords.read(v, "a replay")
+
   private val AfterWords: Words[AfterToolResult] = Words(
     AfterToolResult.values.toVector,
     {
@@ -211,6 +217,8 @@ object CatalogJson {
     val o = ref(a.ref, into)
     o("maxTokens") = a.maxTokens
     a.effort.foreach(e => o("effort") = EffortWords.of(e))
+    // Written only when set, so every assignment kept before it keeps its bytes and version.
+    a.replay.foreach(r => o("replay") = ReplayWords.of(r))
     o
   }
 
@@ -351,7 +359,8 @@ object CatalogJson {
         case None => Right(None)
         case Some(e) => EffortWords.read(e, s"$at.effort").map(Some(_))
       }
-    } yield Assignment(r, max, effort)
+      replay <- optional(o, "replay", at)(ReplayWords.read)
+    } yield Assignment(r, max, effort, replay)
 
   private def readGrade(o: Fields, at: String): Either[String, Grade] =
     o.get("grade") match {

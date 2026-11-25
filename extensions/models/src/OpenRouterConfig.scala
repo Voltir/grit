@@ -5,6 +5,7 @@ import java.time.Duration
 
 import grit.core.model.{
   Assignment,
+  CatalogJson,
   Effort,
   Grade,
   Ladder,
@@ -45,6 +46,7 @@ object OpenRouterConfig {
     case NotAModel(variable: String)
     case NotAnUpstream(variable: String)
     case NotAnEffort(variable: String)
+    case NotAReplay(variable: String)
 
     /** Names the variable, never its value. */
     def message: String = this match {
@@ -54,8 +56,14 @@ object OpenRouterConfig {
       case NotAnUpstream(v) =>
         s"$v is not one OpenRouter upstream slug, such as open-inference/fp8"
       case NotAnEffort(v) => s"$v is not one of minimal, low, medium, high, xhigh, max"
+      case NotAReplay(v) => s"$v is not one of ${CatalogJson.settingWords("replay").mkString(", ")}"
     }
   }
+
+  /** The variable naming, in the catalog's words ([[CatalogJson.replay]]), the reasoning replay
+    * every rung of the turn's ladder is sent under for this run, over its pair's settings.
+    */
+  val ReplayVar: String = "GRIT_REPLAY"
 
   /** `policy` with each role's variables ([[ModelRole]]) laid over its ladder for this run; a
     * blank variable is unset. A grade's model variable names the model of the role's rungs at
@@ -70,7 +78,8 @@ object OpenRouterConfig {
     * the ladder has no rung at sets only its upstream or budget. An effort variable replaces the
     * standard rung's effort, and a role that follows the turn's (or the summary's) standard model
     * follows its effort too, unless its own effort variable is set; an effort variable on a
-    * ladder with no standard rung changes nothing.
+    * ladder with no standard rung changes nothing. [[ReplayVar]] sets the replay of every rung
+    * of the turn's ladder as laid, and no role follows it.
     */
   def policy(env: Map[String, String], policy: Policy): Either[Invalid, Policy] = {
     def set(variable: String): Option[String] = env.get(variable).map(_.trim).filter(_.nonEmpty)
@@ -179,8 +188,22 @@ object OpenRouterConfig {
     def standard(l: Ladder): Option[Assignment] =
       l.rungs.find(_.grade == Grade.Standard).map(_.assignment)
 
+    val replay: Either[Invalid, Option[ReasoningReplay]] = set(ReplayVar) match {
+      case None => Right(None)
+      case Some(r) =>
+        CatalogJson
+          .readReplay(ujson.Str(r))
+          .map(Some(_))
+          .left
+          .map(_ => Invalid.NotAReplay(ReplayVar))
+    }
+
     for {
-      turn <- ladder(ModelRole.Turn, policy.turn, None)
+      own <- ladder(ModelRole.Turn, policy.turn, None)
+      replayed <- replay
+      turn = replayed.fold(own)(r =>
+        own.map(rung => rung.copy(assignment = rung.assignment.copy(replay = Some(r))))
+      )
       followed = if (names(ModelRole.Turn)) standard(turn) else None
       summary <- ladder(ModelRole.Summary, policy.summary, followed)
       query <- ladder(ModelRole.Query, policy.query, followed)

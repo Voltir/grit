@@ -14,9 +14,15 @@ enum Effort(val word: String) {
 
 /** Which pair does one job, with its output budget (`maxTokens`, at least 1) and the effort
   * asked of it (`None`: the pin asks none, and its provider's default holds: grit's own where
-  * the provider always names one, as Anthropic's API does, else the model's).
+  * the provider always names one, as Anthropic's API does, else the model's), and the reasoning
+  * replay its calls are sent under in place of its pair's (`None`: its pair's settings hold).
   */
-final case class Assignment(ref: ModelRef, maxTokens: Int, effort: Option[Effort]) derives CanEqual
+final case class Assignment(
+    ref: ModelRef,
+    maxTokens: Int,
+    effort: Option[Effort],
+    replay: Option[ReasoningReplay] = None
+) derives CanEqual
 
 /** How strong a pair a call is made with, least first: a ladder's rungs are graded by it, and
   * a turn's effort stage asks for one. `word` is how grit writes it (the catalog, the ledger).
@@ -116,8 +122,11 @@ final case class Catalog private (
   def dream: Pins = pins(policy.dream)
 
   private def pins(ladder: Ladder): Pins = {
-    def pinned(r: Rung) =
-      Pinned(version, r.grade, r.assignment, Settings.of(profile(r.assignment.ref)))
+    def pinned(r: Rung) = {
+      val settings = Settings.of(profile(r.assignment.ref))
+      val replayed = r.assignment.replay.fold(settings)(v => settings.copy(replay = v))
+      Pinned(version, r.grade, r.assignment, replayed)
+    }
     Pins(pinned(ladder.first), ladder.rest.map(pinned))
   }
 
@@ -144,7 +153,8 @@ object Catalog {
 }
 
 /** What one rung of a role's calls in a turn are made under: the catalog it came from, the
-  * rung's grade and assignment, and the settings its pair resolves to.
+  * rung's grade and assignment, and the settings its pair resolves to, their replay the
+  * assignment's when it sets one.
   */
 final case class Pinned(
     version: CatalogVersion,

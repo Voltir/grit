@@ -131,6 +131,18 @@ object CatalogTests extends TestSuite {
       t.query ==> pin(queryAssigned, flashProfile)
     }
 
+    test(
+      "pin: an assignment's replay is its pin's over its pair's settings, and is stored only when set"
+    ) {
+      val replayed = turnAssigned.copy(replay = Some(ReasoningReplay.Latest))
+      val c = Catalog.of(policy.copy(turn = Ladder.one(replayed)), Vector(ossProfile))
+      c.pin.turn.first.settings.replay ==> ReasoningReplay.Latest
+      c.pin.summary.first.settings.replay ==> ReasoningReplay.Details
+      CatalogJson.read(ujson.read(CatalogJson.write(c).render())) ==> Right(c)
+      CatalogJson.readTurn(ujson.read(CatalogJson.writeTurn(c.pin).render())) ==> Right(c.pin)
+      CatalogJson.writePinned(catalog.pin.turn.first)("assignment").obj.contains("replay") ==> false
+    }
+
     test("pin: turns under one catalog share an id; a change to any one role's pin is another") {
       catalog.pin.id ==> Catalog.of(policy, Vector(ossProfile, flashProfile)).pin.id
       val t = catalog.pin
