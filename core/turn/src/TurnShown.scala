@@ -371,7 +371,7 @@ private[turn] object TurnShown {
     * its record's dated line as one user message and its turn's own entries as
     * [[Shown.turn]] shows them, its record's note added to its asking message
     * ([[TurnVerdict.taggedWith]]). The turn's own follow: when it has an own entry,
-    * [[answering]] of its first, in `zoned` (its offer's, [[TurnOffer.Recorded]]), in a direct
+    * [[dated]] of its first, in `zoned` (its offer's, [[TurnOffer.Recorded]]), in a direct
     * message when `direct` ([[direct]]), as one user message, then, for an occasion, its document
     * under grit's note ([[TurnPrompt.occasionShown]]), then its own, its tool loop's
     * exchange among them in order. A summary is not shown to the model yet. `system` is sent as
@@ -426,12 +426,13 @@ private[turn] object TurnShown {
       // the front, and nothing that changes per turn may sit before the messages. It is made
       // here, from the turn's first own entry, and kept in the turn's window record for a
       // later turn of its window to repeat.
-      val dated = mine
+      // From the entries before hiding: a stubbed root is shown as a message, not as its kind.
+      val datedLine = showing.mine
         .minByOption(e => EntrySeq.value(e.seq))
-        .map(root => Message.User(answering(root.createdAt, zoned, direct)))
+        .map(root => Message.User(TurnShown.dated(root, zoned, direct)))
       val occasioned =
         occasion.map((_, text) => Message.User(TurnPrompt.occasionShown(text)))
-      Unshaped(system, shownParts, dated.toVector ++ occasioned ++ Shown.turn(mine, named))
+      Unshaped(system, shownParts, datedLine.toVector ++ occasioned ++ Shown.turn(mine, named))
     }
   }
 
@@ -450,6 +451,32 @@ private[turn] object TurnShown {
     * message's line stays short. The UTC time carries its UTC date when that is another day
     * ("06:30 UTC Thu 2026-10-22", [[Utc.toClock]]), and UTC under any name is said as UTC.
     */
+  /** The line [[requestOf]] sends just before the own messages of a turn whose first entry is
+    * `root`: for a spawned child's ([[Payload.Spawn]]), [[started]] when it was made, `direct`
+    * unread; for any other, [[answering]].
+    */
+  def dated(root: Entry, zoned: Option[TurnOffer.Zoned], direct: Boolean): String =
+    root.payload match {
+      case Payload.Spawn(_, _, _) => started(root.createdAt, zoned)
+      case _ => answering(root.createdAt, zoned, direct)
+    }
+
+  /** A spawned child's [[dated]] line, for a run started `at`, speaking of no person: "This run
+    * was started Wed 2026-10-21 08:03 PDT (America/Los_Angeles); 15:03 UTC. Times grit shows you
+    * in your view are UTC. Write each time in your reply with its zone." in `zoned`'s
+    * [[TurnOffer.Zoned.dated]] zone; with that zone UTC, "This run was started Wed 2026-10-21
+    * 15:03 UTC." and the same two sentences; with no `zoned`, that first sentence alone.
+    */
+  def started(at: Instant, zoned: Option[TurnOffer.Zoned]): String =
+    zoned.fold(s"This run was started ${Utc.toDayMinute(at)}.") { z =>
+      val zone = Utc.canonical(z.dated)
+      val when =
+        if (zone == Utc.canonical(java.time.ZoneOffset.UTC)) Utc.toDayMinute(at)
+        else s"${Utc.toDayMinute(at, zone)} (${zone.getId}); ${Utc.toClock(at, zone)}"
+      s"This run was started $when. Times grit shows you in your view are UTC. Write each " +
+        "time in your reply with its zone."
+    }
+
   def answering(at: Instant, zoned: Option[TurnOffer.Zoned], direct: Boolean): String =
     zoned.fold(s"The message you are answering was said ${Utc.toDayMinute(at)}.") { z =>
       val short = Utc.shortName(at, z.dated)

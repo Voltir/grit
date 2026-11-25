@@ -134,6 +134,32 @@ object TurnShownTests extends TestSuite {
         s"(America/Los_Angeles); 06:30 UTC Thu 2026-10-22. ${tail("PDT")}"
     }
 
+    test(
+      "a spawned child's line dates its run's start in its zone, then UTC, and asks for each time with its zone; any other root's is the answering line"
+    ) {
+      val spawned = said(1, "unused").copy(payload =
+        Payload.Spawn(
+          grit.core.agent.SubagentFixtures.coder,
+          "Fix the typo.",
+          grit.core.agent.SubagentFixtures.spendCap
+        )
+      )
+      val zoned = Some(TurnOffer.Zoned(Some(pacific), eastern))
+      (
+        TurnShown.dated(spawned, zoned, direct = false),
+        TurnShown.dated(spawned, Some(TurnOffer.Zoned(None, pacific)), direct = true),
+        TurnShown.dated(spawned, None, direct = false),
+        TurnShown.dated(said(1, "hi"), zoned, direct = false)
+      ) ==> (
+        "This run was started Wed 2026-10-21 08:03 PDT (America/Los_Angeles); 15:03 UTC. " +
+          "Times grit shows you in your view are UTC. Write each time in your reply with its zone.",
+        "This run was started Wed 2026-10-21 08:03 PDT (America/Los_Angeles); 15:03 UTC. " +
+          "Times grit shows you in your view are UTC. Write each time in your reply with its zone.",
+        "This run was started Wed 2026-10-21 15:03 UTC.",
+        TurnShown.answering(At, zoned, direct = false)
+      )
+    }
+
     test("a deployment in UTC, under any of its names, is said as UTC") {
       Vector(ZoneOffset.UTC, ZoneId.of("UTC"), ZoneId.of("Etc/UTC")).map(z =>
         TurnShown.answering(At, Some(TurnOffer.Zoned(None, z)), direct = true)

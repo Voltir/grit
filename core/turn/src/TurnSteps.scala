@@ -1415,7 +1415,7 @@ private[turn] object TurnSteps {
           } yield {
             val dated = mine
               .minByOption(e => EntrySeq.value(e.seq))
-              .map(root => TurnShown.answering(root.createdAt, a.at.offer.zoned, direct))
+              .map(root => TurnShown.dated(root, a.at.offer.zoned, direct))
             val follows = projection match {
               case Projection.Appended(_, _) => after
               case Projection.Boundary(_, _) => None

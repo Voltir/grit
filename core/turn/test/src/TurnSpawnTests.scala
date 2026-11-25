@@ -192,6 +192,29 @@ object TurnSpawnTests extends TestSuite {
       (offered(provider) -- every, edge.sent) ==> (Set.empty[String], Vector.empty)
     }
 
+    test("a child's first message dates when its run was started, speaking of no person") {
+      val entries = new InMemoryEntryStore
+      val turn = spawn(entries, SubagentFixtures.coder, "Fix the typo in README.md.")
+      val durable = new InMemoryDurable
+      val provider = model()
+      durable.run(turn.workflowId)(
+        spawnedBody(
+          entries,
+          provider,
+          edgeAt(durable, repository),
+          new Files(Map.empty),
+          coders,
+          spawnedFrom(repository)
+        )
+      )
+      provider.requests.headOption.flatMap(_.messages.headOption) ==> Some(
+        Message.User(
+          "This run was started Thu 1970-01-01 00:00 UTC. Times grit shows you in your view " +
+            "are UTC. Write each time in your reply with its zone."
+        )
+      )
+    }
+
     test(
       "a child's first request opens with its task under grit's note, and its prompt says whose task it is and what it is called"
     ) {
