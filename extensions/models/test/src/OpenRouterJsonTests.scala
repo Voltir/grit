@@ -206,10 +206,13 @@ object OpenRouterJsonTests extends TestSuite {
       sent(ReasoningReplay.Dropped).map(_.get("tool_calls").isDefined) ==> Right(true)
     }
 
-    test("request: under the latest replay, only the last assistant reply's reasoning goes back") {
+    test(
+      "request: under the latest replay, only the last assistant reply's reasoning goes back, though results and a note follow it"
+    ) {
       val reply = OpenRouterJson.response(sampleResponse)
       val details = reply.map { m =>
-        val three = Vector(m, Message.User("again"), m, Message.User("and again"), m)
+        val result = Message.ToolResult(ToolCallId("call_1"), "contents", isError = false)
+        val three = Vector(m, result, m, result, m, result, Message.User("a note"))
         OpenRouterJson
           .request("m", 1, None, ModelRequest("s", three), replay = ReasoningReplay.Latest)(
             "messages"
@@ -217,10 +220,11 @@ object OpenRouterJsonTests extends TestSuite {
           .arr
           .toVector
           .collect {
-            case o: ujson.Obj if o("role").str == "assistant" => o.value.get("reasoning_details")
+            case o: ujson.Obj if o("role").str == "assistant" =>
+              (o.value.get("reasoning_details"), o.value.contains("tool_calls"))
           }
       }
-      details ==> Right(Vector(None, None, Some(replay)))
+      details ==> Right(Vector((None, true), (None, true), (Some(replay), true)))
     }
 
     test("request: another provider's form of reasoning is never sent as details") {

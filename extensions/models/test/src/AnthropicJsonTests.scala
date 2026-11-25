@@ -287,20 +287,21 @@ object AnthropicJsonTests extends TestSuite {
       ) ==> ujson.Arr(text)
     }
 
-    test("request: under the latest replay, only the last assistant reply's thinking goes back") {
-      val reply = called(
-        AssistantBlock.Reasoning("Read it first.", Some(thinking)),
-        AssistantBlock.Text("ok")
-      )
-      val three = Vector(reply, Message.User("again"), reply, Message.User("and again"), reply)
-      def text(t: String) = ujson.Obj("type" -> "text", "text" -> t)
-      sent(ModelRequest("s", three), replay = ReasoningReplay.Latest)("messages").arr.toVector
+    test(
+      "request: under the latest replay, only the last assistant reply's thinking goes back, though results and a note follow it"
+    ) {
+      val call = AssistantBlock.ToolCall(ToolCallId("call_1"), "read", ujson.Obj())
+      val reply = called(AssistantBlock.Reasoning("Read it first.", Some(thinking)), call)
+      val result = Message.ToolResult(ToolCallId("call_1"), "contents", isError = false)
+      val loop = Vector(reply, result, reply, result, reply, result, Message.User("a note"))
+      val use =
+        ujson.Obj("type" -> "tool_use", "id" -> "call_1", "name" -> "read", "input" -> ujson.Obj())
+      sent(ModelRequest("s", loop), replay = ReasoningReplay.Latest)("messages").arr.toVector
+        .filter(_("role").str == "assistant")
         .map(m => m("content").arr.toVector) ==> Vector(
-        Vector(text("ok")),
-        Vector(text("again")),
-        Vector(text("ok")),
-        Vector(text("and again")),
-        Vector(thinking, text("ok"))
+        Vector(use),
+        Vector(use),
+        Vector(thinking, use)
       )
     }
 
