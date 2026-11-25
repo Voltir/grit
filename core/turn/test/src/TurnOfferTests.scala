@@ -1176,6 +1176,50 @@ object TurnOfferTests extends TestSuite {
     }
 
     test(
+      "a spawned child's recorded tool its type no longer offers is gone, though its parent's tooling has one of that name"
+    ) {
+      val set = ToolSet
+        .of(Vector(described("fetch").entry))
+        .fold(d => throw new java.lang.AssertionError(d.toString), identity)
+      def offer(root: TurnOffer.Root) = TurnOffer(
+        Some(Place.of(Directory.of("/checkout").fold(sys.error, identity))),
+        set,
+        SystemPrompt.of(Vector.empty),
+        root,
+        Vector.empty,
+        Map.empty,
+        Width.Deployed,
+        None
+      )
+      // The parent's tooling hosts fetch; the deployment no longer declares the child's type.
+      val tooling = TurnTooling[{}](
+        Toolbox.Empty,
+        Toolbox.Empty,
+        Vector(described("fetch")),
+        new TestJot,
+        budget(5),
+        subagents = Spawnable.empty
+      )
+      def bound(root: TurnOffer.Root): String =
+        TurnOffer
+          .toolbox(tooling, offer(root))
+          .bind(
+            TestTainted.authority(
+              AssistantBlock.ToolCall(ToolCallId("c1"), "fetch", ujson.Obj("text" -> "a.txt"))
+            ),
+            Repairs.All
+          ) match {
+          case Right(_: Bound.Hosted) => "hosted"
+          case Right(f: Bound.Free) => s"free ${f(TestCallSlots.First)}"
+          case other => other.toString
+        }
+      Vector(
+        TurnOffer.Root.Addressed,
+        TurnOffer.Root.Spawned(grit.core.agent.SubagentFixtures.coder)
+      ).map(bound) ==> Vector("hosted", "free Failed(The tool fetch is gone; nothing ran.)")
+    }
+
+    test(
       "an addressed turn is offered the tools advertised at a service it reaches, after its workspace's, each recorded at that place, and told so after its reach"
     ) {
       val (recorded, offered, prompt) =

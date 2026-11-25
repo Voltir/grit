@@ -269,7 +269,7 @@ object TurnSpawnTests extends TestSuite {
     test(
       "a child's call of delegate or of its parent's own tool runs neither, and neither runs once its type is gone mid-turn"
     ) {
-      def calls(provider: Scripted): Set[String] =
+      def offeredOfThem(provider: Scripted): Set[String] =
         provider.requests.flatMap(_.tools.map(_.name)).toSet.intersect(Set("delegate", "peek"))
       val entries = new InMemoryEntryStore
       val turn = spawn(entries, SubagentFixtures.coder, "Fix the typo.")
@@ -308,7 +308,11 @@ object TurnSpawnTests extends TestSuite {
           spawnedFrom(repository)
         )
       )
-      (calls(first), calls(again), ws.reads) ==> (Set.empty[String], Set.empty[String], 0)
+      (offeredOfThem(first), offeredOfThem(again), ws.reads) ==> (
+        Set.empty[String],
+        Set.empty[String],
+        0
+      )
     }
   }
 }
