@@ -55,7 +55,7 @@ trait SpawnInbox extends caps.SharedCapability {
     * its parent's asker; the conversation made at its room's label, the brief believed at
     * `believed`. A rerun returns the same turn, recorded once, and starts it, so a rerun after a
     * failed start starts it: `origin`'s place is the key. [[InboxError.Above]] when the room's
-    * label does not dominate `at`, the parent's classification; [[InboxError.OverCap]] as
+    * label does not dominate `classification`, the parent's; [[InboxError.OverCap]] as
     * [[Inbox.ingest]] refuses a new message; [[InboxError.Invalid]] when `by` did not write the
     * parent's first entry, or `origin` is within a direct message's room. A refusal records
     * nothing.
@@ -66,14 +66,16 @@ trait SpawnInbox extends caps.SharedCapability {
       brief: String,
       spendCap: SpendCap,
       believed: Integrity,
-      at: Label,
+      classification: Label,
       by: Account
   ): Either[InboxError, TurnRef]
 
   /** How `child` ended, from its workflow alone; `None` until it has. Its reply is not read. */
   def ended(child: TurnRef): Either[InboxError, Option[TurnEnding]]
 
-  /** `child`'s reply, as the transaction's clearance may read it. */
+  /** `child`'s reply, as the transaction's clearance may read it: [[SpawnReply.Silent]] too for
+    * a child still running, so ask [[ended]] first.
+    */
   def reply(child: TurnRef)(using Tx^): Either[StoreError, SpawnReply]
 
   /** What `child`'s conversation's recorded calls cost. */
@@ -98,7 +100,7 @@ enum SpawnReply extends caps.Pure {
   /** Its reply's text, believed as its entry was written. */
   case Said(text: String, believed: Integrity)
 
-  /** Ended with no reply. */
+  /** No reply is kept. */
   case Silent
 
   /** Its reply is above the transaction's clearance. */

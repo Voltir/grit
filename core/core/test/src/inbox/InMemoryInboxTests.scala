@@ -194,7 +194,8 @@ object InMemoryInboxTests extends InboxContract {
         (child, clearance) => inbox.reply(child)(using TestTx.fake(clearance, visibility)),
         child => inbox.spent(child)(using TestTx.fake),
         spendIn,
-        (parent, child) => inbox.returns.count(_ == (parent, child))
+        (parent, child) => inbox.returns.count(_ == (parent, child)),
+        turn => inbox.started.contains(turn)
       )
     )
   }

@@ -579,7 +579,7 @@ final class InMemoryInbox(
       brief: String,
       spendCap: SpendCap,
       believed: Integrity,
-      at: Label,
+      classification: Label,
       by: Account
   ): Either[InboxError, TurnRef] =
     if (down) unavailable
@@ -596,7 +596,7 @@ final class InMemoryInbox(
         .flatMap {
           case (Some(first), known) if principals.author(first.id).contains(by) =>
             val label = known.fold(labelOf(origin))(_.label)
-            if (!label.dominates(at)) Left(InboxError.Above(at, label))
+            if (!label.dominates(classification)) Left(InboxError.Above(classification, label))
             else
               recorded(
                 origin,

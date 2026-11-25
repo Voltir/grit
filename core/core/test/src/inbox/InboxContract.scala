@@ -1111,6 +1111,7 @@ abstract class InboxContract extends TestSuite {
             ana
           )
           .fold(e => throw new java.lang.AssertionError(e), identity)
+        (store.started(spawned), store.started(unstarted)) ==> (true, false)
         store.end(spawned)
         val public = Clearance.of(Label.Public)
         val silent = store.replyAt(spawned, public)
@@ -1338,7 +1339,7 @@ object InboxContract {
     * child's reply read in a transaction at a clearance; `spentOf`, what a child's
     * conversation's calls cost; `spendIn` records a call of a turn that
     * cost that many dollars now; `rung`, how many rings of a child have reached its parent's
-    * workflow.
+    * workflow; `started`, whether a turn was started, read before [[end]], which waits on it.
     */
   final case class Store(
       spend: BigDecimal => Unit,
@@ -1367,6 +1368,7 @@ object InboxContract {
       replyAt: (TurnRef, Clearance) => Either[StoreError, SpawnReply],
       spentOf: TurnRef => Either[StoreError, Cost],
       spendIn: (TurnRef, BigDecimal) => Unit,
-      rung: (TurnRef, TurnRef) => Int
+      rung: (TurnRef, TurnRef) => Int,
+      started: TurnRef => Boolean
   )
 }

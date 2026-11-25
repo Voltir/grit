@@ -103,10 +103,12 @@ final class Rehearsing private (
       brief: String,
       spendCap: SpendCap,
       believed: Integrity,
-      at: Label,
+      classification: Label,
       by: Account
   ): Either[InboxError, TurnRef] =
-    maintained(recorder.spawned(origin, agent, brief, spendCap, believed, at, by, clock.now())).left
+    maintained(
+      recorder.spawned(origin, agent, brief, spendCap, believed, classification, by, clock.now())
+    ).left
       .map(InboxError.stored)
       .flatMap(identity)
       .flatMap(turn => startTurn(turn).map(_ => turn))

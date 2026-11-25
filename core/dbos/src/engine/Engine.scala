@@ -140,10 +140,10 @@ final class Engine private (
       brief: String,
       spendCap: SpendCap,
       believed: Integrity,
-      at: Label,
+      classification: Label,
       by: Account
   ): Either[InboxError, TurnRef] =
-    sqlInbox.spawned(origin, agent, brief, spendCap, believed, at, by)
+    sqlInbox.spawned(origin, agent, brief, spendCap, believed, classification, by)
 
   /** [[grit.core.inbox.SpawnInbox.ended]], through this engine's inbox. */
   def ended(child: TurnRef): Either[InboxError, Option[TurnEnding]] = sqlInbox.ended(child)

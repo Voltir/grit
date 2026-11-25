@@ -431,7 +431,7 @@ of the same build.
   under `any`; `->` says it captures nothing.
 - *Fix:* name what it captures: `Console^ ->{under, clock, fresh} Either[String, Unit]`.
 
-**A pair taken apart by a pattern when one half is a capability the other captures.**
+**A crash taking apart a pair whose second half holds its first, a capability.**
 
 - *Symptom:* the compiler crashes rechecking the pattern's synthetic `val $2$`:
   `java.lang.AssertionError: assertion failed: attempting to add any to {any} of value $2$`,
@@ -547,5 +547,7 @@ depends on, and `scripts/check --probes` or
    applies.
 3. If separation checking is no longer experimental, delete `SeparationTests` (ADR 0003).
 4. Try `derives ReadWriter` again, and the scalafmt override.
-5. Consider turning separation checking on in `grit.tui`, and run `scripts/tui-gate`
+5. Retry the pattern `val (inbox, store) = opened(…)` in `InMemoryInboxTests.withInbox` and
+   `reopening`: if it no longer crashes the checker, restore it and drop that trap.
+6. Consider turning separation checking on in `grit.tui`, and run `scripts/tui-gate`
    after, since the terminal seam is what would change.

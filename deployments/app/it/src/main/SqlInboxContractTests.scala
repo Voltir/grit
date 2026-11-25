@@ -316,6 +316,16 @@ object SqlInboxContractTests extends InboxContract, caps.SharedCapability {
           Using.resource(ps.executeQuery())(rs => if (rs.next()) rs.getInt(1) else 0)
         }
       }
+    def started(turn: TurnRef): Boolean =
+      LiveDb.transaction(db) { (tx: Tx^) ?=>
+        val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+        Using.resource(
+          conn.prepareStatement("SELECT count(*) FROM dbos.workflow_status WHERE workflow_uuid = ?")
+        ) { ps =>
+          ps.setString(1, WorkflowId.value(turn.workflowId))
+          Using.resource(ps.executeQuery())(rs => rs.next() && rs.getInt(1) > 0)
+        }
+      }
     body(
       engine.inbox,
       InboxContract.Store(
@@ -374,7 +384,8 @@ object SqlInboxContractTests extends InboxContract, caps.SharedCapability {
         (child, clearance) => LiveDb.transaction(db, clearance)(engine.reply(child)),
         child => LiveDb.transaction(db)(engine.spent(child)),
         spendIn,
-        rung
+        rung,
+        started
       )
     )
   }
