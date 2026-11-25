@@ -215,11 +215,10 @@ object Turn {
   /** The turn workflow's body, for the turn whose workflow id is `workflowId`: its flow
     * ([[TurnFlow]]), its model offered the tools its `offer` step recorded from `tooling`'s.
     * Returns what the turn did, for logs: its reply and summary are in the store, never in
-    * this string. A spawned child's turn rings its parent through `env.spawns` once its flow
-    * returns, however it ended, with the ending that string says
-    * ([[grit.core.inbox.SpawnInbox.returned]]); a
-    * ring that fails, or a turn whose step threw, rings nothing, and its parent reads its end
-    * at its next [[grit.act.phase.Spawning.Every]].
+    * this string. A spawned child's turn rings its parent once its flow returns, however it
+    * ended ([[grit.core.inbox.SpawnInbox.returned]]); a ring that fails, or a turn whose step
+    * threw, rings nothing, and its parent learns of its end only at its next
+    * [[grit.act.phase.Spawning.Every]].
     */
   def body[C^](env: TurnEnv^, tooling: TurnTooling[C]^)(
       workflowId: WorkflowId
