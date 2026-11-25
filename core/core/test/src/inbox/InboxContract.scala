@@ -1179,7 +1179,7 @@ abstract class InboxContract extends TestSuite {
           )
           .fold(e => throw new java.lang.AssertionError(e), identity)
         store.spendIn(spawned, BigDecimal("0.01"))
-        store.spendIn(spawned, BigDecimal("0.02"))
+        store.spendIn(TurnRef(spawned.conversationId, TurnSeq(1)), BigDecimal("0.02"))
         store.spendIn(parent, BigDecimal("0.5"))
         store.spentOf(spawned) ==> Right(Cost.Exact(BigDecimal("0.03")))
       }
