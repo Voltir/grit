@@ -476,7 +476,7 @@ object TurnJournalTests extends TestSuite {
     }
 
     test(
-      "a spawned child's offer is written with its type, and a child of an undeclared type fails naming it"
+      "a spawned root is written with its agent, and one naming none fails to read"
     ) {
       val j = summon[Journaled[Either[TurnFailure, TurnOffer.Recorded]]]
       val tools = grit.core.tool.ToolSet.Empty.id
@@ -489,8 +489,12 @@ object TurnJournalTests extends TestSuite {
       j.decode(j.encode(spawned)) ==> Right(spawned)
       j.decode(s"""{"ok":{"workspace":null,"tools":"$set","prompt":[],"root":"spawned"}}""") ==>
         Left("offer: a spawned root names no agent")
+    }
+
+    test("an undeclared child's failure is written naming its type") {
+      val j = summon[Journaled[Either[TurnFailure, TurnOffer.Recorded]]]
       val undeclared: Either[TurnFailure, TurnOffer.Recorded] =
-        Left(TurnFailure.Undeclared(coder))
+        Left(TurnFailure.Undeclared(grit.core.agent.SubagentFixtures.coder))
       j.encode(undeclared) ==> """{"failed":"undeclared","reason":"coder"}"""
       j.decode(j.encode(undeclared)) ==> Right(undeclared)
     }

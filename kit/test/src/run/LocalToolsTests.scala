@@ -430,7 +430,7 @@ object LocalToolsTests extends TestSuite {
     }
 
     test(
-      "a coding child of a run writes, commits and offers its pull request in its own copy on grit/{name}, and the run's copy, holding changes never committed, is left as it was"
+      "a coding child of a run works in its own copy on grit/{name}, leaving the run's copy untouched"
     ) {
       GitFixture.inRepository { repo =>
         for ((k, v) <- Vector("user.name" -> "t", "user.email" -> "t@example.com"))
