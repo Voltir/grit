@@ -22,5 +22,12 @@ object TurnEndingTests extends TestSuite {
         TurnEnding.Otherwise
       )
     }
+
+    test("each ending's word reads back as it, and any other text as no ending") {
+      (
+        TurnEnding.values.toVector.map(e => TurnEnding.read(TurnEnding.word(e))),
+        Vector("rang", "Answered", "atlimit", "", "answered ").map(TurnEnding.read)
+      ) ==> (TurnEnding.values.toVector.map(Some(_)), Vector.fill(5)(None))
+    }
   }
 }
