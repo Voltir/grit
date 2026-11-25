@@ -7,7 +7,7 @@ import scala.concurrent.duration.*
 import grit.core.act.Allowance
 import grit.core.clock.Clock
 import grit.core.id.{ConversationId, EntryId, TurnRef, WorkflowId}
-import grit.core.message.{Cost, Message, Tokens, Usage}
+import grit.core.message.{Message, Tokens, Usage}
 import grit.core.model.Grade
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.spend.Spending
@@ -65,12 +65,7 @@ object Asking {
       case Allowance.Admitted => Right(true)
       case Allowance.Daily(budget) => spending.on(budget.today(now)).map(budget.admits)
       case Allowance.Capped(cap) =>
-        spending
-          .conversation(conversation)
-          .map(_.cost match {
-            case Cost.Exact(usd) => usd < cap.usd
-            case Cost.AtLeast(_) => false
-          })
+        spending.conversation(conversation).map(spent => cap.admits(spent.cost))
     }
 
   /** The cost of `reply`, the response held by `entry` (an entry's id, or a move's), recorded
