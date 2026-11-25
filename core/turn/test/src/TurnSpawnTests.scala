@@ -325,6 +325,28 @@ object TurnSpawnTests extends TestSuite {
       )
     }
 
+    test(
+      "a child whose spend cap cannot be read from its first turn makes no call, failing as the store's"
+    ) {
+      val entries = new InMemoryEntryStore
+      // Its first turn shows it no Payload.Spawn, as a clearance below that note's would.
+      val turn = say(entries, "Find the release date.")
+      val durable = new InMemoryDurable
+      val provider = model()
+      val ran = durable.run(turn.workflowId)(
+        spawnedBody(
+          entries,
+          provider,
+          edgeAt(durable, room),
+          new Files(Map.empty),
+          scholars,
+          spawnedFrom(room)
+        )
+      )
+      (ran, provider.requests.size) ==>
+        (s"failed: Store(${Rounding.CapUnread})", 0)
+    }
+
     test("a child's later turn keeps to the spend cap its first turn's note set") {
       val entries = new InMemoryEntryStore
       val first = spawn(entries, SubagentFixtures.scholar, "Find the release date.")
