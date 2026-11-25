@@ -2,13 +2,22 @@ package grit.kit.deployment
 
 import scala.concurrent.duration.DurationInt
 
+import grit.core.agent.{SubagentFixtures, Subagents}
 import grit.core.edge.ServedEdge
 import grit.core.files.PagedText
 import grit.core.id.{AttesterName, EdgeName}
 import grit.core.job.Owned
 import grit.core.tool.ToolName
 import grit.core.triage.Gate
-import grit.core.visibility.{Compartment, Compartments, Label, Level, RoomLabels, Visibility}
+import grit.core.visibility.{
+  Compartment,
+  Compartments,
+  Integrity,
+  Label,
+  Level,
+  RoomLabels,
+  Visibility
+}
 
 import utest.*
 
@@ -1083,31 +1092,9 @@ object DeploymentTests extends TestSuite {
     }
 
     test("a deployment keeps the subagents it declares, and has none unless it declares them") {
-      def ok[A](e: Either[String, A]): A = e.fold(sys.error, identity)
-      val coder = ok(grit.core.id.AgentType.of("coder"))
-      val assigned = grit.core.model.Assignment(
-        grit.core.model.ModelRef(
-          grit.core.model.ModelId.of("openai/gpt-oss-120b").getOrElse(sys.error("model id")),
-          None
-        ),
-        100,
-        None
-      )
-      val pins = grit.core.model.Catalog
-        .of(grit.core.model.Policy.one(assigned, assigned, assigned, assigned), Vector.empty)
-        .pin
-        .turn
-      val subagent = ok(
-        grit.core.agent.Subagent.of(
-          coder,
-          ok(grit.core.persona.Persona.of("Scholar")),
-          pins,
-          grit.core.agent.Subagent.Tools.Services(Vector(github)),
-          ok(grit.core.spend.SpendCap.of(BigDecimal("0.05"))),
-          grit.core.visibility.Integrity.Outside
-        )
-      )
-      val subagents = ok(grit.core.agent.Subagents.of(Vector(subagent)))
+      import SubagentFixtures.{coder, coding, ok}
+      val subagent = ok(SubagentFixtures.subagent(coder, coding, Integrity.Member))
+      val subagents = ok(Subagents.of(Vector(subagent)))
       Deployments.of(subagents = subagents).map(_.subagents(coder)) ==> Right(Some(subagent))
       Deployments.of().map(_.subagents(coder)) ==> Right(None)
     }
