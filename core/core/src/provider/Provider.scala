@@ -53,7 +53,7 @@ enum Delta {
   *
   * `repeats` says which of `messages`, from the first, later requests repeat: with `tools` and
   * `system`, each of its counts is a prefix a provider may cache. `cacheKey`, set only on the
-  * requests the turn's `TurnShown.requestOf` builds, groups them by their conversation for a
+  * requests the turn's `TurnShown.requestOf` builds, groups them by their conversation's place for a
   * provider that routes by it; it changes no reply.
   */
 final case class ModelRequest(

@@ -6,20 +6,12 @@ import grit.core.clock.Utc
 import grit.core.context.{CarriedWindow, Shown, Window}
 import grit.core.document.{DocLabel, DocText, Document, DocumentSearch}
 import grit.core.files.{KeptPiece, PieceSearch}
-import grit.core.id.{
-  ConversationId,
-  EntryId,
-  EntrySeq,
-  Sha256,
-  ToolCallId,
-  TurnRef,
-  TurnSeq,
-  WorkflowId
-}
+import grit.core.id.{EntryId, EntrySeq, Sha256, ToolCallId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{AfterToolResult, ToolGuidance}
 import grit.core.occasion.{Occasion, OccasionBrief}
 import grit.core.period.{Balance, Closing, Flows}
+import grit.core.place.Place
 import grit.core.prompt.Fenced
 import grit.core.provider.{CacheKey, ModelRequest, Repeats, ToolSchema}
 import grit.core.store.{
@@ -221,12 +213,12 @@ private[turn] object TurnShown {
       .reads(env.db)
       .read(Subject.Turn(turn))(
         shown(env.records, turn, seen).flatMap(s =>
-          direct(env.hosting.conversations, turn).map(s -> _)
+          placeOf(env.hosting.conversations, turn).map(s -> _)
         )
       )
       .left
       .map(TurnFailure.ofStore)
-      .flatMap((showing, direct) => requestOf(system, showing, turn, stubs, zoned, direct))
+      .flatMap((showing, place) => requestOf(system, showing, turn, stubs, zoned, place))
 
   /** The window a turn's request shows before its own entries: `window`, drawn for the turn,
     * appended after the window record `after` and the records it follows
@@ -388,10 +380,12 @@ private[turn] object TurnShown {
     * [[Shown.turn]] shows them, its record's note added to its asking message
     * ([[TurnVerdict.taggedWith]]). The turn's own follow: when it has an own entry,
     * [[dated]] of its first, in `zoned` (its offer's, [[TurnOffer.Recorded]]), in a direct
-    * message when `direct` ([[direct]]), as one user message, then, for an occasion, its document
-    * under grit's note ([[TurnPrompt.occasionShown]]), then its own, its tool loop's
-    * exchange among them in order. A summary is not shown to the model yet. `system` is sent as
-    * it is given. A part's seq with no entry is an `Assembly` failure naming every such seq.
+    * message when `place`, its conversation's ([[placeOf]]), is one's, as one user message, then,
+    * for an occasion, its document under grit's note ([[TurnPrompt.occasionShown]]), then its
+    * own, its tool loop's exchange among them in order. A summary is not shown to the model yet.
+    * `system` is sent as it is given, and the request's cache key is the digest of `place`
+    * written ([[Place.written]]): TUI sessions in one directory share it. A part's seq with no
+    * entry is an `Assembly` failure naming every such seq.
     */
   def requestOf(
       system: String,
@@ -399,7 +393,7 @@ private[turn] object TurnShown {
       turn: TurnRef,
       stubs: Map[ItemRef, String],
       zoned: Option[TurnOffer.Zoned],
-      direct: Boolean
+      place: Place
   ): Either[TurnFailure, Unshaped] = {
     val Showing(parts, mine, named, occasion) = hiding(showing, stubs)
     val befores = None +: parts.map(_.carried.map(_.turn))
@@ -445,14 +439,16 @@ private[turn] object TurnShown {
       // From the entries before hiding: a stubbed root is shown as a message, not as its kind.
       val datedLine = showing.mine
         .minByOption(e => EntrySeq.value(e.seq))
-        .map(root => Message.User(TurnShown.dated(root, zoned, direct)))
+        .map(root => Message.User(TurnShown.dated(root, zoned, place.direct)))
       val occasioned =
         occasion.map((_, text) => Message.User(TurnPrompt.occasionShown(text)))
       Unshaped(
         system,
         shownParts,
         datedLine.toVector ++ occasioned ++ Shown.turn(mine, named),
-        CacheKey.of(Sha256.text(ConversationId.value(turn.conversationId)))
+        // Of the place, not the conversation's id: a rehearsal's conversation is another row
+        // at the same place, and must send what the engine's run sends.
+        CacheKey.of(Sha256.text(place.written))
       )
     }
   }
@@ -516,12 +512,12 @@ private[turn] object TurnShown {
         s"Times grit shows you in your view are UTC.$others"
     }
 
-  /** Whether `turn`'s conversation is held in a direct message's room ([[grit.core.place.Place.direct]]), which
-    * [[answering]] is told; `Invalid` when the conversation is gone.
+  /** Where `turn`'s conversation happens ([[grit.core.store.Origin.place]]); `Invalid` when the
+    * conversation is gone.
     */
-  def direct(conversations: ConversationStore, turn: TurnRef)(using
+  def placeOf(conversations: ConversationStore, turn: TurnRef)(using
       Tx^
-  ): Either[StoreError, Boolean] =
+  ): Either[StoreError, Place] =
     conversations
       .get(turn.conversationId)
       .flatMap(
@@ -529,7 +525,7 @@ private[turn] object TurnShown {
           StoreError.Invalid(s"conversation of ${WorkflowId.value(turn.workflowId)} is gone")
         )
       )
-      .map(_.origin.place.direct)
+      .map(_.origin.place)
 
   /** The request the call whose reply is kept as `reply` was sent, rebuilt from `showing`:
     * [[requestOf]] over the turn's own entries kept before that reply alone, each item `stubs`
@@ -544,7 +540,7 @@ private[turn] object TurnShown {
       reply: EntryId,
       stubs: Map[ItemRef, String],
       zoned: Option[TurnOffer.Zoned],
-      direct: Boolean,
+      place: Place,
       shape: ModelRequest -> ModelRequest
   ): Either[TurnFailure, (ModelRequest, Message.Assistant)] =
     // A call's reply is kept after every own entry the call was shown (recordCall and append
@@ -564,7 +560,7 @@ private[turn] object TurnShown {
       .toRight(TurnFailure.Store(s"the reply ${EntryId.value(reply)} is not kept"))
       .flatMap { (at, message) =>
         val before = showing.mine.filter(e => EntrySeq.value(e.seq) < EntrySeq.value(at.seq))
-        requestOf(system, showing.copy(mine = before), turn, stubs, zoned, direct)
+        requestOf(system, showing.copy(mine = before), turn, stubs, zoned, place)
           .map(r => (r.shaped(shape), message))
       }
 

@@ -99,7 +99,14 @@ object TurnShownTests extends TestSuite {
       Vector.empty
     )
     TurnShown
-      .requestOf("sys", showing, TurnRef(ConversationId("c"), TurnSeq(3)), Map.empty, None, false)
+      .requestOf(
+        "sys",
+        showing,
+        TurnRef(ConversationId("c"), TurnSeq(3)),
+        Map.empty,
+        None,
+        Place.Everywhere
+      )
       .map(_.shaped(shape))
   }
 

@@ -441,7 +441,7 @@ object Turn {
           TurnShown.Seen.of(record)
         )
       )
-      direct <- kept("conversation", TurnShown.direct(reads.conversations, turn))
+      place <- kept("conversation", TurnShown.placeOf(reads.conversations, turn))
       calls <- looped.foldLeft[Either[String, Vector[(Round, EntryId)]]](Right(Vector.empty)) {
         case (acc, (round, name)) =>
           acc.flatMap(done =>
@@ -491,7 +491,7 @@ object Turn {
           turn,
           Map.empty,
           offer.zoned,
-          direct
+          place
         )
         .left
         .map(reason)
@@ -521,7 +521,7 @@ object Turn {
             reply,
             stubsAt(gates, round, tools.set),
             offer.zoned,
-            direct,
+            place,
             shapeAt(round, more)
           )
           .map(_._1)
@@ -567,7 +567,7 @@ object Turn {
                       prompt.render,
                       stubsAt(gates, last, tools.set),
                       offer.zoned,
-                      direct,
+                      place,
                       shapeAt(last, Vector.empty)
                     )
                     .map(Some(_))

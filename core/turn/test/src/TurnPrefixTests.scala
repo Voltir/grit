@@ -1,7 +1,7 @@
 package grit.turn
 
 import grit.core.durable.InMemoryDurable
-import grit.core.id.{ConversationId, Sha256, ToolCallId}
+import grit.core.id.{Sha256, ToolCallId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Effort, ReasoningReplay}
 import grit.core.provider.{CacheKey, ModelRequest, ProviderError}
@@ -137,7 +137,7 @@ object TurnPrefixTests extends TestSuite {
     }
 
     test(
-      "every call of a turn and its summary on the prefix carry one cache key, the digest of the turn's conversation"
+      "every call of a turn and its summary on the prefix carry one cache key, the digest of its conversation's place"
     ) {
       val entries = new InMemoryEntryStore
       val ws = new Files(Map("a.txt" -> "alpha"))
@@ -160,7 +160,7 @@ object TurnPrefixTests extends TestSuite {
           catalog = SharedCatalog
         )
       )
-      val key = CacheKey.of(Sha256.text(ConversationId.value(turn.conversationId)))
+      val key = CacheKey.of(Sha256.text(origin.place.written))
       (provider.requests.map(_.cacheKey), summarizer.requests.map(_.cacheKey)) ==>
         (Vector.fill(3)(Some(key)), Vector(Some(key)))
     }

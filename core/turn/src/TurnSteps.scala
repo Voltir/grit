@@ -11,6 +11,7 @@ import grit.core.host.Clipped
 import grit.core.id.{DocumentVersionId, EntryId, EntrySeq, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, Tokens}
 import grit.core.model.{Pinned, StrictSchemas, TurnProfile, TurnProfileId}
+import grit.core.place.Place
 import grit.core.provider.ModelRequest
 import grit.core.route.{Routed, Routing, Uncleared}
 import grit.core.session.{Event, Session}
@@ -568,15 +569,15 @@ private[turn] object TurnSteps {
             offer <- env.hosting.offered(a.offer)
             pins <- a.routed.pickedIn(env.records.profiles)
             (stubs, shape) <- r.sent(rounds, offer, pins)
-            direct <- TurnShown
-              .direct(env.hosting.conversations, in.turn)
+            place <- TurnShown
+              .placeOf(env.hosting.conversations, in.turn)
               .left
               .map(TurnFailure.ofStore)
-          } yield (offer, direct, pins, stubs, shape))
-            .flatMap((offer, direct, pins, stubs, shape) =>
+          } yield (offer, place, pins, stubs, shape))
+            .flatMap((offer, place, pins, stubs, shape) =>
               appended(
                 offer,
-                direct,
+                place,
                 env.records,
                 env.speech.store,
                 in.turn,
@@ -725,8 +726,8 @@ private[turn] object TurnSteps {
             offer <- env.hosting.offered(at.looping.offer)
             (stubs, shape) <- r.sent(at, offer, pins)
             showing <- shown(env.records, s.turn, at.looping.seen).left.map(TurnFailure.ofStore)
-            direct <- TurnShown
-              .direct(env.hosting.conversations, s.turn)
+            place <- TurnShown
+              .placeOf(env.hosting.conversations, s.turn)
               .left
               .map(TurnFailure.ofStore)
             request <- TurnSummary.onPrefix(
@@ -737,7 +738,7 @@ private[turn] object TurnSteps {
               offer.system,
               stubs,
               offer.zoned,
-              direct,
+              place,
               shape
             )
           } yield request
@@ -1287,7 +1288,7 @@ private[turn] object TurnSteps {
     * conversation, and what it cost in the ledger at `pin`'s grade beside the estimate, at
     * `pin`'s settings, of the request that produced it: rebuilt from the same window and the same entries (the turn's own were all
     * recorded before its call, and the reply is not yet among them), its message dated as
-    * `offer` and `direct` say ([[TurnShown.requestOf]]), each item `stubs` names shown as its
+    * `offer` and `place` say ([[TurnShown.requestOf]]), each item `stubs` names shown as its
     * stub, shaped by `shape`; that request's prefix kept as [[Turn.prefixId]]
     * ([[TurnShown.prefixOf]]), naming `pin`'s pair, the pair the turn's calls went to. Each of the window's documents whose
     * pointer one of the turn's calls followed, and that succeeded, is counted as followed at
@@ -1295,7 +1296,7 @@ private[turn] object TurnSteps {
     */
   private def appended(
       offer: TurnOffer,
-      direct: Boolean,
+      place: Place,
       records: TurnRecords,
       speech: SpeechStore,
       turn: TurnRef,
@@ -1318,7 +1319,7 @@ private[turn] object TurnSteps {
       next <- entries.lockNext(turn.conversationId).left.map(TurnFailure.ofStore)
       level <- believedAt(entries, turn, believed)
       showing <- shown(records, turn, seen).left.map(TurnFailure.ofStore)
-      sent <- requestOf(offer.system, showing, turn, stubs, offer.zoned, direct)
+      sent <- requestOf(offer.system, showing, turn, stubs, offer.zoned, place)
         .map(_.shaped(shape))
       _ <- entries
         .insert(
@@ -1425,11 +1426,11 @@ private[turn] object TurnSteps {
         case Windowed.Carried(after, projection) =>
           (for {
             mine <- records.entries.ofTurn(turn)
-            direct <- TurnShown.direct(env.hosting.conversations, turn)
+            place <- TurnShown.placeOf(env.hosting.conversations, turn)
           } yield {
             val dated = mine
               .minByOption(e => EntrySeq.value(e.seq))
-              .map(root => TurnShown.dated(root, a.at.offer.zoned, direct))
+              .map(root => TurnShown.dated(root, a.at.offer.zoned, place.direct))
             val follows = projection match {
               case Projection.Appended(_, _) => after
               case Projection.Boundary(_, _) => None

@@ -3,6 +3,7 @@ package grit.turn
 import grit.core.agenda.Agenda
 import grit.core.id.{EntryId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message}
+import grit.core.place.Place
 import grit.core.prompt.{Fenced, Tag}
 import grit.core.provider.ModelRequest
 import grit.core.store.{Entry, Payload}
@@ -98,7 +99,7 @@ object TurnSummary {
 
   /** The request that summarises `turn` on its own prefix ([[Turn.SummaryAsk.OnPrefix]]), its
     * loop's answer kept as `kept`: the request that answer's call was sent, rebuilt from
-    * `showing` under `system` as [[TurnShown.sentBefore]] says with `stubs`, `zoned`, `direct`
+    * `showing` under `system` as [[TurnShown.sentBefore]] says with `stubs`, `zoned`, `place`
     * and `shape`, then [[asking]] after the answer, of the item `all`, the conversation's
     * entries, place its message in. Fails as [[TurnShown.sentBefore]] does.
     */
@@ -110,11 +111,11 @@ object TurnSummary {
       system: String,
       stubs: Map[ItemRef, String],
       zoned: Option[TurnOffer.Zoned],
-      direct: Boolean,
+      place: Place,
       shape: ModelRequest -> ModelRequest
   ): Either[TurnFailure, ModelRequest] =
     TurnShown
-      .sentBefore(system, showing, turn, kept, stubs, zoned, direct, shape)
+      .sentBefore(system, showing, turn, kept, stubs, zoned, place, shape)
       .map((sent, reply) => asking(reply, TurnAgenda.itemOf(all, turn))(sent))
 
   // What the summary of `item`'s exchange is told of the item as it stands.

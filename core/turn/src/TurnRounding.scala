@@ -12,6 +12,7 @@ import grit.core.flow.{Extracted, Shape, Trusted}
 import grit.core.id.{CallSlot, EntryId, EntrySeq, TurnRef, TurnSeq}
 import grit.core.message.Message
 import grit.core.model.{Pinned, StrictSchemas}
+import grit.core.place.Place
 import grit.core.provider.ModelRequest
 import grit.core.store.{Entry, Jot, Keeps, Origin, Payload, Reads, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, ToolSet, Toolbox}
@@ -72,10 +73,10 @@ private[turn] final class Rounding[C^](
         )
       }
       (stubs, shape) <- Rounding.sent(tooling, at, offer, pins)
-      direct <- TurnShown.direct(env.hosting.conversations, l.turn).left.map(TurnFailure.ofStore)
+      place <- TurnShown.placeOf(env.hosting.conversations, l.turn).left.map(TurnFailure.ofStore)
       kept <- Rounding.recordCall(
         offer,
-        direct,
+        place,
         env.records,
         l.turn,
         l.seen,
@@ -532,8 +533,8 @@ private[turn] object Rounding {
                         turn,
                         TurnShown.Seen(Some(h.id), Window(Vector.empty))
                       )
-                      direct <- TurnShown.direct(env.hosting.conversations, turn)
-                    } yield Right((h.id, showing, direct, prefix))
+                      place <- TurnShown.placeOf(env.hosting.conversations, turn)
+                    } yield Right((h.id, showing, place, prefix))
                 }
             }
           } yield read
@@ -542,7 +543,7 @@ private[turn] object Rounding {
         .map(TurnFailure.ofStore)
     } yield found.fold(
       TurnBasis.Afresh(_),
-      { (head, showing, direct, prefix) =>
+      { (head, showing, place, prefix) =>
         val carrying = showing.copy(mine = Vector.empty)
         val first = TurnGate.decide(
           startOf(showing.mine, recorded.root),
@@ -566,7 +567,7 @@ private[turn] object Rounding {
             settings.guidance,
             Vector.empty
           )
-        TurnShown.requestOf(offer.system, carrying, turn, Map.empty, offer.zoned, direct) match {
+        TurnShown.requestOf(offer.system, carrying, turn, Map.empty, offer.zoned, place) match {
           case Left(_) => TurnBasis.Afresh(Why.Unrendered)
           case Right(unshaped) =>
             val r = unshaped.shaped(shape)
@@ -679,12 +680,12 @@ private[turn] object Rounding {
     * grade beside the estimate of its request at `pin`'s settings
     * ([[grit.core.provider.TokenEstimator.withSettings]]), rebuilt by `shape` from the same
     * window and entries under
-    * `offer`'s system prompt, its message dated as `offer` and `direct` say
+    * `offer`'s system prompt, its message dated as `offer` and `place` say
     * ([[TurnShown.requestOf]]), each item `stubs` names shown as its stub.
     */
   private def recordCall(
       offer: TurnOffer,
-      direct: Boolean,
+      place: Place,
       records: TurnRecords,
       turn: TurnRef,
       seen: TurnShown.Seen,
@@ -703,7 +704,7 @@ private[turn] object Rounding {
       level <- TurnRound.believedAt(entries, turn, believed)
       showing <- shown(records, turn, seen).left.map(TurnFailure.ofStore)
       sent <- TurnShown
-        .requestOf(offer.system, showing, turn, stubs, offer.zoned, direct)
+        .requestOf(offer.system, showing, turn, stubs, offer.zoned, place)
         .map(_.shaped(shape))
       _ <- entries
         .insert(
