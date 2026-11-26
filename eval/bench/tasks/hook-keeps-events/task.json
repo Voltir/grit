@@ -1,0 +1,10 @@
+{
+  "base": "3ea51bb0424436004681c0c959c12b5d69fbd4ef",
+  "commits": [
+    "29bcb9791b4d501e638ae5da2d9a92da8bbf367c",
+    "55146be384d353c4bf0a09230e1c3fa76a7b58e5"
+  ],
+  "checks": [
+    {"runner": "check", "args": ["grit.claudecode"]}
+  ]
+}

@@ -100,9 +100,10 @@ object TaskTests extends TestSuite {
           "blobs-remove-all-but",
           "brief-raised",
           "commands-as-tools",
+          "hook-keeps-events",
           "triage-retry"
         ),
-        Vector.fill(5)(Right((false, true, true)))
+        Vector.fill(6)(Right((false, true, true)))
       )
     }
   }

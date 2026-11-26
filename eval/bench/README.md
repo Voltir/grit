@@ -18,6 +18,9 @@ A task is kept only when its commits apply, in order, to its base and give the k
 `triage-retry` is held out: no change to the harness, its standing text or its settings is tuned
 against it, so its trials say how a tuned coder does on a task it was not tuned on.
 
+`hook-keeps-events`'s brief is a note, not a checkpoint: the change was built from it directly, so
+it may tell less than its coder had.
+
 Every run's checkout is removed as the run ends, passed, failed or refused, and a killed run's at the
 next run's start. Its log, `<checkout>.log` beside it, keeps what is worth keeping: the coder's
 commits and its diff against the base (to 200 KB, with a note when cut), and for grit its output.
