@@ -29,6 +29,10 @@
     {
       "model": "z-ai/glm-5.3-flash",
       "upstream": "z-ai/fp8",
+      "replay": {
+        "value": "latest",
+        "source": { "kind": "measured", "probe": "bench-replay", "on": "2026-11-25", "runs": 5, "held": 5 }
+      },
       "contextLength": { "value": 1048576, "source": { "kind": "advertised", "on": "2026-11-25" } },
       "effectiveContext": { "value": 256000, "source": { "kind": "declared", "by": "nick", "on": "2026-11-25" } }
     },
