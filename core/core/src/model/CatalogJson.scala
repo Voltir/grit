@@ -253,6 +253,7 @@ object CatalogJson {
     put("contextLength", p.contextLength, v => ujson.Num(Tokens.value(v).toDouble))
     put("effectiveContext", p.effectiveContext, v => ujson.Num(Tokens.value(v).toDouble))
     put("pricing", p.pricing, pricing)
+    put("density", p.density, d => ujson.Num(d.perToken))
     o
   }
 
@@ -307,6 +308,7 @@ object CatalogJson {
     s.contextLength.foreach(l => o("settings")("contextLength") = Tokens.value(l).toDouble)
     s.effectiveContext.foreach(l => o("settings")("effectiveContext") = Tokens.value(l).toDouble)
     s.pricing.foreach(p => o("settings")("pricing") = pricing(p))
+    s.density.foreach(d => o("settings")("density") = d.perToken)
     o
   }
 
@@ -451,7 +453,20 @@ object CatalogJson {
       length <- readKnown(o, "contextLength", at)(readLength)
       effective <- readKnown(o, "effectiveContext", at)(readLength)
       priced <- readKnown(o, "pricing", at)(readPricing)
-    } yield Profile(r, strict, replay, names, repairs, after, guidance, length, effective, priced)
+      dense <- readKnown(o, "density", at)(readDensity)
+    } yield Profile(
+      r,
+      strict,
+      replay,
+      names,
+      repairs,
+      after,
+      guidance,
+      length,
+      effective,
+      priced,
+      dense
+    )
 
   /** A pin [[writePinned]] wrote, or the first thing wrong with it, named by its path from
     * `at`.
@@ -476,11 +491,24 @@ object CatalogJson {
       length <- optional(so, "contextLength", sat)(readLength)
       effective <- optional(so, "effectiveContext", sat)(readLength)
       priced <- optional(so, "pricing", sat)(readPricing)
+      dense <- optional(so, "density", sat)(readDensity)
     } yield Pinned(
       CatalogVersion(version),
       grade,
       a,
-      Settings(strict, replay, names, repairs, after, guidance, profiled, length, effective, priced)
+      Settings(
+        strict,
+        replay,
+        names,
+        repairs,
+        after,
+        guidance,
+        profiled,
+        length,
+        effective,
+        priced,
+        dense
+      )
     )
 
   /** `key`'s value read by `value`, `None` when it is absent. */
@@ -540,6 +568,10 @@ object CatalogJson {
       .filter(n => n > 0 && n == math.floor(n))
       .map(n => Tokens(n.toLong))
       .toRight(s"$at is not a whole number of tokens above 0")
+
+  /** A density: characters a token, a finite number above 0. */
+  private def readDensity(v: ujson.Value, at: String): Either[String, Density] =
+    v.numOpt.toRight(s"$at is not a number").flatMap(Density.of(_).left.map(why => s"$at: $why"))
 
   private def readPins(v: ujson.Value, at: String): Either[String, Pins] =
     oneOrMore(v, at)(readPinned).flatMap(ps => Pins.of(ps).left.map(_ => s"$at has no pins"))

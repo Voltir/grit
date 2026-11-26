@@ -422,6 +422,34 @@ object CatalogTests extends TestSuite {
       profile.map(p => CatalogJson.writeTurn(p).render()) ==> Right(profileJson)
     }
 
+    // Written by the code before densities: a kept profile row as stored then, its pin bounded
+    // by a context. Reading it must give back the same id and text, and no density.
+    test("stored form: a turn profile stored before densities keeps its id and has no density") {
+      val pinned =
+        """{"catalog":"3f0c2a91d7e4b605",""" +
+          """"assignment":{"model":"z-ai/glm-5.3-flash","maxTokens":8192},""" +
+          """"settings":{"strict":"ignored","replay":"details","names":"harmony-cut","repairs":["quoted-list"],""" +
+          """"afterResult":"user-message","guidance":"schema-only","profiled":true,"contextLength":1048576,"effectiveContext":256000}}"""
+      val profileJson = s"""{"turn":$pinned,"summary":$pinned,"query":$pinned}"""
+      val profile = CatalogJson.readTurn(ujson.read(profileJson))
+      profile.map(p => TurnProfileId.value(p.id)) ==> Right("ceee630f537cb212")
+      profile.map(p => CatalogJson.writeTurn(p).render()) ==> Right(profileJson)
+      profile.map(_.turn.first.settings.density) ==> Right(None)
+    }
+
+    test("stored form: a pair's density reads back, on its profile and on the pin it settles") {
+      val dense = Density.of(3.08).map(d => flashProfile.copy(density = Known.Of(d, probe)))
+      val measured = dense.map(p =>
+        Catalog.of(policy.copy(turn = Ladder.one(queryAssigned)), Vector(ossProfile, p))
+      )
+      measured.flatMap(c => CatalogJson.read(ujson.read(CatalogJson.write(c).render()))) ==>
+        measured
+      val turn = measured.map(_.pin)
+      turn.map(_.turn.first.settings.density.map(_.perToken)) ==> Right(Some(3.08))
+      turn.flatMap(t => CatalogJson.readTurn(ujson.read(CatalogJson.writeTurn(t).render()))) ==>
+        turn
+    }
+
     test("reading: the first thing wrong, named by its path") {
       def read(json: String) = CatalogJson.read(ujson.read(json)).map(_ => ())
       val good = CatalogJson.write(catalog).render()

@@ -102,7 +102,8 @@ enum ToolGuidance {
   * the [[Settings]] a profile resolves to, never the profile itself. `contextLength` is the
   * most tokens, input and output together, the pair accepts in one request;
   * `effectiveContext`, the longest prompt (a request's input) it does its best work within;
-  * `pricing`, what it bills a call.
+  * `pricing`, what it bills a call; `density`, the characters of text a token its tokenizer
+  * averages, fitted from its usage-ledger rows.
   */
 final case class Profile(
     ref: ModelRef,
@@ -114,7 +115,8 @@ final case class Profile(
     guidance: Known[ToolGuidance] = Known.Unmeasured,
     contextLength: Known[Tokens] = Known.Unmeasured,
     effectiveContext: Known[Tokens] = Known.Unmeasured,
-    pricing: Known[Pricing] = Known.Unmeasured
+    pricing: Known[Pricing] = Known.Unmeasured,
+    density: Known[Density] = Known.Unmeasured
 ) {
 
   /** Each of `other`'s settings over this one's where its source ranks higher
@@ -131,7 +133,8 @@ final case class Profile(
       guidance.orOver(other.guidance),
       contextLength.orOver(other.contextLength),
       effectiveContext.orOver(other.effectiveContext),
-      pricing.orOver(other.pricing)
+      pricing.orOver(other.pricing),
+      density.orOver(other.density)
     )
 }
 
@@ -139,7 +142,9 @@ final case class Profile(
   * `contextLength` is `None` when no profile gives it, and a turn's requests are then bounded
   * by its window's limit, not a context (`TurnLoop.inputLimit`). `effectiveContext` and
   * `pricing` are `None` when no profile gives them: a call is then unpriced (`Cost.AtLeast`),
-  * and a turn is bounded by neither.
+  * and a turn is bounded by neither. `density` is `None` when no profile gives it: a call's
+  * request is then costed by the deployment's estimator unchanged
+  * (`TokenEstimator.withSettings`).
   */
 final case class Settings(
     strict: StrictSchemas,
@@ -151,7 +156,8 @@ final case class Settings(
     profiled: Boolean,
     contextLength: Option[Tokens] = None,
     effectiveContext: Option[Tokens] = None,
-    pricing: Option[Pricing] = None
+    pricing: Option[Pricing] = None,
+    density: Option[Density] = None
 )
 
 object Settings {
@@ -173,7 +179,8 @@ object Settings {
       profile.isDefined,
       known(_.contextLength).toOption,
       known(_.effectiveContext).toOption,
-      known(_.pricing).toOption
+      known(_.pricing).toOption,
+      known(_.density).toOption
     )
   }
 }
