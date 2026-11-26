@@ -890,7 +890,7 @@ object Rig {
   /** `env -i` and the variables grit runs with, as `name=value` arguments, as [[gritTrial]]
     * says; no key among them.
     */
-  private def gritEnvironment(arm: Arm.Grit, cap: Caps): Vector[String] = {
+  private[bench] def gritEnvironment(arm: Arm.Grit, cap: Caps): Vector[String] = {
     val model = ModelId.value(cap.model)
     val upstream = Upstream.value(cap.upstream)
     val roles = Vector(Grade.Standard, Grade.Light, Grade.Strong).flatMap { g =>

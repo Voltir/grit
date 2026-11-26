@@ -13,17 +13,22 @@ import grit.core.id.{Harness, ToolCallId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{
   Assignment,
+  Catalog,
   CatalogVersion,
   Effort,
   Grade,
+  Ladder,
   ModelRef,
   Pinned,
   ReasoningReplay,
-  Settings
+  Settings,
+  Upstream,
+  WireQuirk
 }
 import grit.core.secret.{TestSecrets, Variable}
 import grit.dbos.internal.TrialRows
 import grit.host.checkout.{LocalHanding, LocalProcesses, Redaction}
+import grit.models.{AnthropicProvider, OpenRouterConfig, Seed}
 import grit.turn.TurnRecord
 
 import utest.*
@@ -63,6 +68,35 @@ object RigTests extends TestSuite {
     .of("deepseek/deepseek-v4.1-flash-20260910", Some("fireworks"), "0.05", "4")
     .getOrElse(throw new java.lang.AssertionError())
   private val checkout = rel("trial")
+
+  /** The pin a grit coder's turn makes its first rung's calls under on `caps`, as `grit work`
+    * reads the arm's environment: the seed's policy with the variables the rig sets laid over
+    * it, pinned by the seed's catalog under that policy; and that catalog.
+    */
+  private def armPin(caps: Caps): (Pinned, Catalog) = (for {
+    seed <- Seed.catalog
+    passed <- Variables.of(Map("PATH" -> "/usr/bin:/bin"))
+    standing <- Standing.of("Make the change.")
+    arm <- Arm.Grit.of(
+      "grit",
+      "scout",
+      standing,
+      "jdbc:postgresql://localhost:5432/grit_bench_coder",
+      8192,
+      passed,
+      Arm.Settings()
+    )
+    env = Rig
+      .gritEnvironment(arm, caps)
+      .flatMap(_.split("=", 2) match {
+        case Array(k, v) => Some(k -> v)
+        case _ => None
+      })
+      .toMap
+    policy <- OpenRouterConfig.policy(env, seed.policy).left.map(_.message)
+    catalog = seed.withPolicy(policy)
+  } yield (catalog.pin.turn.first, catalog))
+    .fold(why => throw new java.lang.AssertionError(why), identity)
 
   /** The fake's run, its edit of `a.scala` writing `edited`, its stream's lines `lines`, and its
     * errors `stderr`, written once it has run and before it exits 1.
@@ -1121,6 +1155,33 @@ object RigTests extends TestSuite {
           Right((Vector(unread), Vector(s"[rig] $unread")))
         )
       }
+    }
+
+    test(
+      "the grit arm's pin for Claude Haiku 5.5 at Anthropic's API is the catalog's for that pair, priced by its profile, asking no effort and so sent grit's default"
+    ) {
+      val (pin, catalog) = armPin(cap)
+      (
+        pin,
+        pin.settings.pricing.isDefined,
+        pin.assignment.effort.getOrElse(AnthropicProvider.DefaultEffort)
+      ) ==> (
+        catalog.pinned(Ladder.one(Assignment(cap.pair, 8192, None))).first,
+        true,
+        Effort.Medium
+      )
+      cap.pair.upstream ==> Some(Upstream.AnthropicApi)
+    }
+
+    test(
+      "the grit arm's pin for DeepSeek v4.1 flash at fireworks is the catalog's for that pair, replaying details and sending an empty reasoning_content"
+    ) {
+      val (pin, catalog) = armPin(deepseek)
+      (pin, pin.settings.replay, pin.settings.quirks) ==> (
+        catalog.pinned(Ladder.one(Assignment(deepseek.pair, 8192, None))).first,
+        ReasoningReplay.Details,
+        Set(WireQuirk.EmptyReasoningContent)
+      )
     }
 
     test(

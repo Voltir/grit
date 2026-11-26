@@ -1,7 +1,9 @@
 package grit.models
 
-import grit.core.message.{AssistantBlock, StopReason, Tokens}
-import grit.core.provider.{Delta, ProviderError}
+import grit.core.id.ToolCallId
+import grit.core.message.{AssistantBlock, Message, StopReason, Tokens}
+import grit.core.model.{Assignment, Ladder, ModelId, ModelRef, Upstream}
+import grit.core.provider.{Delta, ModelRequest, ProviderError}
 
 import utest.*
 
@@ -67,6 +69,60 @@ object OpenRouterStreamTests extends TestSuite {
       message.blocks.collect { case AssistantBlock.Text(t) => t } ==> Vector(text)
       message.stop ==> StopReason.EndTurn
       message.usage.costUsd ==> Some(BigDecimal("0.0000167"))
+    }
+
+    test(
+      "under the seed's pin for DeepSeek v4.1 flash at fireworks, a reply's reasoning and call with no reasoning details read back, and go back on the next request at fireworks alone with an empty reasoning_content, the call answered by its result"
+    ) {
+      // Hand-built in the shape of openrouter-toolcall.sse, as DeepSeek at fireworks answers:
+      // its reasoning as plain `reasoning` pieces, with no `reasoning_details`.
+      val pin = (for {
+        seed <- Seed.catalog
+        id <- ModelId.of("deepseek/deepseek-v4.1-flash-20260910").toRight("no id")
+        at <- Upstream.of("fireworks").toRight("no upstream")
+      } yield seed.pinned(Ladder.one(Assignment(ModelRef(id, Some(at)), 8192, None))).first)
+        .fold(why => throw new java.lang.AssertionError(why), identity)
+      val reply = folded(resource("/openrouter-deepseek-fireworks.sse"))._1
+        .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+      val call = reply.blocks.collectFirst { case AssistantBlock.ToolCall(id, _, _) => id }
+      val next = ModelRequest(
+        "s",
+        Vector(
+          Message.User("Read Rig.scala."),
+          reply,
+          Message.ToolResult(call.getOrElse(ToolCallId("")), "object Rig", isError = false)
+        )
+      )
+      // The turn's path: the provider's configuration from the pin, its body from that.
+      val c = OpenRouterConfig.of(pin)
+      val body =
+        OpenRouterJson.request(c.model, c.maxTokens, c.upstream, next, c.effort, c.replay, c.quirks)
+      val sent = body("messages").arr.toVector
+      val assistant = sent.find(_("role").str == "assistant")
+      (
+        reply.blocks.collect {
+          case AssistantBlock.Reasoning(text, replay) => s"reasoning $text, details $replay"
+          case AssistantBlock.ToolCall(_, name, args) => s"call $name ${args.render()}"
+        },
+        assistant.map(a =>
+          (
+            a.obj.get("reasoning_details"),
+            a.obj.get("reasoning_content"),
+            a("tool_calls").arr.map(_("id").str).toVector
+          )
+        ),
+        sent.filter(_("role").str == "tool").map(_("tool_call_id").str),
+        body("provider")
+      ) ==> (
+        Vector(
+          "reasoning The brief names Rig.scala; read it first., details None",
+          """call read {"path":"eval/harness/src/bench/Rig.scala"}"""
+        ),
+        Some((None, Some(ujson.Str("")), call.map(ToolCallId.value).toVector)),
+        call.map(ToolCallId.value).toVector,
+        ujson.Obj("order" -> ujson.Arr("fireworks"), "allow_fallbacks" -> false)
+      )
+      assert(call.nonEmpty)
     }
 
     test("tool-call pieces merge by index; two calls stay two") {

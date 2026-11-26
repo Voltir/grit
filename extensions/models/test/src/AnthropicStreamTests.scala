@@ -2,7 +2,8 @@ package grit.models
 
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.provider.{Delta, ProviderError}
+import grit.core.model.{Assignment, CatalogJson, Ladder, ModelId, ModelRef, Upstream}
+import grit.core.provider.{Delta, ModelRequest, ProviderError}
 
 import utest.*
 
@@ -174,6 +175,53 @@ object AnthropicStreamTests extends TestSuite {
         Right(Vector(ujson.Str("""{"edits":[{"old":"a"}"""))),
         Right(Vector(ujson.Obj("edits" -> ujson.Arr(ujson.Obj("old" -> "a")))))
       )
+    }
+
+    test(
+      "under the seed's pin for Claude Haiku 5.5 at Anthropic's API, a recorded reply's thinking and tool use read back priced, and go back on the next request signed, the call answered by its result, at grit's default effort"
+    ) {
+      val pin = (for {
+        seed <- Seed.catalog
+        id <- ModelId.of("anthropic/claude-haiku-5-5").toRight("no id")
+      } yield seed
+        .pinned(Ladder.one(Assignment(ModelRef(id, Some(Upstream.AnthropicApi)), 8192, None)))
+        .first).fold(why => throw new java.lang.AssertionError(why), identity)
+      // The turn's path: the stream folded, then read under the pin's pricing.
+      val reply = AnthropicStream
+        .fold(resource("/anthropic-live-haiku.sse").iterator, _ => ())
+        .flatMap(AnthropicJson.response(_, pin.settings.pricing))
+        .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+      val (call, signature) = (
+        reply.blocks.collectFirst { case AssistantBlock.ToolCall(id, _, _) => id },
+        reply.blocks.collectFirst { case AssistantBlock.Reasoning(_, Some(r)) =>
+          r.obj.get("signature").flatMap(_.strOpt)
+        }.flatten
+      )
+      val next = ModelRequest(
+        "s",
+        Vector(
+          Message.User("Read the file named for the sum of the first six primes."),
+          reply,
+          Message.ToolResult(call.getOrElse(ToolCallId("")), "found", isError = false)
+        )
+      )
+      val body = AnthropicProvider.wire("k", "claude-haiku-5-5", pin, next)._2
+      def blocks(i: Int, kind: String) =
+        body("messages").arr(i)("content").arr.toVector.filter(_("type").str == kind)
+      (
+        reply.usage.costUsd.isDefined,
+        blocks(1, "thinking").map(_.obj.get("signature").flatMap(_.strOpt)),
+        blocks(1, "tool_use").map(_("id").str),
+        blocks(2, "tool_result").map(_("tool_use_id").str),
+        body.obj.get("output_config")
+      ) ==> (
+        true,
+        Vector(signature),
+        call.map(ToolCallId.value).toVector,
+        call.map(ToolCallId.value).toVector,
+        Some(ujson.Obj("effort" -> CatalogJson.effort(AnthropicProvider.DefaultEffort)))
+      )
+      assert(signature.exists(_.nonEmpty), call.nonEmpty)
     }
 
     test("a refusal partway through is Refused naming its category") {
