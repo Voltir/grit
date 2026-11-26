@@ -280,7 +280,12 @@ private[moves] object Act {
         Asking.reply(env.models.provider(pin), request, Hearing.silent(), env.clock) match {
           case Left(why) => AskMade.Refused(AskMade.Kind.Model, why, digest)
           case Right(message) =>
-            AskMade.Made(digest, message, at, env.records.estimator.request(request))
+            AskMade.Made(
+              digest,
+              message,
+              at,
+              env.records.estimator.withSettings(pin.settings).request(request)
+            )
         }
     }
 
@@ -507,7 +512,7 @@ private[moves] object Act {
         val settings = pin.settings
         val request =
           Shaping.request(system, messages, Posed.ReplyTool, reply.schema, settings.strict)
-        val estimator = env.records.estimator
+        val estimator = env.records.estimator.withSettings(settings)
         def costs(calls: Vector[Shaped.Call]): Vector[AskMade.Call] =
           calls.map(c =>
             AskMade.Call(

@@ -10,7 +10,7 @@ import grit.core.durable.{Flow, Step, StepName, StreamWriter}
 import grit.core.host.Clipped
 import grit.core.id.{DocumentVersionId, EntryId, EntrySeq, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, Tokens}
-import grit.core.model.{Grade, ModelRef, Pinned, StrictSchemas, TurnProfile, TurnProfileId}
+import grit.core.model.{Pinned, StrictSchemas, TurnProfile, TurnProfileId}
 import grit.core.provider.ModelRequest
 import grit.core.route.{Routed, Routing, Uncleared}
 import grit.core.session.{Event, Session}
@@ -157,9 +157,11 @@ private[turn] object TurnSteps {
         val held = TurnLoop.inputLimit(
           own = budget.limit,
           pin = pin,
-          // One clipped tool result, the most a host tool answers with.
-          clipped =
-            estimator.message(Message.ToolResult(ToolCallId(""), "x" * Clipped.MaxBytes, false)),
+          // One clipped tool result, the most a host tool answers with, costed as the pin's
+          // provider counts it.
+          clipped = estimator
+            .withSettings(pin.settings)
+            .message(Message.ToolResult(ToolCallId(""), "x" * Clipped.MaxBytes, false)),
           drawn = turnEnv.assembler.limit + estimator.system(o.system) +
             estimator.tools(tools.schemas(strict))
         )
@@ -581,8 +583,7 @@ private[turn] object TurnSteps {
                 in.at.drawn.seen,
                 stubs,
                 in.looped.answer,
-                pins.turn.grade,
-                pins.turn.assignment.ref,
+                pins.turn,
                 shape,
                 Some(rounds.level),
                 env.clock.now()
@@ -696,7 +697,7 @@ private[turn] object TurnSteps {
                   s.turn,
                   s.answered,
                   in.message,
-                  ask.pin.grade,
+                  ask.pin,
                   Some(at.level),
                   sent,
                   r.env.clock.now()
@@ -1196,8 +1197,8 @@ private[turn] object TurnSteps {
 
   /** Records the summary in `message` as `turn`'s summary, dated `at`, a child of its reply
     * `answered`, after everything already in the conversation, believed as
-    * [[TurnRound.believedAt]] says of `believed`; and what it cost in the ledger beside the
-    * estimate of `sent`, the request that produced it.
+    * [[TurnRound.believedAt]] says of `believed`; and what it cost in the ledger at `pin`'s
+    * grade beside the estimate of `sent`, the request that produced it, at `pin`'s settings.
     * What it says of the message's item is recorded after it ([[TurnAgenda.describedId]]). The
     * summary closes the conversation's session, at its seq, cut to [[Session.Summary.Longest]]
     * characters ending `…`, when a session is recorded already ([[TurnSessions.record]]).
@@ -1208,7 +1209,7 @@ private[turn] object TurnSteps {
       turn: TurnRef,
       answered: EntryId,
       message: Message.Assistant,
-      grade: Grade,
+      pin: Pinned,
       believed: Option[Integrity],
       sent: ModelRequest,
       at: Instant
@@ -1254,7 +1255,14 @@ private[turn] object TurnSteps {
         .left
         .map(TurnFailure.ofStore)
       _ <- Asking
-        .spent(ledger, id, turn, message, Some(grade), estimator.request(sent))
+        .spent(
+          ledger,
+          id,
+          turn,
+          message,
+          Some(pin.grade),
+          estimator.withSettings(pin.settings).request(sent)
+        )
         .left
         .map(TurnFailure.ofStore)
       described = TurnAgenda.itemOf(all, turn).toVector.flatMap(TurnAgenda.described(_, read))
@@ -1276,12 +1284,12 @@ private[turn] object TurnSteps {
     * [[Payload.Draft]]), believed as [[TurnRound.believedAt]] says of `believed`; a reply to a
     * heard message answered as said to grit is kept as its outcome in `speech`
     * ([[Outcome.Replied]]) with its words; dated `at`, after everything already in the
-    * conversation, and what it cost in the ledger beside the estimate of the request that
-    * produced it: rebuilt from the same window and the same entries (the turn's own were all
+    * conversation, and what it cost in the ledger at `pin`'s grade beside the estimate, at
+    * `pin`'s settings, of the request that produced it: rebuilt from the same window and the same entries (the turn's own were all
     * recorded before its call, and the reply is not yet among them), its message dated as
     * `offer` and `direct` say ([[TurnShown.requestOf]]), each item `stubs` names shown as its
     * stub, shaped by `shape`; that request's prefix kept as [[Turn.prefixId]]
-    * ([[TurnShown.prefixOf]]), naming `pair`, the pair the turn's calls went to. Each of the window's documents whose
+    * ([[TurnShown.prefixOf]]), naming `pin`'s pair, the pair the turn's calls went to. Each of the window's documents whose
     * pointer one of the turn's calls followed, and that succeeded, is counted as followed at
     * `at` ([[Pointer.followedIn]]).
     */
@@ -1294,8 +1302,7 @@ private[turn] object TurnSteps {
       seen: TurnShown.Seen,
       stubs: Map[ItemRef, String],
       message: Message.Assistant,
-      grade: Grade,
-      pair: ModelRef,
+      pin: Pinned,
       shape: ModelRequest -> ModelRequest,
       believed: Option[Integrity],
       at: Instant
@@ -1332,7 +1339,7 @@ private[turn] object TurnSteps {
       // since its reply's thinking is bound to every message before it. A budget's last call's
       // note ([[TurnLoop.notes]]) is in no record, so a later turn renders this one without
       // it, its digest differs, and it draws a boundary rather than send the reply unanswered.
-      prefix = TurnShown.prefixOf(sent).copy(pair = Some(pair))
+      prefix = TurnShown.prefixOf(sent).copy(pair = Some(pin.assignment.ref))
       _ <- entries
         .insert(
           Entry(
@@ -1349,7 +1356,14 @@ private[turn] object TurnSteps {
         .left
         .map(TurnFailure.ofStore)
       _ <- Asking
-        .spent(ledger, id, turn, message, Some(grade), estimator.request(sent))
+        .spent(
+          ledger,
+          id,
+          turn,
+          message,
+          Some(pin.grade),
+          estimator.withSettings(pin.settings).request(sent)
+        )
         .left
         .map(TurnFailure.ofStore)
       followed = Pointer.followedIn(showing.documents.map(_._1), callsOf(showing.mine))

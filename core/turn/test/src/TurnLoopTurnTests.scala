@@ -1196,6 +1196,79 @@ object TurnLoopTurnTests extends TestSuite {
       )
     }
 
+    test(
+      "a pin's density costs the clipped result's room its turn's input limit keeps"
+    ) {
+      // 65,000 tokens less 4,096 out leaves 60,904. A clipped result is 23,277 tokens at 2.2
+      // characters a token, which reply 1's reach of 41,000 meets; 16,628 at 3.08, which only
+      // reply 2's of 61,000 does.
+      val ref = TurnFixtures.TestCatalog.policy.turn.first.assignment.ref
+      val on = java.time.LocalDate.of(2026, 11, 26)
+      val dense = grit.core.model.Density.of(3.08)
+      val profile = (density: grit.core.model.Known[grit.core.model.Density]) =>
+        TurnFixtures.TestCatalog.overlaid(
+          Vector(
+            grit.core.model.Profile(
+              ref,
+              contextLength = grit.core.model.Known
+                .Of(Tokens(65_000), grit.core.model.Source.Declared("test", on)),
+              density = density
+            )
+          )
+        )
+      val measured = dense.map(d =>
+        profile(grit.core.model.Known.Of(d, grit.core.model.Source.Measured("ledger", on, 1, 1)))
+      )
+      (
+        measured.map(c => limited(catalog = c)._1),
+        limited(catalog = profile(grit.core.model.Known.Unmeasured))._1
+      ) ==> (
+        Right(Vector((false, false), (false, false), (false, false), (true, false), (true, true))),
+        Vector((false, false), (false, false), (true, false), (true, true))
+      )
+    }
+
+    test("a pin's density costs every call's estimate in the ledger") {
+      val ref = TurnFixtures.TestCatalog.policy.turn.first.assignment.ref
+      val on = java.time.LocalDate.of(2026, 11, 26)
+      val dense = grit.core.model.Density.of(3.08)
+      val measured = dense.map(d =>
+        TurnFixtures.TestCatalog.overlaid(
+          Vector(
+            grit.core.model.Profile(
+              ref,
+              density =
+                grit.core.model.Known.Of(d, grit.core.model.Source.Measured("ledger", on, 1, 1))
+            )
+          )
+        )
+      )
+      val ledger = new InMemoryUsageLedger
+      val entries = new InMemoryEntryStore
+      val ws = new Files(files)
+      val provider = threeRounds
+      val turn = say(entries, "read them")
+      measured.map(c =>
+        new InMemoryDurable().run(turn.workflowId)(
+          tooledBody(
+            entries,
+            provider,
+            ledger,
+            new StubProvider(),
+            NoClassifier,
+            ws,
+            tools(ws),
+            5,
+            catalog = c
+          )
+        )
+      ) ==> Right("replied: reply:c1:0; summarised: summary:c1:0")
+      ledger.rows.take(3).map(_._5) ==>
+        dense.toOption.toVector.flatMap(d =>
+          provider.requests.map(CharEstimate.withDensity(d).request)
+        )
+    }
+
     test("a failed call after a tool round ends the turn with no reply") {
       val entries = new InMemoryEntryStore
       val ws = new Files(files)

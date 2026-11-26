@@ -146,8 +146,14 @@ object Judging {
                   .toRight(s"no model cleared for ${Label.written(routed.classification.label)}")
                 got <- models.provider(cleared.first).complete(request).left.map(_.cause)
               } yield got
+              // A reply came from the first pin cleared, so it is costed at its settings.
+              val estimator = routed
+                .cleared(pins)
+                .fold(env.records.estimator)(c =>
+                  env.records.estimator.withSettings(c.first.settings)
+                )
               val calls = reply.toOption.toVector.map(m =>
-                AskMade.Call(m.model, m.usage, env.records.estimator.request(request), m.upstream)
+                AskMade.Call(m.model, m.usage, estimator.request(request), m.upstream)
               )
               Posed(read(reply), calls, Some(routed.classification.label))
           }

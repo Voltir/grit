@@ -113,7 +113,8 @@ object TurnLoop {
     * a prompt by, less `clipped`, room for one clipped tool result the loop has not yet seen; at
     * most `own`, the deployment's own limit ([[Rounds.within]]), when it sets one. `pin` bounds
     * a prompt by its context length less its output budget (for a pin whose context no profile
-    * gives, by `drawn`, its assembler's limit plus what its system prompt and tools cost), by
+    * gives, by `drawn`, its assembler's limit plus what its system prompt and tools cost, all by
+    * the deployment's estimator unchanged, as the assembler draws), by
     * its effective context, and by its pricing's [[grit.core.model.Pricing.flatTo]], where its
     * price first rises. Never below one token. With the context known, the window bounds only
     * what a boundary draws (ADR 0052), not how far the turn grows.

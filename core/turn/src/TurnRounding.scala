@@ -11,7 +11,7 @@ import grit.core.durable.StreamWriter
 import grit.core.flow.{Extracted, Shape, Trusted}
 import grit.core.id.{CallSlot, EntryId, EntrySeq, TurnRef, TurnSeq}
 import grit.core.message.Message
-import grit.core.model.{Grade, StrictSchemas}
+import grit.core.model.{Pinned, StrictSchemas}
 import grit.core.provider.ModelRequest
 import grit.core.store.{Entry, Jot, Keeps, Origin, Payload, Reads, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, ToolSet, Toolbox}
@@ -82,7 +82,7 @@ private[turn] final class Rounding[C^](
         stubs,
         at.round,
         reply,
-        pins.turn.grade,
+        pins.turn,
         shape,
         Some(at.level),
         env.clock.now()
@@ -647,7 +647,8 @@ private[turn] object Rounding {
         }
         _ <- calls.zipWithIndex.foldLeft[Either[String, Unit]](Right(())) { case (acc, (c, k)) =>
           acc.flatMap { _ =>
-            val (ledger, estimate) = (env.records.ledger, env.records.estimator.request(c.sent))
+            val (ledger, estimate) =
+              (env.records.ledger, env.records.estimator.withSettings(pin.settings).request(c.sent))
             jot.write(Subject.Turn(turn))(
               ledger.record(
                 Extract.costId(slot, k),
@@ -674,8 +675,10 @@ private[turn] object Rounding {
 
   /** The `ask:n:record` step: `reply`, the reply to `round` that called tools, kept as
     * [[TurnTools.callId]] dated `at` after everything in the conversation, believed as
-    * [[TurnRound.believedAt]] says of `believed`, and what it cost in the ledger beside the
-    * estimate of its request, rebuilt by `shape` from the same window and entries under
+    * [[TurnRound.believedAt]] says of `believed`, and what it cost in the ledger at `pin`'s
+    * grade beside the estimate of its request at `pin`'s settings
+    * ([[grit.core.provider.TokenEstimator.withSettings]]), rebuilt by `shape` from the same
+    * window and entries under
     * `offer`'s system prompt, its message dated as `offer` and `direct` say
     * ([[TurnShown.requestOf]]), each item `stubs` names shown as its stub.
     */
@@ -688,7 +691,7 @@ private[turn] object Rounding {
       stubs: Map[ItemRef, String],
       round: Round,
       reply: Message.Assistant,
-      grade: Grade,
+      pin: Pinned,
       shape: ModelRequest -> ModelRequest,
       believed: Option[Integrity],
       at: Instant
@@ -718,7 +721,14 @@ private[turn] object Rounding {
         .left
         .map(TurnFailure.ofStore)
       _ <- Asking
-        .spent(ledger, id, turn, reply, Some(grade), estimator.request(sent))
+        .spent(
+          ledger,
+          id,
+          turn,
+          reply,
+          Some(pin.grade),
+          estimator.withSettings(pin.settings).request(sent)
+        )
         .left
         .map(TurnFailure.ofStore)
     } yield id
