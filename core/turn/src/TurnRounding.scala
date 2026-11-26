@@ -149,7 +149,12 @@ private[turn] final class Rounding[C^](
     }.flatten)
 
   def spawning: SpawnEnv^{this} =
-    SpawnEnv(env.spawns, tooling.subagents.declared, env.hosting.conversations)
+    SpawnEnv(
+      env.spawns,
+      tooling.subagents.declared,
+      env.hosting.conversations,
+      tooling.subagents.hosts
+    )
 
   // Answered from what the round recorded, never the call bound again: a type the deployment
   // drops while the parent waits leaves the child's spend and reply to be kept, not a failure.

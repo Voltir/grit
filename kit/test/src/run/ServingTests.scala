@@ -1,5 +1,7 @@
 package grit.kit.run
 
+import scala.concurrent.duration.DurationInt
+
 import grit.core.admin.InMemoryAdministration
 import grit.core.clock.{Clock, SetClock}
 import grit.core.document.InMemoryDocuments
@@ -203,6 +205,51 @@ object ServingTests extends TestSuite {
       )
       opened.foreach(_.close())
       built.asScala.toVector ==> Vector("a", "b")
+    }
+    test("a served repository's edge, once closed, stops reading its adverts again") {
+      import grit.core.agent.{SubagentFixtures, Subagents}
+      import grit.host.git.GitFixture
+      GitFixture.inRepository { repo =>
+        val coding = SubagentFixtures.coding.copy(repository = GitFixture.repository)
+        val subagents = SubagentFixtures.ok(
+          Subagents.of(
+            Vector(
+              SubagentFixtures.ok(
+                SubagentFixtures.subagent(
+                  SubagentFixtures.coder,
+                  coding,
+                  grit.core.visibility.Integrity.Member
+                )
+              )
+            )
+          )
+        )
+        val clone =
+          grit.kit.deployment.RepositoryClone(GitFixture.repository, repo.source, repo.root)
+        val hosted = grit.kit.deployment.Deployments
+          .of(subagents = subagents, repositories = Vector(clone))
+          .fold(r => sys.error(r.message), _.hosted)
+        val name = s"grit-advert ${GitFixture.repository.place.written}"
+        def advertising: Boolean =
+          scala.jdk.CollectionConverters
+            .SetHasAsScala(Thread.getAllStackTraces.keySet)
+            .asScala
+            .exists(t => t.getName == name && t.isAlive)
+        val edge = hosted.toList match {
+          case h :: Nil => LocalEdge.served(h, every = 10.millis)
+          case other => sys.error(s"hosted: $other")
+        }
+        val before = edge.open(stores, Map.empty, Clock.system(), _ => ()) match {
+          case Left(r) => sys.error(r.message)
+          case Right(opened) =>
+            val was = advertising
+            opened.close()
+            was
+        }
+        val deadline = System.nanoTime() + 2.seconds.toNanos
+        while (advertising && System.nanoTime() < deadline) Thread.sleep(10)
+        (before, advertising) ==> (true, false)
+      }
     }
   }
 }

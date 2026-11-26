@@ -37,7 +37,8 @@ object DelegateLiveTests extends TestSuite {
         )
         .flatMap(s => Subagents.of(Vector(s)))
     ),
-    _ => Vector.empty
+    _ => Vector.empty,
+    Set.empty
   )
 
   /** The parent's model calls `delegate` first and answers once it has a result; the child's,

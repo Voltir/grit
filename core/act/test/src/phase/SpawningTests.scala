@@ -73,7 +73,7 @@ object SpawningTests extends TestSuite {
     * made, each ending child ringing with what `ringing` makes of its outcome (its ending's word,
     * as a child's turn rings), and the first read of a child's end dying when `crashAtEnded`;
     * when `endsLate`, every read of a child's end finds it running, as its workflow's status does
-    * between its ring and its return.
+    * between its ring and its return; its edges serving a coding child in `hosts`.
     */
   private final class World(
       visibility: Visibility = Visibility.Shipped,
@@ -82,7 +82,8 @@ object SpawningTests extends TestSuite {
       stored: Option[Visibility] = None,
       ringing: String -> String = outcome => TurnEnding.word(TurnEnding.of(outcome)),
       endsLate: Boolean = false,
-      subagents: Subagents = ok(Subagents.of(Vector(scholarType)))
+      subagents: Subagents = ok(Subagents.of(Vector(scholarType))),
+      hosts: Set[grit.core.place.Repository] = Set.empty
   ) {
     val inbox: InMemoryInbox = InMemoryInbox.fresh(visibility = stored.getOrElse(visibility))
     val durable: InMemoryDurable =
@@ -182,7 +183,9 @@ object SpawningTests extends TestSuite {
     private def body(requests: Seq[Spawning.Request])(using grit.core.durable.Durable^): String =
       requests
         .map(r =>
-          shown(Flows.run(spawning, SpawnEnv(spawns, subagents, inbox.conversations), r).merge)
+          shown(
+            Flows.run(spawning, SpawnEnv(spawns, subagents, inbox.conversations, hosts), r).merge
+          )
         )
         .mkString("\n")
 
@@ -200,7 +203,8 @@ object SpawningTests extends TestSuite {
       turn: TurnRef,
       index: Int = 0,
       parent: Option[Acting] = None,
-      bound: Option[Label] = None
+      bound: Option[Label] = None,
+      agent: AgentType = scholar
   ): Spawning.Request =
     CallSlot
       .of(turn, 0, index)
@@ -208,7 +212,7 @@ object SpawningTests extends TestSuite {
         Spawning.Request.of(
           call,
           parent.getOrElse(acting(turn)),
-          scholar,
+          agent,
           "Find the paper.",
           Integrity.Member,
           bound
@@ -265,6 +269,21 @@ object SpawningTests extends TestSuite {
         Vector("Unanswered(c2)"),
         Vector(Some(thread.room))
       )
+    }
+
+    test(
+      "a coding spawn whose parent's conversation is a direct message's is refused Direct, though its repository is hosted"
+    ) {
+      import grit.core.agent.SubagentFixtures.{coder, coding, scratch}
+      val w = new World(
+        subagents = ok(Subagents.of(Vector(ok(subagent(coder, coding, Integrity.WritesOut))))),
+        hosts = Set(scratch)
+      )
+      val account = TestAccounts.sourced("slack:T1/U-ana")
+      val dm = Origin.Direct(account, "t1")
+      val turn = w.parentAt(dm, account)
+      val got = w.spawn(request(turn, agent = coder))
+      (got, w.spawnCalls) ==> (Vector(s"Refused(Direct(${dm.room}))"), 0)
     }
 
     test("a type the deployment no longer declares is Unspawned in its narrowing, making nothing") {

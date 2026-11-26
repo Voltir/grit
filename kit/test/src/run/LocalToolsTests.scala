@@ -313,6 +313,16 @@ object LocalToolsTests extends TestSuite {
         )
       }
     }
+    test("tools once closed run nothing") {
+      val root = Files.createTempDirectory("closed").toRealPath()
+      val _ = Files.writeString(root.resolve("a.txt"), "a")
+      val tools =
+        new LocalTools(Offered.Read, Redaction.of(Map.empty), Clock.system(), Fresh.random(), None)
+      tools.close()
+      call(tools, root, "list", ujson.Obj()) ==>
+        Outcome.Failed("These coding tools are closed; nothing ran.")
+    }
+
     test("a run's id reaches tail in a later request to the same checkout") {
       val root = Files.createTempDirectory("allowlisted").toRealPath()
       val script = root.resolve("slow")

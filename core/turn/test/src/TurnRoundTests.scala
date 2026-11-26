@@ -101,7 +101,8 @@ object TurnRoundTests extends TestSuite {
     def spawning: grit.act.phase.SpawnEnv^{this} = grit.act.phase.SpawnEnv(
       spawns,
       grit.core.agent.Subagents.empty,
-      new grit.core.store.InMemoryConversationStore
+      new grit.core.store.InMemoryConversationStore,
+      Set.empty
     )
     def delegated(
         asked: TurnRound.Delegation,

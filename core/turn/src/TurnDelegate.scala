@@ -65,8 +65,8 @@ object TurnDelegate {
         )
       case Delegated.Refused(Delegation.Refused.NotWorking(repository)) =>
         Outcome.Failed(
-          s"$run was not started: it works only in a conversation working in the repository " +
-            s"${repository.name}, and this one is not."
+          s"$run was not started: it works in the repository ${repository.name}, which is not " +
+            "served to this conversation."
         )
       case Delegated.OverDailyCap =>
         Outcome.Failed(s"$run was not started: today's spending limit is reached.")

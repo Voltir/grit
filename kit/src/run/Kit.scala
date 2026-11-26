@@ -102,7 +102,8 @@ object Kit {
     * that stops serving, closes each edge, then the engine (which waits up to 30 s for running
     * turns), holding the process open [[ClosedWithin]] for them. Refused before the engine
     * opens when a secret or an edge's variable is missing; an edge refusing to open closes
-    * those already opened. Once the engine opens, and before any edge does, what the deployment's
+    * those already opened. Each repository it hosts ([[Deployment.hosted]]) is served at its
+    * place by an edge of its own, a coding child's run in its own working copy, pushing nothing. Once the engine opens, and before any edge does, what the deployment's
     * identities no longer trust is ended ([[Engine.untrust]]); its edges open before any of its
     * workflows runs ([[opened]]). Each finished turn is logged in one line at INFO under [[TurnLog]].
     * When `deployment` declares a review, heard messages are picked for it every
@@ -250,7 +251,8 @@ object Kit {
         } finally engine.close()
     }
 
-  /** `deployment`'s edges opened on `engine` in order ([[Serving.open]]), each over its stores and
+  /** `deployment`'s edges opened on `engine` in order ([[Serving.open]]), then one serving each
+    * repository it hosts ([[Deployment.hosted]]), each over its stores and
     * `engine`'s file area, and only then its workflows launched, sweeping, each finished turn's
     * line told to `finished` ([[Launch.apply]]): what DBOS starts at launch, a turn recovered
     * mid-round among it, finds every edge this process serves registered, so its calls to their
@@ -277,7 +279,8 @@ object Kit {
     // The edges first: DBOS runs what it recovers as soon as it launches, and a turn's call to a
     // place no live edge serves is answered as not served.
     Serving.open(
-      deployment.edges.toList,
+      // Its repositories' edges after its own: a hosted repository's child is served by them.
+      (deployment.edges ++ deployment.hosted.map(LocalEdge.served(_))).toList,
       edge =>
         stores(
           link,

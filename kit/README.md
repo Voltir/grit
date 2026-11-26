@@ -45,7 +45,7 @@ In dependency order:
   coding tools `LocalTools` runs there (one `LocalRuns` per checkout, closed when the chat
   ends), with the instruction files around it, read again so an
   edit reaches the next turn without a restart; given a repository's `WorkingCopies`, it also
-  serves that repository's place, each run of work in its own copy (`grit.host.git`). Only
+  serves that repository's place, each run of work in its own copy (`grit.host.git`). Each repository a served deployment hosts (`Deployment.hosted`) is served so by an edge of its own, opened by `Kit.serve` after the deployment's: a spawned coding child's run in its own copy, what it leaves uncommitted committed to its branch once abandoned, nothing pushed. Only
   `serve` and `catchUp` end what the deployment's identities no longer trust as they start: a
   process running its own chat may be declared with fewer edges, and so trust fewer realms. Every way grit runs launches the same
   workflows, telling the time by the engine's clock, with declared schedules reconciled at

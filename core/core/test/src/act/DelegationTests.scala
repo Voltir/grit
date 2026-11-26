@@ -46,7 +46,7 @@ object DelegationTests extends TestSuite {
   private def usd(s: String): Cost = Cost.Exact(BigDecimal(s))
 
   /** `as` narrowed from `from`, briefed at `brief`, the parent at `parentAt` and its room
-    * receiving `room`, from `origin`, having spent `spent`.
+    * receiving `room`, from `origin` in a process hosting `hosts`, having spent `spent`.
     */
   private def narrowed(
       as: grit.core.agent.Subagent,
@@ -55,9 +55,12 @@ object DelegationTests extends TestSuite {
       parentAt: Label = Label.Public,
       room: Label = internal,
       origin: Origin = working,
+      hosts: Set[Repository] = Set.empty,
       spent: Cost = Cost.Zero
   ): Either[Delegation.Refused, Acting] =
-    Delegation.narrowed(from, as, brief, parentAt, room, origin, spent).map(_(child))
+    Delegation
+      .narrowed(from, as, brief, parentAt, room, Delegation.served(origin, hosts), spent)
+      .map(_(child))
 
   val tests = Tests {
     test(
@@ -143,6 +146,39 @@ object DelegationTests extends TestSuite {
         narrowed(scholarType, spent = usd("100")).map(_.turn),
         narrowed(scholarType, from = daily, spent = usd("100")).map(_.turn)
       ) ==> (Right(child), Right(child))
+    }
+
+    test(
+      "a coding child is served the repositories its process hosts and its parent's run of work's; a spawned parent's, none"
+    ) {
+      val other = ok(Repository.of("other"))
+      val spawned = Origin.Spawned(child, ok(WorkName.of("s1-0-ab")), scratch.place)
+      (
+        Delegation.served(slack, Set(other)),
+        Delegation.served(working, Set(other)),
+        Delegation.served(spawned, Set(other))
+      ) ==> (Set(other), Set(other, scratch), Set.empty)
+    }
+
+    test(
+      "a coding type whose repository its process hosts is made from a parent working elsewhere"
+    ) {
+      narrowed(coderType, origin = slack, hosts = Set(scratch)).map(_.allowance) ==>
+        Right(Allowance.Capped(spendCap))
+    }
+
+    test("a hosted coding type is still Above when its parent is classified above its room") {
+      narrowed(
+        coderType,
+        origin = slack,
+        hosts = Set(scratch),
+        parentAt = Label.at(Level.Confidential)
+      ) ==> Left(Delegation.Refused.Above(Label.at(Level.Confidential), internal))
+    }
+
+    test("a hosted coding type is still Below when its brief is believed below what it requires") {
+      narrowed(coderType, origin = slack, hosts = Set(scratch), brief = Integrity.Outside) ==>
+        Left(Delegation.Refused.Below(Integrity.Member, Integrity.Outside))
     }
 
     test("refusals come in order: Below before Above before NotWorking before OverCap") {

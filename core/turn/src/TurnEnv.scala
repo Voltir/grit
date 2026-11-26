@@ -29,7 +29,7 @@ import grit.core.id.{
 import grit.core.identity.Principal
 import grit.core.inbox.SpawnInbox
 import grit.core.persona.Persona
-import grit.core.place.{Place, Reaches, Service, WorksIn}
+import grit.core.place.{Place, Reaches, Repository, Service, WorksIn}
 import grit.core.provider.{Models, TokenEstimator}
 import grit.core.recipe.TurnRecipe
 import grit.core.session.{Event, Session, Sessions}
@@ -315,10 +315,14 @@ final case class TurnTooling[C^](
 }
 
 /** A deployment's subagents as its turns run them, `declared`: each type, with the hosted tools
-  * a child of it is offered ([[Spawnable.of]]).
+  * a child of it is offered ([[Spawnable.of]]), and `hosts`, the repositories this process's edges
+  * serve a coding child in.
   */
-final case class Spawnable private (declared: Subagents, byType: Map[AgentType, Spawnable.Child])
-    extends caps.Pure {
+final case class Spawnable private (
+    declared: Subagents,
+    byType: Map[AgentType, Spawnable.Child],
+    hosts: Set[Repository]
+) extends caps.Pure {
   def apply(agent: AgentType): Option[Spawnable.Child] = byType.get(agent)
 }
 
@@ -343,12 +347,16 @@ object Spawnable {
     }
   }
 
-  val empty: Spawnable = Spawnable(Subagents.empty, Map.empty)
+  val empty: Spawnable = Spawnable(Subagents.empty, Map.empty, Set.empty)
 
   /** Each of `subagents`, a coding type offered the hosted tools `coding` describes for its
-    * allowlist.
+    * allowlist, in a process whose edges serve a coding child in `hosts`.
     */
-  def of(subagents: Subagents, coding: Allowlist -> Vector[Tool.Offered]): Spawnable =
+  def of(
+      subagents: Subagents,
+      coding: Allowlist -> Vector[Tool.Offered],
+      hosts: Set[Repository]
+  ): Spawnable =
     Spawnable(
       subagents,
       subagents.byType.map { (agent, s) =>
@@ -359,7 +367,8 @@ object Spawnable {
             case Subagent.Tools.Services(_) => Vector.empty
           }
         )
-      }
+      },
+      hosts
     )
 }
 

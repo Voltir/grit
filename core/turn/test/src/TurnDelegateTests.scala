@@ -57,7 +57,7 @@ object TurnDelegateTests extends TestSuite {
           .flatMap(r => grit.core.agent.Subagents.of(Vector(r)))
           .toOption
       )
-      .fold(scholars)(Spawnable.of(_, _ => Vector.empty))
+      .fold(scholars)(Spawnable.of(_, _ => Vector.empty, Set.empty))
 
   /** A parent's conversation of `origin` in an in-memory inbox under `budget`, begun by a
     * message of `by`'s, run in `durable`, offered `subagents`: each child it spawns is run at
@@ -318,8 +318,8 @@ object TurnDelegateTests extends TestSuite {
       val _ = world.run(delegating(ujson.Obj("agent" -> "coder", "task" -> "Fix the typo.")))
       (world.results, world.kept) ==> (
         Vector(
-          "The coder run was not started: it works only in a conversation working in the " +
-            "repository scratch, and this one is not."
+          "The coder run was not started: it works in the repository scratch, which is not " +
+            "served to this conversation."
         ),
         0
       )

@@ -94,7 +94,7 @@ object SpawnRingLiveTests extends TestSuite {
               asked.get() match {
                 case Some(r) if r.call.turn == turn =>
                   val began = System.nanoTime()
-                  val env = SpawnEnv(engine, scholars, engine.conversations)
+                  val env = SpawnEnv(engine, scholars, engine.conversations, Set.empty)
                   val got = Flows.run(Spawning.spawn(steps, identity), env, r).merge
                   came.put((got, (System.nanoTime() - began) / 1000000L))
                   released.countDown()

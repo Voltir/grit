@@ -142,7 +142,8 @@ object TurnSpawnTests extends TestSuite {
         )
       )
       .fold(why => throw new java.lang.AssertionError(why), identity),
-    _ => Vector(hostedProd)
+    _ => Vector(hostedProd),
+    Set.empty
   )
 
   private final class PricedClassifier extends grit.core.classify.Classifier {

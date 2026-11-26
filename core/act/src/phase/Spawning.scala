@@ -16,12 +16,13 @@ import grit.core.visibility.{Integrity, Label}
 
 /** What a spawn's steps act through: `spawns`, where its child is recorded, started, ended and
   * read; `subagents`, the types a request may name; `conversations`, where its parent's origin
-  * is read.
+  * is read; `hosts`, the repositories this process's edges serve a coding child in.
   */
 final case class SpawnEnv(
     spawns: SpawnInbox^,
     subagents: Subagents,
-    conversations: ConversationStore
+    conversations: ConversationStore,
+    hosts: Set[Repository]
 )
 
 /** What a spawn's steps are recorded as. */
@@ -233,20 +234,23 @@ object Spawning {
       case (Some(as), Right((Some(conversation), own, caps))) =>
         val origin = conversation.origin
         val room = roomOf(as, origin)
-        if (room.direct) Narrowing.Refused(Delegation.Refused.Direct(room))
-        else if (caps.size >= PerTurn) Narrowing.OverLimit(PerTurn)
-        else
-          Delegation
-            .narrowed(
-              r.parent,
-              as,
-              r.briefed,
-              parentAt = at,
-              room = Tx.roomLabel(room),
-              origin = origin,
-              spent = caps.foldLeft(own)((c, cap) => c + Cost.Exact(cap.usd))
-            )
-            .fold(Narrowing.Refused(_), _ => Narrowing.Go(at, room, as.spendCap))
+        // A coding child's room is its repository's, never direct: its parent's is read too.
+        Vector(origin.room, room).find(_.direct) match {
+          case Some(direct) => Narrowing.Refused(Delegation.Refused.Direct(direct))
+          case None if caps.size >= PerTurn => Narrowing.OverLimit(PerTurn)
+          case None =>
+            Delegation
+              .narrowed(
+                r.parent,
+                as,
+                r.briefed,
+                parentAt = at,
+                room = Tx.roomLabel(room),
+                served = Delegation.served(origin, env.hosts),
+                spent = caps.foldLeft(own)((c, cap) => c + Cost.Exact(cap.usd))
+              )
+              .fold(Narrowing.Refused(_), _ => Narrowing.Go(at, room, as.spendCap))
+        }
     }
   }
 

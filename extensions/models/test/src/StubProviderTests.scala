@@ -77,6 +77,25 @@ object StubProviderTests extends TestSuite {
         .map(_.blocks) ==> Right(Vector(AssistantBlock.Text(s"stub reply to: $said")))
     }
 
+    test(
+      "a message a note of grit's leads is what was said, its note and all, and a message that is only a note is passed over"
+    ) {
+      val open = s"<${grit.core.prompt.Tag.GritNote.name}>"
+      val close = s"</${grit.core.prompt.Tag.GritNote.name}>"
+      val led = s"${open}a run's task follows${close}\nfix it ${StubProvider.calling("topic")}{}"
+      val alone = s"${open}said after${close}"
+      new StubProvider()
+        .complete(
+          ModelRequest("s", Vector(Message.User(led), Message.User(alone)), Vector(topic))
+        )
+        .map(_.blocks) ==> Right(
+        Vector(
+          AssistantBlock.Text("stub calls topic"),
+          AssistantBlock.ToolCall(StubProvider.CallId, "topic", ujson.Obj())
+        )
+      )
+    }
+
     test("required to call, the stub calls its first tool with the #call: arguments, or {}") {
       def required(messages: Message*) =
         new StubProvider()

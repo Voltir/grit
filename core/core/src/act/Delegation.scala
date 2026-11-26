@@ -15,8 +15,8 @@ object Delegation {
     * approve its calls), believed at `parent`'s integrity met with `brief`, its asks held to
     * `as.spendCap`. Refused by the first of `Below`, `Above`, `NotWorking` and
     * `OverCap` that holds. `parentAt` is the parent's classification, `room` the label the
-    * child's room may receive, `origin` the parent conversation's, and `spent` what it has spent,
-    * read only when `parent`'s allowance is `Capped`.
+    * child's room may receive, `served` the repositories a coding child of this parent's is served
+    * in, and `spent` what it has spent, read only when `parent`'s allowance is `Capped`.
     */
   def narrowed(
       parent: Acting,
@@ -24,14 +24,14 @@ object Delegation {
       brief: Integrity,
       parentAt: Label,
       room: Label,
-      origin: Origin,
+      served: Set[Repository],
       spent: Cost
   ): Either[Refused, TurnRef -> Acting] = {
     val believed = Delegation.believed(parent, brief)
     for {
       _ <- Either.cond(believed.dominates(as.requires), (), Refused.Below(as.requires, believed))
       _ <- Either.cond(room.dominates(parentAt), (), Refused.Above(parentAt, room))
-      _ <- working(as.tools, origin)
+      _ <- working(as.tools, served)
       _ <- within(parent.allowance, as.spendCap, spent)
     } yield (turn: TurnRef) =>
       Acting(
@@ -41,6 +41,16 @@ object Delegation {
         Gates.Closed,
         believed
       )
+  }
+
+  /** The repositories served to a coding child of a parent from `origin`, in a process whose edges
+    * host `hosts`: those, and a run of work's own repository, whose edge its driver serves; none
+    * to a spawned child's, which starts no child.
+    */
+  def served(origin: Origin, hosts: Set[Repository]): Set[Repository] = origin match {
+    case Origin.Spawned(_, _, _) => Set.empty
+    case Origin.Work(repository, _) => hosts + repository
+    case _ => hosts
   }
 
   /** What a child `parent` briefs at `brief` is believed at: the meet of the two. */
@@ -60,8 +70,8 @@ object Delegation {
       */
     case Above(classification: Label, room: Label)
 
-    /** A `Subagent.Tools.Coding` type over `repository`, its parent's origin not an
-      * `Origin.Work` in it.
+    /** A `Subagent.Tools.Coding` type over `repository`, which is not among those served to a
+      * coding child of its parent's.
       */
     case NotWorking(repository: Repository)
 
@@ -74,12 +84,11 @@ object Delegation {
     case Direct(room: Place)
   }
 
-  private def working(tools: Subagent.Tools, origin: Origin): Either[Refused, Unit] =
-    (tools, origin) match {
-      case (Subagent.Tools.Services(_), _) => Right(())
-      case (Subagent.Tools.Coding(_, repository, _), Origin.Work(in, _)) if in == repository =>
-        Right(())
-      case (Subagent.Tools.Coding(_, repository, _), _) => Left(Refused.NotWorking(repository))
+  private def working(tools: Subagent.Tools, served: Set[Repository]): Either[Refused, Unit] =
+    tools match {
+      case Subagent.Tools.Services(_) => Right(())
+      case Subagent.Tools.Coding(_, repository, _) =>
+        Either.cond(served.contains(repository), (), Refused.NotWorking(repository))
     }
 
   private def within(allowance: Allowance, asked: SpendCap, spent: Cost): Either[Refused, Unit] =

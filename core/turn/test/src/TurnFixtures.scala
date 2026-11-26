@@ -1074,7 +1074,7 @@ object TurnFixtures {
       )
       .flatMap(s => grit.core.agent.Subagents.of(Vector(s)))
       .fold(why => throw new java.lang.AssertionError(why), identity)
-    Spawnable.of(scholar, _ => Vector.empty)
+    Spawnable.of(scholar, _ => Vector.empty, Set.empty)
   }
 
   /** A coding type of [[grit.core.agent.SubagentFixtures]], its coding tools `fetch` alone. */
@@ -1092,7 +1092,8 @@ object TurnFixtures {
         )
       )
       .fold(why => throw new java.lang.AssertionError(why), identity),
-    _ => Vector(hostedFetch)
+    _ => Vector(hostedFetch),
+    Set.empty
   )
 
   /** A spawned child of `coder` within the room `within`, its parent the first turn of another

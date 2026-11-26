@@ -73,16 +73,19 @@ private[grit] object Launch {
 
   /** What a process wants beside its deployment: whether each model call is printed with
     * the model it goes to, and once answered with what it consumed (`announced`: a run with
-    * arguments or `grit work`, where a replayed turn is then visibly one that did not call), and
-    * how long the stub model waits before it answers, in
-    * milliseconds (`stubDelay`; the stub answers only without OpenRouter's key).
+    * arguments or `grit work`, where a replayed turn is then visibly one that did not call), how
+    * long the stub model waits before it answers, in milliseconds (`stubDelay`; the stub answers
+    * only without OpenRouter's key), and whether its edges host the deployment's repositories
+    * (`hosts`, [[Deployment.hosted]]): a served deployment's do.
     */
-  final case class Run(announced: Boolean, stubDelay: Long)
+  final case class Run(announced: Boolean, stubDelay: Long, hosts: Boolean = false)
 
   object Run {
 
-    /** A served deployment's: nothing printed, the stub answering at once. */
-    val Served: Run = Run(announced = false, stubDelay = 0)
+    /** A served deployment's: nothing printed, the stub answering at once, its repositories
+      * hosted ([[Kit.opened]]).
+      */
+    val Served: Run = Run(announced = false, stubDelay = 0, hosts = true)
   }
 
   /** `engine`, opened on `s.database`, logged first as `database: <host:port/name>` (its
@@ -160,7 +163,8 @@ private[grit] object Launch {
       classifier(d, s),
       weighing(d, s),
       files,
-      finished
+      finished,
+      run.hosts
     )
     if (sweeping) {
       engine.sweepEvery(d.sweep)
@@ -220,7 +224,8 @@ private[grit] object Launch {
     * settings and schedules are written through `runtime.jot` first. Each shadow asks the
     * variant of its name in `variants`, and one it lacks asks nothing. Its turns are offered
     * the administering tools through `runtime`'s administration ([[administering]]), whatever
-    * `d`'s [[Offered]]. Throws as [[apply]] does.
+    * `d`'s [[Offered]]. A coding child is made in a repository of `d.hosted` only when `hosts`:
+    * when this process serves them. Throws as [[apply]] does.
     */
   private[grit] def asking(
       runtime: Runtime^,
@@ -230,7 +235,8 @@ private[grit] object Launch {
       classifier: ClearedClassifier^,
       weighing: ClearedClassifier^,
       files: Files^,
-      finished: String => Unit
+      finished: String => Unit,
+      hosts: Boolean = false
   ): Unit = {
     val clock: Clock^{runtime} = runtime.clock
     declare(runtime.lifecycle, runtime.jot, d.lifecycle) match {
@@ -543,7 +549,11 @@ private[grit] object Launch {
       Toolbox.of[caps.CapSet^{administration, clock}](administering(d, administration, clock)*)
     val shows = renders(d)
     // Each declared type with the coding tools its allowlist permits, offered at its repository.
-    val subagents = Spawnable.of(d.subagents, Coding.allowlistedHosted)
+    val subagents = Spawnable.of(
+      d.subagents,
+      Coding.allowlistedHosted,
+      if (hosts) d.hosted.map(_.cloned.repository).toSet else Set.empty
+    )
     val launching = d.offer.tools match {
       // Neither asks first, so neither offers the operator's tools, which do.
       case Offered.Read | Offered.Allowlisted(_) =>

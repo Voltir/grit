@@ -1,6 +1,8 @@
 package grit.kit.run
 
-import java.nio.file.Path
+import java.nio.file.{Files, Path}
+
+import scala.jdk.CollectionConverters.*
 
 import grit.core.clock.{Clock, Fresh}
 import grit.core.edge.{Route, ToolRequest}
@@ -70,7 +72,14 @@ final class LocalTools(
       case None => hosted
     }
 
-  def run(route: Route, request: ToolRequest, said: String => Unit): Outcome = route match {
+  def run(route: Route, request: ToolRequest, said: String => Unit): Outcome =
+    if (closed.get()) Outcome.Failed("These coding tools are closed; nothing ran.")
+    else {
+      pruned()
+      routed(route, request)
+    }
+
+  private def routed(route: Route, request: ToolRequest): Outcome = route match {
     case Route.Directory(dir) => over(Path.of(Directory.value(dir)), request)
     // This edge registers only directories, so a service route never reaches it.
     case Route.Service(service) =>
@@ -126,11 +135,26 @@ final class LocalTools(
     }
   }
 
-  /** Kills every command an allowlisted `run` left going, and removes their files. */
+  /** Kills every command an allowlisted `run` left going, and removes their files; every later
+    * request is `Failed`, and nothing runs.
+    */
   def close(): Unit = {
     synchronized {
+      closed.set(true)
       runs.values.forEach(_.close())
       runs.clear()
+    }
+  }
+
+  /** Whether [[close]] was called. */
+  private val closed = new java.util.concurrent.atomic.AtomicBoolean(false)
+
+  /** The runs of each directory that is gone, a copy its sweep removed, closed and dropped. */
+  private def pruned(): Unit = synchronized {
+    val gone = runs.keySet.asScala.toVector.filterNot(Files.isDirectory(_))
+    gone.foreach { root =>
+      runs.get(root).close()
+      val _ = runs.remove(root)
     }
   }
 
