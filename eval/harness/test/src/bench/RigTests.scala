@@ -563,6 +563,30 @@ object RigTests extends TestSuite {
       }
     }
 
+    test(
+      "a trial prints its work after its calls: tool calls a model call to one decimal, `-` " +
+        "with no model call, its edits and failed edits, suite runs and commits"
+    ) {
+      val eight = Consumed.Work.of(Vector.fill(8)(Consumed.Work.Used(false, false, None)))
+      val printed = withTask { f =>
+        trial(f, Fake("object A { val x = 1 }")).map { t =>
+          t.lines.dropWhile(!_.startsWith("calls:")).drop(1).headOption
+        }
+      }
+      (printed, Tried.work(eight, 3), Tried.work(Consumed.Work.of(Vector.empty), 0)) ==> (
+        Right(
+          Some(
+            "work: 8 tool calls in 3 model calls (2.7 a call); edits: 2, 1 failed; " +
+              "suite runs: 1; commits: 1"
+          )
+        ),
+        "work: 8 tool calls in 3 model calls (2.7 a call); edits: 0, 0 failed; suite runs: 0; " +
+          "commits: 0",
+        "work: 0 tool calls in 0 model calls (- a call); edits: 0, 0 failed; suite runs: 0; " +
+          "commits: 0"
+      )
+    }
+
     test("a trial prints its calls, both costs, its ending, denials and checks, never its text") {
       withTask { f =>
         trial(f, Fake("object A { val x = 1 }")).map { t =>

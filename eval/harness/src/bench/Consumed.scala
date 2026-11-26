@@ -90,7 +90,7 @@ final case class CoderEnded(
   * calls in the order they began, and before its first edit of a file under its checkout the calls
   * made and the UTF-8 bytes its tools returned (both `None`: it made no such edit); and how it
   * ended (`None`: it wrote no result, as when it was killed); and the source of the key its init
-  * line names (`None`: the line names none).
+  * line names (`None`: the line names none); and the work its tool calls did.
   */
 final case class Consumed(
     session: Option[String],
@@ -98,7 +98,8 @@ final case class Consumed(
     callsBeforeEdit: Option[Int],
     readBeforeEdit: Option[Long],
     ended: Option[CoderEnded],
-    apiKeySource: Option[String]
+    apiKeySource: Option[String],
+    work: Consumed.Work
 ) extends caps.Pure {
 
   /** The run's usage: its result's, else every call's together (its output a lower bound, since a
@@ -163,6 +164,58 @@ final case class Consumed(
 
 object Consumed {
 
+  /** Counts of a transcript's tool calls, as [[Tried.work]] names them: every call, its edits,
+    * those of them whose result was an error, its suite runs and its commits.
+    */
+  final case class Work private (
+      tools: Int,
+      edits: Int,
+      failedEdits: Int,
+      suiteRuns: Int,
+      commits: Int
+  ) extends caps.Pure
+
+  object Work {
+
+    /** One tool call: whether it is an edit, whether its result was an error, and the command
+      * line it ran when it is a shell run.
+      */
+    final case class Used(edit: Boolean, failed: Boolean, command: Option[String]) extends caps.Pure
+
+    /** The counts of `used`: a suite run is a command running `scripts/check` with an argument
+      * not starting with `-` before the first shell separator or redirect (a suite or module
+      * named, not a flag alone), a commit one holding `git commit` (so `git -C d commit` is not
+      * one).
+      */
+    def of(used: Vector[Used]): Work = {
+      val commands = used.flatMap(_.command)
+      Work(
+        used.size,
+        used.count(_.edit),
+        used.count(u => u.edit && u.failed),
+        commands.count(suiteRun),
+        commands.count(_.contains("git commit"))
+      )
+    }
+
+    /** Words that end a command, or redirect its output, rather than give it an argument. */
+    private val Ends = Set("&&", "||", ";", "|", "&")
+
+    private def suiteRun(command: String): Boolean = {
+      val words = command.split("\\s+").toVector.filter(_.nonEmpty)
+      words.zipWithIndex.exists { (w, i) =>
+        (w == "scripts/check" || w.endsWith("/scripts/check")) &&
+        words
+          .drop(i + 1)
+          .takeWhile(w => !Ends(w) && !w.exists(c => c == '>' || c == '<'))
+          .exists(!_.startsWith("-"))
+      }
+    }
+  }
+
+  /** The tools of Claude Code's whose calls [[Work]] counts as edits. */
+  private val ClaudeEdits: Set[String] = Set("Edit", "MultiEdit")
+
   /** The tools that edit a file. */
   val Edits: Set[String] = Set("Edit", "Write", "MultiEdit", "NotebookEdit")
 
@@ -198,7 +251,8 @@ object Consumed {
     * else why its turn failed, else its workflow's status, in error unless its turn succeeded
     * unstopped under a workflow that succeeded, each `run` that failed
     * a denial; its usage and each model's, its calls' together; no figure of its own beside
-    * grit's, and no key source.
+    * grit's, and no key source; its work its turn's tool calls, its edits those of `edit` and
+    * its shell runs those of `run`.
     */
   def ofTurn(lines: Vector[String], turn: GritTurn, stopped: Option[String]): Consumed = {
     val calls = gritCalls(lines)
@@ -214,6 +268,7 @@ object Consumed {
       case _ => false
     }
     val before = if (firstEdit < 0) None else Some(turn.messages.take(firstEdit))
+    val failed = turn.messages.collect { case Message.ToolResult(id, _, true) => id }.toSet
     val denials = turn.messages
       .collect { case Message.ToolResult(id, _, true) =>
         toolCalls.find(_.id == id)
@@ -243,13 +298,25 @@ object Consumed {
           byModel
         )
       ),
-      None
+      None,
+      Work.of(toolCalls.map { c =>
+        def field(k: String) = c.arguments.objOpt.flatMap(_.get(k)).toVector
+        Work.Used(
+          c.name == "edit",
+          failed(c.id),
+          Option.when(c.name == "run")(
+            (field("program").flatMap(_.strOpt) ++
+              field("args").flatMap(_.arrOpt).flatten.flatMap(_.strOpt)).mkString(" ")
+          )
+        )
+      })
     )
   }
 
   /** What the run whose output is `lines` consumed, its checkout at `checkout` (an absolute
-    * path); a call counted once, at the last usage its message gave. `Left` naming the first line
-    * that is not a JSON object.
+    * path); a call counted once, at the last usage its message gave; its work its `tool_use`
+    * blocks, its edits those of `Edit` and `MultiEdit` and its shell runs those of `Bash`. `Left`
+    * naming the first line that is not a JSON object.
     */
   def of(lines: Vector[String], checkout: String): Either[String, Consumed] =
     objects(lines).map(read(_, checkout))
@@ -311,8 +378,31 @@ object Consumed {
       edit.map(_._1),
       edit.map(_._2),
       ended,
-      events.iterator.flatMap(text(_, "apiKeySource")).nextOption()
+      events.iterator.flatMap(text(_, "apiKeySource")).nextOption(),
+      work(events)
     )
+  }
+
+  /** A tool call failed when its `tool_result` says `is_error`. */
+  private def work(events: Vector[ujson.Obj]): Work = {
+    def blocksOf(kind: String) = events
+      .filter(text(_, "type").contains(kind))
+      .flatMap(e => obj(e, "message").toVector.flatMap(blocks))
+    val failed = blocksOf("user")
+      .filter(b =>
+        text(b, "type").contains("tool_result") &&
+          b.value.get("is_error").flatMap(_.boolOpt).contains(true)
+      )
+      .flatMap(text(_, "tool_use_id"))
+      .toSet
+    Work.of(blocksOf("assistant").filter(text(_, "type").contains("tool_use")).map { b =>
+      val name = text(b, "name").getOrElse("")
+      Work.Used(
+        ClaudeEdits(name),
+        text(b, "id").exists(failed),
+        if (name == "Bash") obj(b, "input").flatMap(text(_, "command")) else None
+      )
+    })
   }
 
   /** The run's usage from its result message: `modelUsage` summed over its models when it has

@@ -32,7 +32,9 @@ object ConsumedTests extends TestSuite {
     "[main] done"
   )
 
-  /** A grit turn that reads a file, is refused a run, then edits; a read after the edit. */
+  /** A grit turn that reads a file, is refused a run, then edits; after the edit a read, a suite
+    * run, the bare gate, an edit that fails and a commit.
+    */
   private def gritTurn(status: String, failed: Option[String] = None) = GritTurn(
     "c-1",
     Vector(
@@ -44,7 +46,31 @@ object ConsumedTests extends TestSuite {
       calling("t3", "edit", ujson.Obj("path" -> "a")),
       Message.ToolResult(ToolCallId("t3"), "edited a", isError = false),
       calling("t4", "read", ujson.Obj("path" -> "b")),
-      Message.ToolResult(ToolCallId("t4"), "after the edit", isError = false)
+      Message.ToolResult(ToolCallId("t4"), "after the edit", isError = false),
+      calling("t5", "run", ujson.Obj("program" -> "scripts/check", "args" -> ujson.Arr("grit.m"))),
+      Message.ToolResult(ToolCallId("t5"), "exit 0", isError = false),
+      calling("t6", "run", ujson.Obj("program" -> "scripts/check")),
+      Message.ToolResult(ToolCallId("t6"), "exit 0", isError = false),
+      calling("t7", "edit", ujson.Obj("path" -> "b")),
+      Message.ToolResult(ToolCallId("t7"), "b: no such file", isError = true),
+      calling(
+        "t8",
+        "run",
+        ujson.Obj("program" -> "git", "args" -> ujson.Arr("commit", "-m", "m: x is 1"))
+      ),
+      Message.ToolResult(ToolCallId("t8"), "exit 0", isError = false),
+      calling(
+        "t9",
+        "run",
+        ujson.Obj("program" -> "scripts/check", "args" -> ujson.Arr("--no-unused"))
+      ),
+      Message.ToolResult(ToolCallId("t9"), "exit 0", isError = false),
+      calling(
+        "t10",
+        "run",
+        ujson.Obj("program" -> "scripts/check", "args" -> ujson.Arr("--it", "grit.dbos.it"))
+      ),
+      Message.ToolResult(ToolCallId("t10"), "exit 0", isError = false)
     ),
     status,
     "the turn, rendered",
@@ -81,6 +107,25 @@ object ConsumedTests extends TestSuite {
       )
     }
 
+    test(
+      "a run's work: every tool call, its Edit and MultiEdit calls and the failed among them, " +
+        "its scripts/check runs naming a suite or module and its git commits"
+    ) {
+      Consumed
+        .of(Streams.at(checkout), checkout)
+        .map(_.work)
+        .map(w => (w.tools, w.edits, w.failedEdits, w.suiteRuns, w.commits)) ==>
+        Right((8, 2, 1, 1, 1))
+    }
+
+    test(
+      "a grit turn's work: every tool call, its edits and the failed among them, its " +
+        "scripts/check runs naming a suite or module and its git commits"
+    ) {
+      val w = Consumed.ofTurn(gritLines, gritTurn("SUCCESS"), None).work
+      (w.tools, w.edits, w.failedEdits, w.suiteRuns, w.commits) ==> (10, 2, 1, 2, 1)
+    }
+
     test("before the first edit under the checkout: the calls made and the bytes tools returned") {
       Consumed
         .of(Streams.at(checkout), checkout)
@@ -107,7 +152,10 @@ object ConsumedTests extends TestSuite {
 
     test("a run that edits nothing under its checkout has neither measure before an edit") {
       Consumed
-        .of(Streams.at(checkout).filterNot(_.contains("toolu_03")), checkout)
+        .of(
+          Streams.at(checkout).filterNot(l => l.contains("toolu_03") || l.contains("toolu_06")),
+          checkout
+        )
         .map(c => (c.callsBeforeEdit, c.readBeforeEdit)) ==> Right((None, None))
     }
 

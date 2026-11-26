@@ -27,6 +27,11 @@ and after every kept run): by task, harness and model, every trial's cost, faile
 over how many passed, beside the passing trials' distance from the known diff. Quality is not
 scored yet.
 
+A trial's report, in either arm, says what its tool calls did (`Tried.work`, from the transcript,
+not kept in its row): its tool calls a model call, its edits (`edit`; Claude Code's `Edit` and
+`MultiEdit`) and how many of them failed, its suite runs (a shell run of `scripts/check` naming a
+suite or module, not flags alone) and its commits (one whose command holds `git commit`).
+
 ## The Claude Code arm
 
 `scripts/eval bench` runs `claude -p` in the task's checkout, its prompt a fixed preamble and the

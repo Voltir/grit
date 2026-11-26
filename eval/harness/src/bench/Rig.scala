@@ -274,7 +274,7 @@ final case class Tried(
 ) extends caps.Pure {
 
   /** What a person reads of it, a line each: its measures and its pair, for a grit coder what it
-    * ran under ([[Tried.under]]), each call's tokens, its cost as [[Tried.spending]] gives it, how
+    * ran under ([[Tried.under]]), its work ([[Tried.work]]), each call's tokens, its cost as [[Tried.spending]] gives it, how
     * the run ended, each denial, and each check; never the transcript's text.
     */
   def lines: Vector[String] = {
@@ -291,6 +291,7 @@ final case class Tried(
         t.callsBeforeEdit
           .zip(t.readBeforeEdit)
           .fold("no edit")((c, b) => s"$c calls, $b bytes read"),
+      Tried.work(consumed.work, consumed.calls.size),
       s"tokens: ${tokens(t.usage)}"
     ) ++ Tried.spending(consumed, arm) ++
       Vector(
@@ -315,6 +316,18 @@ object Tried {
 
   /** What every [[verdict]] holds, found anywhere in a line holding one. */
   val Verdicts: Regex = "passed: (true|false); distance: ".r
+
+  /** `work` in `calls` model calls, as a person reads it: its tool calls a model call to one
+    * decimal, `-` when it made no model call.
+    */
+  def work(work: Consumed.Work, calls: Int): String = {
+    val each =
+      if (calls == 0) "-"
+      else (BigDecimal(work.tools) / calls).setScale(1, BigDecimal.RoundingMode.HALF_UP).toString
+    s"work: ${work.tools} tool calls in $calls model calls ($each a call); edits: " +
+      s"${work.edits}, ${work.failedEdits} failed; suite runs: ${work.suiteRuns}; " +
+      s"commits: ${work.commits}"
+  }
 
   /** What a grit coder set by `settings` ran under, as `ran` recorded it, as a person reads it:
     * the grade its turn's calls were routed to and the effort they asked, followed by
