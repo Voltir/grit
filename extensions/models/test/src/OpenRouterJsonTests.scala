@@ -3,7 +3,7 @@ package grit.models
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Effort, ReasoningReplay, Upstream, WireQuirk}
-import grit.core.provider.{ModelRequest, ProviderError, Repeats, ToolSchema, ToolUse}
+import grit.core.provider.{CacheKey, ModelRequest, ProviderError, Repeats, ToolSchema, ToolUse}
 
 import utest.*
 
@@ -165,6 +165,17 @@ object OpenRouterJsonTests extends TestSuite {
         .map(u => OpenRouterJson.request("m", 1, Some(u), asked)("provider")) ==>
         Some(ujson.Obj("order" -> ujson.Arr("open-inference/fp8"), "allow_fallbacks" -> false))
       assert(!OpenRouterJson.request("m", 1, None, asked).obj.contains("provider"))
+    }
+
+    test("request: a cache key is sent as session_id; a request with none sends no session_id") {
+      val asked = ModelRequest("s", Vector(Message.User("hi")))
+      CacheKey
+        .of("k-1")
+        .map(k =>
+          OpenRouterJson.request("m", 1, None, asked.copy(cacheKey = Some(k))).obj.get("session_id")
+        ) ==>
+        Right(Some(ujson.Str("k-1")))
+      assert(!OpenRouterJson.request("m", 1, None, asked).obj.contains("session_id"))
     }
 
     test("request: several calls and their results keep their ids, in order") {

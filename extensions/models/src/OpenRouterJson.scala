@@ -3,7 +3,7 @@ package grit.models
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Effort, ReasoningReplay, Upstream, WireQuirk}
-import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
+import grit.core.provider.{CacheKey, ModelRequest, ProviderError, ToolSchema, ToolUse}
 
 /** OpenRouter's chat-completions wire format (OpenAI's shape), both ways. Pure. Checked
   * against openrouter.ai/docs (API reference, reasoning tokens, errors) on 2026-09-23, and its
@@ -18,7 +18,9 @@ object OpenRouterJson {
     * without has neither key. Each tool is sent `strict` as its [[ToolSchema]] says. `effort`,
     * when set, asks the model to reason that hard; an assistant message's reasoning goes back
     * as `replay` says, when it is in OpenRouter's form (`reasoning_details`), and never
-    * otherwise. `quirks` add what each [[WireQuirk]] says.
+    * otherwise. `quirks` add what each [[WireQuirk]] says. A request's
+    * [[ModelRequest.cacheKey]] is its `session_id`, which OpenRouter routes by, except under a
+    * pinned upstream's provider order.
     *
     * For a model under [[AnthropicProvider.Vendor]], every text that is not empty goes as
     * text parts, an empty system prompt is left out, and its breakpoints are those
@@ -53,6 +55,7 @@ object OpenRouterJson {
       "max_tokens" -> maxTokens,
       "messages" -> ujson.Arr.from(system.toVector ++ messages)
     )
+    request.cacheKey.foreach(k => body("session_id") = CacheKey.value(k))
     effort.foreach(e => body("reasoning") = ujson.Obj("effort" -> e.word))
     if (quirks.contains(WireQuirk.ClearThinking)) {
       body("thinking") = ujson.Obj(

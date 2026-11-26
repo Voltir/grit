@@ -6,13 +6,22 @@ import grit.core.clock.Utc
 import grit.core.context.{CarriedWindow, Shown, Window}
 import grit.core.document.{DocLabel, DocText, Document, DocumentSearch}
 import grit.core.files.{KeptPiece, PieceSearch}
-import grit.core.id.{EntryId, EntrySeq, Sha256, ToolCallId, TurnRef, TurnSeq, WorkflowId}
+import grit.core.id.{
+  ConversationId,
+  EntryId,
+  EntrySeq,
+  Sha256,
+  ToolCallId,
+  TurnRef,
+  TurnSeq,
+  WorkflowId
+}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{AfterToolResult, ToolGuidance}
 import grit.core.occasion.{Occasion, OccasionBrief}
 import grit.core.period.{Balance, Closing, Flows}
 import grit.core.prompt.Fenced
-import grit.core.provider.{ModelRequest, Repeats, ToolSchema}
+import grit.core.provider.{CacheKey, ModelRequest, Repeats, ToolSchema}
 import grit.core.store.{
   ConversationStore,
   Entry,
@@ -439,7 +448,12 @@ private[turn] object TurnShown {
         .map(root => Message.User(TurnShown.dated(root, zoned, direct)))
       val occasioned =
         occasion.map((_, text) => Message.User(TurnPrompt.occasionShown(text)))
-      Unshaped(system, shownParts, datedLine.toVector ++ occasioned ++ Shown.turn(mine, named))
+      Unshaped(
+        system,
+        shownParts,
+        datedLine.toVector ++ occasioned ++ Shown.turn(mine, named),
+        CacheKey.of(Sha256.text(ConversationId.value(turn.conversationId)))
+      )
     }
   }
 
@@ -554,8 +568,15 @@ private[turn] object TurnShown {
           .map(r => (r.shaped(shape), message))
       }
 
-  /** A request of `system`: each of `parts` in order, then `own`, the turn's own messages. */
-  final case class Unshaped(system: String, parts: Vector[Unshaped.Part], own: Vector[Message]) {
+  /** A request of `system`: each of `parts` in order, then `own`, the turn's own messages; it
+    * carries `cacheKey` ([[ModelRequest.cacheKey]]).
+    */
+  final case class Unshaped(
+      system: String,
+      parts: Vector[Unshaped.Part],
+      own: Vector[Message],
+      cacheKey: CacheKey
+  ) {
 
     /** This request shaped by `shape`, each document's pointer line shown only when the shaped
       * request offers the tool it names: a model offered no tool of that name could not follow
@@ -589,7 +610,8 @@ private[turn] object TurnShown {
               )
             ) ++ part.after ++ part.digest ++ part.carried
           ) ++ own,
-          repeats = Repeats.of(task, established, stable)
+          repeats = Repeats.of(task, established, stable),
+          cacheKey = Some(cacheKey)
         )
       shape(built(shape(built(Set.empty)).tools.map(_.name).toSet))
     }

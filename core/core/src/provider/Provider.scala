@@ -52,14 +52,17 @@ enum Delta {
   * in `system` and what in `messages`, and how to word and fence it: the `grit-model-text` skill.
   *
   * `repeats` says which of `messages`, from the first, later requests repeat: with `tools` and
-  * `system`, each of its counts is a prefix a provider may cache.
+  * `system`, each of its counts is a prefix a provider may cache. `cacheKey`, set only on the
+  * requests the turn's `TurnShown.requestOf` builds, groups them by their conversation for a
+  * provider that routes by it; it changes no reply.
   */
 final case class ModelRequest(
     system: String,
     messages: Vector[Message],
     tools: Vector[ToolSchema] = Vector.empty,
     use: ToolUse = ToolUse.Auto,
-    repeats: Repeats = Repeats.Zero
+    repeats: Repeats = Repeats.Zero,
+    cacheKey: Option[CacheKey] = None
 )
 
 /** How many of a request's messages, from the first, later requests repeat unchanged: the first

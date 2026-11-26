@@ -1,10 +1,10 @@
 package grit.turn
 
 import grit.core.durable.InMemoryDurable
-import grit.core.id.ToolCallId
+import grit.core.id.{ConversationId, Sha256, ToolCallId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Effort, ReasoningReplay}
-import grit.core.provider.{ModelRequest, ProviderError}
+import grit.core.provider.{CacheKey, ModelRequest, ProviderError}
 import grit.core.store.{InMemoryEntryStore, InMemoryUsageLedger}
 import grit.core.visibility.Integrity
 import grit.models.{AnthropicJson, OpenRouterJson, StubProvider}
@@ -134,6 +134,35 @@ object TurnPrefixTests extends TestSuite {
       prefixes.zip(prefixes.drop(1)).map(diverged.tupled) ==> Vector(None, None)
       // Each call's breakpoint is past the one before, so each caches more than the last.
       prefixes.map(_.linesIterator.size).sliding(2).forall(p => p(0) < p(1)) ==> true
+    }
+
+    test(
+      "every call of a turn and its summary on the prefix carry one cache key, the digest of the turn's conversation"
+    ) {
+      val entries = new InMemoryEntryStore
+      val ws = new Files(Map("a.txt" -> "alpha"))
+      val provider =
+        new Scripted((r, n) =>
+          if (n < 2) Right(peeking(s"t${n + 1}")) else new StubProvider().complete(r)
+        )
+      val summarizer = new RecordingProvider
+      val turn = say(entries, "read a.txt twice")
+      new InMemoryDurable().run(turn.workflowId)(
+        tooledBody(
+          entries,
+          provider,
+          new InMemoryUsageLedger,
+          summarizer,
+          NoClassifier,
+          ws,
+          tools(ws),
+          4,
+          catalog = SharedCatalog
+        )
+      )
+      val key = CacheKey.of(Sha256.text(ConversationId.value(turn.conversationId)))
+      (provider.requests.map(_.cacheKey), summarizer.requests.map(_.cacheKey)) ==>
+        (Vector.fill(3)(Some(key)), Vector(Some(key)))
     }
 
     test(
