@@ -207,6 +207,36 @@ object OpenRouterJsonTests extends TestSuite {
     }
 
     test(
+      "response: a call's arguments are closed when its reply stopped to call tools, and kept as sent when its budget cut them"
+    ) {
+      def arguments(finish: String) = OpenRouterJson
+        .response(
+          ujson.Obj(
+            "choices" -> ujson.Arr(
+              ujson.Obj(
+                "finish_reason" -> finish,
+                "message" -> ujson.Obj(
+                  "role" -> "assistant",
+                  "tool_calls" -> ujson.Arr(
+                    ujson.Obj(
+                      "id" -> "c1",
+                      "type" -> "function",
+                      "function" -> ujson.Obj("name" -> "read", "arguments" -> "{\"path\":\"a\",")
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+        .map(_.blocks.collect { case AssistantBlock.ToolCall(_, _, sent) => sent })
+      (arguments("tool_calls"), arguments("length")) ==> (
+        Right(Vector(ujson.Obj("path" -> "a"))),
+        Right(Vector(ujson.Str("{\"path\":\"a\",")))
+      )
+    }
+
+    test(
       "request: under empty reasoning content, a reply sent with calls and no reasoning details carries an empty one; one with details or no calls, or another pair's, carries none"
     ) {
       val empty = Set(WireQuirk.EmptyReasoningContent)

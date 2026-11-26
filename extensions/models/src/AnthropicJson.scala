@@ -113,8 +113,9 @@ object AnthropicJson {
         .get("content")
         .flatMap(_.arrOpt)
         .toRight(ProviderHttp.unreadable("no content"))
+      stopped = stop(root.get("stop_reason").flatMap(_.strOpt))
       blocks <- content.toVector
-        .map(blockOf)
+        .map(blockOf(_, stopped))
         .foldLeft[Either[ProviderError, Vector[AssistantBlock]]](Right(Vector.empty)) { (acc, b) =>
           acc.flatMap(done => b.map(done ++ _))
         }
@@ -123,7 +124,7 @@ object AnthropicJson {
       val counted = usageOf(root.get("usage").flatMap(_.objOpt))
       Message.Assistant(
         blocks,
-        stop(root.get("stop_reason").flatMap(_.strOpt)),
+        stopped,
         Pricing.priced(counted, pricing),
         model,
         Some(Upstream.value(Upstream.AnthropicApi))
@@ -219,7 +220,10 @@ object AnthropicJson {
     }
 
   /** A content block as grit holds it: none for a block type grit does not know. */
-  private def blockOf(block: ujson.Value): Either[ProviderError, Vector[AssistantBlock]] = {
+  private def blockOf(
+      block: ujson.Value,
+      stopped: StopReason
+  ): Either[ProviderError, Vector[AssistantBlock]] = {
     val b = block.objOpt.getOrElse(collection.mutable.LinkedHashMap.empty[String, ujson.Value])
     def str(key: String) = b.get(key).flatMap(_.strOpt)
     b.get("type").flatMap(_.strOpt) match {
@@ -233,7 +237,7 @@ object AnthropicJson {
           id <- str("id").toRight(ProviderHttp.unreadable("tool call without an id"))
           name <- str("name").toRight(ProviderHttp.unreadable("tool call without a name"))
         } yield Vector(
-          AssistantBlock.ToolCall(ToolCallId(id), name, ToolArguments.read(b.get("input")))
+          AssistantBlock.ToolCall(ToolCallId(id), name, ToolArguments.read(b.get("input"), stopped))
         )
       case _ => Right(Vector.empty)
     }

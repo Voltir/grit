@@ -156,10 +156,11 @@ object OpenRouterJson {
         .get("message")
         .flatMap(_.objOpt)
         .toRight(ProviderHttp.unreadable("no message"))
-      blocks <- blockList(message)
+      stopped = stop(choice.get("finish_reason").flatMap(_.strOpt))
+      blocks <- blockList(message, stopped)
     } yield Message.Assistant(
       blocks,
-      stop(choice.get("finish_reason").flatMap(_.strOpt)),
+      stopped,
       usage(root.get("usage").flatMap(_.objOpt)),
       root.get("model").flatMap(_.strOpt).getOrElse("unknown"),
       root.get("provider").flatMap(_.strOpt)
@@ -194,7 +195,8 @@ object OpenRouterJson {
     _.get("metadata").flatMap(_.objOpt).flatMap(_.get("error_type")).flatMap(_.strOpt)
 
   private def blockList(
-      message: collection.Map[String, ujson.Value]
+      message: collection.Map[String, ujson.Value],
+      stopped: StopReason
   ): Either[ProviderError, Vector[AssistantBlock]] = {
     val reasoningText = message.get("reasoning").flatMap(_.strOpt).getOrElse("")
     val replay = message.get("reasoning_details").filter(_.arrOpt.exists(_.nonEmpty))
@@ -222,7 +224,7 @@ object OpenRouterJson {
         } yield AssistantBlock.ToolCall(
           ToolCallId(id),
           name,
-          ToolArguments.read(f.get("arguments"))
+          ToolArguments.read(f.get("arguments"), stopped)
         )
       }
     calls

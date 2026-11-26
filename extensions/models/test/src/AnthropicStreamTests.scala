@@ -153,6 +153,29 @@ object AnthropicStreamTests extends TestSuite {
       plain.map(calls) ==> Right(Vector(("read_file", true)))
     }
 
+    test(
+      "a call its budget cut inside a list is kept as sent; the same call stopped to use its tools is closed and read"
+    ) {
+      def streamed(stop: String) = started ++
+        event(
+          """{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"t1","name":"edit","input":{}}}"""
+        ) ++
+        event(
+          """{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"edits\":[{\"old\":\"a\"}"}}"""
+        ) ++
+        event("""{"type":"content_block_stop","index":0}""") ++
+        event(
+          s"""{"type":"message_delta","delta":{"stop_reason":"$stop"},"usage":{"output_tokens":3}}"""
+        ) ++ event("""{"type":"message_stop"}""")
+      def arguments(stop: String) = folded(streamed(stop))._1.map(_.blocks.collect {
+        case AssistantBlock.ToolCall(_, _, sent) => sent
+      })
+      (arguments("max_tokens"), arguments("tool_use")) ==> (
+        Right(Vector(ujson.Str("""{"edits":[{"old":"a"}"""))),
+        Right(Vector(ujson.Obj("edits" -> ujson.Arr(ujson.Obj("old" -> "a")))))
+      )
+    }
+
     test("a refusal partway through is Refused naming its category") {
       val refused = event(
         """{"type":"message_delta","delta":{"stop_reason":"refusal","stop_details":{"type":"refusal","category":"bio"}},"usage":{"output_tokens":3}}"""

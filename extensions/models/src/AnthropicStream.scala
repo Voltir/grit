@@ -80,11 +80,13 @@ object AnthropicStream {
                   }
                 }
               case Some("content_block_stop") =>
+                // Kept as sent: the stop reason that decides its repair comes later, in
+                // `message_delta`, and `AnthropicJson.response` reads it knowing that.
                 for {
                   i <- index
                   block <- blocks.get(i)
                   json <- arguments.get(i)
-                } block("input") = ToolArguments.read(Some(ujson.Str(json.toString)))
+                } block("input") = ujson.Str(json.toString)
               case Some("message_delta") =>
                 message.foreach { m =>
                   event.get("delta").flatMap(_.objOpt).foreach(_.foreach(m(_) = _))
