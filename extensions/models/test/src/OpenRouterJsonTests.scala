@@ -207,6 +207,40 @@ object OpenRouterJsonTests extends TestSuite {
     }
 
     test(
+      "request: under empty reasoning content, a reply sent with calls and no reasoning details carries an empty one; one with details or no calls, or another pair's, carries none"
+    ) {
+      val empty = Set(WireQuirk.EmptyReasoningContent)
+      def sent(m: Message, r: ReasoningReplay, quirks: Set[WireQuirk]) = OpenRouterJson
+        .request("m", 1, None, ModelRequest("s", Vector(m)), replay = r, quirks = quirks)(
+          "messages"
+        )(1)
+        .obj
+        .get("reasoning_content")
+      val reply = OpenRouterJson.response(sampleResponse)
+      // Reasoned, but in no form OpenRouter takes back: no details go out under any replay.
+      val unreplayable = reply.map(m =>
+        m.copy(blocks = m.blocks.map {
+          case AssistantBlock.Reasoning(text, _) => AssistantBlock.Reasoning(text, None)
+          case b => b
+        })
+      )
+      val said = reply.map(m => m.copy(blocks = Vector(AssistantBlock.Text("done"))))
+      (
+        reply.map(sent(_, ReasoningReplay.Dropped, empty)),
+        unreplayable.map(sent(_, ReasoningReplay.Details, empty)),
+        reply.map(sent(_, ReasoningReplay.Details, empty)),
+        said.map(sent(_, ReasoningReplay.Dropped, empty)),
+        reply.map(sent(_, ReasoningReplay.Dropped, Set.empty))
+      ) ==> (
+        Right(Some(ujson.Str(""))),
+        Right(Some(ujson.Str(""))),
+        Right(None),
+        Right(None),
+        Right(None)
+      )
+    }
+
+    test(
       "request: a pair that clears thinking keeps what its replay sends and clears it only when dropped; another sends no thinking"
     ) {
       def thinking(r: ReasoningReplay, quirks: Set[WireQuirk]) = OpenRouterJson

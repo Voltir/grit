@@ -37,7 +37,11 @@ object OpenRouterJson {
     val tools = request.tools.map(tool)
     val messages =
       // Every assistant message is sent, its reasoning or not.
-      request.messages.zip(replay.sends(request.messages, _ => true)).map(message(_, _, cached))
+      request.messages
+        .zip(replay.sends(request.messages, _ => true))
+        .map((m, reasoned) =>
+          message(m, reasoned, cached, quirks.contains(WireQuirk.EmptyReasoningContent))
+        )
     val system =
       if (!cached) Some(ujson.Obj("role" -> "system", "content" -> request.system))
       else
@@ -82,9 +86,15 @@ object OpenRouterJson {
   }
 
   /** `m` on the wire, each text as text parts when `parts` and it is not empty (an empty part
-    * is refused), as a string otherwise; an assistant's reasoning only when `reasoned`.
+    * is refused), as a string otherwise; an assistant's reasoning only when `reasoned`; an
+    * empty `reasoning_content` on an assistant's calls sent with no details, when `emptied`.
     */
-  private def message(m: Message, reasoned: Boolean, parts: Boolean): ujson.Obj = {
+  private def message(
+      m: Message,
+      reasoned: Boolean,
+      parts: Boolean,
+      emptied: Boolean
+  ): ujson.Obj = {
     def said(text: String): ujson.Value =
       if (parts && text.nonEmpty) ujson.Arr(ujson.Obj("type" -> "text", "text" -> text))
       else ujson.Str(text)
@@ -117,7 +127,10 @@ object OpenRouterJson {
             "role" -> "assistant",
             "content" -> (if (text.isEmpty && calls.nonEmpty) ujson.Null else said(text))
           ) ++ Option.when(calls.nonEmpty)("tool_calls" -> ujson.Arr.from(calls)) ++
-            details.map("reasoning_details" -> _)
+            details.map("reasoning_details" -> _) ++
+            Option.when(emptied && calls.nonEmpty && details.isEmpty)(
+              "reasoning_content" -> ujson.Str("")
+            )
         )
     }
   }

@@ -24,7 +24,8 @@
         "source": { "kind": "measured", "probe": "wire-spike", "on": "2026-09-25", "runs": 1, "held": 1 }
       },
       "contextLength": { "value": 1048576, "source": { "kind": "advertised", "on": "2026-11-05" } },
-      "effectiveContext": { "value": 256000, "source": { "kind": "declared", "by": "nick", "on": "2026-11-25" } }
+      "effectiveContext": { "value": 256000, "source": { "kind": "declared", "by": "nick", "on": "2026-11-25" } },
+      "quirks": { "value": ["empty-reasoning-content"], "source": { "kind": "advertised", "on": "2026-11-26" } }
     },
     {
       "model": "z-ai/glm-5.3-flash",
