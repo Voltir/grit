@@ -243,5 +243,40 @@ object TurnModelsTests extends TestSuite {
         )
       )
     }
+
+    test("a turn guided in its system prompt sends every call its first call's listing") {
+      val nick = Source.Declared("nick", LocalDate.of(2026, 11, 26))
+      val pair = Profile(
+        TestCatalog.policy.turn.first.assignment.ref,
+        guidance = Known.Of(ToolGuidance.SystemLines, nick)
+      )
+      def peeking(n: Int): Message.Assistant = Message.Assistant(
+        Vector(
+          AssistantBlock.ToolCall(ToolCallId(s"t$n"), "peek", ujson.Obj("path" -> "a.txt"))
+        ),
+        StopReason.ToolUse,
+        Usage(Tokens(1), Tokens(1), Tokens.Zero, None),
+        "m"
+      )
+      val provider = new Scripted((_, n) => Right(if (n < 2) peeking(n) else said("done")))
+      val entries = new InMemoryEntryStore
+      val ws = new Files(Map("a.txt" -> "alpha"))
+      val turn = say(entries, "hello")
+      new InMemoryDurable().run(turn.workflowId)(
+        modelsBody(
+          entries,
+          new Switching(provider, Right(TestCatalog.overlaid(Vector(pair)))),
+          new InMemoryModelProfileStore,
+          ws,
+          tools(ws),
+          calls = 3
+        )
+      )
+      val listed =
+        s"$prompt\n\nTools you may call:\n<grit_tool_descriptions>\n- topic: ${TurnVerdict.Spec.does}\n- peek: Reads a file.\n" +
+          s"- poke: Reads a file, asking first. ${Gate.AsksFirst}\n</grit_tool_descriptions>"
+      // The fourth request is the summary, asked alone under its own system prompt.
+      provider.requests.take(3).map(_.system) ==> Vector.fill(3)(listed)
+    }
   }
 }
