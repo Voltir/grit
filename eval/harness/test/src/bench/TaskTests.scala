@@ -95,8 +95,8 @@ object TaskTests extends TestSuite {
         )
       }
       (names, read) ==> (
-        Vector("anthropic-provider", "blobs-remove-all-but", "commands-as-tools"),
-        Vector.fill(3)(Right((false, true, true)))
+        Vector("anthropic-provider", "blobs-remove-all-but", "brief-raised", "commands-as-tools"),
+        Vector.fill(4)(Right((false, true, true)))
       )
     }
   }

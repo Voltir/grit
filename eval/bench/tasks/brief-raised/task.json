@@ -1,0 +1,15 @@
+{
+  "base": "2ce2785b80ae58d7aacc634f25b047874a39f3d1",
+  "commits": [
+    "da1782f2d2c71223e6b8a23b037f046e066652b0",
+    "2bd92a1130b541e857aea43fd91c338d59693f0e",
+    "0efce0b7bf1c52ecea37565e3f280640747de797"
+  ],
+  "checks": [
+    {"runner": "check", "args": ["grit.core"]},
+    {"runner": "check", "args": ["grit.act"]},
+    {"runner": "check", "args": ["grit.projects"]},
+    {"runner": "it", "args": ["grit.dbos.it.testOnly", "grit.dbos.engine.SqlDocumentsTests"]},
+    {"runner": "it", "args": ["grit.app.it.testOnly", "grit.app.main.ProjectsLiveTests"]}
+  ]
+}
