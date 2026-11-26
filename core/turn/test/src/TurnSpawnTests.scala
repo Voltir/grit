@@ -427,8 +427,26 @@ object TurnSpawnTests extends TestSuite {
         )
       )
       // Each round's call under its type's pin; its summary, as every turn's, under the deployment's.
-      val typed = SubagentFixtures.pins.first.assignment.ref.toString
+      val typed = SubagentFixtures.ladder.first.assignment.ref.toString
       seen.pins.map(_.assignment.ref.toString) ==> Vector(typed, typed, "test/summary")
+    }
+    test("a child's type's pin is pinned by the catalog in force as its turn starts") {
+      val entries = new InMemoryEntryStore
+      val turn = spawn(entries, SubagentFixtures.coder, "Fix the typo.")
+      val durable = new InMemoryDurable
+      val seen = new Pinnings
+      durable.run(turn.workflowId)(
+        spawnedBody(
+          entries,
+          model(),
+          edgeAt(durable, repository),
+          new Files(Map.empty),
+          coders,
+          spawnedFrom(repository),
+          seen = seen
+        )
+      )
+      seen.pins.headOption.map(_.version) ==> Some(TestCatalog.version)
     }
 
     test(

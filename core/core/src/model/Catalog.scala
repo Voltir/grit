@@ -109,19 +109,24 @@ final case class Catalog private (
   def profile(ref: ModelRef): Option[Profile] = profiles.find(_.ref == ref)
 
   /** What each role's calls are made under, for a turn starting now. */
-  def pin: TurnProfile = TurnProfile.of(pins(policy.turn), pins(policy.summary), pins(policy.query))
+  def pin: TurnProfile =
+    TurnProfile.of(pinned(policy.turn), pinned(policy.summary), pinned(policy.query))
 
   /** What the closing of a period grit only heard is written under: the policy's `heard`
     * role. No turn's call, so no [[TurnProfile]] holds it.
     */
-  def heard: Pins = pins(policy.heard)
+  def heard: Pins = pinned(policy.heard)
 
   /** What a dreaming job's summaries are asked under: the policy's `dream` role. No turn's
     * call, so no [[TurnProfile]] holds it.
     */
-  def dream: Pins = pins(policy.dream)
+  def dream: Pins = pinned(policy.dream)
 
-  private def pins(ladder: Ladder): Pins = {
+  /** `ladder`'s rungs pinned under this catalog, in its order: each with this catalog's version
+    * and the settings its pair resolves to here ([[Settings.of]]: a pair with no profile gets the
+    * defaults), their replay the rung's assignment's when it sets one.
+    */
+  def pinned(ladder: Ladder): Pins = {
     def pinned(r: Rung) = {
       val settings = Settings.of(profile(r.assignment.ref))
       val replayed = r.assignment.replay.fold(settings)(v => settings.copy(replay = v))

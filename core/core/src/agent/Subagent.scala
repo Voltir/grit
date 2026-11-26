@@ -3,19 +3,20 @@ package grit.core.agent
 import grit.core.host.Allowlist
 import grit.core.id.AgentType
 import grit.core.message.SpendCap
-import grit.core.model.Pins
+import grit.core.model.Ladder
 import grit.core.persona.Persona
 import grit.core.place.{Repository, Service}
 import grit.core.visibility.Integrity
 
 /** A kind of agent a turn may start for one task: the persona it is told it is, the tools it is
-  * offered, the pins that answer it (met with routing's clearances, ADR 0031), the most one may
+  * offered, the ladder its calls are pinned from by the catalog in force as its turn starts
+  * ([[grit.core.model.Catalog.pinned]], met with routing's clearances, ADR 0031), the most one may
   * spend, and the least integrity its brief must carry. A deployment declares it.
   */
 final case class Subagent private (
     agent: AgentType,
     persona: Persona,
-    pins: Pins,
+    ladder: Ladder,
     tools: Subagent.Tools,
     spendCap: SpendCap,
     requires: Integrity
@@ -39,7 +40,7 @@ object Subagent {
   def of(
       agent: AgentType,
       persona: Persona,
-      pins: Pins,
+      ladder: Ladder,
       tools: Tools,
       spendCap: SpendCap,
       requires: Integrity
@@ -50,6 +51,6 @@ object Subagent {
         s"the coding subagent ${AgentType.value(agent)} must require at least " +
           s"${Integrity.shown(Integrity.WritesOut)}, not ${Integrity.shown(requires)}"
       )
-    case _ => Right(Subagent(agent, persona, pins, tools, spendCap, requires))
+    case _ => Right(Subagent(agent, persona, ladder, tools, spendCap, requires))
   }
 }

@@ -10,7 +10,7 @@ import grit.core.persona.Persona
 import grit.core.place.{Repository, Service}
 import grit.core.visibility.Integrity
 
-/** Subagents' parts as tests build them: two types, one persona and pin, a spend cap of
+/** Subagents' parts as tests build them: two types, one persona and ladder, a spend cap of
   * $0.05, and tools of each kind, coding in [[scratch]].
   */
 object SubagentFixtures {
@@ -22,11 +22,13 @@ object SubagentFixtures {
   val persona: Persona = ok(Persona.of("Coder"))
   val spendCap: SpendCap = ok(SpendCap.of(BigDecimal("0.05")))
 
-  val pins: Pins = {
-    val ref = ModelRef(ok(ModelId.of("anthropic/claude-haiku").toRight("a model id")), None)
-    val ladder = ok(Ladder.of(Vector(Rung(Grade.Standard, Assignment(ref, 100, None)))))
-    Catalog.of(Policy(ladder, ladder, ladder, ladder, ladder), Vector.empty).pin.turn
-  }
+  val ladder: Ladder = Ladder.one(
+    Assignment(
+      ModelRef(ok(ModelId.of("anthropic/claude-haiku").toRight("a model id")), None),
+      100,
+      None
+    )
+  )
 
   val scratch: Repository = ok(Repository.of("scratch"))
 
@@ -44,7 +46,7 @@ object SubagentFixtures {
   val services: Subagent.Tools.Services =
     Subagent.Tools.Services(Vector(ok(Service.of("docs"))))
 
-  /** A subagent of `agent` offered `tools`, requiring `requires`, of this file's persona, pins
+  /** A subagent of `agent` offered `tools`, requiring `requires`, of this file's persona, ladder
     * and spend cap; or why not.
     */
   def subagent(
@@ -52,5 +54,5 @@ object SubagentFixtures {
       tools: Subagent.Tools,
       requires: Integrity
   ): Either[String, Subagent] =
-    Subagent.of(agent, persona, pins, tools, spendCap, requires)
+    Subagent.of(agent, persona, ladder, tools, spendCap, requires)
 }

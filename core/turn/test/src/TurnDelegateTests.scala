@@ -53,7 +53,7 @@ object TurnDelegateTests extends TestSuite {
     scholars.declared.byType.values.headOption
       .flatMap(s =>
         grit.core.agent.Subagent
-          .of(s.agent, s.persona, s.pins, s.tools, s.spendCap, requires)
+          .of(s.agent, s.persona, s.ladder, s.tools, s.spendCap, requires)
           .flatMap(r => grit.core.agent.Subagents.of(Vector(r)))
           .toOption
       )

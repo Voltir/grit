@@ -352,8 +352,8 @@ private[turn] object TurnSteps {
 
   /** `pin-models`: the catalog in force, pinned as the turn's profile: kept by the store, and
     * its id the step's output, so a replay makes every call under the profile the turn started
-    * with. A spawned child's turn pins are its type's ([[Env.spawnedAs]]), and one whose type is
-    * not declared ends here, `Undeclared`.
+    * with. A spawned child's turn pins its type's ladder ([[Env.spawnedAs]]) under the same
+    * catalog, and one whose type is not declared ends here, `Undeclared`.
     */
   val pinModels: Step[Env, TurnRef, Either[TurnFailure, TurnProfileId]] =
     Step.transact[Env, TurnRef, Either[TurnFailure, TurnProfileId]](
@@ -376,7 +376,7 @@ private[turn] object TurnSteps {
               )
             pinned = catalog.pin
             profile = child.fold(pinned)(c =>
-              TurnProfile.of(c.subagent.pins, pinned.summary, pinned.query)
+              TurnProfile.of(catalog.pinned(c.subagent.ladder), pinned.summary, pinned.query)
             )
             _ <- env.records.profiles.pin(turn.workflowId, profile).left.map(TurnFailure.ofStore)
           } yield profile.id

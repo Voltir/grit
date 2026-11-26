@@ -30,7 +30,7 @@ object DelegateLiveTests extends TestSuite {
         .of(
           SubagentFixtures.scholar,
           SubagentFixtures.persona,
-          StubModels.Catalog.pin.turn,
+          StubModels.Catalog.policy.turn,
           SubagentFixtures.services,
           SubagentFixtures.spendCap,
           Integrity.Untrusted

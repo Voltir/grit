@@ -1051,7 +1051,7 @@ object TurnFixtures {
     }
   }
 
-  /** A type answering from the docs service, its pins of two grades so its task is asked. */
+  /** A type answering from the docs service, its ladder of two grades so its task is asked. */
   val scholars: Spawnable = {
     def rung(g: grit.core.model.Grade, model: String) =
       grit.core.model.Rung(g, Assignment(pair(model, None), 100, None))
@@ -1063,12 +1063,11 @@ object TurnFixtures {
         )
       )
       .fold(why => throw new java.lang.AssertionError(why), identity)
-    val pins = Catalog.of(Policy(ladder, ladder, ladder, ladder, ladder), Vector.empty).pin.turn
     val scholar = grit.core.agent.Subagent
       .of(
         grit.core.agent.SubagentFixtures.scholar,
         grit.core.agent.SubagentFixtures.persona,
-        pins,
+        ladder,
         grit.core.agent.SubagentFixtures.services,
         grit.core.agent.SubagentFixtures.spendCap,
         Integrity.Member
