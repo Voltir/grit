@@ -66,11 +66,11 @@ object RunAnswerTests extends TestSuite {
             "`.grit/runs/p/3f9a2c1e.out`, for `read` and `search`."
         ),
         Vector(
-          "Of lines 1 to 21, those that look like errors, warnings or failing tests, and the 3 " +
-            "after each:",
+          "Of lines 1 to 21, those that look like errors, warnings or failing tests, each " +
+            "after its line number in that file, and the 3 after each:",
           "     2\tFAIL grit.core.session.SessionDigestTests > commits its agents made are one " +
             "line after the counters; a path under another worktree shows under its last segment",
-          "     3\t" + Clipped.lines(text).lift(2).getOrElse("").take(500) + "…",
+          "     3\t" + Clipped.lines(text).lift(2).getOrElse("").take(500) + "… [line cut]",
           "     4\t  at grit.core.session.SessionDigestTests$.$init$$$anonfun$1$$anonfun$2" +
             "(SessionDigestTests.scala:86)",
           "     5\tFAIL grit.core.recipe.PoolTests > a message source keeps the latest `most` " +
@@ -82,7 +82,7 @@ object RunAnswerTests extends TestSuite {
           "Its last lines, 22 to 50:\n" + Clipped
             .lines(text)
             .drop(21)
-            .map(l => if (l.length > 500) l.take(500) + "…" else l)
+            .map(l => if (l.length > 500) l.take(500) + "… [line cut]" else l)
             .mkString("\n")
         ),
         3
@@ -153,16 +153,16 @@ object RunAnswerTests extends TestSuite {
     }
 
     test(
-      "with nothing flagged above the tail, a failed command is told what grit looks for, and a passing one that nothing looks wrong"
+      "with nothing flagged above the tail, a failed command is told the usual marks of a failure, and a passing one that nothing looks wrong"
     ) {
       val text = ((1 to 300).map(n => s"step $n of the build went as it should") :+
         "FAIL grit.pool.PoolTests > a lease returned is reused").mkString("\n")
       (sections(answer(text)).lift(1), sections(answer(text, failed = false)).lift(1)) ==> (
         Some(
-          "None of lines 1 to 261 matched what grit looks for (`[error]`, `FAILED`, `error:`, an " +
-            "exception's name); `search` the file for what this command prints on a failure."
+          "None of lines 1 to 261 has a usual mark of a failure (`[error]`, `FAILED`, `error:`, " +
+            "an exception's name); `search` the file for what this command prints on a failure."
         ),
-        Some("No line of lines 1 to 261 looks like an error, a warning or a failing test.")
+        Some("None of lines 1 to 261 looks like an error, a warning or a failing test.")
       )
     }
 

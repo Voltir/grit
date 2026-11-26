@@ -1,6 +1,6 @@
 # 0055. In an allowlisted tool set the deployment's declared command list stands in for a person's approval, and bounds what `run` starts, not what runs
 
-Status: accepted (2026-11-02); revised (2026-11-06); revised (2026-11-25)
+Status: accepted (2026-11-02); revised (2026-11-25)
 
 Context: ADR 0017 has a person approve each `write`, `edit` and `run` before it runs, and a
 deployment with no one to answer (a run with arguments, `grit serve`) offers only the tools that
@@ -50,18 +50,15 @@ Decision:
 
 - **Long runs.** A command still going after `run`'s wait outlives the call: its id comes back,
   and `tail` and `stop` take it (`Runs`). It belongs to the edge's process, not the turn's
-  workflow, so no step changes and one call still waits at most `Shell.Longest`, on which
-  `Calling.RunWithin` is built. Its handle lives in that process's memory and is forgotten on a
+  workflow, so no step changes and one call still waits at most `Shell.Longest`. Its handle lives in that process's memory and is forgotten on a
   restart, which answers `Gone`, never a throw: a table or a `Job` (ADR 0029) would outlive a
   process that no longer holds the program. Handles are per checkout, not per conversation:
   any conversation working there reaches them, as it reaches the checkout. The chat's end kills
   what is going; a signal leaves an orphan to its timeout or to the next start's sweep, which
   kills a run whose process left it. Its output is a file under `.grit/runs` in the checkout,
-  killed past 16 MB, at most four going and eight ended kept: never a table. An answer of `run`,
-  `tail` or `stop` stays in the turn's window and is sent again with every later call, so an
-  output past `RunAnswer.WholeBytes` is answered not whole but as its size and that file, the
-  lines above its end that look like failures, numbered as `read` numbers the file, and its
-  tail (`RunAnswer`); the rest is a `read` or a `search` away.
+  killed past 16 MB, at most four going and eight ended kept: never a table. An answer is sent
+  again with every later call, so an output past `RunAnswer.WholeBytes` is answered as its size,
+  that file, its lines that look like failures, numbered as `read` numbers them, and its tail.
 
 Consequences:
 

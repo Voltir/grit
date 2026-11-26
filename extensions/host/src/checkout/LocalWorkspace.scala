@@ -130,10 +130,7 @@ final class LocalWorkspace(root: Path, redaction: Redaction) extends Workspace {
       case Some(text) =>
         Clipped.lines(redaction(text)).zipWithIndex.collect {
           case (line, i) if regex.matcher(line).find() =>
-            val shown =
-              if (line.length <= Workspace.MaxLineChars) line
-              else line.take(Workspace.MaxLineChars) + "… [line cut]"
-            s"$rel:${i + 1}: $shown"
+            s"$rel:${i + 1}: ${Workspace.cut(line)}"
         }
     }
 

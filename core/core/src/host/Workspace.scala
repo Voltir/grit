@@ -46,6 +46,12 @@ object Workspace {
   /** The most characters of a matching line [[Workspace.search]] shows. */
   val MaxLineChars = 500
 
+  /** `line` as a search shows it: whole within [[MaxLineChars]] characters, else its first
+    * [[MaxLineChars]] then `… [line cut]`.
+    */
+  def cut(line: String): String =
+    if (line.length <= MaxLineChars) line else line.take(MaxLineChars) + "… [line cut]"
+
   /** The most matching lines a search shows: 200. One more, and it shows none of them. */
   val SearchLines = 200
 

@@ -13,8 +13,8 @@ import grit.prose.words.Words
   */
 private[tools] object RunAnswer {
 
-  /** 8 KB, about 2,700 tokens of a build's log: the most of a run's output an answer shows whole.
-    * An answer is sent again with every later call of its turn.
+  /** 8 KB: the most of a run's output an answer shows whole. An answer is sent again with every
+    * later call of its turn.
     */
   val WholeBytes: Int = 8 * 1024
 
@@ -51,13 +51,13 @@ private[tools] object RunAnswer {
   /** `output` after `heading`, such as `Output`: `heading:` then its text when it is at most
     * [[WholeBytes]]. Else `heading:` its size and file, the flagged lines above its tail, each
     * numbered as [[LineNumbers]] numbers its line in the file, then its tail, those lines
-    * [[Clipped.plain]] and each cut at [[Workspace.MaxLineChars]] characters. With nothing
+    * [[Clipped.plain]] and each cut as [[Workspace.cut]] cuts a search's line. With nothing
     * flagged, the answer says so, and when the command `failed`, what was looked for.
     */
   def of(heading: String, output: RunOutput, failed: Boolean): String =
     if (bytes(output.text) <= WholeBytes) s"$heading:\n${output.text}"
     else {
-      val shown = Clipped.lines(output.text).map(l => cut(Clipped.plain(l)))
+      val shown = Clipped.lines(output.text).map(l => Workspace.cut(Clipped.plain(l)))
       val total = shown.size
       val kb = (bytes(output.text) + 1023) / 1024
       val head =
@@ -96,9 +96,9 @@ private[tools] object RunAnswer {
     val unshown = (failing ++ noted).count(i => !chosen(i))
     if (chosen.isEmpty && unshown == 0)
       if (failed)
-        s"None of lines 1 to $last matched what grit looks for (`[error]`, `FAILED`, `error:`, " +
+        s"None of lines 1 to $last has a usual mark of a failure (`[error]`, `FAILED`, `error:`, " +
           "an exception's name); `search` the file for what this command prints on a failure."
-      else s"No line of lines 1 to $last looks like an error, a warning or a failing test."
+      else s"None of lines 1 to $last looks like an error, a warning or a failing test."
     else if (chosen.isEmpty)
       s"Of lines 1 to $last, those that look like errors, warnings or failing tests are too " +
         "long to show here; `search` the file for them."
@@ -112,15 +112,10 @@ private[tools] object RunAnswer {
         if (unshown == 0) ""
         else
           s"\nNot shown: ${Words.counted(unshown, "more such line")}; `search` the file for them."
-      s"Of lines 1 to $last, those that look like errors, warnings or failing tests, and the " +
-        s"$Following after each:\n$lines$more"
+      s"Of lines 1 to $last, those that look like errors, warnings or failing tests, each " +
+        s"after its line number in that file, and the $Following after each:\n$lines$more"
     }
   }
-
-  /** `line` cut at [[Workspace.MaxLineChars]] characters, `…` after a cut one. */
-  private def cut(line: String): String =
-    if (line.length <= Workspace.MaxLineChars) line
-    else line.take(Workspace.MaxLineChars) + "…"
 
   private def bytes(s: String): Int = s.getBytes(UTF_8).length
 }

@@ -271,7 +271,8 @@ object AllowlistedCodingTests extends TestSuite {
       def shown(total: Int, kb: Int, tail: Seq[String]): String =
         s"$total lines, $kb KB, too long to show whole. All of it is in `.grit/runs/$id.out`, " +
           s"for `read` and `search`.\n\nOf lines 1 to ${total - 40}, those that look like " +
-          "errors, warnings or failing tests, and the 3 after each:\n" +
+          "errors, warnings or failing tests, each after its line number in that file, and the " +
+          "3 after each:\n" +
           "   100\tFAIL grit.pool.PoolTests > a lease returned is reused\n" +
           "   101\t  assertion failed: ==> assertion failed: 1 != 2\n" +
           "   102\tstep 102 went as it should\n   103\tstep 103 went as it should\n" +
