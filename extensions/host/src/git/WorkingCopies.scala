@@ -4,7 +4,7 @@ import java.nio.channels.FileChannel
 import java.nio.file.attribute.FileTime
 import java.nio.file.{Files, Path, StandardOpenOption}
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 import scala.annotation.tailrec
 import scala.concurrent.duration.FiniteDuration
@@ -29,10 +29,15 @@ import grit.host.checkout.Checkout.attempt
 import grit.host.checkout.LocalTree
 
 /** Working copies of `repository`'s clone at `clone`, each at `root/{repository}/{work}` on the
-  * branch `grit/{work}`, git run through `processes`. Its first call sweeps: every copy unused
-  * for [[Kept]] that is neither held nor holding changes never committed is removed, its branch
-  * kept, and so is every directory there without its lock; a copy holding such changes goes too
-  * once unused for [[Unpublished]], said through `note` first, unless held. With `branches`, a
+  * branch `grit/{work}`, git run through `processes`. Its first call sweeps, and so does its first
+  * after [[SweepEvery]] since: every copy unused for [[Kept]] that is neither held nor holding
+  * changes never committed is removed, its branch kept, and so is every directory there without
+  * its lock; a copy holding such changes goes too, unless held, said through `note` first: with
+  * `leftovers` [[Leftovers.Committed]], once unused for [[Abandoned]], its changes committed to
+  * its branch first, and also when room is wanted at [[Most]]; else once unused for
+  * [[Unpublished]], its changes discarded. With no `branches`, the sweep deletes here each
+  * `grit/{work}` branch with no copy that origin's default branch, as last fetched, holds all of,
+  * or whose tip was committed past [[Unpublished]] ago, said through `note` first. With `branches`, a
   * new branch is cut only when the clone's origin is their target's remote
   * ([[Remote.fetchedBy]]); `Failed` otherwise, naming both, no copy or branch made. With
   * `branches`, and the clone's origin their remote, the sweep also deletes each `grit/{work}`
@@ -52,13 +57,15 @@ final class WorkingCopies(
     processes: Processes^,
     clock: Clock^,
     branches: Option[Branches^] = None,
-    note: String -> Unit = _ => ()
+    note: String -> Unit = _ => (),
+    leftovers: WorkingCopies.Leftovers = WorkingCopies.Leftovers.Kept
 ) extends caps.SharedCapability {
   import WorkingCopies.*
 
   private val home = clone.toAbsolutePath.normalize
   private val copies = root.toAbsolutePath.normalize.resolve(repository.name)
-  private val swept = new AtomicBoolean(false)
+  // When this instance last swept, in epoch milliseconds; never, at first.
+  private val lastSwept = new AtomicLong(Long.MinValue)
 
   /** `work`'s copy, made on `grit/{work}` when it has none: the branch as it stands where it
     * exists, else a new branch cut from origin's default branch, fetched first (with no tags).
@@ -266,14 +273,22 @@ final class WorkingCopies(
     }
   }
 
-  /** Room for `name`'s copy: below [[Most]] others, the least recently used free ones removed. */
+  /** Room for `name`'s copy: below [[Most]] others, the least recently used free ones removed,
+    * and, when its leftovers are committed, those [[committedAway]] removes.
+    */
   private def bounded(name: String): Either[HostError, Unit] =
     names().flatMap { all =>
       val others = all - name
       val over = others.size - Most + 1
       if (over <= 0) Right(())
       else {
-        val gone = others.toVector.sortBy(lastUsed).iterator.filter(free).take(over).size
+        val now = clock.now().toEpochMilli
+        val gone = others.toVector
+          .sortBy(lastUsed)
+          .iterator
+          .filter(n => free(n) || committedAway(n, now))
+          .take(over)
+          .size
         if (gone > 0) pruned()
         if (gone == over) Right(()) else Left(HostError.NoCopyFree(Most))
       }
@@ -322,24 +337,135 @@ final class WorkingCopies(
         case _ => Right(pruned())
       }
 
-  /** At this instance's first call, the sweep its doc names. */
-  private def sweep(): Unit = if (!swept.getAndSet(true)) {
-    val cutoff = clock.now().toEpochMilli - Kept.toMillis
-    val abandoned = clock.now().toEpochMilli - Unpublished.toMillis
-    names().foreach { all =>
-      val gone = all.toVector.filter { name =>
-        val dir = dirOf(name)
-        if (Files.exists(lockOf(dir))) {
-          val last = lastUsed(name)
-          (last < cutoff && free(name)) || (last < abandoned && discarded(name))
-        } else LocalTree.removed(dir).isEmpty
+  /** At this instance's first call, and its first after [[SweepEvery]] since its last sweep, the
+    * sweep its doc names.
+    */
+  private def sweep(): Unit = {
+    val now = clock.now().toEpochMilli
+    val last = lastSwept.get()
+    if (
+      (last == Long.MinValue || now - last >= SweepEvery.toMillis) && lastSwept.compareAndSet(
+        last,
+        now
+      )
+    ) {
+      val cutoff = now - Kept.toMillis
+      val abandoned = now - Unpublished.toMillis
+      names().foreach { all =>
+        val gone = all.toVector.filter { name =>
+          val dir = dirOf(name)
+          if (Files.exists(lockOf(dir))) {
+            val last = lastUsed(name)
+            (last < cutoff && free(name)) || committedAway(name, now) ||
+            (last < abandoned && discarded(name))
+          } else LocalTree.removed(dir).isEmpty
+        }
+        if (gone.nonEmpty) pruned()
       }
-      if (gone.nonEmpty) pruned()
+      branches match {
+        case Some(b) => branchesSwept(b)
+        case None => branchesSweptHere()
+      }
     }
-    branches match {
-      case Some(b) => branchesSwept(b)
-      case None => ()
+  }
+
+  /** Whether `name`'s copy was removed, its leftovers committed to its branch first and said
+    * through `note`: only when they are [[Leftovers.Committed]], it is unused past [[Abandoned]]
+    * at `now`, holds changes never committed, and is held by no process. One whose changes
+    * cannot be committed is kept, and why is said.
+    */
+  private def committedAway(name: String, now: Long): Boolean = {
+    val dir = dirOf(name)
+    leftovers == Leftovers.Committed && lastUsed(name) < now - Abandoned.toMillis &&
+    !Holds.containsKey(lockOf(dir)) && isCopy(dir) && !clean(dir) && {
+      val committed = for {
+        _ <- git(dir, "add", "--all")
+        // grit's own commit, under its own name, whatever the clone's user is called.
+        _ <- git(
+          dir,
+          "-c",
+          "user.name=grit",
+          "-c",
+          "user.email=grit@localhost",
+          "commit",
+          "--quiet",
+          "--no-verify",
+          "-m",
+          "What a run of grit left uncommitted, kept as its copy was removed"
+        )
+      } yield ()
+      committed match {
+        case Left(e) =>
+          note(
+            s"[main] keeping $dir: what it left uncommitted could not be committed: ${e.message}"
+          )
+          false
+        case Right(()) =>
+          note(
+            s"[main] committing what $dir left uncommitted to grit/$name, unused past $Abandoned, and removing it"
+          )
+          free(name)
+      }
     }
+  }
+
+  /** Each `grit/{work}` branch here, oldest commit first, with its run, tip and its tip's commit
+    * time in epoch seconds, but those of a copy there is.
+    */
+  private def copyless(): Vector[(String, WorkName, String, Long)] = {
+    val held = names().getOrElse(Set.empty)
+    git(
+      home,
+      "for-each-ref",
+      "--sort=committerdate",
+      "--format=%(refname) %(objectname) %(committerdate:unix)",
+      "refs/heads/grit/"
+    ).toOption.toVector
+      .flatMap(_.output.text.linesIterator.toVector)
+      .flatMap { line =>
+        line.split(' ') match {
+          case Array(ref, tip, at) if ref.startsWith("refs/heads/grit/") =>
+            val branch = ref.stripPrefix("refs/heads/")
+            (WorkName.of(branch.stripPrefix("grit/")).toOption, at.toLongOption) match {
+              case (Some(w), Some(seconds)) => Vector((branch, w, tip, seconds))
+              case _ => Vector.empty
+            }
+          case _ => Vector.empty
+        }
+      }
+      .filterNot((_, w, _, _) => held.contains(WorkName.value(w)))
+  }
+
+  /** `branch` deleted here, whatever it holds. */
+  private def deleted(branch: String): Unit = {
+    val _ = git(home, "branch", "--quiet", "-D", branch)
+  }
+
+  /** At the sweep, with no `branches`: each `grit/{work}` branch with no copy deleted here, said
+    * through `note` first, once origin's default branch, as the clone last fetched it, holds all
+    * of it, or once its tip was committed past [[Unpublished]] ago. Nothing is asked of origin;
+    * a clone naming no default branch of origin keeps every branch.
+    */
+  private def branchesSweptHere(): Unit = defaultBranch() match {
+    case Right(Some(default)) =>
+      val cutoff = clock.now().getEpochSecond - Unpublished.toSeconds
+      copyless().foreach { (branch, _, tip, at) =>
+        val held = ran(home, "rev-list", "--count", s"$default..$tip").toOption
+          .exists((_, r) => r.exit == 0 && r.output.text.trim == "0")
+        val line =
+          if (held) Some(s"[main] deleting $branch here: origin's default branch holds all of it")
+          else if (at < cutoff)
+            Some(
+              s"[main] deleting $branch here, its last commit $tip made " +
+                s"${java.time.Instant.ofEpochSecond(at)}, past $Unpublished unpublished"
+            )
+          else None
+        line.foreach { l =>
+          note(l)
+          deleted(branch)
+        }
+      }
+    case _ => ()
   }
 
   /** At the sweep, with `branches`: the deletion of runs' branches the class's doc names. Each
@@ -353,28 +479,7 @@ final class WorkingCopies(
       .map(_.output.text.linesIterator.nextOption().getOrElse("").trim)
     if (origin.exists(b.target.remote.fetchedBy)) {
       val cutoff = clock.now().getEpochSecond - Unpublished.toSeconds
-      val held = names().getOrElse(Set.empty)
-      val swept: Vector[(String, WorkName, String, Long)] = git(
-        home,
-        "for-each-ref",
-        "--sort=committerdate",
-        "--format=%(refname) %(objectname) %(committerdate:unix)",
-        "refs/heads/grit/"
-      ).toOption.toVector
-        .flatMap(_.output.text.linesIterator.toVector)
-        .flatMap { line =>
-          line.split(' ') match {
-            case Array(ref, tip, at) if ref.startsWith("refs/heads/grit/") =>
-              val branch = ref.stripPrefix("refs/heads/")
-              (WorkName.of(branch.stripPrefix("grit/")).toOption, at.toLongOption) match {
-                case (Some(w), Some(seconds)) => Vector((branch, w, tip, seconds))
-                case _ => Vector.empty
-              }
-            case _ => Vector.empty
-          }
-        }
-        .filterNot((_, w, _, _) => held.contains(WorkName.value(w)))
-      def deleted(branch: String): Unit = { val _ = git(home, "branch", "--quiet", "-D", branch) }
+      val swept = copyless()
       def handled(branch: String): Unit = { val _ = attempt(Files.writeString(cursor, branch)) }
       val after = attempt(Files.readString(cursor).trim).toOption
       val from = swept.indexWhere(_._1 == after.getOrElse("")) + 1
@@ -567,6 +672,28 @@ object WorkingCopies {
     * use.
     */
   val Unpublished: FiniteDuration = FiniteDuration(90, TimeUnit.DAYS)
+
+  /** What becomes of the changes a run left in its copy, never committed. */
+  enum Leftovers derives CanEqual {
+
+    /** Kept in the copy, which stays until unused for [[Unpublished]]: a person may come back to
+      * a run of theirs.
+      */
+    case Kept
+
+    /** Committed to the copy's branch once the copy is unused for [[Abandoned]], and the copy
+      * removed: for runs nobody comes back to once they end.
+      */
+    case Committed
+  }
+
+  /** 1 hour: how long a copy whose leftovers are [[Leftovers.Committed]] goes unused before they
+    * are committed and it is removed; longer than a spawned run's whole wait.
+    */
+  val Abandoned: FiniteDuration = FiniteDuration(1, TimeUnit.HOURS)
+
+  /** 1 hour: how often an instance sweeps, at the first call after this long since its last. */
+  val SweepEvery: FiniteDuration = FiniteDuration(1, TimeUnit.HOURS)
 
   /** 8: the most copies of one repository. */
   val Most: Int = 8

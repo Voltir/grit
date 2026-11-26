@@ -141,6 +141,35 @@ object WorkingCopiesTests extends TestSuite {
 
   private val eight = (0 until WorkingCopies.Most).toList.map(i => s"run-$i")
 
+  /** Copies of `repo`'s clone on `clock` whose leftovers are committed, said through `note`. */
+  private def committing(repo: Repo^, clock: SetClock, note: String -> Unit): WorkingCopies^ =
+    new WorkingCopies(
+      repository,
+      repo.source,
+      repo.root,
+      repo.processes,
+      clock,
+      None,
+      note,
+      WorkingCopies.Leftovers.Committed
+    )
+
+  /** `copy` holding `file` never committed, last used at `at`. */
+  private def leftIn(copy: Path, file: String, at: Instant): Unit = {
+    val _ = Files.writeString(copy.resolve(file), "unsaved")
+    val _ = Files.setLastModifiedTime(copy, java.nio.file.attribute.FileTime.from(at))
+  }
+
+  /** The files `branch`'s tip holds in `repo`'s clone, sorted. */
+  private def filesOn(repo: Repo^, branch: String): Vector[String] =
+    git(
+      repo,
+      repo.source,
+      "ls-tree",
+      "--name-only",
+      branch
+    ).output.text.linesIterator.toVector.sorted
+
   val tests = Tests {
     test(
       "the first call removes a copy unused for Kept, its branch kept; one used since, or holding changes, stays"
@@ -148,7 +177,20 @@ object WorkingCopiesTests extends TestSuite {
       inRepository { repo =>
         val clock = new SetClock(start)
         val earlier = over(repo, clock)
-        val _ = made(earlier, "old")
+        // A commit on old's branch, so the sweep keeps the branch as work of its own.
+        val _ = git(
+          repo,
+          made(earlier, "old"),
+          "-c",
+          "user.name=t",
+          "-c",
+          "user.email=t@example.com",
+          "commit",
+          "--quiet",
+          "--allow-empty",
+          "-m",
+          "old"
+        )
         Files.writeString(made(earlier, "draft").resolve("draft.txt"), "unsaved")
         clock.at = start.plusSeconds(6 * 86400)
         val _ = made(earlier, "recent")
@@ -189,9 +231,11 @@ object WorkingCopiesTests extends TestSuite {
         (before, present(repo), hasBranch(repo, repo.source, "grit/draft"), noted.toVector) ==> (
           Vector("a", "draft"),
           Vector("a", "b"),
-          true,
+          false,
           Vector(
-            s"[main] removing $draft, its changes never committed, unused past ${WorkingCopies.Unpublished}"
+            s"[main] removing $draft, its changes never committed, unused past ${WorkingCopies.Unpublished}",
+            // Its branch held nothing origin's default lacks.
+            "[main] deleting grit/draft here: origin's default branch holds all of it"
           )
         )
       }
@@ -807,6 +851,107 @@ object WorkingCopiesTests extends TestSuite {
             Files.exists(copy.resolve("note.txt"))
           )
         } ==> Right(("grit/fix-a", committed, true))
+      }
+    }
+    test(
+      "with no remote target, a branch with no copy is deleted here once origin's default holds all of it, or once its tip is past Unpublished, said first; a young one stays"
+    ) {
+      inRepository { repo =>
+        val _ = branched(repo, "empty", 0)
+        val young = branched(repo, "young", 1)
+        val now = Instant.now()
+        val noted = scala.collection.mutable.ArrayBuffer.empty[String]
+        def copies(clock: SetClock): WorkingCopies^ =
+          new WorkingCopies(
+            repository,
+            repo.source,
+            repo.root,
+            repo.processes,
+            clock,
+            None,
+            noted += _
+          )
+        val _ = made(copies(new SetClock(now)), "a")
+        val first =
+          (hasBranch(repo, repo.source, "grit/empty"), hasBranch(repo, repo.source, "grit/young"))
+        val later = new SetClock(now.plusSeconds(WorkingCopies.Unpublished.toSeconds + 3600))
+        val _ = made(copies(later), "b")
+        (first, hasBranch(repo, repo.source, "grit/young"), noted.map(_.split(" made ").head)) ==> (
+          (false, true),
+          false,
+          Vector(
+            "[main] deleting grit/empty here: origin's default branch holds all of it",
+            "[main] deleting grit/a here: origin's default branch holds all of it",
+            s"[main] deleting grit/young here, its last commit $young"
+          )
+        )
+      }
+    }
+
+    test(
+      "with leftovers committed, a copy holding changes unused past Abandoned is committed to its branch and removed, said first; one used since stays"
+    ) {
+      inRepository { repo =>
+        val clock = new SetClock(start)
+        val noted = scala.collection.mutable.ArrayBuffer.empty[String]
+        val left = made(committing(repo, clock, noted += _), "left")
+        leftIn(left, "left.txt", start)
+        val recent = made(committing(repo, clock, noted += _), "recent")
+        leftIn(recent, "recent.txt", start.plusMillis(WorkingCopies.Abandoned.toMillis))
+        clock.at = start.plusMillis(WorkingCopies.Abandoned.toMillis).plusSeconds(60)
+        val _ = made(committing(repo, clock, noted += _), "c")
+        (present(repo), filesOn(repo, "grit/left").contains("left.txt"), noted.toVector) ==> (
+          Vector("c", "recent"),
+          true,
+          Vector(
+            s"[main] committing what $left left uncommitted to grit/left, unused past ${WorkingCopies.Abandoned}, and removing it"
+          )
+        )
+      }
+    }
+
+    test(
+      "with leftovers committed, at Most copies each holding changes, the least recently used one unused past Abandoned is committed and removed for a new copy"
+    ) {
+      inRepository { repo =>
+        val clock = new SetClock(start)
+        val copies = committing(repo, clock, _ => ())
+        eight.zipWithIndex.foreach { (n, i) =>
+          leftIn(made(copies, n), s"$n.txt", start.plusSeconds(60L * i))
+        }
+        clock.at = start.plusMillis(WorkingCopies.Abandoned.toMillis).plusSeconds(30)
+        val ninth = copies.opened(work("run-8"))
+        (ninth.isRight, present(repo), filesOn(repo, "grit/run-0").contains("run-0.txt")) ==> (
+          true,
+          (eight.filterNot(_ == "run-0") :+ "run-8").sorted.toVector,
+          true
+        )
+      }
+    }
+
+    test("a copy holding changes is not committed while its leftovers are kept") {
+      inRepository { repo =>
+        val clock = new SetClock(start)
+        val copies = over(repo, clock)
+        eight.zipWithIndex.foreach { (n, i) =>
+          leftIn(made(copies, n), s"$n.txt", start.plusSeconds(60L * i))
+        }
+        clock.at = start.plusMillis(WorkingCopies.Abandoned.toMillis).plusSeconds(30)
+        (copies.opened(work("run-8")), filesOn(repo, "grit/run-0").contains("run-0.txt")) ==> (
+          Left(HostError.NoCopyFree(WorkingCopies.Most)),
+          false
+        )
+      }
+    }
+
+    test("a long-lived instance sweeps again once SweepEvery has passed since its last sweep") {
+      inRepository { repo =>
+        val clock = new SetClock(start)
+        val copies = over(repo, clock)
+        val _ = made(copies, "old")
+        clock.at = start.plusMillis(WorkingCopies.Kept.toMillis).plusSeconds(60)
+        val _ = made(copies, "new")
+        present(repo) ==> Vector("new")
       }
     }
   }
