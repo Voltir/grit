@@ -34,7 +34,11 @@
         "source": { "kind": "measured", "probe": "bench-replay", "on": "2026-11-25", "runs": 5, "held": 5 }
       },
       "contextLength": { "value": 1048576, "source": { "kind": "advertised", "on": "2026-11-25" } },
-      "effectiveContext": { "value": 256000, "source": { "kind": "declared", "by": "nick", "on": "2026-11-25" } }
+      "effectiveContext": { "value": 256000, "source": { "kind": "declared", "by": "nick", "on": "2026-11-25" } },
+      "density": {
+        "value": 3.08,
+        "source": { "kind": "measured", "probe": "ledger-density", "on": "2026-11-26", "runs": 16, "held": 16 }
+      }
     },
     {
       "model": "google/gemini-3.5-flash-lite",

@@ -90,6 +90,20 @@ object CatalogModelsTests extends TestSuite {
     }
 
     test(
+      "the seed costs GLM 5.3 flash at Z.ai at 3.08 characters a token, fitted from the coder bench's ledger rows, and leaves Claude 5.5 at Anthropic's API at the estimator's own"
+    ) {
+      // Every call of the bench's 16 recorded runs cost 1.005 or more of its input at 3.08.
+      val glm = seed.profile(pinned("z-ai/glm-5.3-flash", "z-ai/fp8").assignment.ref)
+      val claude = Vector("haiku", "sonnet", "opus").map(m =>
+        seed.profile(pinned(s"anthropic/claude-$m-5-5", "api.anthropic.com").assignment.ref)
+      )
+      (
+        glm.map(p => Settings.of(Some(p)).density.map(_.perToken)),
+        claude.map(_.map(p => Settings.of(Some(p)).density))
+      ) ==> (Some(Some(3.08)), Vector.fill(3)(Some(None)))
+    }
+
+    test(
       "the seed knows the 1,000,000-token context of Claude Haiku, Sonnet and Opus 5.5 at Anthropic's API, by the ids that API names them"
     ) {
       Vector("haiku", "sonnet", "opus").map(m =>
