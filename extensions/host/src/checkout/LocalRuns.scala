@@ -12,18 +12,7 @@ import scala.jdk.CollectionConverters.*
 import scala.jdk.OptionConverters.*
 
 import grit.core.clock.{Clock, Fresh}
-import grit.core.host.{
-  Argv,
-  Clipped,
-  HostError,
-  Kept,
-  Ran,
-  RelPath,
-  RunId,
-  RunStatus,
-  Runs,
-  Workspace
-}
+import grit.core.host.{Argv, HostError, RelPath, RunId, RunOutput, RunStatus, Runs, Workspace}
 import grit.host.checkout.Checkout.attempt
 
 /** [[Runs]] under `root` on this machine, each command started as [[LocalProcesses]] starts one
@@ -194,13 +183,15 @@ final class LocalRuns(
           if (alive) RunStatus.Going((clock.millis() - entry.from).millis, entry.timeout, out)
           else if (stoppedAfter >= 0) RunStatus.Stopped(stoppedAfter.millis, out)
           else if (entry.timedOut.get) RunStatus.TimedOut(entry.timeout, out)
-          else RunStatus.Ended(Ran(entry.process.exitValue(), out))
+          else RunStatus.Ended(entry.process.exitValue(), out)
         }
     }
 
-  /** `entry`'s output so far, its last lines, the hint naming its file. */
-  private def output(entry: Entry): Either[HostError, Clipped] =
-    written(entry.out).flatMap(at => LocalProcesses.shown(entry.out, redaction, hint(at)))
+  /** `entry`'s output so far, cleared by `redaction`, which keeps its lines. */
+  private def output(entry: Entry): Either[HostError, RunOutput] =
+    written(entry.out).flatMap(at =>
+      attempt(LocalProcesses.tail(entry.out)).map(text => RunOutput(redaction(text), at))
+    )
 
   /** `file` as a path in the checkout. */
   private def written(file: Path): Either[HostError, RelPath] =
@@ -327,10 +318,4 @@ object LocalRuns {
         case _ => ()
       }
     }
-
-  /** The words for what a run's clipped output left out, naming `at`, its whole output. */
-  private def hint(at: RelPath): Option[Kept] -> Option[String] = {
-    val whole = s"The whole output is in `${RelPath.value(at)}`, for `read`."
-    LocalProcesses.tailHint(cut = whole, partial = whole)
-  }
 }

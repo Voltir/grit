@@ -42,8 +42,19 @@ object AllowlistedCodingTests extends TestSuite {
     argv("git", "status") -> ScriptedRuns.Script("ok\n", "", Some(Duration.Zero), 0),
     argv("./mill", "compile") -> ScriptedRuns.Script("compiling\n", "done\n", Some(2.minutes), 0),
     argv("./mill", "hang") -> ScriptedRuns.Script("started\n", "", None, 0),
-    argv("./mill", "quiet") -> ScriptedRuns.Script("", "", None, 0)
+    argv("./mill", "quiet") -> ScriptedRuns.Script("", "", None, 0),
+    argv("./mill", "test") -> ScriptedRuns.Script(long, "1 FAILED\n", Some(2.minutes), 1)
   )
+
+  /** Line `n` of the long output `./mill test` writes at once. */
+  private def step(n: Int): String = n match {
+    case 100 => "FAIL grit.pool.PoolTests > a lease returned is reused"
+    case 101 => "  assertion failed: ==> assertion failed: 1 != 2"
+    case _ => f"step $n%03d went as it should"
+  }
+
+  /** 400 lines, 11 KB: past what an answer shows whole. */
+  private lazy val long = (1 to 400).map(step).mkString("", "\n", "\n")
 
   /** The id the scripted runs give their `n`th run. */
   private def nth(n: Int): String = RunId.of(s"scripted-$n").written
@@ -251,6 +262,48 @@ object AllowlistedCodingTests extends TestSuite {
       )
     }
 
+    test(
+      "a long output is answered as its size and file, its failing lines and its tail, going and ended"
+    ) {
+      val runs = Allowlisted.over(new Noting(scripts), allowlist(10.minutes))
+      val host = new CodingTests.Scripted()
+      val id = nth(1)
+      def shown(total: Int, kb: Int, tail: Seq[String]): String =
+        s"$total lines, $kb KB, too long to show whole. All of it is in `.grit/runs/$id.out`, " +
+          s"for `read` and `search`.\n\nOf lines 1 to ${total - 40}, those that look like " +
+          "errors, warnings or failing tests, and the 3 after each:\n" +
+          "   100\tFAIL grit.pool.PoolTests > a lease returned is reused\n" +
+          "   101\t  assertion failed: ==> assertion failed: 1 != 2\n" +
+          "   102\tstep 102 went as it should\n   103\tstep 103 went as it should\n" +
+          s"   104\tstep 104 went as it should\n\nIts last lines, ${total - 39} to $total:\n" +
+          tail.mkString("\n")
+      (
+        settle(host, runs, "run", ujson.Obj("program" -> "./mill", "args" -> ujson.Arr("test"))),
+        settle(host, runs, "tail", ujson.Obj("id" -> id, "wait" -> 600))
+      ) ==> (
+        Right(
+          (
+            false,
+            Outcome.Done(
+              s"Still running after 30 seconds, as `$id`; it is killed at 600 seconds. Its " +
+                "output so far: " + shown(400, 11, (361 to 400).map(step)) +
+                s"\n\nCall `tail` with id `$id` to see how it stands, giving `wait` to wait for " +
+                "it to end, or `stop` to end it."
+            )
+          )
+        ),
+        Right(
+          (
+            false,
+            Outcome.Done(
+              "`./mill test`\nExit code 1. Output: " +
+                shown(401, 11, (362 to 400).map(step) :+ "1 FAILED")
+            )
+          )
+        )
+      )
+    }
+
     test("stop ends a run, answering Stopped with its output until then; again, the same") {
       val runs = Allowlisted.over(new Noting(scripts), allowlist(10.minutes))
       val host = new CodingTests.Scripted()
@@ -328,6 +381,15 @@ object AllowlistedCodingTests extends TestSuite {
               "started when it runs past `timeout` (at most 120 seconds, and that when not " +
               "given) or its output passes 16 MB."
           )
+        ),
+        run.exists(
+          _.contains(
+            "A non-zero exit is returned, not an error. An output over 8 KB is answered with " +
+              "its size, its lines that look like errors, warnings or failing tests, each after " +
+              "its line number, and up to its last 40 lines. All of it is in a file in the " +
+              "checkout the answer names, for `read` and `search`, kept until 8 newer commands " +
+              "have ended. Give `git commit` its message"
+          )
         )
       )
     }
@@ -355,16 +417,15 @@ object AllowlistedCodingTests extends TestSuite {
         Vector(
           "See how a command `run` left running stands: still running, with its output so far, " +
             "or ended, with its exit code and output. Give `wait` to wait up to that many " +
-            "seconds for it to end; the answer comes as soon as it does. Shows at most the last " +
-            "2000 lines and 50 KB of output; when that cuts it, the answer names the file " +
-            "holding all of it, for `read`. Fails when no command with that id is kept in this " +
+            "seconds for it to end; the answer comes as soon as it does. Shows a long output as " +
+            "`run` does. Fails when no command with that id is kept in this " +
             "checkout: grit restarted since it started, or it ended and was forgotten after 8 " +
             "newer commands ended; and when its output passed 16 MB, which killed it."
         ),
         Vector(
           "End a command `run` left running, killing it and everything it started, and return " +
-            "its output until then. A command that already ended is left as it was, and its " +
-            "exit code and output returned. Fails as `tail` does when no command with that id " +
+            "its output until then, a long one shown as `run` shows it. A command that already " +
+            "ended is left as it was, and its exit code and output returned. Fails as `tail` does when no command with that id " +
             "is kept."
         )
       )

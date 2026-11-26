@@ -9,8 +9,13 @@ import utest.*
   */
 abstract class RunsContract extends TestSuite {
 
+  /** `body` over runs in an empty checkout, every run killed after, and what a file in that
+    * checkout holds, `None` when there is none.
+    */
+  protected def reading[A](body: (Runs^, RelPath => Option[String]) => A): A
+
   /** `body` over runs in an empty checkout, every run killed after. */
-  protected def fresh[A](body: Runs^ => A): A
+  protected def fresh[A](body: Runs^ => A): A = reading((runs, _) => body(runs))
 
   /** Writes `hi` and exits 3 at once. */
   protected def quick: Argv
@@ -33,13 +38,31 @@ abstract class RunsContract extends TestSuite {
   /** A wait a slow command is still going after. */
   private val brief = 200.millis
 
-  private def text(c: Clipped): String = c.text.trim
+  private def text(o: RunOutput): String = o.text.trim
 
   val tests = Tests {
+    test("a run's output is what its file holds, line for line, as it stands and once it ends") {
+      reading { (runs, held) =>
+        val got = for {
+          started <- runs.start(later, 10.seconds, Duration.Zero)
+          early = started.status match {
+            case RunStatus.Going(_, _, going) => Some((going.text, held(going.file)))
+            case _ => None
+          }
+          tailed <- runs.tail(started.id, ample)
+        } yield (early, tailed.status)
+        got match {
+          case Right((Some(going), RunStatus.Ended(_, ended))) =>
+            (going, ended.text, held(ended.file)) ==> (("", Some("")), "done\n", Some("done\n"))
+          case other => throw new java.lang.AssertionError(s"not going, then ended: $other")
+        }
+      }
+    }
+
     test("a command that ends within the wait is Ended, with its exit code and output") {
       fresh { runs =>
         runs.start(quick, 10.seconds, ample).map(_.status) match {
-          case Right(RunStatus.Ended(ran)) => (ran.exit, text(ran.output)) ==> (3, "hi")
+          case Right(RunStatus.Ended(exit, out)) => (exit, text(out)) ==> (3, "hi")
           case other => throw new java.lang.AssertionError(s"not ended: $other")
         }
       }
@@ -62,8 +85,8 @@ abstract class RunsContract extends TestSuite {
           tailed <- runs.tail(started.id, ample)
         } yield (started.status, tailed)
         got match {
-          case Right((RunStatus.Going(_, _, _), (argv, RunStatus.Ended(ran)))) =>
-            (argv, ran.exit, text(ran.output)) ==> (later, 0, "done")
+          case Right((RunStatus.Going(_, _, _), (argv, RunStatus.Ended(exit, out)))) =>
+            (argv, exit, text(out)) ==> (later, 0, "done")
           case other => throw new java.lang.AssertionError(s"not going, then ended: $other")
         }
       }
@@ -162,7 +185,7 @@ abstract class RunsContract extends TestSuite {
             runs
               .tail(id, Duration.Zero)
               .map(_.status match {
-                case RunStatus.Ended(ran) => Some((ran.exit, text(ran.output)))
+                case RunStatus.Ended(exit, out) => Some((exit, text(out)))
                 case _ => None
               })
           )

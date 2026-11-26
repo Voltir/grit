@@ -36,20 +36,20 @@ object RunId {
   */
 final case class RunOutput(text: String, file: RelPath) extends caps.Pure
 
-/** How a run stands. Each output is its last lines, clipped as [[Clipped.tail]] clips. */
+/** How a run stands. */
 enum RunStatus {
 
   /** Still running after `elapsed`; it is killed at `timeout`. */
-  case Going(elapsed: FiniteDuration, timeout: FiniteDuration, output: Clipped)
+  case Going(elapsed: FiniteDuration, timeout: FiniteDuration, output: RunOutput)
 
-  /** Ended by itself. */
-  case Ended(ran: Ran)
+  /** Ended by itself, with `exit`. */
+  case Ended(exit: Int, output: RunOutput)
 
   /** Killed, with everything it started, at its timeout `after`. */
-  case TimedOut(after: FiniteDuration, output: Clipped)
+  case TimedOut(after: FiniteDuration, output: RunOutput)
 
   /** Killed by [[Runs.stop]] after `after`. */
-  case Stopped(after: FiniteDuration, output: Clipped)
+  case Stopped(after: FiniteDuration, output: RunOutput)
 }
 
 /** Commands started at the checkout's root that outlive the call starting them, each known by

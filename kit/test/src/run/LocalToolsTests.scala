@@ -333,6 +333,37 @@ object LocalToolsTests extends TestSuite {
       }
     }
 
+    test("a long run's failing line is numbered as its file has it: read there returns that line") {
+      val root = Files.createTempDirectory("allowlisted").toRealPath()
+      val script = root.resolve("build")
+      // Coloured lines redrawn by carriage returns, then the failure on line 100.
+      Files.writeString(
+        script,
+        "#!/bin/sh\nfor i in $(seq 1 99); do\n" +
+          "  printf '\\033[32m+\\033[0m step %d of the build: 10%%\\r20%%\\r30%%\\n' \"$i\"\ndone\n" +
+          "echo 'FAIL grit.pool.PoolTests > a lease returned is reused'\n" +
+          "for i in $(seq 101 300); do echo \"ok $i: this step of the build went as it should\"; done\n" +
+          "exit 1\n"
+      )
+      Files.setPosixFilePermissions(script, PosixFilePermissions.fromString("rwx------"))
+      val listed = Allowlist.Rule.Leading(right(Argv.of("./build")))
+      val offered = Offered.Allowlisted(right(Allowlist.of(Vector(listed), 5.seconds)))
+      def text(o: Outcome): String = o match {
+        case Outcome.Done(t, _, _, _, _) => t
+        case other => s"not done: $other"
+      }
+      offering(offered) { tools =>
+        val answer = text(call(tools, root, "run", ujson.Obj("program" -> "./build"), Some(_)))
+        val file = "`(\\.grit/runs/[^`]+)`".r.findFirstMatchIn(answer).map(_.group(1)).getOrElse("")
+        val read = text(
+          call(tools, root, "read", ujson.Obj("path" -> file, "offset" -> 100, "limit" -> 1))
+        )
+        val failing = "   100\tFAIL grit.pool.PoolTests > a lease returned is reused"
+        (answer.split("\n").filter(_.contains("FAIL")).toVector, read.split("\n").headOption) ==>
+          (Vector(failing), Some(failing))
+      }
+    }
+
     test(
       "an allowlisted run starts a listed program named relative to the checkout's root there, and refuses an unlisted one, which leaves nothing"
     ) {

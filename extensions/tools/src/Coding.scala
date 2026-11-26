@@ -412,8 +412,12 @@ object Coding {
           "input, and return its exit code and its output and errors, interleaved. " +
           "`program` and `args` are passed as they are, with no shell: no pipes, `&&`, " +
           "redirects, globs or variables; use `search` and `read` for what those were for. " +
-          "A non-zero exit is returned, not an error. Shows at most the last " + limits +
-          " of output. Give `git commit` its message with `-m`: no editor can open. Waits up " +
+          "A non-zero exit is returned, not an error. An output over " +
+          s"${RunAnswer.WholeBytes / 1024} KB is answered with its size, its lines that look " +
+          "like errors, warnings or failing tests, each after its line number, and up to its " +
+          s"last ${RunAnswer.TailLines} lines. All of it is in a file in the checkout the answer " +
+          s"names, for `read` and `search`, kept until ${Runs.MostEnded} newer commands have " +
+          "ended. Give `git commit` its message with `-m`: no editor can open. Waits up " +
           s"to `wait` seconds (${Runs.Wait.toSeconds} when not given): a command still running " +
           "then keeps running, and the answer gives its id and its output so far; follow it " +
           s"with `tail`, or end it with `stop`. At most ${Runs.Most} commands run at once in a " +
@@ -490,9 +494,8 @@ object Coding {
         ToolName("tail"),
         "See how a command `run` left running stands: still running, with its output so far, " +
           "or ended, with its exit code and output. Give `wait` to wait up to that many seconds " +
-          "for it to end; the answer comes as soon as it does. Shows at most the last " + limits +
-          " of output; when that cuts it, the answer names the file holding all of it, for " +
-          "`read`. Fails when no command with that id is kept in this checkout: grit restarted " +
+          "for it to end; the answer comes as soon as it does. Shows a long output as `run` " +
+          "does. Fails when no command with that id is kept in this checkout: grit restarted " +
           s"since it started, or it ended and was forgotten after ${Runs.MostEnded} newer commands " +
           s"ended; and when its output passed ${mb(Workspace.MaxFileBytes)}, which killed it.",
         Args
@@ -523,7 +526,8 @@ object Coding {
       ToolSpec(
         ToolName("stop"),
         "End a command `run` left running, killing it and everything it started, and return " +
-          "its output until then. A command that already ended is left as it was, and its exit " +
+          "its output until then, a long one shown as `run` shows it. A command that already " +
+          "ended is left as it was, and its exit " +
           "code and output returned. Fails as `tail` does when no command with that id is kept.",
         Args.of((id = idField)).refine(a => runId(a.id).map(id => (id = id)))
       ),
@@ -560,21 +564,31 @@ object Coding {
   private def standing(id: RunId, status: RunStatus, lead: String = ""): Outcome = status match {
     case RunStatus.Going(elapsed, timeout, output) =>
       val so =
-        if (output.show.isEmpty) " No output yet."
-        else s" Its output so far:\n${output.show.stripSuffix("\n")}"
+        if (output.text.isEmpty) " No output yet."
+        else " " + RunAnswer.of("Its output so far", output, failed = false).stripSuffix("\n")
       Outcome.Done(
         s"${lead}Still running after ${elapsed.toSeconds} seconds, as `${id.written}`; it is " +
           s"killed at ${timeout.toSeconds} seconds.$so\n\nCall `tail` with id `${id.written}` to " +
           "see how it stands, giving `wait` to wait for it to end, or `stop` to end it."
       )
-    case RunStatus.Ended(ran) => Outcome.Done(lead + answered(ran))
+    case RunStatus.Ended(exit, output) =>
+      Outcome.Done(
+        lead + (
+          if (output.text.isEmpty) s"$ExitLead$exit; no output."
+          else s"$ExitLead$exit. " + RunAnswer.of("Output", output, failed = exit != 0)
+        )
+      )
     case RunStatus.TimedOut(after, output) =>
-      Outcome.Failed(lead + HostError.TimedOut(after, output).message)
+      Outcome.Failed(
+        s"${lead}The command was killed after ${after.toSeconds} seconds. " +
+          RunAnswer.of("Its output until then", output, failed = true)
+      )
     case RunStatus.Stopped(after, output) =>
       Outcome.Done(
-        if (output.show.isEmpty) s"${lead}Stopped after ${after.toSeconds} seconds; no output."
+        if (output.text.isEmpty) s"${lead}Stopped after ${after.toSeconds} seconds; no output."
         else
-          s"${lead}Stopped after ${after.toSeconds} seconds. Its output until then:\n${output.show}"
+          s"${lead}Stopped after ${after.toSeconds} seconds. " +
+            RunAnswer.of("Its output until then", output, failed = false)
       )
   }
 

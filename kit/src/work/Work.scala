@@ -9,7 +9,7 @@ import scala.concurrent.duration.FiniteDuration
 
 import grit.core.clock.{Clock, Fresh}
 import grit.core.edge.{Console, Reply, TurnStatus}
-import grit.core.host.{Branch, Clipped, HostError, Ran, RunId, RunStatus, Runs}
+import grit.core.host.{Branch, Clipped, HostError, RunId, RunStatus, Runs}
 import grit.core.id.{Sha256, SourceId, TurnRef, WorkflowId}
 import grit.core.identity.Account
 import grit.core.inbox.{InboxError, TurnEnding}
@@ -276,7 +276,7 @@ object Work {
       case Right(argv) =>
         work.start(argv, within, within).flatMap((id, status) => ended(work, id, status)) match {
           case Right((Some(0), _)) => Verdict.Passed(None)
-          case Right((exit, output)) => Verdict.Failed(WentOn.failed(check, exit, output.text))
+          case Right((exit, output)) => Verdict.Failed(WentOn.failed(check, exit, output))
           case Left(refused) => Verdict.Unrun(refused.message)
         }
     }
@@ -288,15 +288,15 @@ object Work {
       work: Runs^,
       id: RunId,
       status: RunStatus
-  ): Either[HostError, (Option[Int], Clipped)] = status match {
+  ): Either[HostError, (Option[Int], String)] = status match {
     case RunStatus.Going(_, _, _) =>
       work.tail(id, Runs.Wait) match {
         case Right((_, next)) => ended(work, id, next)
         case Left(refused) => Left(refused)
       }
-    case RunStatus.Ended(Ran(exit, output)) => Right((Some(exit), output))
-    case RunStatus.TimedOut(_, output) => Right((None, output))
-    case RunStatus.Stopped(_, output) => Right((None, output))
+    case RunStatus.Ended(exit, output) => Right((Some(exit), output.text))
+    case RunStatus.TimedOut(_, output) => Right((None, output.text))
+    case RunStatus.Stopped(_, output) => Right((None, output.text))
   }
 
   /** The most lines of a failed check's output `grit work` prints. */

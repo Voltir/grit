@@ -90,11 +90,16 @@ object AllowlistTests extends TestSuite {
       (
         runs.start(unlisted, 5.seconds, 1.second),
         runs.start(argv("git", "status", "--porcelain"), 5.seconds, 1.second),
-        runs.start(argv("git", "diff", "--stat"), 5.seconds, 1.second).map(_.status)
+        runs
+          .start(argv("git", "diff", "--stat"), 5.seconds, 1.second)
+          .map(_.status match {
+            case RunStatus.Ended(exit, out) => Some((exit, out.text))
+            case _ => None
+          })
       ) ==> (
         Left(HostError.Unlisted(unlisted)),
         Left(HostError.Unlisted(argv("git", "status", "--porcelain"))),
-        Right(RunStatus.Ended(Ran(0, Clipped.tail("", _ => None))))
+        Right(Some((0, "")))
       )
       noted.log ==> Vector((argv("git", "diff", "--stat"), 5.seconds))
     }

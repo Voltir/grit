@@ -21,5 +21,8 @@ object ScriptedRunsTests extends RunsContract {
     flood -> ScriptedRuns.Script("", "", Some(Duration.Zero), 0, flood = true)
   )
 
-  protected def fresh[A](body: Runs^ => A): A = body(new ScriptedRuns(scripts))
+  protected def reading[A](body: (Runs^, RelPath => Option[String]) => A): A = {
+    val runs = new ScriptedRuns(scripts)
+    body(runs, runs.written)
+  }
 }

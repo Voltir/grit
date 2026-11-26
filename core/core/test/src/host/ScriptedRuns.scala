@@ -79,20 +79,33 @@ final class ScriptedRuns(scripts: Map[Argv, ScriptedRuns.Script]) extends Runs {
   private def statusOf(id: RunId): Either[HostError, RunStatus] =
     find(id).fold(Left(HostError.Gone(id))) { run =>
       val s = run.script
-      def clipped(text: String) = Clipped.tail(text, _ => None)
+      val output = RunOutput(writtenBy(run), fileOf(id))
       if (s.flood) {
         kept = kept.filterNot(_._1 == id)
         Left(HostError.TooLarge(RelPath.Root, Workspace.MaxFileBytes + 1, Workspace.MaxFileBytes))
       } else
         run.stopped match {
-          case Some(at) => Right(RunStatus.Stopped(at - run.from, clipped(s.early)))
-          case None if going(run) =>
-            Right(RunStatus.Going(now - run.from, run.timeout, clipped(s.early)))
-          case None if s.lasts.exists(_ <= run.timeout) =>
-            Right(RunStatus.Ended(Ran(s.exit, clipped(s.early + s.late))))
-          case None => Right(RunStatus.TimedOut(run.timeout, clipped(s.early)))
+          case Some(at) => Right(RunStatus.Stopped(at - run.from, output))
+          case None if going(run) => Right(RunStatus.Going(now - run.from, run.timeout, output))
+          case None if s.lasts.exists(_ <= run.timeout) => Right(RunStatus.Ended(s.exit, output))
+          case None => Right(RunStatus.TimedOut(run.timeout, output))
         }
     }
+
+  /** What the file `file` holds: the output of the run kept there, so far. */
+  def written(file: RelPath): Option[String] = synchronized {
+    kept.collectFirst { case (k, r) if fileOf(k) == file => writtenBy(r) }
+  }
+
+  /** What `run` has written: `early`, and `late` once it ended by itself. */
+  private def writtenBy(run: Run): String =
+    if (run.stopped.isEmpty && !going(run) && run.script.lasts.exists(_ <= run.timeout))
+      run.script.early + run.script.late
+    else run.script.early
+
+  /** Where the run `id` keeps its output: `.grit/runs/{id}.out`. */
+  private def fileOf(id: RunId): RelPath =
+    RelPath.of(s".grit/runs/${id.written}.out").getOrElse(RelPath.Root)
 
   /** `runs` with the ended ones past [[Runs.MostEnded]] forgotten, the one started first first. */
   private def forgetting(runs: Vector[(RunId, Run)]): Vector[(RunId, Run)] = {
