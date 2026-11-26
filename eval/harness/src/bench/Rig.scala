@@ -20,6 +20,7 @@ import grit.dbos.internal.TrialRows
 import grit.dbos.sql.DbConfig
 import grit.kit.environment.DotEnv
 import grit.models.{AnthropicProvider, AnthropicRates, ModelRole, OpenRouterConfig}
+import grit.turn.TurnRecord
 
 /** What one run may spend: its pair, a Claude model at the Anthropic API or an OpenRouter model
   * at one upstream; the most it may spend, in USD, which a run can pass (Claude Code's run, by
@@ -336,8 +337,8 @@ object Tried {
     * effort that provider sends then; the reasoning replay its pin sent under, in
     * [[Arm.Settings.replayWord]]'s words, followed by `(set <replay>)` when `settings` set
     * another; the window a boundary draws (grit's own default when
-    * unset); and the input limit. What `ran` holds no record of is `not recorded`, and what did
-    * not read `not read`.
+    * unset); the input limit; and what ended its last turn ([[TurnRecord.EndedBy]]). What `ran`
+    * holds no record of is `not recorded`, and what did not read `not read`.
     */
   def under(settings: Arm.Settings, ran: RanUnder): String = {
     val set = settings.effort.fold("none")(CatalogJson.effort)
@@ -370,7 +371,14 @@ object Tried {
       case Right(None) => "not recorded"
       case Left(_) => "not read"
     }
-    s"under: $asked; $replay; window $window tokens; input limit $limit"
+    val ended = ran.endedBy match {
+      case Right(Some(TurnRecord.EndedBy.Budget)) => "last turn ended by its call budget"
+      case Right(Some(TurnRecord.EndedBy.InputLimit)) => "last turn ended by its input limit"
+      case Right(Some(TurnRecord.EndedBy.Reply)) => "last turn ended by its reply"
+      case Right(None) => "last turn's end not recorded"
+      case Left(_) => "last turn's end not read"
+    }
+    s"under: $asked; $replay; window $window tokens; input limit $limit; $ended"
   }
 
   /** What a person reads of what `consumed` spent, a line each: each call's tokens, then its cost

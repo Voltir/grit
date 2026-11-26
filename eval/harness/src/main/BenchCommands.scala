@@ -319,7 +319,8 @@ private[main] object BenchCommands {
                   .left
                   .map(e => s"the profile could not be read: ${e.described}")
                   .flatten,
-                TurnRecord.limits(steps).map(_.flatMap(_.budget.limit))
+                TurnRecord.limits(steps).map(_.flatMap(_.budget.limit)),
+                TurnRecord.endedBy(steps)
               )
             )
         } yield read.fold(GritTurn.unread(session, status.status, _), identity)

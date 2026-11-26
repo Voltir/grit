@@ -24,6 +24,7 @@ import grit.core.model.{
 import grit.core.secret.{TestSecrets, Variable}
 import grit.dbos.internal.TrialRows
 import grit.host.checkout.{LocalHanding, LocalProcesses, Redaction}
+import grit.turn.TurnRecord
 
 import utest.*
 
@@ -270,7 +271,7 @@ object RigTests extends TestSuite {
     "SUCCESS",
     "# The turn\nrendered",
     None,
-    RanUnder(Right(None), Right(Some(Tokens(450_000))))
+    RanUnder(Right(None), Right(Some(Tokens(450_000))), Right(None))
   )
 
   /** A fake [[Memory]]: 9 GB held, of 16 GB available, once the root holds `heavy`, which a
@@ -845,7 +846,7 @@ object RigTests extends TestSuite {
               "[main] said",
               "[rig] the tail of grit's errors:",
               "a log line",
-              "[rig] under: effort not recorded (set none); replay not recorded; window 100000 tokens; input limit 450000 tokens"
+              "[rig] under: effort not recorded (set none); replay not recorded; window 100000 tokens; input limit 450000 tokens; last turn's end not recorded"
             )
           )
         )
@@ -1087,18 +1088,20 @@ object RigTests extends TestSuite {
         // Routed to its strong rung, which a hard root's allotment asks at high.
         val strong = RanUnder(
           Right(Some(pin(Grade.Strong, fireworks, Some(Effort.High), ReasoningReplay.Details))),
-          Right(Some(Tokens(450_000)))
+          Right(Some(Tokens(450_000))),
+          Right(None)
         )
         val defaulted = RanUnder(
           Right(Some(pin(Grade.Standard, anthropic, None, ReasoningReplay.Latest))),
+          Right(None),
           Right(None)
         )
         val high = "under: grade strong, effort high (set medium); replay all (set latest); " +
-          "window 100000 tokens; input limit 450000 tokens"
+          "window 100000 tokens; input limit 450000 tokens; last turn's end not recorded"
         val medium = "under: grade standard, effort medium (grit's default); replay latest; " +
-          "window 25000 tokens; input limit not recorded"
+          "window 25000 tokens; input limit not recorded; last turn's end not recorded"
         val unread = "under: effort not read (set medium); replay not read (set none); window " +
-          "100000 tokens; input limit not read"
+          "100000 tokens; input limit not read; last turn's end not read"
         (
           under(
             Arm.Settings(effort = Some(Effort.Medium), replay = Some(ReasoningReplay.Latest)),
@@ -1110,7 +1113,7 @@ object RigTests extends TestSuite {
           ),
           under(
             Arm.Settings(effort = Some(Effort.Medium), replay = Some(ReasoningReplay.Dropped)),
-            RanUnder(Left("gone"), Left("gone"))
+            RanUnder(Left("gone"), Left("gone"), Left("gone"))
           )
         ) ==> (
           Right((Vector(high), Vector(s"[rig] $high"))),
@@ -1118,6 +1121,26 @@ object RigTests extends TestSuite {
           Right((Vector(unread), Vector(s"[rig] $unread")))
         )
       }
+    }
+
+    test(
+      "a grit trial's under: line ends with what ended its last turn: its call budget, its input limit or its reply, or that it recorded none or did not read"
+    ) {
+      def ended(by: Either[String, Option[TurnRecord.EndedBy]]) =
+        Tried.under(Arm.Settings(), RanUnder(Right(None), Right(None), by)).split("; ").last
+      Vector(
+        Right(Some(TurnRecord.EndedBy.Budget)),
+        Right(Some(TurnRecord.EndedBy.InputLimit)),
+        Right(Some(TurnRecord.EndedBy.Reply)),
+        Right(None),
+        Left("gone")
+      ).map(ended) ==> Vector(
+        "last turn ended by its call budget",
+        "last turn ended by its input limit",
+        "last turn ended by its reply",
+        "last turn's end not recorded",
+        "last turn's end not read"
+      )
     }
 
     test(

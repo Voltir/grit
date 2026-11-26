@@ -95,6 +95,30 @@ object TurnRecordTests extends TestSuite {
       )
     }
 
+    test(
+      "a turn is ended by its reply before its last calls, by its call budget on them, by its input limit on calls its input cut, and by nothing it recorded when it kept no reply"
+    ) {
+      Vector(
+        "replied",
+        "loop-three-rounds",
+        "loop-last-refused",
+        "loop-last-called",
+        "loop-tasked-calls-ended",
+        "loop-tasked-calls-ran-out",
+        "loop-cut-declared",
+        "model-failed"
+      ).map(n => TurnRecord.endedBy(steps(n))) ==> Vector(
+        Right(Some(TurnRecord.EndedBy.Reply)),
+        Right(Some(TurnRecord.EndedBy.Reply)),
+        Right(Some(TurnRecord.EndedBy.Budget)),
+        Right(Some(TurnRecord.EndedBy.Budget)),
+        Right(Some(TurnRecord.EndedBy.Budget)),
+        Right(Some(TurnRecord.EndedBy.Budget)),
+        Right(Some(TurnRecord.EndedBy.InputLimit)),
+        Right(None)
+      )
+    }
+
     test("a summary's reply reads from its summarise step; a failed summary or none has none") {
       Vector("replied", "summary-failed", "model-failed").map(n =>
         TurnRecord.summaryReply(steps(n)).map(m => (m.model, m.usage.thinking))

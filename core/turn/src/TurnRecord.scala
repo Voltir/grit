@@ -134,6 +134,64 @@ object TurnRecord {
     read[Either[TurnFailure, TurnRound.Limits]](steps, Turn.Step.RecordWindow)
       .map(_.flatMap(_.toOption))
 
+  /** What ended the turn `steps` recorded, once its reply was kept, as its loop decided it live
+    * from its limits and its replies. `None` when no reply was kept (the turn failed, or has
+    * not answered), or no offer or window was recorded. `Left` naming a step whose output does
+    * not read.
+    */
+  def endedBy(steps: Vector[StepRecord]): Either[String, Option[EndedBy]] = {
+    val rounds = steps.flatMap(s => Loop.of(s.name).collect { case Loop.Ask(n) => n }).sorted
+    for {
+      offered <- offer(steps)
+      window <- limits(steps)
+      appended <- read[Either[TurnFailure, TurnSteps.Appended]](steps, Turn.Step.Append)
+      replied <- replies(steps, rounds)
+    } yield
+      for {
+        o <- offered
+        w <- window
+        _ <- appended.flatMap(_.toOption)
+        last <- rounds.lastOption
+      } yield {
+        // The budget as the loop held it at the round that answered.
+        val cut = w.budget.after(replied)
+        if (TurnLoop.notes(cut, o.handoff, TurnLoop.Round.at(last)).isEmpty) EndedBy.Reply
+        else if (cut.calls < w.budget.calls) EndedBy.InputLimit
+        else EndedBy.Budget
+      }
+  }
+
+  /** The replies `steps` recorded to the loop's `rounds`, in their order; a round whose call
+    * recorded a failure, or none, has none. `Left` naming the step whose output does not read.
+    */
+  private[turn] def replies(
+      steps: Vector[StepRecord],
+      rounds: Vector[Int]
+  ): Either[String, Vector[Message.Assistant]] =
+    rounds.foldLeft[Either[String, Vector[Message.Assistant]]](Right(Vector.empty)) { (acc, n) =>
+      acc.flatMap(done =>
+        read[Either[TurnFailure, Message.Assistant]](steps, Loop.Ask(n).name)
+          .map(done ++ _.flatMap(_.toOption))
+      )
+    }
+
+  /** What ended a turn's loop. */
+  enum EndedBy {
+
+    /** Its call budget: it answered once its loop had told it its calls were running out
+      * ([[TurnLoop.notes]]), on a budget its requests' input never cut.
+      */
+    case Budget
+
+    /** Its input limit: as [[Budget]], on a budget its requests' input cut
+      * ([[TurnLoop.Rounds.after]]).
+      */
+    case InputLimit
+
+    /** Its model's own reply, before its loop told it its calls were running out. */
+    case Reply
+  }
+
   /** The pin the turn's own calls were made under: the one its `route` step picked from the
     * profile its `pin-models` step pinned, read from `profiles`, with the effort the route's
     * allotment asks laid over the pin's own. `None` when either step is not recorded, or recorded

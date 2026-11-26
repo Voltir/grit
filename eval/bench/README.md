@@ -113,8 +113,11 @@ machine's memory. grit's own output and the tail of its errors go to the run's l
 report prints too (`Tried.under`): the grade and effort its last turn's calls asked, as the turn
 recorded its route (`TurnRecord.pinned`), with the `--effort` set beside it when the two differ;
 the replay its pin sent under, with the `--replay` set beside it when the two differ;
-the window a boundary draws (`--window-tokens`, or the linear assembler's default); and the input
+the window a boundary draws (`--window-tokens`, or the linear assembler's default); the input
 limit its last turn recorded with its window
 (`TurnLoop.inputLimit`: the pin's effective context or first price rise where its profile gives
-them, else grit's 500,000-token backstop, less room for one clipped tool result); a run the trial row
+them, else grit's 500,000-token backstop, less room for one clipped tool result); and what ended
+that turn, read from its recorded steps (`TurnRecord.endedBy`): its call budget, when it answered
+once its loop had told it its calls were running out (`--max-rounds`), its input limit, when its
+input had cut those calls short, or its own reply, before either; a run the trial row
 refuses still prints its calls and cost. `--dry` prints what the first call would send, with no key and nothing kept.

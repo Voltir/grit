@@ -8,6 +8,7 @@ import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.model.{Pinned, Pricing}
 import grit.core.provider.CallLine
 import grit.models.{AnthropicJson, AnthropicRates}
+import grit.turn.TurnRecord
 
 /** One model call of a run, its usage priced by [[AnthropicRates]], or when `reported` (a grit
   * call of a model it has no rates for) by the cost its provider reported, as grit's line printed
@@ -36,18 +37,20 @@ final case class GritTurn(
 
 /** What a grit coder's turn recorded of what its calls ran under: `pin`, the pin they were made
   * under, its allotment's effort laid over its own (`TurnRecord.pinned`), and `inputLimit`, the
-  * input its requests were held to (`TurnRecord.limits`, as `TurnLoop.inputLimit` decided it);
-  * each `None` when the turn recorded none, `Left` saying why when its record does not read.
+  * input its requests were held to (`TurnRecord.limits`, as `TurnLoop.inputLimit` decided it),
+  * and `endedBy`, what ended it (`TurnRecord.endedBy`); each `None` when the turn recorded none,
+  * `Left` saying why when its record does not read.
   */
 final case class RanUnder(
     pin: Either[String, Option[Pinned]],
-    inputLimit: Either[String, Option[Tokens]]
+    inputLimit: Either[String, Option[Tokens]],
+    endedBy: Either[String, Option[TurnRecord.EndedBy]]
 )
 
 object RanUnder {
 
   /** Nothing recorded: Claude Code's run, which keeps no grit turn. */
-  val Unrecorded: RanUnder = RanUnder(Right(None), Right(None))
+  val Unrecorded: RanUnder = RanUnder(Right(None), Right(None), Right(None))
 }
 
 object GritTurn {
@@ -63,7 +66,7 @@ object GritTurn {
       status,
       s"Its turns could not be read back: $why",
       Some(why),
-      RanUnder(Left(why), Left(why))
+      RanUnder(Left(why), Left(why), Left(why))
     )
 }
 
