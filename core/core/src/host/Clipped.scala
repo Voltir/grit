@@ -75,6 +75,15 @@ object Clipped {
       if (text.endsWith("\n")) all.dropRight(1) else all
     }
 
+  /** `text` less its ANSI escape sequences and its control characters other than newline and
+    * tab: a carriage return is removed, never read as a newline.
+    */
+  def plain(text: String): String =
+    text.replaceAll(Escape, "").replaceAll("[\\p{Cc}&&[^\n\t]]", "")
+
+  private val Escape =
+    "\u001b(?:\\[[0-?]*[ -/]*[@-~]|\\][^\u0007\u001b]*(?:\u0007|\u001b\\\\)|[@-Z\\\\-_])"
+
   private def bytes(s: String): Int = s.getBytes(UTF_8).length
 
   private def clip(

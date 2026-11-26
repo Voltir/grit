@@ -31,6 +31,11 @@ object RunId {
   given CanEqual[RunId, RunId] = CanEqual.derived
 }
 
+/** A run's output so far: `text`, all of it, and `file`, where the checkout keeps it as written,
+  * for reading and searching. `text` is `file`'s, line for line, with secrets cleared.
+  */
+final case class RunOutput(text: String, file: RelPath) extends caps.Pure
+
 /** How a run stands. Each output is its last lines, clipped as [[Clipped.tail]] clips. */
 enum RunStatus {
 

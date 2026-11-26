@@ -1,0 +1,8 @@
+== unit: ./mill --color false --ticker false -k grit.core.test.testOnly grit.core.host.HostTests
+FAIL grit.core.host.HostTests > RelPath.normal form
+  assertion failed: ==> assertion failed: Right(.) != Right(..)
+  at grit.core.host.HostTests$.$init$$$anonfun$1$$anonfun$1$$anonfun$1(HostTests.scala:26)
+unit: FAILED, 1 failed
+== totals
+unit: FAILED, 1 failed
+logs: out/check/

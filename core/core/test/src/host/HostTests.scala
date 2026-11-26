@@ -130,6 +130,12 @@ object HostTests extends TestSuite {
         Clipped.lines("a\n\n") ==> Vector("a", "")
         Clipped.lines("") ==> Vector()
       }
+      test(
+        "plain takes out escapes and control characters, a carriage return too, never a newline"
+      ) {
+        Clipped.plain("\u001b[31mX\u001b[39m one\t2\r\n\u001b]0;title\u0007 50%\r60%\u0008\n") ==>
+          "X one\t2\n 50%60%\n"
+      }
       test("prefix keeps the whole characters that fit the bytes, never part of one") {
         val s = "aé€😀" // 1, 2, 3 and 4 bytes of UTF-8
         (0 to 11).map(Clipped.prefix(s, _)) ==> Vector(

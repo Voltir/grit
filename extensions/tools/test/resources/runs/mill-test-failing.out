@@ -1,0 +1,260 @@
+./mill grit.core.test
+247] grit.core.test.compile
+247] compiling 1 Scala source to out/grit/core/test/compile.dest/classes ...
+247] done compiling
+254-03]
+254-03] [0.002s][warning][perf,memops] Cannot use file /tmp/hsperfdata_coder/973522 because it is locked by another process (errno = 11)
+254-13] Running Test Class grit.core.job.ResumeTests
+254-27] Running Test Class grit.core.files.AnchorTests
+254-13] -------------------------------- Running Tests --------------------------------
+254-25] Running Test Class grit.core.visibility.VisibilityTests
+254-27] -------------------------------- Running Tests --------------------------------
+254-05] Running Test Class grit.core.id.TurnRefTests
+254-25] -------------------------------- Running Tests --------------------------------
+254-10] Running Test Class grit.core.speech.InMemorySpeechTests
+254-05] -------------------------------- Running Tests --------------------------------
+254-20] Running Test Class grit.core.speech.SpeechJsonTests
+254-12] Running Test Class grit.core.prompt.SystemPromptTests
+254-28] Running Test Class grit.core.id.TriageRefTests
+254-10] -------------------------------- Running Tests --------------------------------
+254-07] Running Test Class grit.core.flow.DowngradeTests
+254-20] -------------------------------- Running Tests --------------------------------
+254-19] Running Test Class grit.core.edge.ScriptedSessionsTests
+254-04] Running Test Class grit.core.durable.RecordedSizesTests
+254-02] Running Test Class grit.core.place.PlaceTests
+254-12] -------------------------------- Running Tests --------------------------------
+254-29] Running Test Class grit.core.prompt.FencedTests
+254-23] Running Test Class grit.core.visibility.IntegrityTests
+254-17] Running Test Class grit.core.screen.ChecksTests
+254-01] Running Test Class grit.core.context.AssemblyRequestTests
+254-19] -------------------------------- Running Tests --------------------------------
+254-03] [32m+[39m grit.core.tool.ToolboxTests.a changing tool binds no call, which would run with no destination; its description binds one changing [2m15ms[0m  
+254-02] [32m+[39m grit.core.classify.ClassifyTests.Ask.answer keeps an answer as given, Unreadable for a key not asked or the other kind [2m13ms[0m  
+254-04] [32m+[39m grit.core.agent.SubagentTests.a coding subagent is refused unless its brief must carry the integrity to write out [2m929ms[0m  
+254-04] [32m+[39m grit.core.agent.SubagentTests.a subagent offered services alone may take a brief from outside [2m6ms[0m  
+254-25] [32m+[39m grit.core.host.AllowlistTests.Exactly permits its argv alone; Leading its argv and any more; the program as written [2m23ms[0m  
+254-20] [32m+[39m grit.core.claim.InMemoryClaimsTests.a claim's session keeps it live a lease after its own last event, whatever another session of its holder does [2m13ms[0m  
+254-20] [32m+[39m grit.core.claim.InMemoryClaimsTests.an agent's event keeps the claim its parent session works live a lease after it [2m1ms[0m  
+254-00] [32m+[39m grit.core.screen.ScreenTests.the state screened is the text alone [2m51ms[0m  
+254-02] [32m+[39m grit.core.classify.ClassifyTests.a decision's probability of a value sums over the criteria that stand for it [2m18ms[0m  
+254-11] [32m+[39m grit.core.durable.DurableFlowLawTests.patch: a fresh run takes the new branch, recording the marker; one that passed it keeps the old [2m20ms[0m  
+254-20] [32m+[39m grit.core.claim.InMemoryClaimsTests.an agent's event keeps its parent session's claim no longer than a lease after it [2m8ms[0m  
+254-29] [32m+[39m grit.core.flow.ShapeTests.of refuses each bound just past its limit, and an empty one [2m40ms[0m  
+254-25] [32m+[39m grit.core.host.AllowlistTests.of refuses no rules, and a longest under a second or past Runs.Longest [2m14ms[0m  
+254-17] [32m+[39m grit.core.edge.InMemoryOriginsTests.a conversation above the reader's clearance is absent, and read by one cleared for it [2m244ms[0m  
+254-09] [32m+[39m grit.core.store.OriginTests.a Slack thread's opening is open and its replies focused; a TUI session or task is focused throughout [2m160ms[0m  
+254-20] [32m+[39m grit.core.claim.InMemoryClaimsTests.an ended session's agents keep the claim it works from lapsing no longer [2m6ms[0m  
+254-29] [32m+[39m grit.core.flow.ShapeTests.of refuses an unknown kind, a missing field and a fractional bound [2m8ms[0m  
+254-30] [31mX[39m grit.core.host.HostTests.RelPath.normal form [2m44ms[0m 
+254-30]   [91m[4mjava.lang.AssertionError[39m[24m: assertion failed: ==> assertion failed: Right(.) != Right(..)
+254-30]     [31mscala.runtime.Scala3RunTime$.[91massertFailed[39m([91mScala3RunTime.scala[39m:[91m10[39m)
+254-30]     [31mutest.asserts.Asserts$ArrowAssert.[91m$eq$eq$greater[39m([91mAsserts.scala[39m:[91m90[39m)
+254-30]     [31mgrit.core.host.HostTests$.[91m$init$$$anonfun$1$$anonfun$1$$anonfun$1[39m([91mHostTests.scala[39m:[91m26[39m)
+254-17] [32m+[39m grit.core.edge.InMemoryOriginsTests.a conversation never created is absent [2m3ms[0m  
+254-30] [32m+[39m grit.core.host.HostTests.RelPath.absolute is refused [2m0ms[0m  
+254-01] [32m+[39m grit.core.admin.InMemoryAdministrationTests.a first label by a steward of its compartment and a member's raise after are each kept with one audit row, and shown as set; repeating the raise keeps nothing [2m165ms[0m  
+254-23] [32m+[39m grit.core.host.ArgvTests.quote leaves a word of letters, digits and _@%+:,./- as it is [2m82ms[0m  
+254-20] [32m+[39m grit.core.claim.InMemoryClaimsTests.an agent another person began keeps no claim its parent session works from lapsing [2m1ms[0m  
+254-20] [32m+[39m grit.core.claim.InMemoryClaimsTests.an agent's own agent keeps no claim of the session above its parent from lapsing [2m1ms[0m  
+254-15] [32m+[39m grit.core.document.WorkedByTests.another session's claim refuses a write and a withdraw of its key, writing nothing [2m201ms[0m  
+254-23] [32m+[39m grit.core.host.ArgvTests.quote single-quotes a word holding any other character [2m1ms[0m  
+254-23] [32m+[39m grit.core.host.ArgvTests.quote writes a single quote as a closed quote, an escaped one and a reopened one [2m0ms[0m  
+254-30] - grit.core.screen.BenchTests [2m386ms[0m
+254-30]   [32m+[39m the bench asks no floor question [2m67ms[0m  
+254-30]   [32m+[39m example gives the accepts then the refuses by index from 0, and None outside them [2m10ms[0m  
+254-30]   [32m+[39m a bench passes when every accept passes and every refuse is refused [2m89ms[0m  
+254-30]   [32m+[39m an accept refused fails it, naming the example and its deciding signal [2m71ms[0m  
+254-30]   [32m+[39m a refuse that passes fails it, naming its deciding signal [2m6ms[0m  
+254-30]   [32m+[39m the deciding signal is the one furthest toward failing, for either kind [2m9ms[0m  
+254-30]   [32m+[39m of two signals as far toward failing, the first decides [2m1ms[0m  
+254-30]   [32m+[39m a bench's examples are written and read back as they were [2m118ms[0m  
+254-30]   [32m+[39m a row whose examples are not as written, or disagree with its passed, does not read [2m15ms[0m  
+254-30] - grit.core.host.HostTests [2m685ms[0m
+254-30]   - RelPath [2m53ms[0m
+254-30]     [31mX[39m normal form [2m44ms[0m 
+254-30]       [91m[4mjava.lang.AssertionError[39m[24m: assertion failed: ==> assertion failed: Right(.) != Right(..)
+254-30]         [31mscala.runtime.Scala3RunTime$.[91massertFailed[39m([91mScala3RunTime.scala[39m:[91m10[39m)
+254-30]         [31mutest.asserts.Asserts$ArrowAssert.[91m$eq$eq$greater[39m([91mAsserts.scala[39m:[91m90[39m)
+254-30]         [31mgrit.core.host.HostTests$.[91m$init$$$anonfun$1$$anonfun$1$$anonfun$1[39m([91mHostTests.scala[39m:[91m26[39m)
+254-30]     [32m+[39m absolute is refused [2m0ms[0m  
+254-30]     [32m+[39m climbing above the root is refused, even when it comes back [2m2ms[0m  
+254-30]     [32m+[39m secrets files are refused anywhere in the path [2m6ms[0m  
+254-30]     [32m+[39m a NUL is refused [2m1ms[0m  
+254-30]     [32m+[39m messages [2m0ms[0m  
+254-30]   - RunId [2m109ms[0m
+254-30]     [32m+[39m parse takes 8 lowercase hex digits and nothing else [2m19ms[0m  
+254-30]     [32m+[39m of makes an id parse reads back, the same for the same nonce [2m90ms[0m  
+254-30]   - LineNumbers [2m40ms[0m
+254-30]     [32m+[39m cat -n style: right-aligned in six columns, wider when a number needs it [2m23ms[0m  
+254-30]     [32m+[39m strip takes each line's prefix off, only when every line has one [2m17ms[0m  
+254-30]   - Clipped [2m260ms[0m
+254-30]     [32m+[39m text that fits is whole, with the hint for nothing cut [2m40ms[0m  
+254-30]     [32m+[39m head keeps the first lines, tail the last [2m116ms[0m  
+254-30]     [32m+[39m bytes cut before lines do, counting UTF-8 and newlines [2m48ms[0m  
+254-30]     [32m+[39m a head given a byte bound keeps the whole first lines within it [2m3ms[0m  
+254-30]     [32m+[39m a first line over the limit leaves the head empty [2m14ms[0m  
+254-30]     [32m+[39m a last line over the limit leaves the tail its end, cut at a character [2m36ms[0m  
+254-30]     [32m+[39m lines ignore a final newline [2m0ms[0m  
+254-30]     [32m+[39m prefix keeps the whole characters that fit the bytes, never part of one [2m3ms[0m  
+254-30]   - Replace.onto [2m199ms[0m
+254-30]     [32m+[39m every edit matched against the original, applied together [2m99ms[0m  
+254-30]     [32m+[39m where each landed, in file order [2m5ms[0m  
+254-30]     [32m+[39m not found, repeated, overlapping and empty are refused by index [2m24ms[0m  
+254-30]     [32m+[39m edits that change nothing are refused, and so are none [2m12ms[0m  
+254-30]     [32m+[39m CRLF is kept, and an edit's LF matches it [2m0ms[0m  
+254-30]     [32m+[39m LF is kept when the first line break is one [2m0ms[0m  
+254-30]     [32m+[39m a byte order mark is kept and never matched [2m0ms[0m  
+254-14] [32m+[39m grit.core.context.ShownTests.entries following a carried turn: none before those that continue it, one before a recalled earlier turn and one after it [2m3ms[0m  
+254-15] [32m+[39m grit.core.store.InMemoryStoreTests.a recorded prompt is got back by its turn, and by its fragments' ids, in order [2m184ms[0m  
+254-26] [32m+[39m grit.core.stitch.StitchingTests.a message that says nothing, or only shares a file, is not asked about: it is unread [2m6ms[0m  
+254-30]     [32m+[39m no fuzzy matching: whitespace and quotes count [2m13ms[0m  
+254-30]     [32m+[39m an oldText carrying read's line numbers is refused as such, and only then [2m35ms[0m  
+254-30]     [32m+[39m messages name the edit and the path [2m11ms[0m  
+254-30]   [32m+[39m a write over a redacted secret is refused in words that show the mark and the way around it [2m24ms[0m  
+254-30] - grit.core.files.KindTests [2m59ms[0m
+254-30]   [32m+[39m a file is known by its bytes, never by the type its sender claims [2m25ms[0m  
+254-30]   [32m+[39m a zip's entries are read only when its bytes are a zip's [2m1ms[0m  
+254-30]   [32m+[39m text is UTF-8 with no NUL, a character the head cut short allowed [2m18ms[0m  
+254-30]   [32m+[39m the claim decides only an empty file and a zip holding both a document and a workbook [2m4ms[0m  
+254-30]   [32m+[39m a JSON object is a Slides deck only when it is claimed as one [2m11ms[0m  
+254-30] - grit.core.durable.DurableFlowReadTests [2m302ms[0m
+254-30]   [32m+[39m read names the step a run makes next at every prefix, and how it ended at the last [2m184ms[0m  
+254-30]   [32m+[39m an early end is read as the flow's end [2m3ms[0m  
+254-30]   [32m+[39m a loop and an each are read round by round, item by item [2m16ms[0m  
+254-30]   [32m+[39m either is read down the arm its input names [2m8ms[0m  
+254-30]   [32m+[39m a patch is read down the branch the history took; a history ending there takes it [2m5ms[0m  
+254-30]   [32m+[39m a wait is named by its label at both of the runtime's records [2m22ms[0m  
+254-30]   [32m+[39m a program is read by running its code again over the results the history holds [2m6ms[0m  
+254-30]   [32m+[39m a history ending inside a program is read from that step, whatever the program does [2m2ms[0m  
+254-30]   [32m+[39m a flow over a larger environment is read as the flow itself [2m3ms[0m  
+254-30]   [32m+[39m what each recorded step's input showed is read in order, a step not yet made shows nothing [2m7ms[0m  
+254-30]   [32m+[39m a history that holds another step, an unreadable output or none is unreadable, saying where [2m46ms[0m  
+254-30] - grit.core.sanitise.HardFlagsTests [2m239ms[0m
+254-30]   [32m+[39m plain prose, a link, an address and a git SHA fire nothing [2m147ms[0m  
+254-30]   [32m+[39m a zero-width character, a bidirectional control, a tag character or a soft hyphen is hidden [2m16ms[0m  
+254-30]   [32m+[39m a control character is hidden, as Stripped removes it; line feed, tab and carriage return are not [2m2ms[0m  
+254-30]   [32m+[39m a word mixing Latin with Cyrillic or Greek letters is hidden; either alone is not [2m11ms[0m  
+254-30]   [32m+[39m a base64 run of 32 with both cases and a digit is encoded, one of 31 or with no digit is not, and a PEM key is [2m10ms[0m  
+254-30]   [32m+[39m a run of more than 64 hex digits is encoded; a SHA-256 digest is not [2m12ms[0m  
+254-30]   [32m+[39m a tag grit begins its own window lines with is a marker at a line's start, not inside [2m5ms[0m  
+254-30]   [32m+[39m a text over the bound is over it; one at the bound is not [2m26ms[0m  
+254-30]   [32m+[39m each flag that fires is named once, in order [2m10ms[0m  
+254-30] ----------------------------------- Failures -----------------------------------
+254-30] [31mX[39m grit.core.host.HostTests.RelPath.normal form [2m44ms[0m 
+254-30]   [91m[4mjava.lang.AssertionError[39m[24m: assertion failed: ==> assertion failed: Right(.) != Right(..)
+254-14] [32m+[39m grit.core.context.ShownTests.a turn's several entries are one turn: no gap between them [2m4ms[0m  
+254-30]     [31mscala.runtime.Scala3RunTime$.[91massertFailed[39m([91mScala3RunTime.scala[39m:[91m10[39m)
+254-30]     [31mutest.asserts.Asserts$ArrowAssert.[91m$eq$eq$greater[39m([91mAsserts.scala[39m:[91m90[39m)
+254-30]     [31mgrit.core.host.HostTests$.[91m$init$$$anonfun$1$$anonfun$1$$anonfun$1[39m([91mHostTests.scala[39m:[91m26[39m)
+254-30] Tests: 73, Passed: 72, Failed: 1
+254-06] [32m+[39m grit.core.files.InMemoryPiecesTests.a file marked unread holds no pieces and is answered so, its pieces before withdrawn; a keep replaces the mark [2m24ms[0m  
+254-26] [32m+[39m grit.core.stitch.StitchingTests.an excerpt whose opening is grit's post shows it under Assistant [2m8ms[0m  
+254-06] [32m+[39m grit.core.files.InMemoryPiecesTests.a file marked unread and relabelled is marked so at the floor, and no longer where it was [2m5ms[0m  
+254-17] [32m+[39m grit.core.inbox.InMemoryInboxTests.a conversation is created at its room's label as declared, kept whoever records in it later, and a run's at its schedule's clearance [2m69ms[0m  
+254-13] [32m+[39m grit.core.document.InMemoryDocumentsTests.declassifying gives the application in force with its policy's text and checks when the transaction reads the policy's label, the application with neither when it does not, and none otherwise; NULL checks read as Missing [2m45ms[0m  
+254-22] [32m+[39m grit.core.store.InMemoryPeriodTests.a purge deletes its period's raw entries, and keeps its closing entry and the rest [2m34ms[0m  
+254-17] [32m+[39m grit.core.inbox.InMemoryInboxTests.a direct message's conversation is created at its person's clearance, whatever its room's labeller says [2m11ms[0m  
+254-06] [32m+[39m grit.core.files.InMemoryPiecesTests.a plugin's pieces removed are read no more, their tombstones ended [2m20ms[0m  
+254-02] - grit.core.store.InMemoryIntegrityTests [2m187ms[0m
+254-02]   [32m+[39m an entry is believed at its writer's integrity met with its room's cap, and read so by every read [2m133ms[0m  
+254-02]   [32m+[39m a turn is believed at the meet of its entries, and untrusted with none [2m14ms[0m  
+254-02]   [32m+[39m a closing is believed at the meet of its period's entries [2m40ms[0m  
+254-02] - grit.core.period.BalanceTests [2m717ms[0m
+254-02]   [32m+[39m a summarise replaces an agenda line's summary, normalised, and neither touches nor moves it [2m220ms[0m  
+254-02]   [32m+[39m a summarise of a line that is not an agenda line, or a blank one, is ignored [2m77ms[0m  
+254-02]   [32m+[39m an agenda line's summary counts toward the bytes a cap holds [2m27ms[0m  
+254-02]   [32m+[39m a line's id is the first 16 hex digits of SHA-256 of its section key, a newline, its text [2m20ms[0m  
+254-02]   [32m+[39m an add enters its section last, normalised, with since and touched at its period [2m31ms[0m  
+254-02]   [32m+[39m an add of a line already there touches it instead, and adds no second one [2m24ms[0m  
+254-02]   [32m+[39m resolve and drop take their line out, listed with how and why [2m30ms[0m  
+254-02]   [32m+[39m a touch sets touched to its period and moves the line last in its section [2m13ms[0m  
+254-02]   [32m+[39m an edit naming no line, a blank add, or an unread edit is ignored and changes nothing [2m5ms[0m  
+254-02]   [32m+[39m a Stand's citation reaches its Added change; one that only touches lists none [2m12ms[0m  
+254-02]   [32m+[39m a standing line is added with its ground; one already there keeps its ground [2m5ms[0m  
+254-02]   [32m+[39m a standing line has a ground and no other line has one [2m2ms[0m  
+254-02]   [32m+[39m the weaker of two grounds: Claimed below Tool below Person [2m0ms[0m  
+254-02]   [32m+[39m an ignored stand is shown as a stand, with its ground [2m0ms[0m  
+254-02]   [32m+[39m an ignored edit names its line by the text the balance held, never by its id [2m4ms[0m  
+254-02]   [32m+[39m under its cap a balance is kept as it is [2m8ms[0m  
+254-02]   [32m+[39m over its cap, the least recently touched line is evicted first [2m3ms[0m  
+254-02]   [32m+[39m equally recently touched, the oldest since is evicted first [2m4ms[0m  
+254-02]   [32m+[39m equal in touched and since, the lower id is evicted first [2m7ms[0m  
+254-02]   [32m+[39m a period's own adds are refused rather than evict a line it touched [2m6ms[0m  
+254-02]   [32m+[39m the cap holds even below what the period touched, and a cap below 1 keeps nothing [2m219ms[0m  
+254-02] - grit.core.message.SpendCapTests [2m26ms[0m
+254-02]   [32m+[39m a spend cap is a number of dollars above zero: zero and below are refused [2m16ms[0m  
+254-02]   [32m+[39m a spend cap admits an exact spend below it, never one at or above it or not all priced [2m10ms[0m  
+254-02] - grit.core.identity.IdentitiesTests [2m85ms[0m
+254-02]   [32m+[39m realms each with one attester, and the domains claimed, are kept as given [2m22ms[0m  
+254-02]   [32m+[39m no domain claimed is allowed: membership alone still counts [2m0ms[0m  
+254-02]   [32m+[39m a realm two attesters vouch for is refused, naming both [2m21ms[0m  
+254-02]   [32m+[39m one attester named twice for one realm is no conflict: it answers for that realm [2m13ms[0m  
+254-02]   [32m+[39m an attester answers for the realms it is named for, and an attester not named for none [2m0ms[0m  
+254-02]   [32m+[39m realms is every realm trusted, and attesters every attester named [2m0ms[0m  
+254-02]   [32m+[39m trust names an attester, never an edge [2m29ms[0m  
+254-02] - grit.core.classify.ClassifyTests [2m640ms[0m
+254-02]   [32m+[39m confidence: (n·max − 1)/(n − 1) matches every example in Jev's docs, to their rounding [2m80ms[0m  
+254-02]   [32m+[39m scoreConfidence matches both Score examples in Jev's docs, to their rounding [2m61ms[0m  
+254-02]   [32m+[39m scoreConfidence falls with the weight's distance from the likeliest level [2m1ms[0m  
+254-02]   [32m+[39m Answer.choice normalises, picks the most probable (the first on a tie), refuses no mass [2m40ms[0m  
+254-02]   [32m+[39m the state goes as its StateJson makes it [2m125ms[0m  
+254-02]   [32m+[39m a choice is read back into its values, in the question's order [2m72ms[0m  
+254-02]   [32m+[39m zip asks both questions in order and reads each answer by position [2m14ms[0m  
+254-02]   [32m+[39m Ask.all asks the first and the rest in order and reads each answer by position [2m11ms[0m  
+254-02]   [32m+[39m readBy asks the same questions and reads their answers by its reader alone [2m5ms[0m  
+254-02]   [32m+[39m asking a question twice is two questions [2m6ms[0m  
+254-02]   [32m+[39m an answer outside the options, of the wrong kind, missing or extra is Unreadable [2m16ms[0m  
+254-02]   [32m+[39m Ask.read is Unreadable for other than one answer per question, reading none [2m0ms[0m  
+254-02]   [32m+[39m Classifier.answers is Unreadable for a reply short, long or of another kind [2m4ms[0m  
+254-02]   [32m+[39m an answer naming no key comes through Classifier.answers, refused only by Ask.read [2m6ms[0m  
+254-02]   [32m+[39m a choice whose keys repeat is not built [2m1ms[0m  
+254-02]   [32m+[39m Question.choice keeps its keys in order, and is not built when two share a name [2m4ms[0m  
+254-02]   [32m+[39m Question.score keeps its levels in order, and is not built with more than ten [2m1ms[0m  
+254-02]   [32m+[39m Ask.answer keeps a score as given, Unreadable for another weight count or kind [2m15ms[0m  
+254-02]   [32m+[39m Ask.answer keeps an answer as given, Unreadable for a key not asked or the other kind [2m13ms[0m  
+254-02]   [32m+[39m a decision's probability of a value sums over the criteria that stand for it [2m18ms[0m  
+254-02]   [32m+[39m a decision's probabilities sum to 1 and its choice is the most probable, whatever came [2m35ms[0m  
+254-02]   [32m+[39m a score is read into its levels' values: Jev's documented answer [2m61ms[0m  
+254-02]   [32m+[39m a score's weights are normalised, its likeliest the first on a tie, summed per value [2m23ms[0m  
+254-02]   [32m+[39m a score is Unreadable for another weight count, no weight, or a position off the levels [2m12ms[0m  
+254-02]   [32m+[39m Ask.score is not built with more than ten levels [2m0ms[0m  
+254-02]   [32m+[39m a score is built only by reading an answer [2m8ms[0m  
+254-02]   [32m+[39m a decision is built only by reading an answer [2m1ms[0m  
+254-02]   [32m+[39m Classifier.none answers nothing, Unavailable with its reason [2m1ms[0m  
+254-02]   [32m+[39m a refusal is said `refused: <cause>` and is of its own kind, Refused [2m6ms[0m  
+254-02] - grit.core.admin.AuthorityTests [2m140ms[0m
+254-02]   [32m+[39m in a private room, a full member raises a label freely; no one else may [2m48ms[0m  
+254-02]   [32m+[39m in a public room, or one whose access is unreported, only an administrator relabels [2m4ms[0m  
+254-02]   [32m+[39m removing a compartment from a private room needs a steward of each one removed [2m37ms[0m  
+254-02]   [32m+[39m lowering a private room's level needs an administrator, whoever stewards it [2m0ms[0m  
+254-02]   [32m+[39m a private room's first label needs an administrator, or a steward of every compartment it holds; one holding none, an administrator; one keeping unmapped is a raise, free to a member [2m28ms[0m  
+254-02]   [32m+[39m clearing or removing a person for a compartment needs its steward or an administrator [2m11ms[0m  
+254-02]   [32m+[39m a compartment not declared is refused, and clear for one with no group of its own granted it [2m0ms[0m  
+254-02]   [32m+[39m quiet is free to a full member, in a public room too; never in a direct message [2m0ms[0m  
+254-02]   [32m+[39m a room's baseline, set, raised, lowered or cleared, is an administrator's alone, in a public, private or direct room [2m11ms[0m  
+254-02]   [32m+[39m each refusal reads as one line for its asker [2m1ms[0m  
+254-02] - grit.core.place.PlaceTests [2m238ms[0m
+254-02]   [32m+[39m a place under fs is its directory again; a place elsewhere is none [2m67ms[0m  
+254-02]   [32m+[39m a place's written form reads back to the same place, in every namespace [2m25ms[0m  
+254-02]   [32m+[39m a direct message's thread reads back to itself and is direct; a channel is not, nor a place holding direct below its head [2m1ms[0m  
+254-02]   [32m+[39m a place is within its ancestors and itself, never within a sibling sharing a prefix [2m28ms[0m  
+254-02]   [32m+[39m a directory is absolute and normalized [2m11ms[0m  
+254-02]   [32m+[39m a directory holding a control character is refused; a stored place holding one is its directory [2m13ms[0m  
+254-02]   [32m+[39m a place that does not read names why [2m6ms[0m  
+254-02]   [32m+[39m each origin's place, a field holding / split like the rest [2m2ms[0m  
+254-02]   [32m+[39m a machine's directory reads back to itself and is no directory of grit's own machine [2m0ms[0m  
+254-02]   [32m+[39m a room: a thread's channel, a session's directory, a task's name [2m6ms[0m  
+254-02]   [32m+[39m a service is named by a lowercase letter, then lowercase letters, digits or _ [2m7ms[0m  
+254-02]   [32m+[39m a repository and a run of work in it read back from their written form [2m1ms[0m  
+254-02]   [32m+[39m a repository is named as a service is, and its place is repository:{name} [2m8ms[0m  
+254-02]   [32m+[39m a place names the repository it is or lies within; any other place none [2m3ms[0m  
+254-02]   [32m+[39m a run of work's name is a lowercase letter, then at most 39 lowercase letters, digits or - [2m28ms[0m  
+254-02]   [32m+[39m a place is a service only as service:{a service's name}, never below one [2m11ms[0m  
+254-02]   [32m+[39m a conversation works in the service of the first link holding its place [2m7ms[0m  
+254-02]   [32m+[39m a conversation reaches the service of every link holding its place, each once, first linked first [2m12ms[0m  
+254-02]   [32m+[39m a weight is at least 1 [2m2ms[0m  
+254-02] 
+254-02] Tests: 109, Passed: 109, Failed: 0
+254/254, 1 FAILED] ./mill grit.core.test 16s
+254] [error] grit.core.test.testForked 1 tests failed: 
+  grit.core.host.HostTests grit.core.host.HostTests.RelPath.normal form

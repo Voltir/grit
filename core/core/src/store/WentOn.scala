@@ -93,16 +93,8 @@ object WentOn {
   def failed(command: Command, exit: Option[Int], output: String): CheckFailed =
     CheckFailed(command, exit.filterNot(_ == 0), kept(output))
 
-  private val Escape =
-    "\u001b(?:\\[[0-?]*[ -/]*[@-~]|\\][^\u0007\u001b]*(?:\u0007|\u001b\\\\)|[@-Z\\\\-_])"
-
   private def kept(output: String): String = {
-    val clean = output
-      .replaceAll(Escape, "")
-      .replace("\r\n", "\n")
-      .replace('\r', '\n')
-      .replaceAll("[\\p{Cc}&&[^\n\t]]", "")
-      .stripTrailing()
+    val clean = Clipped.plain(output.replace("\r\n", "\n").replace('\r', '\n')).stripTrailing()
     Clipped.tail(clean, _ => None, TailBytes, TailLines).text
   }
 }

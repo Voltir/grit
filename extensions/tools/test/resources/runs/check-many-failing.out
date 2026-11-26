@@ -1,0 +1,50 @@
+== unit: ./mill --color false --ticker false -k grit.core.test.testCached
+FAIL grit.core.session.SessionDigestTests > commits its agents made are one line after the counters; a path under another worktree shows under its last segment
+  assertion failed: ==> assertion failed: (## This session so far Started 2026-10-29 09:00 UTC, last active 2026-10-29 10:40 UTC: 143 tool calls, 12 edits, 2 commits, 2048 KB read. Its agents made 3 commitz. Commits, newest first: - 1a2b3c4 core: a digest - 9f8e7d6 Edited, newest first: - fixer: core/src/A.scala Read, newest first: - Ledger.post,## This session so far Started 2026-10-29 09:00 UTC, last active 2026-10-29 10:40 UTC: 143 tool calls, 12 edits, 2 commits, 2048 KB read. Its agents made 1 commit. Commits, newest first: - 1a2b3c4 core: a digest - 9f8e7d6 Edited, newest first: - e1.scala - e2.scala Read, newest first: - Ledger.post - r2.scala) != (## This session so far Started 2026-10-29 09:00 UTC, last active 2026-10-29 10:40 UTC: 143 tool calls, 12 edits, 2 commits, 2048 KB read. Its agents made 3 commits. Commits, newest first: - 1a2b3c4 core: a digest - 9f8e7d6 Edited, newest first: - fixer: core/src/A.scala Read, newest first: - Ledger.post,## This session so far Started 2026-10-29 09:00 UTC, last active 2026-10-29 10:40 UTC: 143 tool calls, 12 edits, 2 commits, 2048 KB read. Its agents made 1 commit. Commits, newest first: - 1a2b3c4 core: a digest - 9f8e7d6 Edited, newest first: - e1.scala - e2.scala Read, newest first: - Ledger.post - r2.scala)
+  at grit.core.session.SessionDigestTests$.$init$$$anonfun$1$$anonfun$2(SessionDigestTests.scala:86)
+FAIL grit.core.recipe.PoolTests > a message source keeps the latest `most` said in [t − within, t), shown oldest first
+  assertion failed: ==> assertion failed: Vector((nearby_in_channel,Cy, 5 minutez before: five minutes before Ana, 3 minutez before: three minutes before Ben, 1 minute before: one minute before)) != Vector((nearby_in_channel,Cy, 5 minutes before: five minutes before Ana, 3 minutes before: three minutes before Ben, 1 minute before: one minute before))
+  at grit.core.recipe.PoolTests$.$init$$$anonfun$1$$anonfun$1(PoolTests.scala:46)
+FAIL grit.core.recipe.PoolTests > a line shows at most LineChars of a message's words, cut at a word's end with …
+  assertion failed: ==> assertion failed: Vector((nearby_in_channel,Ana, 2 minutez before: yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes…)) != Vector((nearby_in_channel,Ana, 2 minutes before: yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes…))
+  at grit.core.recipe.PoolTests$.$init$$$anonfun$1$$anonfun$2(PoolTests.scala:64)
+FAIL grit.core.recipe.PoolTests > a unit that does not fit is skipped, and a later smaller one still kept
+  assertion failed: ==> assertion failed: Vector((nearby_in_channel,Cy, 3 minutez before: short two Ana, 1 minute before: short one)) != Vector((nearby_in_channel,Cy, 3 minutes before: short two Ana, 1 minute before: short one))
+  at grit.core.recipe.PoolTests$.$init$$$anonfun$1$$anonfun$3(PoolTests.scala:82)
+FAIL grit.core.recipe.PoolTests > an exchange shows its opening and record, kept whole or not at all
+  assertion failed: ==> assertion failed: Vector((exchanges_in_channel,Exchange opened 2 hourz before by Ben: the contract term?   Record: term: 3 years)) != Vector((exchanges_in_channel,Exchange opened 2 hours before by Ben: the contract term?   Record: term: 3 years))
+  at grit.core.recipe.PoolTests$.$init$$$anonfun$1$$anonfun$4(PoolTests.scala:94)
+FAIL grit.core.recipe.PoolTests > the exchange the thread follows shows its record alone, and nothing without one
+  assertion failed: ==> assertion failed: Vector((exchanges_in_channel,Record of the exchange this thread continues: term: 3 years Exchange opened 30 minutez before by Cy: lunch?)) != Vector((exchanges_in_channel,Record of the exchange this thread continues: term: 3 years Exchange opened 30 minutes before by Cy: lunch?))
+  at grit.core.recipe.PoolTests$.$init$$$anonfun$1$$anonfun$5(PoolTests.scala:107)
+FAIL grit.core.recipe.PoolTests > an entry two sources find is shown once, under the first; sections in its order
+  assertion failed: ==> assertion failed: Vector((exchanges_in_channel,Exchange opened 20 minutez before by Ben: the contract term?), (nearby_in_channel,Ana, 5 minutez before: standup at 10)) != Vector((exchanges_in_channel,Exchange opened 20 minutes before by Ben: the contract term?), (nearby_in_channel,Ana, 5 minutes before: standup at 10))
+  at grit.core.recipe.PoolTests$.$init$$$anonfun$1$$anonfun$6(PoolTests.scala:122)
+FAIL grit.core.recipe.PoolTests > an exchange whose opening an earlier source kept shows its record line alone
+  assertion failed: ==> assertion failed: Vector((nearby_in_channel,Ben, 20 minutez before: the contract term?), (exchanges_in_channel,Record of the exchange Ben opened 20 minutez before: term: 3 years)) != Vector((nearby_in_channel,Ben, 20 minutes before: the contract term?), (exchanges_in_channel,Record of the exchange Ben opened 20 minutes before: term: 3 years))
+  at grit.core.recipe.PoolTests$.$init$$$anonfun$1$$anonfun$7(PoolTests.scala:143)
+FAIL grit.core.recipe.PoolReadTests > Channel: the room's messages in [t − within, t), none its thread shows, named
+  assertion failed: ==> assertion failed: Vector((nearby_in_channel,Ben, 5 minutez before: lunch? Assistant, 3 minutez before: it moved Someone, 0 secondz before: who's asking?)) != Vector((nearby_in_channel,Ben, 5 minutes before: lunch? Assistant, 3 minutes before: it moved Someone, 0 seconds before: who's asking?))
+  at grit.core.recipe.PoolReadTests$.$init$$$anonfun$1$$anonfun$1(PoolReadTests.scala:186)
+FAIL grit.core.recipe.PoolReadTests > Author: what the heard message's author said; none when it has no author
+  assertion failed: ==> assertion failed: Vector((nearby_in_channel,Ana, 2 minutez before: the contract term?)) != Vector((nearby_in_channel,Ana, 2 minutes before: the contract term?))
+  at grit.core.recipe.PoolReadTests$.$init$$$anonfun$1$$anonfun$2(PoolReadTests.scala:200)
+FAIL grit.core.recipe.PoolReadTests > Exchanges: those offered, as kept, aged from t; the strand's its record alone
+  assertion failed: ==> assertion failed: Vector((exchanges_in_channel,Record of the exchange this thread continues: term: 3 years Exchange opened 40 minutez before by Cy: lunch?)) != Vector((exchanges_in_channel,Record of the exchange this thread continues: term: 3 years Exchange opened 40 minutes before by Cy: lunch?))
+  at grit.core.recipe.PoolReadTests$.$init$$$anonfun$1$$anonfun$3(PoolReadTests.scala:244)
+FAIL grit.core.host.HostTests > RelPath.normal form
+  assertion failed: ==> assertion failed: Right(.) != Right(..)
+  at grit.core.host.HostTests$.$init$$$anonfun$1$$anonfun$1$$anonfun$1(HostTests.scala:26)
+FAIL grit.core.schema.CheckTests > each kind of mismatch, at its path
+  assertion failed: ==> assertion failed: Some(Mismatch(edits,expected at most 3 itemz, got 4)) != Some(Mismatch(edits,expected at most 3 items, got 4))
+  at grit.core.schema.CheckTests$.$init$$$anonfun$18$$anonfun$2(CheckTests.scala:133)
+FAIL grit.core.stitch.StitchingTests > a placement's seen reads back its exchanges as shown, in order, each with its offer
+  assertion failed: ==> assertion failed: Vector(Exchange(exchange 1,Line(Someone,lunch?,1 minute),Vector(),None,Offer(C1/lunch,Recent(1),None)), Exchange(exchange 2,Line(Nick,the Engine contract term?,30 minutez),Vector(Line(Someone,Is this a real question,10 minutez)),None,Offer(C1/engine,Recent(2),None))) != Vector(Exchange(exchange 1,Line(Someone,lunch?,1 minute),Vector(),None,Offer(C1/lunch,Recent(1),None)), Exchange(exchange 2,Line(Nick,the Engine contract term?,30 minutes),Vector(Line(Someone,Is this a real question,10 minutes)),None,Offer(C1/engine,Recent(2),None)))
+  at grit.core.stitch.StitchingTests$.$init$$$anonfun$1$$anonfun$13(StitchingTests.scala:396)
+FAIL grit.core.files.FileErrorTests > a span is said in its largest whole unit up to hours, singular for one
+  assertion failed: ==> assertion failed: (for 1 hour,for 24 hourz,for 90 minutez,for 1 minute,for 61 secondz) != (for 1 hour,for 24 hours,for 90 minutes,for 1 minute,for 61 seconds)
+  at grit.core.files.FileErrorTests$.$init$$$anonfun$1$$anonfun$1(FileErrorTests.scala:18)
+unit: FAILED, 15 failed
+== totals
+unit: FAILED, 15 failed
+logs: out/check/
