@@ -1,0 +1,10 @@
+{
+  "base": "64f658f3240004ca8c99d441239832c287f3de38",
+  "commits": [
+    "88375e00ecc4684e90c47848214b472b87379d4a"
+  ],
+  "checks": [
+    {"runner": "check", "args": ["grit.core"]},
+    {"runner": "check", "args": ["grit.lifecycle"]}
+  ]
+}
