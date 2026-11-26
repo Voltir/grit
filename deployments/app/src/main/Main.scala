@@ -18,12 +18,12 @@ import grit.core.place.Directory
 import grit.core.recipe.TurnRecipe
 import grit.core.store.Origin
 import grit.dbos.engine.{Engine, Link, NotTaken, Unopened}
-import grit.host.checkout.{LocalProcesses, Redaction}
+import grit.host.checkout.Redaction
 import grit.host.git.{PushTarget, WorkingCopies}
 import grit.host.machine.LocalMachine
 import grit.kit.deployment.{Assembly, Deployment}
 import grit.kit.environment.{DotEnv, Exit, Secrets}
-import grit.kit.run.{Kit, Launch, Pushing}
+import grit.kit.run.{Kit, Launch, LocalEdge, Pushing}
 import grit.kit.work.Work
 import grit.mcp.client.KeyFiles
 import grit.models.{OpenRouterConfig, StubProvider}
@@ -428,9 +428,7 @@ object Main {
               ).swap.toOption
             case Some(in) =>
               val declared = exitOnLeft(RepositoriesEnv.declared(env))
-              val clone = exitOnLeft(
-                RepositoriesEnv.cloneOf(declared, in.repository).flatMap(RepositoriesEnv.existing)
-              )
+              val cloned = exitOnLeft(RepositoriesEnv.clone(env, declared, in.repository))
               val remote = exitOnLeft(RepositoriesEnv.remotes(env, declared)).get(in.repository)
               val target: Option[PushTarget^] = remote match {
                 case Some(full) => Some(exitOnLeft(RemoteRepositories.target(env, full, clock)))
@@ -440,16 +438,14 @@ object Main {
                 case (Some(full), Some(t)) =>
                   Some(
                     exitOnLeft(
-                      RemoteRepositories.pushing(env, sys.env, full, clone, t, redaction)
+                      RemoteRepositories.pushing(env, sys.env, full, cloned.at, t, redaction)
                     )
                   )
                 case _ => None
               }
-              val copies: WorkingCopies^ = new WorkingCopies(
-                in.repository,
-                clone,
-                exitOnLeft(RepositoriesEnv.copies(env)),
-                new LocalProcesses(clone, sys.env, redaction),
+              val copies: WorkingCopies^ = LocalEdge.copies(
+                cloned,
+                redaction,
                 clock,
                 pushing match {
                   case Some(p) => Some(p.branches)

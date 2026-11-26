@@ -4,6 +4,7 @@ import java.nio.file.Path
 
 import grit.core.edge.Console
 import grit.core.place.Repository
+import grit.kit.deployment.RepositoryClone
 
 import utest.*
 
@@ -57,16 +58,20 @@ object RepositoriesEnvTests extends TestSuite {
       )
     }
     test(
-      "--in's repository is found among those declared; one not declared is refused naming those that are"
+      "--in's repository is found among those declared, its clone a directory and its copies under GRIT_COPIES; one not declared, or no directory, is refused, saying so"
     ) {
-      val declared =
-        Vector(repository("grit") -> Path.of("/src/grit"), repository("app") -> Path.of("/a"))
+      val here = java.nio.file.Files.createTempDirectory("clone").toRealPath()
+      val gone = here.resolve("gone")
+      val declared = Vector(repository("grit") -> gone, repository("app") -> here)
+      val env = Map("GRIT_COPIES" -> "/c")
       (
-        RepositoriesEnv.cloneOf(declared, repository("app")),
-        RepositoriesEnv.cloneOf(declared, repository("other")),
-        RepositoriesEnv.cloneOf(Vector.empty, repository("other"))
+        RepositoriesEnv.clone(env, declared, repository("app")),
+        RepositoriesEnv.clone(env, declared, repository("grit")),
+        RepositoriesEnv.clone(env, declared, repository("other")),
+        RepositoriesEnv.clone(env, Vector.empty, repository("other"))
       ) ==> (
-        Right(Path.of("/a")),
+        Right(RepositoryClone(repository("app"), here, Path.of("/c"))),
+        Left(s"GRIT_REPOSITORIES names $gone as a clone, which is no directory here"),
         Left("GRIT_REPOSITORIES declares no repository other; it declares grit, app"),
         Left("GRIT_REPOSITORIES declares no repository other; it declares none")
       )

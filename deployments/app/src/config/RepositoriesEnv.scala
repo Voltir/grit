@@ -4,6 +4,7 @@ import java.nio.file.Path
 
 import grit.core.edge.Console
 import grit.core.place.Repository
+import grit.kit.deployment.RepositoryClone
 
 /** The repositories the environment declares for `grit work --in`, and where their runs'
   * working copies are made.
@@ -105,8 +106,27 @@ object RepositoriesEnv {
       .getOrElse(Left(s"working copies need a directory: set $CopiesVar, XDG_DATA_HOME or HOME"))
   }
 
+  /** `repository`'s clone as `declared` (what [[declared]] read of `env`) has it, a directory on
+    * this machine, its working copies made where [[copies]] says for `env`; why not: `declared`
+    * holds no such repository (naming those it holds), its clone is no directory, or [[copies]]
+    * refuses.
+    */
+  def clone(
+      env: Map[String, String],
+      declared: Vector[(Repository, Path)],
+      repository: Repository
+  ): Either[String, RepositoryClone] =
+    for {
+      named <- cloneOf(declared, repository)
+      at <- existing(named)
+      under <- copies(env)
+    } yield RepositoryClone(repository, at, under)
+
   /** Where `declared` says `repository`'s clone is; why not, naming what it declares. */
-  def cloneOf(declared: Vector[(Repository, Path)], repository: Repository): Either[String, Path] =
+  private def cloneOf(
+      declared: Vector[(Repository, Path)],
+      repository: Repository
+  ): Either[String, Path] =
     declared
       .collectFirst { case (r, at) if r == repository => at }
       .toRight {
@@ -116,7 +136,7 @@ object RepositoriesEnv {
       }
 
   /** `clone`, when it is a directory on this machine; why not otherwise. */
-  def existing(clone: Path): Either[String, Path] =
+  private def existing(clone: Path): Either[String, Path] =
     if (java.nio.file.Files.isDirectory(clone)) Right(clone)
     else Left(s"$RepositoriesVar names $clone as a clone, which is no directory here")
 
