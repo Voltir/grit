@@ -56,7 +56,9 @@ Packages, each importing only those above it:
   reads reaches a proposer but through `Shown`, whose scan refuses the bench's own grade shapes:
   a file the checkout is to hold is built into one, never written beside it. A proposer's checkout
   shows each tool result of a run cut where `sent` cuts a call's; `scripts/eval propose` writes one
-  of one task's chosen grit trials, keeping the newest three. ← `bench`, `sent`
+  of one task's chosen grit trials, keeping the newest three. A task's diffs are packed here
+  too for a reviewer who is not to know which arm wrote which (`Blind`, `scripts/eval blind`).
+  ← `bench`, `sent`
 - **`main`**: the command line `scripts/eval` runs. ← every package above
 
 No source file sits at the module's root.

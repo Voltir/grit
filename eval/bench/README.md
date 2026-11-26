@@ -33,6 +33,10 @@ and after every kept run): by task, harness and model, every trial's cost, faile
 over how many passed, beside the passing trials' distance from the known diff. Quality is not
 scored yet.
 
+A task's diffs are compared by a blind review: `scripts/eval blind` packs them, each lettered in an
+order its arguments seed and stripped to its file sections, beside the task's brief, with the key
+from letter to label kept under `hidden/`, which the reviewer is never shown.
+
 A trial's report, in either arm, says what its tool calls did (`Tried.work`, from the transcript,
 not kept in its row): its tool calls a model call, its edits (`edit`; Claude Code's `Edit` and
 `MultiEdit`) and how many of them failed, its suite runs (a shell run of `scripts/check` naming a

@@ -138,6 +138,15 @@
 #       checkouts are kept. Prints the checkout's path, PROPOSE.md's, and each trajectory's size
 #       as shown and how many turns it renders (none: its run's lines alone). No model call.
 #
+#   scripts/eval blind --task <name> --diff <label>=<file> --diff <label>=<file> … --out <dir>
+#       The diffs of eval/bench/tasks/<name>, 2 to 26, packed for a reviewer who is not to know
+#       which arm wrote which (Blind.packed): under <dir>, which must be new or empty,
+#       diff-A.patch, diff-B.patch, … in an order these arguments seed (the same arguments pack
+#       alike), each holding only its diff's file sections, without index lines, so commit
+#       messages, authors and blob ids are dropped; brief.md, the task's brief; rubric.md,
+#       eval/bench/rubric.md. The key, each letter's label, is <dir>/hidden/key.json: show the
+#       reviewer the files beside hidden/, never it. Prints each file's path. No model call.
+#
 # Its data is the main checkout's .local/eval/, whichever checkout runs it. It never writes
 # to the database it reads a turn from.
 set -euo pipefail
@@ -297,9 +306,21 @@ propose() {
     --url "jdbc:postgresql://localhost:5432/grit_bench" --blobs "$main/.local/bench/blobs/grit_bench"
 }
 
+blind() {
+  local args=()
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --task | --diff | --out) [ $# -ge 2 ] || usage; args+=("$1" "$2"); shift 2 ;;
+      *) usage ;;
+    esac
+  done
+  harness blind "${args[@]}" --tasks "$here/eval/bench/tasks" --rubric "$here/eval/bench/rubric.md"
+}
+
 case $1 in
   context) shift; context "$@" ;;
   bench) shift; bench "$@" ;;
   propose) shift; propose "$@" ;;
+  blind) shift; blind "$@" ;;
   *) usage ;;
 esac

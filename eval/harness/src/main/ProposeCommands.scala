@@ -79,7 +79,7 @@ private[main] object ProposeCommands {
           task <- trials.headOption.map(_.task).toRight("no trial is named")
         } yield (task, runs)
       }
-      task <- blind(f, read._1)
+      task <- blindTask(f, read._1)
       shown <- Proposal.of(task, read._2, standing, against, amendments.map(_._2), brief).left.map {
         found =>
           val keys = amendments.zipWithIndex.map((a, i) => Proposal.amendment(i + 1) -> a._1).toMap
@@ -139,7 +139,10 @@ private[main] object ProposeCommands {
       }
 
   /** The frozen task `name` under `--tasks`, blind ([[BenchTask.of]], [[BlindTask.of]]). */
-  private def blind(f: Map[String, String], name: TrialRows.TaskName): Either[String, BlindTask] =
+  private[main] def blindTask(
+      f: Map[String, String],
+      name: TrialRows.TaskName
+  ): Either[String, BlindTask] =
     for {
       at <- need(f, "tasks").map(Path.of(_).resolve(TrialRows.TaskName.value(name)))
       json <- read(at.resolve("task.json"))

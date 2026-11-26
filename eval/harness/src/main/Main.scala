@@ -6,6 +6,7 @@ import grit.kit.environment.Exit
 import Cli.*
 import BenchCommands.*
 import ProposeCommands.*
+import BlindCommands.*
 import ContextCommands.*
 
 /** The eval harness's command line, run through `scripts/eval`, which says what each command
@@ -24,8 +25,13 @@ object Main {
         )
       case "bench" :: rest => exit(flags(rest).flatMap(bench(_, clock)))
       case "propose" :: rest => exit(flags(rest).flatMap(propose(_, clock)))
+      case "blind" :: rest => exit(blind(rest))
       case _ =>
-        exit(Left("usage: scripts/eval context|bench|propose (scripts/eval says what each takes)"))
+        exit(
+          Left(
+            "usage: scripts/eval context|bench|propose|blind (scripts/eval says what each takes)"
+          )
+        )
     }
   }
 }
