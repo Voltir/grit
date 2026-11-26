@@ -15,6 +15,7 @@ object PlaceFragmentsTests extends TestSuite {
   private object PerChar extends TokenEstimator {
     def message(message: Message): Tokens = Tokens(0)
     def system(prompt: String): Tokens = Tokens(prompt.length.toLong)
+    def withDensity(density: grit.core.model.Density): TokenEstimator = this
   }
 
   private def file(path: String, text: String): InstructionFile =

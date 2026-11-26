@@ -1,6 +1,7 @@
 package grit.core.provider
 
 import grit.core.message.{Message, Tokens}
+import grit.core.model.{Density, Settings}
 
 /** What a request to a model costs in input tokens, as its provider will bill them. An
   * estimate: only the provider's count is exact, and the usage ledger keeps both, so an
@@ -25,6 +26,15 @@ trait TokenEstimator {
   /** The cost of `request` as a whole: its system prompt, its [[tools]] and every message. */
   final def request(request: ModelRequest): Tokens =
     request.messages.map(message).foldLeft(system(request.system) + tools(request.tools))(_ + _)
+
+  /** This estimator for a tokenizer that averages `density` characters of text a token. */
+  def withDensity(density: Density): TokenEstimator
+
+  /** This estimator for a call made under `settings`: [[withDensity]] at their density, or this
+    * one when they give none.
+    */
+  final def withSettings(settings: Settings): TokenEstimator^{this} =
+    settings.density.fold(this)(withDensity)
 }
 
 object TokenEstimator {

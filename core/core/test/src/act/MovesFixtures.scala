@@ -189,6 +189,7 @@ object MovesFixtures {
   object PerChar extends TokenEstimator {
     def message(message: Message): Tokens = Tokens(message.toString.length.toLong)
     def system(prompt: String): Tokens = Tokens(prompt.length.toLong)
+    def withDensity(density: grit.core.model.Density): TokenEstimator = this
   }
 
   /** Every read in one transaction opened at `clearance`, whatever its subject, under

@@ -20,6 +20,7 @@ import utest.*
 private object ByChar extends TokenEstimator {
   def message(message: Message): Tokens = Tokens(0)
   def system(prompt: String): Tokens = Tokens(prompt.length.toLong)
+  def withDensity(density: grit.core.model.Density): TokenEstimator = this
 }
 
 /** Placements whose every bounded wait returns `outcome`, each wait's bound kept. */

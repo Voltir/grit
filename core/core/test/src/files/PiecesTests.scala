@@ -14,6 +14,7 @@ object PiecesTests extends TestSuite {
     def message(message: Message): Tokens = system(message.toString)
     def system(prompt: String): Tokens =
       Tokens("""[\p{L}\d]+""".r.findAllIn(prompt).size.toLong)
+    def withDensity(density: grit.core.model.Density): TokenEstimator = this
   }
 
   private def on(page: Int, s: String): Text[Locus] =

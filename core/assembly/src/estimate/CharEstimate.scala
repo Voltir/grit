@@ -2,6 +2,7 @@ package grit.assembly.estimate
 
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, Tokens}
+import grit.core.model.Density
 import grit.core.provider.{TokenEstimator, ToolSchema}
 
 /** A [[TokenEstimator]] by characters: a token per `charsPerToken` characters of text sent
@@ -65,6 +66,17 @@ class CharEstimate(
       }.sum
   }
 
+  /** This estimator with text at `density` characters a token, tool definitions at the ratio
+    * this one's two densities stand in (3.0 to 2.2 for [[CharEstimate$ CharEstimate]], whose
+    * tool definitions were fitted at 3.0 beside text at 2.2), and the same preamble.
+    */
+  override def withDensity(density: Density): CharEstimate =
+    new CharEstimate(
+      density.perToken,
+      density.perToken * schemaCharsPerToken / charsPerToken,
+      toolPreamble
+    )
+
   private def ceiling(chars: Long, perToken: Double): Tokens =
     Tokens(math.ceil(chars / perToken).toLong)
 }
@@ -81,5 +93,6 @@ class CharEstimate(
 // characters a token, the code-heavy transcript densest; at 2.2 the transcript's calls land at
 // 1.05 to 1.07, and the first calls, heavier in tool definitions and prose, at 1.08 to 1.11.
 // Solving the two first calls together (one tool set, different prose) put tool definitions
-// near 3.1 characters a token, preamble included.
+// near 3.1 characters a token, preamble included. A pair whose profile gives its own density is
+// costed at that instead (`withSettings`).
 object CharEstimate extends CharEstimate(2.2, 3.0, Tokens(300))
