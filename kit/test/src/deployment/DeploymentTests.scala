@@ -91,6 +91,11 @@ object DeploymentTests extends TestSuite {
     grit.core.recipe.TurnRecipe.Shipped.addressed
   )
 
+  private val other = SubagentFixtures.ok(grit.core.place.Repository.of("other"))
+
+  private def clone(r: grit.core.place.Repository, at: String = "/clones"): RepositoryClone =
+    RepositoryClone(r, java.nio.file.Path.of(at, r.name), java.nio.file.Path.of("/copies"))
+
   private def of(edges: Vector[grit.core.edge.ServedEdge], tools: Offered = Offered.Read) =
     Deployments.of(edges = edges, tools = tools).map(_ => ())
 
@@ -1095,8 +1100,72 @@ object DeploymentTests extends TestSuite {
       import SubagentFixtures.{coder, coding, ok}
       val subagent = ok(SubagentFixtures.subagent(coder, coding, Integrity.Member))
       val subagents = ok(Subagents.of(Vector(subagent)))
-      Deployments.of(subagents = subagents).map(_.subagents(coder)) ==> Right(Some(subagent))
+      Deployments
+        .of(subagents = subagents, repositories = Vector(clone(SubagentFixtures.scratch)))
+        .map(_.subagents(coder)) ==> Right(Some(subagent))
       Deployments.of().map(_.subagents(coder)) ==> Right(None)
+    }
+
+    test("a coding type working in a repository no clone is declared of is refused, naming both") {
+      import SubagentFixtures.{coder, coding, ok, scratch}
+      val subagents =
+        ok(Subagents.of(Vector(ok(SubagentFixtures.subagent(coder, coding, Integrity.Member)))))
+      val refused = Deployments.of(subagents = subagents, repositories = Vector(clone(other)))
+      (refused.map(_ => ()), refused.left.map(_.message)) ==> (
+        Left(DeploymentRefusal.CloneUndeclared(coder, scratch)),
+        Left("the coding subagent coder works in scratch, and no clone of it is declared")
+      )
+    }
+
+    test("a repository declared twice is refused") {
+      Deployments
+        .of(repositories = Vector(clone(other), clone(other, "/elsewhere")))
+        .map(_ => ()) ==> Left(DeploymentRefusal.RepositoryRepeated(other))
+    }
+
+    test("two coding types at one repository under different allowlists are refused, naming both") {
+      import SubagentFixtures.{coder, coding, ok, scratch}
+      val wider = coding.copy(allowlist =
+        ok(
+          grit.core.host.Allowlist.of(
+            Vector(
+              grit.core.host.Allowlist.Rule.Exactly(ok(grit.core.host.Argv.of("git", "diff")))
+            ),
+            1.minute
+          )
+        )
+      )
+      val reviewer = ok(grit.core.id.AgentType.of("reviewer"))
+      val subagents = ok(
+        Subagents.of(
+          Vector(
+            ok(SubagentFixtures.subagent(coder, coding, Integrity.Member)),
+            ok(SubagentFixtures.subagent(reviewer, wider, Integrity.Member))
+          )
+        )
+      )
+      Deployments
+        .of(subagents = subagents, repositories = Vector(clone(scratch)))
+        .map(_ => ()) ==> Left(DeploymentRefusal.AllowlistsDiffer(scratch, Vector(coder, reviewer)))
+    }
+
+    test("an edge named as grit names a repository's edge is refused") {
+      Deployments
+        .of(edges = Vector(edge("repository:scratch", asks = ServedEdge.Asks.Unanswered)))
+        .map(_ => ()) ==>
+        Left(DeploymentRefusal.EdgeReserved(EdgeName("repository:scratch")))
+    }
+
+    test(
+      "a deployment hosts each repository a coding type works in, with its allowlist, and no other"
+    ) {
+      import SubagentFixtures.{coder, coding, ok, scratch}
+      val subagents =
+        ok(Subagents.of(Vector(ok(SubagentFixtures.subagent(coder, coding, Integrity.Member)))))
+      Deployments
+        .of(subagents = subagents, repositories = Vector(clone(other), clone(scratch)))
+        .map(_.hosted.map(h => (h.cloned, h.allowlist))) ==>
+        Right(Vector((clone(scratch), coding.allowlist)))
     }
   }
 }

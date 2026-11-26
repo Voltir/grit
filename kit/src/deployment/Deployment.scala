@@ -4,12 +4,13 @@ import java.time.Instant
 
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
-import grit.core.agent.Subagents
+import grit.core.agent.{Subagent, Subagents}
 import grit.core.document.{DocRef, Document, DocumentSearch, DocumentShelf, DocumentVersion}
 import grit.core.edge.ServedEdge
 import grit.core.files.{FileArea, Formats}
 import grit.core.host.{Allowlist, Argv}
 import grit.core.id.{
+  AgentType,
   AttesterName,
   CorpusName,
   Declarer,
@@ -28,7 +29,7 @@ import grit.core.model.Policy
 import grit.core.need.{PluginDocs, PluginReads, Unneeded}
 import grit.core.period.LifecycleSettings
 import grit.core.persona.Persona
-import grit.core.place.{Place, Reaches, Service, WorksIn}
+import grit.core.place.{Place, Reaches, Repository, Service, WorksIn}
 import grit.core.plugin.{KeepingCommand, Plugin}
 import grit.core.recipe.{Offering, TurnRecipe}
 import grit.core.review.Reviewing
@@ -331,6 +332,24 @@ enum DeploymentRefusal {
   /** `raw` is no [[DeploymentVersion]]. */
   case VersionMalformed(raw: String)
 
+  /** Two of its repositories are `repository`: which clone its runs work in would be a guess. */
+  case RepositoryRepeated(repository: Repository)
+
+  /** The coding subagent type `agent` works in `repository`, and no clone of it is declared among
+    * its repositories, so its child would have nothing to run its tools.
+    */
+  case CloneUndeclared(agent: AgentType, repository: Repository)
+
+  /** The coding subagent types `agents` work in `repository` under different allowlists: the
+    * repository's one edge runs one.
+    */
+  case AllowlistsDiffer(repository: Repository, agents: Vector[AgentType])
+
+  /** An edge served is named `name`, as the kit names the edge serving one of its repositories
+    * (`repository:{name}`).
+    */
+  case EdgeReserved(name: EdgeName)
+
   def message: String = this match {
     case AsksUnanswered(edges) =>
       s"${edges.map(EdgeName.value).mkString(", ")} cannot answer a tool call that asks first, so the tools offered must be read's or an allowlist's"
@@ -395,6 +414,14 @@ enum DeploymentRefusal {
       s"a group names the realm ${realm.namespace}:${realm.within}/, which the identities trust no attester for"
     case VersionMalformed(raw) =>
       s"the deployment's version '$raw' must be 1 to ${DeploymentVersion.Longest} letters, digits, '.' or '-'"
+    case RepositoryRepeated(repository) =>
+      s"two clones of the repository ${repository.name} are declared"
+    case CloneUndeclared(agent, repository) =>
+      s"the coding subagent ${AgentType.value(agent)} works in ${repository.name}, and no clone of it is declared"
+    case AllowlistsDiffer(repository, agents) =>
+      s"the coding subagents ${agents.map(AgentType.value).mkString(", ")} work in ${repository.name} under different allowlists"
+    case EdgeReserved(name) =>
+      s"an edge is named ${EdgeName.value(name)}, as grit names the edge serving a repository"
   }
 }
 
@@ -414,7 +441,8 @@ enum DeploymentRefusal {
   * `identities`, the attester it trusts for each realm and the email domains it claims (ADR
   * 0032); `files`, how long its file area keeps a file and how much (ADR 0045); `formats`,
   * what every file kept there is read with, by an edge that puts it and by `file_read` alike
-  * (ADR 0044). The database and the model's keys come from the environment
+  * (ADR 0044); `repositories`, the clones its coding subagents work in, and `hosted`, those
+  * [[grit.kit.run.Kit.serve]] hosts. The database and the model's keys come from the environment
   * ([[grit.kit.environment.Secrets]]), and each edge's credentials from its own
   * [[ServedEdge.needs]].
   */
@@ -444,7 +472,9 @@ final case class Deployment private (
     allJobs: Jobs,
     files: FileArea.Bounds,
     formats: Formats,
-    subagents: Subagents
+    subagents: Subagents,
+    repositories: Vector[RepositoryClone],
+    hosted: Vector[Deployment.Hosted]
 ) {
 
   /** The application version this deployment's engines open under: grit's epoch and its
@@ -494,7 +524,8 @@ object Deployment {
       version: DeploymentVersion = DeploymentVersion.First,
       files: FileArea.Bounds = FileArea.Bounds.Default,
       formats: Formats,
-      subagents: Subagents = Subagents.empty
+      subagents: Subagents = Subagents.empty,
+      repositories: Vector[RepositoryClone] = Vector.empty
   ): Either[DeploymentRefusal, Deployment] = {
     val names = edges.map(_.name)
     val unanswered = edges.filter(_.asks == ServedEdge.Asks.Unanswered).map(_.name)
@@ -676,6 +707,7 @@ object Deployment {
       _ <- linked(knowledge, worksIn, reaches)
       assembled = window(assembly)
       _ <- recipe.widens(assembled).map(DeploymentRefusal.Widens(_, assembled)).toLeft(())
+      hosted <- hosting(edges, subagents, repositories)
     } yield Deployment(
       edges,
       worksIn,
@@ -702,8 +734,64 @@ object Deployment {
       all,
       files,
       formats,
-      subagents
+      subagents,
+      repositories,
+      hosted
     )
+  }
+
+  /** A repository a coding subagent works in, its clone, and the allowlist its tools run under:
+    * served at the repository's place by [[grit.kit.run.Kit.serve]], pushing nothing.
+    */
+  final case class Hosted private[deployment] (cloned: RepositoryClone, allowlist: Allowlist)
+      extends caps.Pure
+
+  /** The name of the edge the kit serves `repository` through. */
+  def edgeOf(repository: Repository): EdgeName = EdgeName(s"repository:${repository.name}")
+
+  /** What `repositories` hosts for `subagents`' coding types, by repository name; refused when an
+    * edge takes a hosted edge's name, a repository is declared twice, a coding type's has no clone,
+    * or two types at one differ in allowlist.
+    */
+  private def hosting(
+      edges: Vector[ServedEdge],
+      subagents: Subagents,
+      repositories: Vector[RepositoryClone]
+  ): Either[DeploymentRefusal, Vector[Hosted]] = {
+    val coding = subagents.byType.toVector
+      .sortBy((t, _) => AgentType.value(t))
+      .collect { case (t, s) =>
+        s.tools match {
+          case Subagent.Tools.Coding(_, repository, allowlist) => Some((t, repository, allowlist))
+          case Subagent.Tools.Services(_) => None
+        }
+      }
+      .flatten
+    for {
+      _ <- edges
+        .find(e => EdgeName.value(e.name).startsWith("repository:"))
+        .map(e => DeploymentRefusal.EdgeReserved(e.name))
+        .toLeft(())
+      _ <- firstRepeat(repositories.map(_.repository))
+        .map(DeploymentRefusal.RepositoryRepeated(_))
+        .toLeft(())
+      _ <- coding
+        .collectFirst {
+          case (t, r, _) if !repositories.exists(_.repository == r) =>
+            DeploymentRefusal.CloneUndeclared(t, r)
+        }
+        .toLeft(())
+      byRepository = coding.groupBy(_._2)
+      _ <- byRepository.toVector
+        .sortBy((r, _) => r.name)
+        .collectFirst {
+          case (r, at) if at.map(_._3).distinct.size > 1 =>
+            DeploymentRefusal.AllowlistsDiffer(r, at.map(_._1))
+        }
+        .toLeft(())
+    } yield repositories
+      .sortBy(_.repository.name)
+      .flatMap(c => byRepository.get(c.repository).flatMap(_.headOption).map(h => Hosted(c, h._3)))
   }
 
   /** Every schedule declared, each with its declarer: each of `plugins`', then `own`. */
