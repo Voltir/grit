@@ -2,7 +2,6 @@ package grit.eval.harness.sent
 
 import java.time.ZoneOffset
 
-import grit.assembly.estimate.CharEstimate
 import grit.core.classify.{Answer, Request}
 import grit.core.context.{SectionTag, Shown}
 import grit.core.id.{
@@ -229,7 +228,7 @@ object SentMarkdown {
     // whether the row recorded that estimate.
     def spentOn(entry: EntryId, request: ModelRequest): String = {
       val row = sent.row(entry)
-      val rebuilt = Tokens.value(CharEstimate.request(request))
+      val rebuilt = Tokens.value(sent.estimatorOf(entry).request(request))
       val share = sent.share(entry, request).fold("")(s => s", $s of its input")
       val estimate = (row, sent.agrees(entry, request)) match {
         case (Some(_), Some(true)) => s"estimate $rebuilt$share, as its row recorded"

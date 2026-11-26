@@ -192,6 +192,23 @@ object SentMarkdownTests extends TestSuite {
     }
 
     test(
+      "a call made under a pin with a density is rebuilt at it, its estimate the one its row recorded"
+    ) {
+      val last = request(asked, calling, result("alpha"))
+      val dense = grit.core.model.Density
+        .of(3.08)
+        .map(d => grit.core.model.Settings.of(None).copy(density = Some(d)))
+      val lines = dense.map(s => shown(sent(last, settings = s), Cut.Whole).linesIterator.toVector)
+      val answered = dense.map(s => Tokens.value(CharEstimate.withSettings(s).request(last)))
+      lines.map(_.find(_.startsWith("- **Call 1**")).map(_.dropWhile(_ != ';'))) ==>
+        answered.map(a =>
+          Some(
+            s"; estimate $a, ${(BigDecimal(a) / 10).setScale(2)} of its input, as its row recorded."
+          )
+        )
+    }
+
+    test(
       "an answering call whose two requests are one, as when the turn's limits were recorded, is picked as on, and two that differ are told apart"
     ) {
       val on = request(asked, calling, result("alpha"))
@@ -199,7 +216,8 @@ object SentMarkdownTests extends TestSuite {
       def picked(last: ModelRequest, recorded: ModelRequest) =
         Picked.of(
           TurnRecord.Answered(1, turn.replyId, on, last),
-          Some(CharEstimate.request(recorded))
+          Some(CharEstimate.request(recorded)),
+          CharEstimate
         )
       (picked(on, on), picked(told, on), picked(told, told)) ==>
         (Picked.On, Picked.On, Picked.Last)

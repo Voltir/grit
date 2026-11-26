@@ -590,7 +590,9 @@ object Turn {
       answered,
       if (strict) TurnRecord.Schemas.Recorded else TurnRecord.Schemas.Sent,
       summary,
-      window
+      window,
+      settings,
+      routed.flatMap(r => Picked.of(r).summaryAsk.toOption).map(_.pin.settings)
     )
   }
 

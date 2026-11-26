@@ -9,7 +9,7 @@ import grit.core.message.{Message, Tokens}
 import grit.core.model.Pricing
 import grit.core.place.Place
 import grit.core.prompt.Fragment
-import grit.core.provider.ModelRequest
+import grit.core.provider.{ModelRequest, TokenEstimator}
 import grit.core.speech.Outcome
 import grit.core.stitch.Placed
 import grit.core.store.{Entry, Payload, StoreError, Tx}
@@ -74,12 +74,34 @@ final case class TurnSent(
       )
 
   /** Whether `request`, sent by the call whose reply is kept as `reply`, estimates
-    * ([[CharEstimate]]) as that call's ledger row recorded; `None` when no row is kept.
+    * ([[estimatorOf]]) as that call's ledger row recorded; `None` when no row is kept.
     */
   def agrees(reply: EntryId, request: ModelRequest): Option[Boolean] =
-    row(reply).map(_.estimated == CharEstimate.request(request))
+    row(reply).map(_.estimated == estimatorOf(reply).request(request))
 
-  /** `request`'s estimate ([[CharEstimate]]) over the input the provider counted for the call
+  /** What the call whose reply or summary is kept as `entry` was estimated by: [[CharEstimate]]
+    * at the settings of its pin, the summary's for the summary asked alone and the turn's for
+    * every other call (a summary asked on the turn's prefix is on its pair).
+    */
+  def estimatorOf(entry: EntryId): TokenEstimator = {
+    val alone = entry == TurnSummary.id(turn) && !summaryOnPrefix
+    CharEstimate.withSettings(
+      if (alone) calls.summarySettings.getOrElse(calls.settings) else calls.settings
+    )
+  }
+
+  // Whether its summary was asked on the answering call's prefix.
+  private def summaryOnPrefix: Boolean =
+    calls.summary.exists(s =>
+      calls.answered.exists(a =>
+        Vector(a.on, a.last).exists(c =>
+          s.system == c.system && s.tools == c.tools && s.use == c.use &&
+            s.messages.startsWith(c.messages)
+        )
+      )
+    )
+
+  /** `request`'s estimate ([[estimatorOf]]) over the input the provider counted for the call
     * whose reply is kept as `reply`, to two places: above 1 the estimate errs high. `None`
     * when no row is kept or its input is 0.
     */
@@ -88,40 +110,38 @@ final case class TurnSent(
       .map(r => Tokens.value(r.usage.input))
       .filter(_ > 0)
       .map(in =>
-        (BigDecimal(Tokens.value(CharEstimate.request(request))) / in)
+        (BigDecimal(Tokens.value(estimatorOf(reply).request(request))) / in)
           .setScale(2, BigDecimal.RoundingMode.HALF_UP)
       )
 
   /** Each call of its reply, as [[requests]] gives them, then its summary's when it is kept,
-    * measured against its rows under [[CharEstimate]] ([[MeasuredCall.of]]): a summary asked on
+    * measured against its rows under [[estimatorOf]] ([[MeasuredCall.of]]): a summary asked on
     * the answering call's prefix as the next of those calls, one asked alone apart, no window
     * before it.
     */
   def measured: Vector[MeasuredCall] = {
     val looped = requests.map((_, reply, request) => reply -> request)
     val id = TurnSummary.id(turn)
-    val onPrefix = calls.summary.filter(s =>
-      calls.answered.exists(a =>
-        Vector(a.on, a.last).exists(c =>
-          s.system == c.system && s.tools == c.tools && s.use == c.use &&
-            s.messages.startsWith(c.messages)
-        )
-      )
-    )
-    val alone = calls.summary.filter(_ => onPrefix.isEmpty)
-    MeasuredCall.of(looped ++ onPrefix.map(id -> _), row, calls.window, CharEstimate) ++
-      MeasuredCall.of(alone.map(id -> _).toVector, row, Vector.empty, CharEstimate)
+    val onPrefix = calls.summary.filter(_ => summaryOnPrefix)
+    val alone = calls.summary.filter(_ => !summaryOnPrefix)
+    MeasuredCall.of(
+      looped ++ onPrefix.map(id -> _),
+      row,
+      calls.window,
+      estimatorOf(turn.replyId)
+    ) ++
+      MeasuredCall.of(alone.map(id -> _).toVector, row, Vector.empty, estimatorOf(id))
   }
 
   /** The tool results and tools of the request of its last call, measured against what the
-    * model wrote after each and its answer ([[Referenced]]) under [[CharEstimate]]; `None`
+    * model wrote after each and its answer ([[Referenced]]) under its [[estimatorOf]]; `None`
     * when it made no call.
     */
   def referenced: Option[Referenced.Read] =
     requests.lastOption.map((_, _, request) =>
       Referenced.Read(
-        Referenced.tools(request, answer.map(_.message), CharEstimate),
-        Referenced.results(request, answer.map(_.message), CharEstimate)
+        Referenced.tools(request, answer.map(_.message), estimatorOf(turn.replyId)),
+        Referenced.results(request, answer.map(_.message), estimatorOf(turn.replyId))
       )
     )
 }
@@ -130,7 +150,8 @@ final case class TurnSent(
 final case class Answer(message: Message.Assistant, draft: Boolean)
 
 /** Which request the answering call was sent, by the estimate its ledger row recorded
-  * ([[CharEstimate]], the estimator the kit wires): `On` or `Last` when exactly that one's
+  * ([[CharEstimate]], the estimator the kit wires, at the pin's settings): `On` or `Last` when
+  * exactly that one's
   * estimate agrees, `On` when the two requests are one and its estimate agrees (a turn whose
   * limits were recorded), `Unsure` with both and the recorded estimate otherwise, or when the
   * row is gone. Under [[TurnRecord.Schemas.Recorded]] neither estimate is that of what was
@@ -144,10 +165,14 @@ enum Picked {
 
 object Picked {
 
-  /** Which of `answered`'s requests estimates as `recorded`. */
-  def of(answered: TurnRecord.Answered, recorded: Option[Tokens]): Picked = {
-    val on = CharEstimate.request(answered.on)
-    val last = CharEstimate.request(answered.last)
+  /** Which of `answered`'s requests estimates by `estimator` as `recorded`. */
+  def of(
+      answered: TurnRecord.Answered,
+      recorded: Option[Tokens],
+      estimator: TokenEstimator
+  ): Picked = {
+    val on = estimator.request(answered.on)
+    val last = estimator.request(answered.last)
     (recorded.contains(on), recorded.contains(last)) match {
       case (true, false) => On
       case (true, true) if answered.on == answered.last => On
@@ -253,7 +278,11 @@ object TurnSent {
         set.tools,
         calls,
         calls.answered.map(a =>
-          Picked.of(a, spent.collectFirst { case (e, s) if e == a.reply => s.estimated })
+          Picked.of(
+            a,
+            spent.collectFirst { case (e, s) if e == a.reply => s.estimated },
+            CharEstimate.withSettings(calls.settings)
+          )
         ),
         spent,
         answer,

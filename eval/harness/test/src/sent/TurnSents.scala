@@ -3,6 +3,7 @@ package grit.eval.harness.sent
 import grit.assembly.estimate.CharEstimate
 import grit.core.id.{ConversationId, EntryId, ToolCallId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.model.Settings
 import grit.core.place.Place
 import grit.core.provider.ModelRequest
 import grit.core.tool.ToolSetId
@@ -33,17 +34,20 @@ object TurnSents {
   def row(entry: EntryId, estimated: Tokens) =
     entry -> Spent(None, "m", Usage(Tokens(10), Tokens(1), Tokens.Zero, None), estimated)
 
-  /** A turn of one tool round, then an answer sent `last`; its rows recorded `first` and
-    * `answered` as their estimates; run under `epoch`; its summary rebuilt as `summary`, its
-    * row recording that request's estimate.
+  /** A turn of one tool round, then an answer sent `last`, its calls and summary made under
+    * `settings`; its rows recorded `first` and `answered` as their estimates under them; run
+    * under `epoch`; its summary rebuilt as `summary`, its row recording that request's
+    * estimate.
     */
   def sent(
       last: ModelRequest,
       first: ModelRequest = request(asked),
       recorded: Option[Tokens] = None,
       epoch: String = Turn.Epoch,
-      summary: Option[ModelRequest] = None
+      summary: Option[ModelRequest] = None,
+      settings: Settings = Settings.of(None)
   ): TurnSent = {
+    val estimator = CharEstimate.withSettings(settings)
     val looped = TurnRecord.Call(0, EntryId("call:c1:0:0"), first)
     val told = last.copy(messages = last.messages :+ Message.User(TurnLoop.LastCall))
     val answered = TurnRecord.Answered(1, turn.replyId, last, told)
@@ -62,15 +66,17 @@ object TurnSents {
         Some(answered),
         TurnRecord.Schemas.Sent,
         summary,
-        Vector.empty
+        Vector.empty,
+        settings,
+        Some(settings)
       ),
-      Some(Picked.of(answered, recorded.orElse(Some(CharEstimate.request(last))))),
+      Some(Picked.of(answered, recorded.orElse(Some(estimator.request(last))), estimator)),
       Vector(
-        row(EntryId("call:c1:0:0"), CharEstimate.request(first)),
-        row(turn.replyId, recorded.getOrElse(CharEstimate.request(last)))
+        row(EntryId("call:c1:0:0"), estimator.request(first)),
+        row(turn.replyId, recorded.getOrElse(estimator.request(last)))
       ) ++ summary.map(s =>
         TurnSummary.id(turn) ->
-          Spent(None, "m", Usage(Tokens(90), Tokens(2), Tokens(80), None), CharEstimate.request(s))
+          Spent(None, "m", Usage(Tokens(90), Tokens(2), Tokens(80), None), estimator.request(s))
       ),
       Some(Answer(answer, draft = false)),
       None,

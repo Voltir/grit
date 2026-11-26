@@ -8,7 +8,7 @@ import grit.core.edge.RequestState
 import grit.core.files.PieceSearch
 import grit.core.id.{DocumentVersionId, EntryId, TurnRef, WorkflowId}
 import grit.core.message.Message
-import grit.core.model.{Pinned, TurnProfileId}
+import grit.core.model.{Pinned, Settings, TurnProfileId}
 import grit.core.provider.ModelRequest
 import grit.core.speech.Outcome
 import grit.core.store.{
@@ -167,13 +167,18 @@ object TurnRecord {
     * pin was cleared (`summary`); and `window`, one per message its window showed before its
     * own entries, in order. Every looped and answered request begins with exactly those
     * messages, as the summary's does when asked on the turn's prefix; one asked alone does not.
+    * `settings` are those the turn's pin made its calls under, `summarySettings` those of the
+    * summary's pin once it was cleared: each call's ledger row estimated its request under them
+    * ([[grit.core.provider.TokenEstimator.withSettings]]).
     */
   final case class Calls(
       looped: Vector[Call],
       answered: Option[Answered],
       schemas: Schemas,
       summary: Option[ModelRequest],
-      window: Vector[WindowMessage]
+      window: Vector[WindowMessage],
+      settings: Settings,
+      summarySettings: Option[Settings]
   )
 
   /** What a message a turn's window showed before its own entries is: a part's brief, or
