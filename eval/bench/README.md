@@ -35,7 +35,10 @@ scored yet.
 
 A task's diffs are compared by a blind review: `scripts/eval blind` packs them, each lettered in an
 order its arguments seed and stripped to its file sections, beside the task's brief, with the key
-from letter to label kept under `hidden/`, which the reviewer is never shown.
+from letter to label kept under `hidden/`, which the reviewer is never shown. The reviewer answers
+`rubric.md` here for each diff, then ranks them. It is a draft until its sha256 is recorded in this
+paragraph; once recorded, it is frozen, and a changed rubric is a new one, its reviews not
+compared with the old one's.
 
 A trial's report, in either arm, says what its tool calls did (`Tried.work`, from the transcript,
 not kept in its row): its tool calls a model call, its edits (`edit`; Claude Code's `Edit` and
