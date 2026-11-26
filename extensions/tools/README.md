@@ -17,6 +17,8 @@ One package, `grit.tools`:
   repository cloned into it, its `AGENTS.md` included, is believed at Member too: the gate is
   the person approving the `run` that clones it, or, in an allowlisted set, the list that
   permits a command able to clone it.
+- `RunAnswer` — how an allowlisted `run`, `tail` and `stop` answer with a run's output: whole
+  when it is short, else as its size and file, its lines that look like failures and its tail.
 - `Tuning` — `propose_model_setting`: a measured setting of a model, kept once a person
   approves it.
 - `Probes` — `probe_pair`: a battery of calls measuring a (model, upstream) pair.

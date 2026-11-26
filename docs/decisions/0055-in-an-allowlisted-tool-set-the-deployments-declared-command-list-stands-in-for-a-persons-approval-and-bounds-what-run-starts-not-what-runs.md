@@ -1,6 +1,6 @@
 # 0055. In an allowlisted tool set the deployment's declared command list stands in for a person's approval, and bounds what `run` starts, not what runs
 
-Status: accepted (2026-11-02); revised (2026-11-06)
+Status: accepted (2026-11-02); revised (2026-11-06); revised (2026-11-25)
 
 Context: ADR 0017 has a person approve each `write`, `edit` and `run` before it runs, and a
 deployment with no one to answer (a run with arguments, `grit serve`) offers only the tools that
@@ -57,7 +57,11 @@ Decision:
   any conversation working there reaches them, as it reaches the checkout. The chat's end kills
   what is going; a signal leaves an orphan to its timeout or to the next start's sweep, which
   kills a run whose process left it. Its output is a file under `.grit/runs` in the checkout,
-  killed past 16 MB, at most four going and eight ended kept: never a table.
+  killed past 16 MB, at most four going and eight ended kept: never a table. An answer of `run`,
+  `tail` or `stop` stays in the turn's window and is sent again with every later call, so an
+  output past `RunAnswer.WholeBytes` is answered not whole but as its size and that file, the
+  lines above its end that look like failures, numbered as `read` numbers the file, and its
+  tail (`RunAnswer`); the rest is a `read` or a `search` away.
 
 Consequences:
 
