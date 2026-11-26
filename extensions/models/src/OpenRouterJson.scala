@@ -2,7 +2,7 @@ package grit.models
 
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.model.{Effort, ReasoningReplay, Upstream}
+import grit.core.model.{Effort, ReasoningReplay, Upstream, WireQuirk}
 import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
 
 /** OpenRouter's chat-completions wire format (OpenAI's shape), both ways. Pure. Checked
@@ -18,7 +18,7 @@ object OpenRouterJson {
     * without has neither key. Each tool is sent `strict` as its [[ToolSchema]] says. `effort`,
     * when set, asks the model to reason that hard; an assistant message's reasoning goes back
     * as `replay` says, when it is in OpenRouter's form (`reasoning_details`), and never
-    * otherwise.
+    * otherwise. `quirks` add what each [[WireQuirk]] says.
     *
     * For a model under [[AnthropicProvider.Vendor]], every text that is not empty goes as
     * text parts, an empty system prompt is left out, and its breakpoints are those
@@ -30,7 +30,8 @@ object OpenRouterJson {
       upstream: Option[Upstream],
       request: ModelRequest,
       effort: Option[Effort] = None,
-      replay: ReasoningReplay = ReasoningReplay.Details
+      replay: ReasoningReplay = ReasoningReplay.Details,
+      quirks: Set[WireQuirk] = Set.empty
   ): ujson.Value = {
     val cached = model.startsWith(AnthropicProvider.Vendor)
     val tools = request.tools.map(tool)
@@ -49,6 +50,12 @@ object OpenRouterJson {
       "messages" -> ujson.Arr.from(system.toVector ++ messages)
     )
     effort.foreach(e => body("reasoning") = ujson.Obj("effort" -> e.word))
+    if (quirks.contains(WireQuirk.ClearThinking)) {
+      body("thinking") = ujson.Obj(
+        "type" -> "enabled",
+        "clear_thinking" -> (replay == ReasoningReplay.Dropped)
+      )
+    }
     upstream.foreach { u =>
       body("provider") =
         ujson.Obj("order" -> ujson.Arr(Upstream.value(u)), "allow_fallbacks" -> false)

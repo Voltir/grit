@@ -2,7 +2,7 @@ package grit.models
 
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.model.{Effort, ReasoningReplay, Upstream}
+import grit.core.model.{Effort, ReasoningReplay, Upstream, WireQuirk}
 import grit.core.provider.{ModelRequest, ProviderError, Repeats, ToolSchema, ToolUse}
 
 import utest.*
@@ -204,6 +204,31 @@ object OpenRouterJsonTests extends TestSuite {
       sent(ReasoningReplay.Details).map(_.get("reasoning_details")) ==> Right(Some(replay))
       sent(ReasoningReplay.Dropped).map(_.get("reasoning_details")) ==> Right(None)
       sent(ReasoningReplay.Dropped).map(_.get("tool_calls").isDefined) ==> Right(true)
+    }
+
+    test(
+      "request: a pair that clears thinking keeps what its replay sends and clears it only when dropped; another sends no thinking"
+    ) {
+      def thinking(r: ReasoningReplay, quirks: Set[WireQuirk]) = OpenRouterJson
+        .request(
+          "m",
+          1,
+          None,
+          ModelRequest("s", Vector(Message.User("hi"))),
+          replay = r,
+          quirks = quirks
+        )
+        .obj
+        .get("thinking")
+      def clear(cleared: Boolean) =
+        Some(ujson.Obj("type" -> "enabled", "clear_thinking" -> cleared))
+      val clears = Set(WireQuirk.ClearThinking)
+      (
+        thinking(ReasoningReplay.Details, clears),
+        thinking(ReasoningReplay.Latest, clears),
+        thinking(ReasoningReplay.Dropped, clears),
+        thinking(ReasoningReplay.Latest, Set.empty)
+      ) ==> (clear(false), clear(false), clear(true), None)
     }
 
     test(

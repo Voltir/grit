@@ -437,6 +437,42 @@ object CatalogTests extends TestSuite {
       profile.map(_.turn.first.settings.density) ==> Right(None)
     }
 
+    test("stored form: a turn profile stored before quirks keeps its id and has none") {
+      val pinned =
+        """{"catalog":"3f0c2a91d7e4b605",""" +
+          """"assignment":{"model":"z-ai/glm-5.3-flash","maxTokens":8192},""" +
+          """"settings":{"strict":"ignored","replay":"latest","names":"harmony-cut","repairs":["quoted-list"],""" +
+          """"afterResult":"user-message","guidance":"schema-only","profiled":true,"contextLength":1048576,"effectiveContext":256000,"density":3.08}}"""
+      val profileJson = s"""{"turn":$pinned,"summary":$pinned,"query":$pinned}"""
+      val profile = CatalogJson.readTurn(ujson.read(profileJson))
+      profile.map(p => TurnProfileId.value(p.id)) ==> Right("bb8daab265675a80")
+      profile.map(p => CatalogJson.writeTurn(p).render()) ==> Right(profileJson)
+      profile.map(_.turn.first.settings.quirks) ==> Right(Set.empty)
+    }
+
+    test(
+      "stored form: a pair's quirks read back, on its profile and on the pin it settles; none known is a known set"
+    ) {
+      val both = Set(WireQuirk.ClearThinking, WireQuirk.EmptyReasoningContent)
+      val quirked = flashProfile.copy(quirks = Known.Of(both, listed))
+      val none = flashProfile.copy(quirks = Known.Of(Set.empty, listed))
+      val c = Catalog.of(policy.copy(turn = Ladder.one(queryAssigned)), Vector(ossProfile, quirked))
+      (
+        CatalogJson
+          .writeProfile(quirked)
+          .render()
+          .contains(
+            """"quirks":{"value":["clear-thinking","empty-reasoning-content"],"source":{"kind":"advertised","on":"2026-09-25"}}"""
+          ),
+        CatalogJson.readProfile(ujson.read(CatalogJson.writeProfile(none).render())),
+        CatalogJson.read(ujson.read(CatalogJson.write(c).render())),
+        c.pin.turn.first.settings.quirks,
+        CatalogJson
+          .readTurn(ujson.read(CatalogJson.writeTurn(c.pin).render()))
+          .map(_.turn.first.settings.quirks)
+      ) ==> (true, Right(none), Right(c), both, Right(both))
+    }
+
     test("stored form: a pair's density reads back, on its profile and on the pin it settles") {
       val dense = Density.of(3.08).map(d => flashProfile.copy(density = Known.Of(d, probe)))
       val measured = dense.map(p =>

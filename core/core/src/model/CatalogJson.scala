@@ -160,6 +160,14 @@ object CatalogJson {
     }
   )
 
+  private val QuirkWords: Words[WireQuirk] = Words(
+    WireQuirk.values.toVector,
+    {
+      case WireQuirk.ClearThinking => "clear-thinking"
+      case WireQuirk.EmptyReasoningContent => "empty-reasoning-content"
+    }
+  )
+
   /** `repair` as it is written in stored forms: `quoted-number`, `quoted-list`,
     * `carried-parameter`.
     */
@@ -238,6 +246,9 @@ object CatalogJson {
   private def repairs(set: Set[ArgRepair]): ujson.Value =
     ujson.Arr.from(set.toVector.map(RepairWords.of).sorted.map(ujson.Str(_)))
 
+  private def quirks(set: Set[WireQuirk]): ujson.Value =
+    ujson.Arr.from(set.toVector.map(QuirkWords.of).sorted.map(ujson.Str(_)))
+
   private def profile(p: Profile): ujson.Value = {
     val o = ref(p.ref, ujson.Obj())
     def put[A](key: String, k: Known[A], word: A => ujson.Value): Unit = k match {
@@ -254,6 +265,7 @@ object CatalogJson {
     put("effectiveContext", p.effectiveContext, v => ujson.Num(Tokens.value(v).toDouble))
     put("pricing", p.pricing, pricing)
     put("density", p.density, d => ujson.Num(d.perToken))
+    put("quirks", p.quirks, quirks)
     o
   }
 
@@ -309,6 +321,7 @@ object CatalogJson {
     s.effectiveContext.foreach(l => o("settings")("effectiveContext") = Tokens.value(l).toDouble)
     s.pricing.foreach(p => o("settings")("pricing") = pricing(p))
     s.density.foreach(d => o("settings")("density") = d.perToken)
+    if (s.quirks.nonEmpty) o("settings")("quirks") = quirks(s.quirks)
     o
   }
 
@@ -400,10 +413,16 @@ object CatalogJson {
     } yield Policy(turn, summary, query, heard, dream)
 
   private def readRepairs(v: ujson.Value, at: String): Either[String, Set[ArgRepair]] =
+    readSet(v, at, RepairWords)
+
+  private def readQuirks(v: ujson.Value, at: String): Either[String, Set[WireQuirk]] =
+    readSet(v, at, QuirkWords)
+
+  private def readSet[A](v: ujson.Value, at: String, words: Words[A]): Either[String, Set[A]] =
     v.arrOpt
       .toRight(s"$at is not a list")
       .flatMap(items =>
-        sequence(items.toVector.zipWithIndex.map((w, i) => RepairWords.read(w, s"$at[$i]")))
+        sequence(items.toVector.zipWithIndex.map((w, i) => words.read(w, s"$at[$i]")))
           .map(_.toSet)
       )
 
@@ -454,6 +473,7 @@ object CatalogJson {
       effective <- readKnown(o, "effectiveContext", at)(readLength)
       priced <- readKnown(o, "pricing", at)(readPricing)
       dense <- readKnown(o, "density", at)(readDensity)
+      quirked <- readKnown(o, "quirks", at)(readQuirks)
     } yield Profile(
       r,
       strict,
@@ -465,7 +485,8 @@ object CatalogJson {
       length,
       effective,
       priced,
-      dense
+      dense,
+      quirked
     )
 
   /** A pin [[writePinned]] wrote, or the first thing wrong with it, named by its path from
@@ -492,6 +513,7 @@ object CatalogJson {
       effective <- optional(so, "effectiveContext", sat)(readLength)
       priced <- optional(so, "pricing", sat)(readPricing)
       dense <- optional(so, "density", sat)(readDensity)
+      quirked <- optional(so, "quirks", sat)(readQuirks)
     } yield Pinned(
       CatalogVersion(version),
       grade,
@@ -507,7 +529,8 @@ object CatalogJson {
         length,
         effective,
         priced,
-        dense
+        dense,
+        quirked.getOrElse(Set.empty)
       )
     )
 

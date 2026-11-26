@@ -11,7 +11,9 @@ upstream names, with its key from `Keys`) and `Classifier`s
 each choice and score with the confidence Jev reported; and `StubClassifier`, which answers
 from markers in the message for tests and the gate, as `StubClassifier.answers` says: a
 score's level by `~level:N`, 0 the first); and the `Seed`, the catalog checked in at `resources/catalog.json` (`grit.core.model`'s policy and
-profiles), which `OpenRouterConfig.policy` overrides per run from the environment. A
+profiles), which `OpenRouterConfig.policy` overrides per run from the environment. Its
+`quirks` are each upstream's own documented wire (Z.AI's thinking guide, pi's compat table);
+whether OpenRouter forwards GLM's `thinking` object to Z.AI is not yet seen in a reply. A
 quarantine module (STYLE rule 8) once it holds an HTTP client, and subject to the classified
 boundary: nothing leaves the machine unless its destination is approved.
 

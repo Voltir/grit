@@ -16,7 +16,8 @@ import grit.core.model.{
   ReasoningReplay,
   Rung,
   Source,
-  Upstream
+  Upstream,
+  WireQuirk
 }
 
 import utest.*
@@ -157,16 +158,29 @@ object OpenRouterConfigTests extends TestSuite {
       )
     }
 
-    test("of: a role's model, budget, upstream and effort, and its pair's reasoning replay") {
+    test(
+      "of: a role's model, budget, upstream and effort, and its pair's reasoning replay and quirks"
+    ) {
       val nick = Source.Declared("nick", LocalDate.of(2026, 9, 25))
-      val dropped = Profile(seedTurn.ref, replay = Known.Of(ReasoningReplay.Dropped, nick))
+      val dropped = Profile(
+        seedTurn.ref,
+        replay = Known.Of(ReasoningReplay.Dropped, nick),
+        quirks = Known.Of(Set(WireQuirk.ClearThinking), nick)
+      )
       val pin = Catalog.of(seedLike, Vector(dropped)).pin
       val t = OpenRouterConfig.of(pin.turn.first)
-      (t.model, t.maxTokens, t.upstream.map(Upstream.value), t.effort, t.replay) ==>
-        ("big/one", 4096, Some("cerebras/fp16"), Some(Effort.Low), ReasoningReplay.Dropped)
+      (t.model, t.maxTokens, t.upstream.map(Upstream.value), t.effort, t.replay, t.quirks) ==>
+        (
+          "big/one",
+          4096,
+          Some("cerebras/fp16"),
+          Some(Effort.Low),
+          ReasoningReplay.Dropped,
+          Set(WireQuirk.ClearThinking)
+        )
       val s = OpenRouterConfig.of(pin.summary.first)
-      (s.model, s.maxTokens, s.upstream.map(Upstream.value), s.effort, s.replay) ==>
-        ("small/one", 1024, Some("fireworks"), None, ReasoningReplay.Details)
+      (s.model, s.maxTokens, s.upstream.map(Upstream.value), s.effort, s.replay, s.quirks) ==>
+        ("small/one", 1024, Some("fireworks"), None, ReasoningReplay.Details, Set.empty)
     }
 
     test(

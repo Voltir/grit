@@ -68,6 +68,21 @@ enum ArgRepair {
   case CarriedParameter
 }
 
+/** What a pair's upstream needs in a request beyond its gateway's shape. */
+enum WireQuirk {
+
+  /** Z.AI's `thinking: {type: "enabled", clear_thinking: …}` is sent, `clear_thinking` false
+    * unless the replay is [[ReasoningReplay.Dropped]]: the upstream keeps the reasoning the
+    * replay sends, and clears it when none is.
+    */
+  case ClearThinking
+
+  /** An assistant reply sent with tool calls and no `reasoning_details` carries
+    * `"reasoning_content": ""`, which DeepSeek asks of every replayed call.
+    */
+  case EmptyReasoningContent
+}
+
 /** A repair made to a tool call's name before it is looked up. */
 enum NameRepair {
 
@@ -116,11 +131,13 @@ final case class Profile(
     contextLength: Known[Tokens] = Known.Unmeasured,
     effectiveContext: Known[Tokens] = Known.Unmeasured,
     pricing: Known[Pricing] = Known.Unmeasured,
-    density: Known[Density] = Known.Unmeasured
+    density: Known[Density] = Known.Unmeasured,
+    quirks: Known[Set[WireQuirk]] = Known.Unmeasured
 ) {
 
   /** Each of `other`'s settings over this one's where its source ranks higher
-    * ([[Known.orOver]]); `other` names the same pair.
+    * ([[Known.orOver]]); `other` names the same pair. A set (`repairs`, `quirks`) is replaced
+    * whole, never merged.
     */
   def overlaid(other: Profile): Profile =
     Profile(
@@ -134,7 +151,8 @@ final case class Profile(
       contextLength.orOver(other.contextLength),
       effectiveContext.orOver(other.effectiveContext),
       pricing.orOver(other.pricing),
-      density.orOver(other.density)
+      density.orOver(other.density),
+      quirks.orOver(other.quirks)
     )
 }
 
@@ -144,7 +162,7 @@ final case class Profile(
   * `pricing` are `None` when no profile gives them: a call is then unpriced (`Cost.AtLeast`),
   * and a turn is bounded by neither. `density` is `None` when no profile gives it: a call's
   * request is then costed by the deployment's estimator unchanged
-  * (`TokenEstimator.withSettings`).
+  * (`TokenEstimator.withSettings`). `quirks` are empty when no profile gives them.
   */
 final case class Settings(
     strict: StrictSchemas,
@@ -157,7 +175,8 @@ final case class Settings(
     contextLength: Option[Tokens] = None,
     effectiveContext: Option[Tokens] = None,
     pricing: Option[Pricing] = None,
-    density: Option[Density] = None
+    density: Option[Density] = None,
+    quirks: Set[WireQuirk] = Set.empty
 )
 
 object Settings {
@@ -180,7 +199,8 @@ object Settings {
       known(_.contextLength).toOption,
       known(_.effectiveContext).toOption,
       known(_.pricing).toOption,
-      known(_.density).toOption
+      known(_.density).toOption,
+      known(_.quirks).getOr(Set.empty)
     )
   }
 }
