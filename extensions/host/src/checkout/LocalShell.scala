@@ -58,6 +58,11 @@ object LocalShell {
     "COURSIER_CACHE"
   )
 
+  /** What grit's own git needs to reach a remote over SSH, the agent's socket: passed to the
+    * processes a repository's working copies run git in, never to a command a model runs.
+    */
+  val Agent: Set[String] = Set("SSH_AUTH_SOCK")
+
   /** The variables of `environment` a command sees: those [[Allowed]] names that are not named
     * like a secret ([[Named.variable]]).
     */

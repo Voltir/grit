@@ -13,16 +13,21 @@ import grit.core.host.{Argv, Clipped, HostError, Kept, Processes, Ran, RelPath, 
 import grit.host.checkout.Checkout.attempt
 
 /** [[Processes]] under `root`, passing only the variables of `environment` that
-  * [[LocalShell.passed]] keeps; what a program shows, its output and its errors, is cleared by
-  * `redaction`. [[run]]'s output goes to a temporary file, not a pipe, so a program that writes
-  * more than a pipe holds never blocks on it.
+  * [[LocalShell.passed]] keeps, and those `also` names; what a program shows, its output and its
+  * errors, is cleared by `redaction`. [[run]]'s output goes to a temporary file, not a pipe, so a
+  * program that writes more than a pipe holds never blocks on it.
   */
-final class LocalProcesses(root: Path, environment: Map[String, String], redaction: Redaction)
-    extends Processes {
+final class LocalProcesses(
+    root: Path,
+    environment: Map[String, String],
+    redaction: Redaction,
+    also: Set[String] = Set.empty
+) extends Processes {
 
   private val checkout = new Checkout(root)
 
-  private val passed = LocalShell.passed(environment)
+  private val passed =
+    LocalShell.passed(environment) ++ environment.filter((k, _) => also.contains(k))
 
   def run(argv: Argv, dir: RelPath, timeout: FiniteDuration): Either[HostError, Ran] =
     ran(argv, dir, timeout, _ => None)

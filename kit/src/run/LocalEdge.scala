@@ -14,7 +14,7 @@ import grit.core.prompt.Fragment
 import grit.core.store.StoreError
 import grit.core.tool.{SetRefusal, ToolSet}
 import grit.edge.desk.{PlaceFragments, Server}
-import grit.host.checkout.{LocalInstructions, LocalProcesses, Redaction}
+import grit.host.checkout.{LocalInstructions, LocalProcesses, LocalShell, Redaction}
 import grit.host.git.{Branches, WorkingCopies}
 import grit.kit.deployment.{Deployment, Offered, RepositoryClone}
 
@@ -95,8 +95,9 @@ object LocalEdge {
     finally tools.close()
   }
 
-  /** `clone`'s working copies, git run in the process's own environment with what it shows
-    * cleared by `redaction`, their leftovers as `leftovers` says, deleting done branches on their
+  /** `clone`'s working copies, git run in the process's own environment, the SSH agent's socket
+    * included so a fetch reaches an SSH origin ([[LocalShell.Agent]]), with what it shows cleared
+    * by `redaction`, their leftovers as `leftovers` says, deleting done branches on their
     * remote with `branches` when given, and saying what a sweep removes to `note`.
     */
   def copies(
@@ -111,7 +112,7 @@ object LocalEdge {
       clone.repository,
       clone.at,
       clone.copies,
-      new LocalProcesses(clone.at, sys.env, redaction),
+      new LocalProcesses(clone.at, sys.env, redaction, LocalShell.Agent),
       clock,
       branches,
       note,

@@ -114,6 +114,19 @@ object LocalProcessesTests extends TestSuite {
       }
     }
 
+    test("a program sees the SSH agent only where its processes pass it: grit's own git") {
+      inRoot { dir =>
+        val environment = Map("PATH" -> "/usr/bin:/bin", "SSH_AUTH_SOCK" -> "/tmp/agent.planted")
+        def seen(processes: LocalProcesses) = processes
+          .run(argv("env"), RelPath.Root, 10.seconds)
+          .map(_.output.show.linesIterator.filter(_.startsWith("SSH_AUTH_SOCK=")).toVector)
+        (
+          seen(new LocalProcesses(dir, environment, noSecrets)),
+          seen(new LocalProcesses(dir, environment, noSecrets, LocalShell.Agent))
+        ) ==> (Right(Vector.empty), Right(Vector("SSH_AUTH_SOCK=/tmp/agent.planted")))
+      }
+    }
+
     test("a program that is not there is refused as failing to start, where one that is runs") {
       inRoot { dir =>
         val processes = new LocalProcesses(dir, sys.env, noSecrets)
