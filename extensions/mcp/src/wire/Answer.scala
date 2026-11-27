@@ -29,8 +29,8 @@ object Answer {
     * or as an object with exactly one array-valued key, can be cut to at least one leading
     * item with which it fits, that block is cut to the most such items, as compact JSON,
     * with a hint saying how many of how many items are shown when some are left out.
-    * Otherwise it is cut to [[Clipped]]'s limits from the head, with a hint saying how much
-    * was kept. Its facts are the result's `structuredContent`, as the result holds it (under a
+    * Otherwise it is cut to its ends ([[Clipped.ends]]), a line between them saying what was
+    * cut and to call again asking for less. Its facts are the result's `structuredContent`, as the result holds it (under a
     * scope that is open, as the server sent it, unfiltered), held to [[Clipped]]'s limits as
     * compact JSON whatever the text's size: when the text is not cut, whole when it fits, and
     * when it is such a list, cut to the most leading items that fit; when the text is cut by
@@ -56,7 +56,7 @@ object Answer {
               structure.filter(listedIn(_).exists(_.items.size == of)).flatMap(bounded(_, kept))
             new Answer(clipped.show, isError, items, None, facts)
           case None =>
-            new Answer(Clipped.head(whole, Clipped.cutHint).show, isError, items, None, None)
+            new Answer(ends(whole), isError, items, None, None)
         }
     }
 
@@ -70,6 +70,22 @@ object Answer {
       val trimmed = Trimmed.of(itemised.head, itemised.parts)
       new Answer(trimmed.head, isError, Accounted.Unread, trimmed.parts, itemised.facts)
     }
+
+  /** `whole`, which does not fit, cut to its ends, the line between them saying what was cut. */
+  private def ends(whole: String): String =
+    Clipped.ends(whole).fold(whole) { e =>
+      val span = e.span
+      val kb = (span.bytes + 1023) / 1024
+      val cut = span.lines.fold(s"$kb KB from character ${span.offset} of ${span.chars}")(l =>
+        s"lines ${l.from} to ${l.to} of ${l.total} ($kb KB)"
+      )
+      s"${e.head}\n\n[Cut here: $cut. $AskLess]\n\n${e.tail}"
+    }
+
+  /** What a cut answer tells the model to do to see what was cut. */
+  private val AskLess =
+    "To see them, call the tool again asking for less: a narrower query, a smaller page, or a " +
+      "later offset."
 
   /** `result`'s content blocks and whether it is an error; [[McpError.Unreadable]] when it has
     * no `content` array, or an `isError` that is not a boolean.

@@ -281,6 +281,45 @@ object McpEdgeTests extends TestSuite {
     }
 
     test(
+      "a local server's long answer is its first lines and its last, the lines between said cut"
+    ) {
+      val fake = new FakeStdioServer
+      fake.lists(
+        Vector(
+          ujson.Obj(
+            "name" -> "show",
+            "inputSchema" -> ujson.Obj("type" -> "object"),
+            "annotations" -> ujson.Obj("readOnlyHint" -> true)
+          )
+        )
+      )
+      val lines = (1 to 2005).map(n => s"line $n")
+      fake.answers("show", lines.mkString("\n"))
+      val local = McpEdge.local(Scout, scout, fake, Clock.system(), None, _ => ()) match {
+        case Right(local) => local
+        case Left(why) => throw new java.lang.AssertionError(why)
+      }
+      val edges = new InMemoryEdges
+      val dir =
+        Directory.of("/work/tree").fold(e => throw new java.lang.AssertionError(e), identity)
+      edges.originates(ConversationId("chat"), Origin.Tui(dir, "default"))
+      local.serve(edges)
+      val chat = asked("chat", 0)
+      val tx = TestTx.fake
+      edges.dispatch(Vector(chat), Tx.classification(using tx))(using tx) ==> Right(())
+      val until = System.nanoTime() + 5_000_000_000L
+      while (edges.answers.isEmpty && System.nanoTime() < until) Thread.sleep(20)
+      local.close()
+      edges.answers.toMap.get(chat.slot) ==> Some(
+        Outcome.Done(
+          lines.take(1960).mkString("\n") +
+            "\n\n[Cut here: lines 1961 to 1965 of 2005 (1 KB). To see them, call the tool again " +
+            "asking for less: a narrower query, a smaller page, or a later offset.]\n\n" +
+            lines.takeRight(40).mkString("\n")
+        )
+      )
+    }
+    test(
       "local logs a malformed tool alone and offers the rest; served, each call is sent its conversation's directory, and one with none is answered unsent"
     ) {
       val fake = new FakeStdioServer

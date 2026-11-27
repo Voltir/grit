@@ -112,11 +112,16 @@ object AnswerTests extends TestSuite {
       )
     }
 
-    test("a long answer is cut to its head, saying how much was kept") {
-      val lines = (1 to Clipped.MaxLines + 5).map(n => s"line $n")
+    test(
+      "a long answer is cut to its first lines and its last, saying which lines between were cut"
+    ) {
+      val lines = (1 to 2005).map(n => s"line $n")
+      // Lines 1961 to 1965 are cut: 49 bytes, shown as 1 KB.
       Answer.of(result(text(lines.mkString("\n")))).map(_.text) ==> Right(
-        lines.take(Clipped.MaxLines).mkString("\n") +
-          s"\n\n[The answer was cut to its first ${Clipped.MaxLines} of ${Clipped.MaxLines + 5} lines.]"
+        lines.take(1960).mkString("\n") +
+          "\n\n[Cut here: lines 1961 to 1965 of 2005 (1 KB). To see them, call the tool again " +
+          "asking for less: a narrower query, a smaller page, or a later offset.]\n\n" +
+          lines.takeRight(40).mkString("\n")
       )
     }
 
@@ -211,10 +216,17 @@ object AnswerTests extends TestSuite {
         Right(Some(said))
     }
 
-    test("an object holding two arrays, over the limit, is cut by lines as any text is") {
+    test("an object holding two arrays, over the limit, is cut to its ends as any text is") {
       val two = ujson.Obj("items" -> ujson.Arr.from(thirty), "more" -> ujson.Arr(1, 2))
-      Answer.of(result(text(ujson.write(two)))).map(_.text) ==> Right(
-        s"[The answer's first line alone is over ${Clipped.MaxBytes} bytes, so none of it is shown.]"
+      val json = ujson.write(two)
+      // ASCII: its head is the first 46 KB, its tail the last 4 KB, a character to a byte.
+      val head = Clipped.MaxBytes - Clipped.TailBytes
+      val cut = json.length - head - Clipped.TailBytes
+      Answer.of(result(text(json))).map(_.text) ==> Right(
+        json.take(head) +
+          s"\n\n[Cut here: ${(cut + 1023) / 1024} KB from character $head of ${json.length}. To see " +
+          "them, call the tool again asking for less: a narrower query, a smaller page, or a " +
+          "later offset.]\n\n" + json.takeRight(Clipped.TailBytes)
       )
     }
 

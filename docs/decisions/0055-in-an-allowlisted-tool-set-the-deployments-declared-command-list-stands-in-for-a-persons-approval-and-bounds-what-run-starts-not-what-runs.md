@@ -1,6 +1,6 @@
 # 0055. In an allowlisted tool set the deployment's declared command list stands in for a person's approval, and bounds what `run` starts, not what runs
 
-Status: accepted (2026-11-02); revised (2026-11-25)
+Status: accepted (2026-11-02); revised (2026-11-26)
 
 Context: ADR 0017 has a person approve each `write`, `edit` and `run` before it runs, and a
 deployment with no one to answer (a run with arguments, `grit serve`) offers only the tools that
@@ -59,6 +59,14 @@ Decision:
   killed past 16 MB, at most four going and eight ended kept: never a table. An answer is sent
   again with every later call, so an output past `RunAnswer.WholeBytes` is answered as its size,
   that file, its lines that look like failures, numbered as `read` numbers them, and its tail.
+- **Long answers.** An MCP server's answer too long to show whole (`Clipped`'s limits) is shown
+  as its ends, as a run's long output is: its first lines and its last (`Clipped.ends`, the tail
+  `Clipped.TailLines` within `Clipped.TailBytes`, the bound a run's tail shares), and between them
+  which lines were cut, or how many bytes from which character, and to call again asking for
+  less. Keeping the whole answer for a later read is not built: it would be kept at its
+  service's place, never in the checkout, and fetched by a call checked as the original was.
+  An answer its server's extension cut into parts, or a JSON list cut to its leading items, is
+  cut as before.
 
 Consequences:
 
