@@ -364,13 +364,13 @@ object CodingTests extends TestSuite {
     }
 
     test("an edit's failure names the edit") {
-      val host = new Scripted(edited = Left(EditError.NotFound(RelPath.Root, 1)))
+      val host = new Scripted(edited = Left(EditError.NotFound(RelPath.Root, 1, None)))
       val args = ujson.Obj(
         "path" -> "a",
         "edits" -> ujson.Arr(ujson.Obj("oldText" -> "a", "newText" -> "b"))
       )
       settle(host, "edit", args).map(_._2) ==> Right(
-        Outcome.Failed(EditError.NotFound(RelPath.Root, 1).message)
+        Outcome.Failed(EditError.NotFound(RelPath.Root, 1, None).message)
       )
     }
 

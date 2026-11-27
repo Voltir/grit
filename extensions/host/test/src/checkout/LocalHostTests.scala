@@ -261,7 +261,7 @@ object LocalHostTests extends TestSuite {
           Right(Edited(Vector(2, 3)))
         Files.readString(dir.resolve("a.txt")) ==> "one\r\n2\r\n3\r\n"
         edits.edit(path("a.txt"), Vector(Replace("two", "x"))) ==>
-          Left(EditError.NotFound(path("a.txt"), 0))
+          Left(EditError.NotFound(path("a.txt"), 0, None))
         Files.readString(dir.resolve("a.txt")) ==> "one\r\n2\r\n3\r\n"
         edits.edit(path("gone"), Vector(Replace("a", "b"))) ==>
           Left(EditError.Host(HostError.NotFound(path("gone"))))

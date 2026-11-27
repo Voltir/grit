@@ -44,7 +44,10 @@ object Replace {
               positions(base, e.oldText) match {
                 case Vector() =>
                   val numbered = LineNumbers.strip(e.oldText).exists(positions(base, _).nonEmpty)
-                  Left(if (numbered) EditError.Numbered(path, i) else EditError.NotFound(path, i))
+                  Left(
+                    if (numbered) EditError.Numbered(path, i)
+                    else EditError.NotFound(path, i, Nearest.in(base, e.oldText))
+                  )
                 case Vector(at) => Right(found :+ Found(i, at, e))
                 case many => Left(EditError.Repeated(path, i, many.size))
               }
@@ -94,7 +97,11 @@ final case class Edited(at: Vector[Int])
 enum EditError {
   case Host(error: HostError)
   case EmptyOld(path: RelPath, edit: Int)
-  case NotFound(path: RelPath, edit: Int)
+
+  /** `oldText` was not found; `nearest`, the file's lines nearest it, `None` when no line of
+    * it is in the file.
+    */
+  case NotFound(path: RelPath, edit: Int, nearest: Option[Nearest])
 
   /** `oldText` was not found, but is, without the number and tab [[LineNumbers]] shows
     * before each line: it was copied from `read`'s output with them.
@@ -109,9 +116,15 @@ enum EditError {
     case Host(error) => error.message
     case EmptyOld(p, i) =>
       s"edits[$i].oldText is empty; give the exact text in ${RelPath.value(p)} to replace."
-    case NotFound(p, i) =>
+    case NotFound(p, i, Some(near)) =>
       s"edits[$i].oldText was not found in ${RelPath.value(p)}. It must match the file " +
-        "exactly, including whitespace and line breaks; read the file again to copy it."
+        "exactly, including whitespace and line breaks. These are the file's lines nearest " +
+        "it, each after its line number and a tab, which are not part of the file:\n" +
+        LineNumbers.show(near.first, near.lines).mkString("", "\n", "\n") +
+        "Copy oldText from them, or read the file if the passage is not among them."
+    case NotFound(p, i, None) =>
+      s"edits[$i].oldText was not found in ${RelPath.value(p)}, and none of its lines is in " +
+        "it. Check that the path names the file you mean, or read the file to copy the text."
     case Numbered(p, i) =>
       s"edits[$i].oldText was not found in ${RelPath.value(p)}: each of its lines starts " +
         "with the line number and tab `read` shows, which are not part of the file. Send " +

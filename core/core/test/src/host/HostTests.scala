@@ -184,8 +184,8 @@ object HostTests extends TestSuite {
           Right(("a\nx\ny\nB\nc\nD\n", Edited(Vector(2, 6))))
       }
       test("not found, repeated, overlapping and empty are refused by index") {
-        onto("abc", "zz" -> "y") ==> Left(EditError.NotFound(p, 0))
-        onto("abab", "c" -> "d", "ab" -> "x") ==> Left(EditError.NotFound(p, 0))
+        onto("abc", "zz" -> "y") ==> Left(EditError.NotFound(p, 0, None))
+        onto("abab", "c" -> "d", "ab" -> "x") ==> Left(EditError.NotFound(p, 0, None))
         onto("abab", "a" -> "x", "ab" -> "y") ==> Left(EditError.Repeated(p, 0, 2))
         onto("aaa", "aa" -> "b") ==> Left(EditError.Repeated(p, 0, 2))
         onto("abcdef", "cde" -> "x", "bcd" -> "y") ==> Left(EditError.Overlap(p, 1, 0))
@@ -207,8 +207,8 @@ object HostTests extends TestSuite {
         onto("﻿abc", "abc" -> "x") ==> Right(("﻿x", Edited(Vector(1))))
       }
       test("no fuzzy matching: whitespace and quotes count") {
-        onto("say “hi”  ", "say \"hi\"" -> "x") ==> Left(EditError.NotFound(p, 0))
-        onto("a  b", "a b" -> "x") ==> Left(EditError.NotFound(p, 0))
+        onto("say “hi”  ", "say \"hi\"" -> "x") ==> Left(EditError.NotFound(p, 0, None))
+        onto("a  b", "a b" -> "x") ==> Left(EditError.NotFound(p, 0, None))
       }
       test("an oldText carrying read's line numbers is refused as such, and only then") {
         val file = "a\nb\nc\n"
@@ -218,7 +218,7 @@ object HostTests extends TestSuite {
         onto(file, "2\tb\n  3\tc\n" -> "x") ==> Left(EditError.Numbered(p, 0))
         onto("a\r\nb\r\n", "     1\ta\r\n     2\tb" -> "x") ==> Left(EditError.Numbered(p, 0))
         // Not there with the prefix off either: plainly not found.
-        onto(file, "     2\tz" -> "x") ==> Left(EditError.NotFound(p, 0))
+        onto(file, "     2\tz" -> "x") ==> Left(EditError.NotFound(p, 0, None))
         // A file whose lines really start with digits and a tab matches as sent.
         onto("1\tone\n2\ttwo\n", "2\ttwo" -> "2\tzwei") ==>
           Right(("1\tone\n2\tzwei\n", Edited(Vector(2))))
@@ -228,6 +228,38 @@ object HostTests extends TestSuite {
         EditError.Repeated(p, 2, 3).message ==>
           "edits[2].oldText occurs 3 times in a.txt; it must occur exactly once. Include " +
           "more of the surrounding lines to make it unique."
+      }
+      test("a miss answers with the file's lines that hold the most of oldText, numbered") {
+        val file = (1 to 20).map(n => s"  val v$n = $n").mkString("\n") + "\n"
+        // Its first line is not in the file; its next two are, at lines 8 and 9, indented
+        // otherwise: the answer shows them, with one line either side.
+        val missed = "val nope = 0\nval v8 = 8\n      val v9 = 9"
+        onto(file, missed -> "x").left.map(_.message) ==> Left(
+          "edits[0].oldText was not found in a.txt. It must match the file exactly, " +
+            "including whitespace and line breaks. These are the file's lines nearest it, " +
+            "each after its line number and a tab, which are not part of the file:\n" +
+            "     7\t  val v7 = 7\n     8\t  val v8 = 8\n     9\t  val v9 = 9\n" +
+            "    10\t  val v10 = 10\n" +
+            "Copy oldText from them, or read the file if the passage is not among them."
+        )
+      }
+      test("a miss sharing no line with the file says so, and shows none") {
+        onto("one\ntwo\n", "three\n}" -> "x").left.map(_.message) ==> Left(
+          "edits[0].oldText was not found in a.txt, and none of its lines is in it. Check " +
+            "that the path names the file you mean, or read the file to copy the text."
+        )
+      }
+      test("a miss's nearest lines are at most 12, each cut at 200 characters") {
+        val file = (1 to 40).map(n => s"line $n").mkString("\n") + "\n" + ("w" * 300) + "\n"
+        val missed = "nope\n" + (1 to 30).map(n => s"line $n").mkString("\n")
+        val shown = onto(file, missed -> "x")
+          .fold(_.message, _ => "")
+          .linesIterator
+          .filter(_.contains("\t"))
+          .toVector
+        shown ==> LineNumbers.show(1, (1 to 12).map(n => s"line $n").toVector)
+        val wide = onto(file, ("w" * 300) + "\nnope" -> "x").fold(_.message, _ => "")
+        assert(wide.contains("\t" + ("w" * 200) + "…\n"), !wide.contains("w" * 201))
       }
     }
 
