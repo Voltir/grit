@@ -26,7 +26,17 @@ enum Runner {
 }
 
 /** One of a task's checks: `runner` with `args`, as `scripts/check grit.models`. */
-final case class Check(runner: Runner, args: Vector[String]) extends caps.Pure
+final case class Check(runner: Runner, args: Vector[String]) extends caps.Pure {
+
+  /** The Mill modules it names: a `scripts/check` check's arguments but its flags (`-…`), and an
+    * `it` check's first argument, its `.testOnly` task left off, as `grit.dbos.it` of
+    * `grit.dbos.it.testOnly grit.dbos.engine.SqlDocumentsTests`; the suites after it are none.
+    */
+  def modules: Vector[String] = runner match {
+    case Runner.Check => args.filterNot(_.startsWith("-"))
+    case Runner.It => args.take(1).map(_.stripSuffix(".testOnly"))
+  }
+}
 
 /** A past change frozen as a task: the commit it started from, the brief its coder was given, the
   * commits that made it, in order, and its checks (the law is every task's, beside them).

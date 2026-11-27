@@ -753,8 +753,8 @@ object Rig {
   /** 60 minutes: the longest the checkout's compile before the coder may take. */
   val Warming: FiniteDuration = 60.minutes
 
-  /** The checkout at `dir` compiled, every module `task`'s checks name and those under it
-    * (`./mill <module>.__.compile`), in grit's environment under `cap` but with no key, so that
+  /** The checkout at `dir` compiled, every module `task`'s checks name ([[Check.modules]]) and
+    * those under it (`./mill <module>.__.compile`), in grit's environment under `cap` but with no key, so that
     * the coder's first build or test is not a cold one and nothing it spends goes on it. Its
     * Mill daemon is left for the coder, and [[tidied]] shuts it down. `output` gets the command,
     * the last 200 lines it printed and the tail of its errors. `watch` is asked while it runs, as
@@ -770,7 +770,7 @@ object Rig {
       output: Path,
       watch: () => Option[String]
   ): Either[String, Unit] = {
-    val targets = task.checks.flatMap(_.args).distinct.map(m => s"$m.__.compile")
+    val targets = task.checks.flatMap(_.modules).distinct.map(m => s"$m.__.compile")
     val mill = Vector("./mill", "--ticker", "false") ++
       targets.flatMap(t => Vector("+", t)).drop(1)
     val failed = "the checkout did not compile before the coder"

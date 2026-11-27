@@ -920,6 +920,18 @@ object RigTests extends TestSuite {
       }
     }
 
+    test(
+      "an integration check's module is compiled before grit, never its testOnly task or its suite"
+    ) {
+      withTask { f =>
+        val it = Check(Runner.It, Vector("n.it.testOnly", "n.engine.SomeTests"))
+        val g = f.copy(task = f.task.copy(checks = f.task.checks :+ it))
+        gritTrial(g, GritFake(gritLines)).map(_ =>
+          Option.when(f.exists("mill-argv"))(f.recorded("mill-argv").linesIterator.toVector)
+        ) ==> Right(Some(Vector("--ticker", "false", "m.__.compile", "+", "n.it.__.compile")))
+      }
+    }
+
     test("a checkout that does not compile before grit is a refused trial, and grit never starts") {
       withTask { f =>
         Files.writeString(f.root.resolve("mill-fails"), "")
