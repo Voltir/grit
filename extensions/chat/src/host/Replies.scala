@@ -15,11 +15,11 @@ object Replies {
     * a new turn, which turn of it, and why. `None` for any other entry.
     */
   def wentOn(entry: Entry): Option[String] = entry.payload match {
-    case Payload.Continuation(_, turn, WentOn.AtLimit) =>
+    case Payload.Continuation(_, turn, WentOn.AtLimit, _) =>
       Some(s"── grit went on (turn $turn): the last turn reached its limit ──")
-    case Payload.Continuation(_, turn, _: WentOn.CheckFailed) =>
+    case Payload.Continuation(_, turn, _: WentOn.CheckFailed, _) =>
       Some(s"── grit went on (turn $turn): the check failed ──")
-    case Payload.Continuation(_, turn, WentOn.Unpushed | WentOn.Unopened) =>
+    case Payload.Continuation(_, turn, WentOn.Unpushed | WentOn.Unopened, _) =>
       Some(s"── grit went on (turn $turn): the branch was not offered ──")
     case _ => None
   }

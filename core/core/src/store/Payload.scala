@@ -39,13 +39,14 @@ enum Payload {
   case Posted(text: String)
 
   /** grit's own note that begins turn `turn` of the task turn `task` began, the task's first
-    * turn being its turn 1, after the turn before it ended at its limit or failed its task's
-    * check, as `reason` says (ADR 0058): the first entry of a new turn, recorded through
-    * [[grit.core.inbox.Inbox.continued]]. It holds no words of grit's, only its reason: they
-    * are shown by [[grit.core.context.Shown.of]], never escaped and never searched; a failed
-    * check's command and output are shown as material, never as grit's words.
+    * turn being its turn 1, after the turn before it ended as `reason` says (ADR 0058), with
+    * what grit read of the task's checkout after it, `checkout`: the first entry of a new turn,
+    * recorded through [[grit.core.inbox.Inbox.continued]]. It holds no words of grit's, only
+    * its reason and what was read: the words are shown by [[grit.core.context.Shown.of]], never
+    * escaped and never searched; a failed check's command and output, and what was read of the
+    * checkout, are shown as material, never as grit's words.
     */
-  case Continuation(task: TurnSeq, turn: Int, reason: WentOn)
+  case Continuation(task: TurnSeq, turn: Int, reason: WentOn, checkout: CheckoutState)
 
   /** grit's own note that an unprompted turn begins with, on a job's occasion
     * ([[grit.core.act.Keeping.occasion]]): its plugin's brief, the version of its plugin's

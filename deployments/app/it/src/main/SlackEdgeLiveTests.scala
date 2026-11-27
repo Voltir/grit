@@ -157,8 +157,10 @@ object SlackEdgeLiveTests extends TestSuite {
         task: grit.core.id.TurnSeq,
         turn: Int,
         reason: grit.core.store.WentOn,
+        checkout: grit.core.store.CheckoutState,
         by: Account
-    ): Either[InboxError, TurnRef] = inner.continued(origin, source, task, turn, reason, by)
+    ): Either[InboxError, TurnRef] =
+      inner.continued(origin, source, task, turn, reason, checkout, by)
     def occasion(
         origin: Origin,
         plugin: grit.core.id.PluginName,

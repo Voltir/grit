@@ -593,7 +593,10 @@ object TurnGateTurnTests extends TestSuite {
           Message.User(stub("h1", "something from someone, written from outside the team")),
           grit.core.context.Shown.Gap,
           dated,
-          Message.User(grit.core.context.Shown.Continuing),
+          Message.User(
+            grit.core.context.Shown
+              .continuation(grit.core.store.WentOn.AtLimit, grit.core.store.CheckoutState.Unread)
+          ),
           Message.User(Fenced.noted(Vector(TurnGate.Guidance)))
         )
       )

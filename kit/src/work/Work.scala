@@ -15,7 +15,7 @@ import grit.core.identity.Account
 import grit.core.inbox.{InboxError, TurnEnding}
 import grit.core.message.Message
 import grit.core.place.{Repository, WorkName}
-import grit.core.store.{Origin, Payload, WentOn}
+import grit.core.store.{CheckoutState, Origin, Payload, WentOn}
 import grit.core.visibility.Subject
 import grit.dbos.sql.DbConfig
 import grit.host.checkout.{LocalRuns, LocalShell, Redaction}
@@ -552,6 +552,7 @@ object Work {
                         task.turnSeq,
                         next,
                         reason,
+                        CheckoutState.Unread,
                         Account.Local
                       )
                     ).flatMap(go(_, next, failed))
@@ -592,7 +593,7 @@ object Work {
           .left
           .map(e => s"unreadable: $e")
           .map(_.map(_.payload).collectFirst {
-            case Payload.Continuation(_, _, r) if r != WentOn.AtLimit => (next, r)
+            case Payload.Continuation(_, _, r, _) if r != WentOn.AtLimit => (next, r)
           })
     }
 

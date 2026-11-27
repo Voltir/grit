@@ -22,7 +22,7 @@ import grit.core.message.{Cost, Message, SpendCap}
 import grit.core.occasion.Occasion
 import grit.core.speech.Reach
 import grit.core.spend.{Budget, DailyCap, Day, Spend}
-import grit.core.store.{Entry, Origin, Payload, StoreError, Tx, WentOn}
+import grit.core.store.{CheckoutState, Entry, Origin, Payload, StoreError, Tx, WentOn}
 import grit.core.visibility.{Integrity, Label}
 
 /** Where a plugin's occasion is recorded as a turn of its own: the one inbox write a keeping
@@ -146,10 +146,11 @@ trait Inbox extends OccasionInbox {
 
   /** Records grit's note beginning turn `turn` of the task turn `task` of `origin`'s
     * conversation began ([[grit.core.store.Payload.Continuation]]), after the turn before it
-    * ended as `reason` says, as the first entry of a new turn written through `by`, and returns
-    * that turn. `by` must have written the task's first message, so the turn answers the task's
-    * asker at the task's clearance (ADR 0058); it is believed no higher than that message, and
-    * no higher than [[grit.core.store.WentOn.believed]] allows `reason`. A
+    * ended as `reason` says, with `checkout` read after it, as the first entry of a new turn
+    * written through `by`, and returns that turn. `by` must have written the task's first
+    * message, so the turn answers the task's asker at the task's clearance (ADR 0058); it is
+    * believed no higher than that message, and no higher than
+    * [[grit.core.store.WentOn.believed]] allows `reason` and `checkout`. A
     * `source` already recorded for `origin` returns its turn. [[InboxError.OverCap]] as
     * [[ingest]] refuses a new message; [[InboxError.Invalid]] when `origin` is a spawned
     * child's ([[InboxError.unspawned]]) or has no conversation, `task` has no first entry in it,
@@ -162,6 +163,7 @@ trait Inbox extends OccasionInbox {
       task: TurnSeq,
       turn: Int,
       reason: WentOn,
+      checkout: CheckoutState,
       by: Account
   ): Either[InboxError, TurnRef]
 

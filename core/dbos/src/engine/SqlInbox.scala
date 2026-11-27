@@ -41,6 +41,7 @@ import grit.core.speech.{Reach, SpeechStore}
 import grit.core.spend.{Budget, Spending}
 import grit.core.stitch.Opening
 import grit.core.store.{
+  CheckoutState,
   ConversationStore,
   Entry,
   EntryStore,
@@ -123,11 +124,12 @@ final class SqlInbox(
       task: TurnSeq,
       turn: Int,
       reason: WentOn,
+      checkout: CheckoutState,
       by: Account
   ): Either[InboxError, TurnRef] =
     InboxError.unspawned(origin).flatMap { _ =>
       val now = clock.now()
-      inTransaction(recorder.continued(origin, source, task, turn, reason, by, now))
+      inTransaction(recorder.continued(origin, source, task, turn, reason, checkout, by, now))
         .flatMap(identity)
     }
 
@@ -270,7 +272,7 @@ final class SqlInbox(
                     _,
                     _,
                     _,
-                    Payload.Message(_) | Payload.Continuation(_, _, _),
+                    Payload.Message(_) | Payload.Continuation(_, _, _, _),
                     _,
                     _
                   ) =>

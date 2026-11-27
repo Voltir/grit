@@ -31,7 +31,7 @@ object PayloadJson {
     case Payload.Message(m) => ujson.Obj("kind" -> "message", "message" -> message(m))
     case Payload.Heard(text) => ujson.Obj("kind" -> "heard", "text" -> text)
     case Payload.Posted(text) => ujson.Obj("kind" -> "posted", "text" -> text)
-    case Payload.Continuation(task, turn, reason) =>
+    case Payload.Continuation(task, turn, reason, checkout) =>
       val o =
         ujson.Obj("kind" -> "continuation", "task" -> TurnSeq.value(task).toDouble, "turn" -> turn)
       reason match {
@@ -44,6 +44,7 @@ object PayloadJson {
           r("tail") = tail
           o("reason") = r
       }
+      if (!checkout.isEmpty) o("checkout") = writeCheckout(checkout)
       o
     case Payload.Occasion(brief, about, key) =>
       ujson.Obj(
@@ -177,7 +178,8 @@ object PayloadJson {
             task <- long(o, "task")
             turn <- long(o, "turn").filterOrElse(_ >= 2, "a continuation's turn is 2 or more")
             reason <- o.value.get("reason").fold(Right(WentOn.AtLimit))(readWentOn)
-          } yield Payload.Continuation(TurnSeq(task), turn.toInt, reason)
+            checkout <- o.value.get("checkout").fold(Right(CheckoutState.Unread))(readCheckout)
+          } yield Payload.Continuation(TurnSeq(task), turn.toInt, reason, checkout)
         case "occasion" =>
           for {
             brief <- str(o, "brief").flatMap(OccasionBrief.read)
@@ -554,6 +556,60 @@ object PayloadJson {
         case other => Left(s"unknown continuation reason: $other")
       }
     } yield reason
+
+  /** What a continuation read of its checkout: each piece only when read, a failed command's
+    * exit only when it has one.
+    */
+  private def writeCheckout(checkout: CheckoutState): ujson.Obj = {
+    val o = ujson.Obj()
+    checkout.diff.foreach { d =>
+      o("diff") = ujson.Obj(
+        "base" -> d.base,
+        "stat" -> d.stat,
+        "untracked" -> ujson.Arr.from(d.untracked.map(ujson.Str(_))),
+        "more" -> d.more
+      )
+    }
+    checkout.failed.foreach { f =>
+      val r = ujson.Obj("command" -> f.command)
+      f.exit.foreach(e => r("exit") = e)
+      r("lines") = f.lines
+      o("failed") = r
+    }
+    o
+  }
+
+  /** What a continuation read of its checkout, each piece cut to its bound again; a row written
+    * with none read nothing.
+    */
+  private def readCheckout(v: ujson.Value): Either[String, CheckoutState] =
+    for {
+      o <- obj(v)
+      diff <- o.value.get("diff").fold(Right(None)) { d =>
+        for {
+          d <- obj(d)
+          base <- str(d, "base")
+          stat <- str(d, "stat")
+          untracked <- arr(d, "untracked").flatMap(traverse(_) {
+            case ujson.Str(s) => Right(s)
+            case _ => Left("an untracked file is not a string")
+          })
+          more <- long(d, "more")
+        } yield Some(CheckoutState.Diff.of(base, stat, untracked, more.toInt))
+      }
+      failed <- o.value.get("failed").fold(Right(None)) { f =>
+        for {
+          f <- obj(f)
+          command <- str(f, "command")
+          exit <- f.value.get("exit") match {
+            case None => Right(None)
+            case Some(ujson.Num(n)) if n.isWhole && n.isValidInt => Right(Some(n.toInt))
+            case Some(_) => Left("exit is not a whole number")
+          }
+          lines <- str(f, "lines")
+        } yield Some(CheckoutState.Failed.of(command, exit, lines))
+      }
+    } yield CheckoutState(diff, failed)
 
   private def readCarry(v: ujson.Value): Either[String, Payload.Carry] = {
     def text(o: ujson.Obj, key: String): Either[String, Option[String]] =

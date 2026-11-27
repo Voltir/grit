@@ -764,7 +764,13 @@ object TurnLoopTurnTests extends TestSuite {
         sent.exists(_.isInstanceOf[Message.ToolResult]),
         sent.collect { case a: Message.Assistant => a.blocks },
         sent.lastOption.exists {
-          case Message.User(t) => t.endsWith(Shown.Continuing)
+          case Message.User(t) =>
+            t.endsWith(
+              Shown.continuation(
+                grit.core.store.WentOn.AtLimit,
+                grit.core.store.CheckoutState.Unread
+              )
+            )
           case _ => false
         }
       ) ==> (
@@ -773,6 +779,48 @@ object TurnLoopTurnTests extends TestSuite {
         false,
         Vector(Vector(AssistantBlock.Text("r4"))),
         true
+      )
+    }
+
+    test(
+      "the turn after one at its limit with its checkout read is sent, last, the note naming the diff and failed command, then each fenced"
+    ) {
+      val entries = new InMemoryEntryStore
+      val ws = new Files(files)
+      def run(turn: TurnRef, provider: grit.core.provider.Provider^) =
+        new InMemoryDurable().run(turn.workflowId)(
+          tooledBody(
+            entries,
+            provider,
+            new InMemoryUsageLedger,
+            new StubProvider(),
+            NoClassifier,
+            ws,
+            tools(ws),
+            12
+          )
+        )
+      run(say(entries, "fix it"), new Scripted((_, _) => Right(said("halfway"))))
+      val read = grit.core.store.CheckoutState(
+        Some(grit.core.store.CheckoutState.Diff.of("origin/main", " a.txt | 1 +", Vector.empty)),
+        Some(grit.core.store.CheckoutState.Failed.of("make", Some(2), "   3\t[error] a.txt: bad"))
+      )
+      val second = new Scripted((_, _) => Right(said("done")))
+      run(
+        continuing(entries, grit.core.id.TurnSeq.First, 2, grit.core.store.WentOn.AtLimit, read),
+        second
+      )
+      second.requests.headOption.flatMap(_.messages.lastOption).collect { case Message.User(t) =>
+        t.substring(t.indexOf("\n\nAfter this note") max 0)
+      } ==> Some(
+        "\n\nAfter this note, grit shows how your branch differs from origin/main, committed or " +
+          "not, as read after your last turn, and the lines that look like failures in the last " +
+          "command you ran that failed. Start from them rather than running commands to find this " +
+          "out again.\n</grit_note>\n\n" +
+          "<tool_output source=\"git diff --stat $(git merge-base origin/main HEAD)\">\n" +
+          " a.txt | 1 +\n</tool_output>\n\n" +
+          "<tool_output source=\"make\">\nExit code 2. Its lines that look like failures, each " +
+          "after its line number in its output:\n   3\t[error] a.txt: bad\n</tool_output>"
       )
     }
 
@@ -860,7 +908,11 @@ object TurnLoopTurnTests extends TestSuite {
       ) ==> (
         Vector(Message.User("the task"), Shown.Gap, said("reply 1")),
         Some(true),
-        Vector(Message.User(Shown.Continuing))
+        Vector(
+          Message.User(
+            Shown.continuation(grit.core.store.WentOn.AtLimit, grit.core.store.CheckoutState.Unread)
+          )
+        )
       )
     }
     test(
@@ -879,8 +931,8 @@ object TurnLoopTurnTests extends TestSuite {
       (
         sent.take(2),
         replies(sent),
-        shows(Shown.checkFailed(failed)),
-        shows(Shown.checkFailed(earlier))
+        shows(Shown.continuation(failed, grit.core.store.CheckoutState.Unread)),
+        shows(Shown.continuation(earlier, grit.core.store.CheckoutState.Unread))
       ) ==> (
         Vector(Message.User("the task"), Shown.Gap),
         Vector(Vector(AssistantBlock.Text("reply 1"))),

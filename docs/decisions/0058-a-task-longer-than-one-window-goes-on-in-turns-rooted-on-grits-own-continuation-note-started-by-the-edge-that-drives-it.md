@@ -1,6 +1,6 @@
 # 0058. A task longer than one window goes on in turns rooted on grit's own continuation note, started by the edge that drives it
 
-Status: accepted (2026-11-05); revised (2026-11-10)
+Status: accepted (2026-11-05); revised (2026-11-10, 2026-11-26)
 
 Context: a turn at its limit ends, its last calls told so, and the next turn draws a
 boundary (ADR 0052). A task longer than one window (an hour of coding in `grit work`) needs a
@@ -12,11 +12,13 @@ turn (spending unattended is the driver's policy).
 Decision:
 
 - **The root is grit's own note.** A continuation is its own kind of entry
-  (`Payload.Continuation`): the turn that began its task, its turn number and why it went on
-  (`WentOn`). It holds only its reason; its words are core constants, shown as grit's note
-  (`Shown.Continuing`, `Shown.checkFailed`), never escaped as a person's text, never searched.
-  A failed check's command and output are kept bounded, shown as material. Authorship is its
-  type, not a field.
+  (`Payload.Continuation`): the turn that began its task, its turn number, why it went on
+  (`WentOn`) and what its driver read of the task's checkout after the turn before
+  (`CheckoutState`). It holds no words of grit's: they are core code, shown as grit's note
+  (`Shown.continuation`), never escaped as a person's text, never searched. A failed check's
+  command and output, and what was read of the checkout, are kept bounded and shown as
+  material after the note; a note carrying either is believed no higher than a member, as a
+  coding tool's result is. Authorship is its type, not a field.
 - **It acts for the task's asker.** Only whoever wrote the task's first message records it
   (`Inbox.continued`), under that account, so its turn's asker and clearance are the task's
   (ADR 0030), and it is believed no higher than that message.
@@ -49,6 +51,17 @@ Decision:
   results, and no earlier reply: each handoff is cumulative, and every turn shown would grow
   each boundary until the window slid; the newest alone keeps each boundary about one size, its
   prefix cached. Every assembler holds to it, recall included (`AssemblyRequest.drawable`).
+  What the earlier turn learned of the checkout is carried by the note instead, so the next
+  turn need not run commands again to find it out: the branch's diff stat against origin's
+  default branch, uncommitted changes included, and the files git does not track, both read by
+  git in the checkout; and, after a turn at its limit or a failed check, the turn's last run
+  that failed with a line looking like a failure, as its recorded answer shows it, its lines
+  picked by the rule `run` flags them by. A later run of the same command that passed drops it,
+  as does the check's own command, whose output the note already shows. Each piece is cut to a
+  bound (`CheckoutState`'s constants), so a continuation's row stays near 8 KB, at most one
+  for each turn `GRIT_WORK_TURNS` allows a task. Turned down: running the tool loop's own runs
+  again (they may be gone, and the engine runs no driver's policy), and a summary of the turn
+  by a model (ADR 0052).
   After a turn that left no reply a driver going on gets the task alone (`grit work` stops).
   Turned down: the earlier turns' summaries (still growing, beside the digest), the last two
   handoffs (the older contradicts the newer), and folding earlier turns in large steps (each

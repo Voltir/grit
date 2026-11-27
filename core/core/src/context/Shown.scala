@@ -10,7 +10,7 @@ import grit.core.message.{AssistantBlock, Message}
 import grit.core.period.{Change, Closing, Ground, Section}
 import grit.core.place.Place
 import grit.core.prompt.{Fenced, Tag}
-import grit.core.store.{ClosingEntry, Entry, Nearby, Payload, Speakers, WentOn}
+import grit.core.store.{CheckoutState, ClosingEntry, Entry, Nearby, Payload, Speakers, WentOn}
 
 /** What the model is shown of an entry a window names: the one definition, which an
   * assembler costs and the turn sends.
@@ -24,8 +24,7 @@ object Shown {
     * ("Someone" when `speakers` does not name its author); grit's post the conversation
     * begins with as one user message, [[PostedLead]] then the post as [[pasted]] shows it, so
     * no window opens with an assistant message; grit's continuation note as one user message,
-    * [[Continuing]] after a turn at its limit, [[checkFailed]] after a failed check, [[Unpushed]] or
-    * [[Unopened]] after a check passed with its branch not offered; a spawned child's note as one
+    * as [[continuation]] shows it; a spawned child's note as one
     * user message, [[Spawned]] then the task its parent wrote, as [[pasted]] shows it;
     * a closing entry as one user message, "[record] this conversation
     * so far, written by grit (closed {its UTC date}):", then its prose, its outcome, the
@@ -49,74 +48,124 @@ object Shown {
     case Payload.Closed(_, _, closing) =>
       Some(Message.User(record(closing, entry.createdAt)))
     case Payload.Posted(text) => Some(Message.User(s"$PostedLead\n${pasted(text)}"))
-    case Payload.Continuation(_, _, WentOn.AtLimit) => Some(Message.User(Continuing))
-    case Payload.Continuation(_, _, failed: WentOn.CheckFailed) =>
-      Some(Message.User(checkFailed(failed)))
-    case Payload.Continuation(_, _, WentOn.Unpushed) => Some(Message.User(Unpushed))
-    case Payload.Continuation(_, _, WentOn.Unopened) => Some(Message.User(Unopened))
+    case Payload.Continuation(_, _, reason, checkout) =>
+      Some(Message.User(continuation(reason, checkout)))
     case Payload.Spawn(_, task, _) => Some(Message.User(s"$Spawned\n${pasted(task)}"))
     case _ => None
   }
 
-  /** grit's note a task's next turn begins with after a turn ended at its limit
-    * ([[Payload.Continuation]]): grit's own words, fenced as its note, never escaped.
+  /** grit's note a task's next turn begins with ([[Payload.Continuation]]), its words fenced as
+    * its note, never escaped: what they say for `reason` (the turn before ended at its limit,
+    * its task's check failed, or its check passed with its branch not offered), then, when
+    * `checkout` holds anything, a last paragraph naming what of it follows. After the note, as
+    * material, each fenced as a tool's output under the command that read it: a failed check's
+    * output, then `checkout`'s diff stat (or, with no file differing from its base, a sentence
+    * of the note saying so), its untracked files and its last failed command's flagged lines.
     */
-  val Continuing: String = Fenced.noted(
-    Vector(
-      "Your last turn on this task reached its limit and ended. This turn starts afresh: it " +
-        "holds the task and your last reply, but not your earlier replies, your tool calls " +
-        "or their results.",
-      "Go on with the task from where your last reply left off. Read again whatever you " +
-        "need, and do not redo what your last reply says is done."
+  def continuation(reason: WentOn, checkout: CheckoutState): String = {
+    val (words, output) = reason match {
+      case WentOn.AtLimit => (Continuing, None)
+      case WentOn.Unpushed => (Unpushed, None)
+      case WentOn.Unopened => (Unopened, None)
+      case failed: WentOn.CheckFailed =>
+        (checkFailed(failed), Some(Fenced.toolOutput(failed.command.text, failed.tail)))
+    }
+    val (read, shown) = readOf(checkout)
+    (Fenced.noted(words ++ read) +: (output.toVector ++ shown).map(_.rendered)).mkString("\n\n")
+  }
+
+  /** The paragraph naming what of `checkout` follows the note, none when nothing does, and each
+    * piece that follows it, fenced under the command that read it.
+    */
+  private def readOf(checkout: CheckoutState): (Vector[String], Vector[Fenced]) = {
+    val diff = checkout.diff.toVector.flatMap { d =>
+      val stat = Option.when(d.stat.nonEmpty)(
+        s"how your branch differs from ${d.base}, committed or not, as read after your last turn" ->
+          Fenced.toolOutput(s"git diff --stat $$(git merge-base ${d.base} HEAD)", d.stat)
+      )
+      val more = if (d.more > 0) Vector(s"… and ${d.more} more") else Vector.empty
+      val untracked = Option.when(d.untracked.nonEmpty)(
+        "the files git does not track yet" ->
+          Fenced.toolOutput(
+            "git ls-files --others --exclude-standard",
+            (d.untracked ++ more).mkString("\n")
+          )
+      )
+      stat.toVector ++ untracked
+    }
+    val failed = checkout.failed.toVector.map { f =>
+      val how = f.exit.fold("It was killed at its time limit.")(code => s"Exit code $code.")
+      "the lines that look like failures in the last command you ran that failed" ->
+        Fenced.toolOutput(
+          f.command,
+          s"$how Its lines that look like failures, each after its line number in its output:\n" +
+            f.lines
+        )
+    }
+    val parts = diff ++ failed
+    val unchanged = checkout.diff.collect {
+      case d if d.stat.isEmpty && d.untracked.isEmpty => s"No file differs from ${d.base}."
+      case d if d.stat.isEmpty => s"No file git tracks differs from ${d.base}."
+    }
+    val names = parts.map(_._1)
+    val listed = Option.when(names.nonEmpty) {
+      val n = names.size
+      if (n == 1) names.mkString
+      else names.take(n - 1).mkString(", ") + ", and " + names.drop(n - 1).mkString
+    }
+    // One block shown is "it", two or more "them".
+    val them = if (names.size == 1) "it" else "them"
+    val follows = listed.map(l =>
+      s"After this note, grit shows $l. Start from $them rather than running commands to find " +
+        "this out again."
     )
+    val paragraph = (unchanged.toVector ++ follows).mkString(" ")
+    (Option.when(paragraph.nonEmpty)(paragraph).toVector, parts.map(_._2))
+  }
+
+  /** grit's words after a turn ended at its limit. */
+  private val Continuing: Vector[String] = Vector(
+    "Your last turn on this task reached its limit and ended. This turn starts afresh: it " +
+      "holds the task and your last reply, but not your earlier replies, your tool calls " +
+      "or their results.",
+    "Go on with the task from where your last reply left off. Read again whatever you " +
+      "need, and do not redo what your last reply says is done."
   )
 
-  /** grit's note a task's next turn begins with after its check passed and its branch was not
-    * offered ([[WentOn.Unpushed]]): grit's own words, fenced as its note.
-    */
-  val Unpushed: String = Fenced.noted(
-    Vector(
-      "Your last reply ended the turn, and the task's acceptance command passes, but your " +
-        "change has not been offered: either nothing is committed on your branch, or it holds " +
-        "commits its remote repository does not have.",
-      "Commit your change with git commit, then call offer_pull_request with a title and a " +
-        "body. " + Afresh
-    )
+  /** grit's words after a check passed with its branch not offered ([[WentOn.Unpushed]]). */
+  private val Unpushed: Vector[String] = Vector(
+    "Your last reply ended the turn, and the task's acceptance command passes, but your " +
+      "change has not been offered: either nothing is committed on your branch, or it holds " +
+      "commits its remote repository does not have.",
+    "Commit your change with git commit, then call offer_pull_request with a title and a " +
+      "body. " + Afresh
   )
 
-  /** grit's note a task's next turn begins with after its check passed and its branch was
-    * pushed with no pull request open ([[WentOn.Unopened]]): grit's own words, fenced as its
-    * note.
+  /** grit's words after a check passed with its branch pushed and no pull request open
+    * ([[WentOn.Unopened]]).
     */
-  val Unopened: String = Fenced.noted(
-    Vector(
-      "Your last reply ended the turn, and the task's acceptance command passes and your branch " +
-        "is pushed, but no pull request is open for it.",
-      "Call offer_pull_request with a title and a body. " + Afresh
-    )
+  private val Unopened: Vector[String] = Vector(
+    "Your last reply ended the turn, and the task's acceptance command passes and your branch " +
+      "is pushed, but no pull request is open for it.",
+    "Call offer_pull_request with a title and a body. " + Afresh
   )
 
   private def Afresh: String =
     "This part of the conversation starts afresh: it holds the task and " +
       "your last reply, but not your earlier replies, your tool calls or their results."
 
-  /** grit's note a task's next turn begins with after its acceptance command failed
-    * ([[WentOn.CheckFailed]]): grit's own words, fenced as its note, then `failed`'s output
-    * fenced as a tool's output, its command as the source.
-    */
-  def checkFailed(failed: WentOn.CheckFailed): String = {
+  /** grit's words after the task's acceptance command failed as `failed` says. */
+  private def checkFailed(failed: WentOn.CheckFailed): Vector[String] = {
     val how = failed.exit.fold(s": ${WentOn.CheckFailed.RanPast}")(code => s" with exit code $code")
-    Fenced.noted(
-      Vector(
-        "Your last reply ended the turn without asking to go on, so grit ran the task's " +
-          s"acceptance command in the task's directory. It failed$how. The end of its output " +
-          "follows this note.",
-        "This part of the conversation starts afresh: it holds the task and your last reply, " +
-          "but not your earlier replies, your tool calls or their results. Find what the output " +
-          "shows is wrong, fix it, and run the command yourself when you can before you say " +
-          "the task is done again."
-      )
-    ) + "\n\n" + Fenced.toolOutput(failed.command.text, failed.tail).rendered
+    Vector(
+      "Your last reply ended the turn without asking to go on, so grit ran the task's " +
+        s"acceptance command in the task's directory. It failed$how. The end of its output " +
+        "follows this note.",
+      "This part of the conversation starts afresh: it holds the task and your last reply, " +
+        "but not your earlier replies, your tool calls or their results. Find what the output " +
+        "shows is wrong, fix it, and run the command yourself when you can before you say " +
+        "the task is done again."
+    )
   }
 
   /** What follows a heard message's author on the line above its text ([[of]]). */
@@ -399,7 +448,7 @@ object Shown {
       case ((out, held), e) =>
         val message = e.payload match {
           case Payload.Message(Message.User(text)) => Some(said(e, text, speakers))
-          case Payload.Heard(_) | Payload.Posted(_) | Payload.Continuation(_, _, _) |
+          case Payload.Heard(_) | Payload.Posted(_) | Payload.Continuation(_, _, _, _) |
               Payload.Spawn(_, _, _) =>
             of(e, speakers)
           case Payload.Message(m) => Some(m)

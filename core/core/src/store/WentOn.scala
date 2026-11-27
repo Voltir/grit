@@ -62,14 +62,15 @@ object WentOn {
       else Right(Command(text))
   }
 
-  /** How far a continuation for `reason` is believed, its task's first message believed at
-    * `task`: a failed check's output is the checkout's, believed no higher than
-    * [[Integrity.Member]], as a coding tool's result is.
+  /** How far a continuation for `reason` carrying `checkout` is believed, its task's first
+    * message believed at `task`: a failed check's output and what was read of the checkout are
+    * the checkout's, believed no higher than [[Integrity.Member]], as a coding tool's result is.
     */
-  def believed(reason: WentOn, task: Integrity): Integrity = reason match {
-    case AtLimit | Unpushed | Unopened => task
-    case _: CheckFailed => task.meet(Integrity.Member)
-  }
+  def believed(reason: WentOn, checkout: CheckoutState, task: Integrity): Integrity =
+    reason match {
+      case AtLimit | Unpushed | Unopened if checkout.isEmpty => task
+      case _ => task.meet(Integrity.Member)
+    }
 
   /** The most bytes of UTF-8 an acceptance command holds. */
   val CommandBytes: Int = 1024

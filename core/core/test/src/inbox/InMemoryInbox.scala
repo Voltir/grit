@@ -25,6 +25,7 @@ import grit.core.place.Place
 import grit.core.speech.{InMemorySpeechStore, Reach}
 import grit.core.spend.Budget
 import grit.core.store.{
+  CheckoutState,
   Conversation,
   Entry,
   InMemoryConversationStore,
@@ -217,11 +218,14 @@ final class InMemoryInbox(
       task: TurnSeq,
       turn: Int,
       reason: WentOn,
+      checkout: CheckoutState,
       by: Account
   ): Either[InboxError, TurnRef] =
     InboxError
       .unspawned(origin)
-      .flatMap(_ => if (down) unavailable else continuing(origin, source, task, turn, reason, by))
+      .flatMap(_ =>
+        if (down) unavailable else continuing(origin, source, task, turn, reason, checkout, by)
+      )
 
   private def continuing(
       origin: Origin,
@@ -229,6 +233,7 @@ final class InMemoryInbox(
       task: TurnSeq,
       turn: Int,
       reason: WentOn,
+      checkout: CheckoutState,
       by: Account
   ): Either[InboxError, TurnRef] =
     inTx {
@@ -244,12 +249,13 @@ final class InMemoryInbox(
           recorded(
             origin,
             source,
-            Payload.Continuation(task, turn, reason),
+            Payload.Continuation(task, turn, reason, checkout),
             by,
             labelOf(origin),
             Some(
               WentOn.believed(
                 reason,
+                checkout,
                 first.integrity.meet(Tx.integrityOf(person(by))(using inForce))
               )
             ),
@@ -499,7 +505,7 @@ final class InMemoryInbox(
                         _,
                         _,
                         _,
-                        Payload.Message(_) | Payload.Continuation(_, _, _),
+                        Payload.Message(_) | Payload.Continuation(_, _, _, _),
                         _,
                         _
                       ) =>

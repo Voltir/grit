@@ -307,7 +307,7 @@ object LinearAssembler {
 
   private def isMessage(e: Entry): Boolean = e.payload match {
     case Payload.Message(_) | Payload.Heard(_) | Payload.Posted(_) |
-        Payload.Continuation(_, _, _) =>
+        Payload.Continuation(_, _, _, _) =>
       true
     // A turn's tool exchange is its own: a window never holds a call apart from its turn; an
     // occasion or a spawned child's root is shown only to the turn it begins.

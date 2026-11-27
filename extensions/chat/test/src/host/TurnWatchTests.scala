@@ -98,7 +98,12 @@ object TurnWatchTests extends TestSuite {
         TurnSeq(1),
         None,
         EntrySeq(2),
-        Payload.Continuation(TurnSeq(0), 2, grit.core.store.WentOn.AtLimit),
+        Payload.Continuation(
+          TurnSeq(0),
+          2,
+          grit.core.store.WentOn.AtLimit,
+          grit.core.store.CheckoutState.Unread
+        ),
         Instant.EPOCH,
         Integrity.Member
       )
@@ -129,14 +134,28 @@ object TurnWatchTests extends TestSuite {
         TurnSeq(2),
         None,
         EntrySeq(2),
-        Payload.Continuation(TurnSeq(0), 3, failed),
+        Payload.Continuation(TurnSeq(0), 3, failed, grit.core.store.CheckoutState.Unread),
         Instant.EPOCH,
         Integrity.Member
       )
       (
         Replies.wentOn(went),
-        Replies.wentOn(went.copy(payload = Payload.Continuation(TurnSeq(0), 3, WentOn.Unpushed))),
-        Replies.wentOn(went.copy(payload = Payload.Continuation(TurnSeq(0), 3, WentOn.Unopened)))
+        Replies.wentOn(
+          went.copy(payload =
+            Payload
+              .Continuation(TurnSeq(0), 3, WentOn.Unpushed, grit.core.store.CheckoutState.Unread)
+          )
+        ),
+        Replies.wentOn(
+          went.copy(payload =
+            Payload.Continuation(
+              TurnSeq(0),
+              3,
+              WentOn.Unopened,
+              grit.core.store.CheckoutState.Unread
+            )
+          )
+        )
       ) ==> (
         Some("── grit went on (turn 3): the check failed ──"),
         Some("── grit went on (turn 3): the branch was not offered ──"),

@@ -29,7 +29,8 @@ import grit.core.period.{Period, PeriodState}
 import grit.core.place.{Place, WorkName}
 import grit.core.speech.{Reach, ReplyTo}
 import grit.core.spend.{Budget, DailyCap}
-import grit.core.store.{Origin, Payload, StoreError, TestWentOn, WentOn}
+import grit.core.store.CheckoutState.Unread
+import grit.core.store.{CheckoutState, Origin, Payload, StoreError, TestWentOn, WentOn}
 import grit.core.visibility.{
   Cap,
   Clearance,
@@ -343,16 +344,17 @@ abstract class InboxContract extends TestSuite {
         val bo = TestAccounts.account("task:bo-continued")
         store.name(ana, "Ana")
         val task = inbox.ingest(here, SourceId("w"), said("the task"), ana, None)
-        val next = inbox.continued(here, SourceId("w:2"), TurnSeq.First, 2, WentOn.AtLimit, ana)
+        val next =
+          inbox.continued(here, SourceId("w:2"), TurnSeq.First, 2, WentOn.AtLimit, Unread, ana)
         val refused =
           InboxError.Invalid("a task is continued only by whoever wrote its first message")
         (
           task.map(_.turnSeq),
           next.map(_.turnSeq),
-          inbox.continued(here, SourceId("w:2"), TurnSeq.First, 2, WentOn.AtLimit, ana),
+          inbox.continued(here, SourceId("w:2"), TurnSeq.First, 2, WentOn.AtLimit, Unread, ana),
           inbox.ingested(here, SourceId("w:2")),
-          inbox.continued(here, SourceId("w:3"), TurnSeq.First, 3, WentOn.AtLimit, bo),
-          inbox.continued(here, SourceId("w:4"), TurnSeq(9), 2, WentOn.AtLimit, ana)
+          inbox.continued(here, SourceId("w:3"), TurnSeq.First, 3, WentOn.AtLimit, Unread, bo),
+          inbox.continued(here, SourceId("w:4"), TurnSeq(9), 2, WentOn.AtLimit, Unread, ana)
         ) ==> (
           Right(TurnSeq.First),
           Right(TurnSeq.First.next),
@@ -363,7 +365,7 @@ abstract class InboxContract extends TestSuite {
         )
         store.written(here) ==> Vector(
           (Payload.Message(said("the task")), Some("Ana")),
-          (Payload.Continuation(TurnSeq.First, 2, WentOn.AtLimit), Some("Ana"))
+          (Payload.Continuation(TurnSeq.First, 2, WentOn.AtLimit, Unread), Some("Ana"))
         )
         store.believed(here).distinct.size ==> 1
       }
@@ -376,11 +378,55 @@ abstract class InboxContract extends TestSuite {
         val here = Origin.Task("inbox", "checked")
         val failed = TestWentOn.failed("make test", Some(1), "1 failed")
         inbox.ingest(here, SourceId("w"), said("the task"), Account.Local, None)
-        inbox.continued(here, SourceId("w:2"), TurnSeq.First, 2, WentOn.AtLimit, Account.Local)
-        inbox.continued(here, SourceId("w:3"), TurnSeq.First, 3, failed, Account.Local)
+        inbox.continued(
+          here,
+          SourceId("w:2"),
+          TurnSeq.First,
+          2,
+          WentOn.AtLimit,
+          Unread,
+          Account.Local
+        )
+        inbox.continued(here, SourceId("w:3"), TurnSeq.First, 3, failed, Unread, Account.Local)
         store.believed(here) ==> Vector(
           Integrity.at(Integrity.Level.Authority),
           Integrity.at(Integrity.Level.Authority),
+          Integrity.Member
+        )
+      }
+    }
+
+    test(
+      "a continuation carrying what was read of the checkout is believed no higher than a member, at its limit or not offered"
+    ) {
+      withInbox(Uncapped) { (inbox, store) =>
+        val here = Origin.Task("inbox", "read")
+        val read = CheckoutState(
+          Some(CheckoutState.Diff.of("origin/main", " a | 1 +", Vector.empty)),
+          None
+        )
+        inbox.ingest(here, SourceId("w"), said("the task"), Account.Local, None)
+        inbox.continued(
+          here,
+          SourceId("w:2"),
+          TurnSeq.First,
+          2,
+          WentOn.AtLimit,
+          read,
+          Account.Local
+        )
+        inbox.continued(
+          here,
+          SourceId("w:3"),
+          TurnSeq.First,
+          3,
+          WentOn.Unpushed,
+          read,
+          Account.Local
+        )
+        store.believed(here) ==> Vector(
+          Integrity.at(Integrity.Level.Authority),
+          Integrity.Member,
           Integrity.Member
         )
       }
@@ -1190,7 +1236,9 @@ abstract class InboxContract extends TestSuite {
         // The spawn's own source, so a door that looked it up first would hand back its turn.
         def doors(o: Origin): Vector[Either[InboxError, Unit]] = Vector(
           inbox.ingest(o, SourceId("spawn"), said("and this"), ana, None).map(_ => ()),
-          inbox.continued(o, SourceId("spawn"), TurnSeq.First, 2, WentOn.AtLimit, ana).map(_ => ()),
+          inbox
+            .continued(o, SourceId("spawn"), TurnSeq.First, 2, WentOn.AtLimit, Unread, ana)
+            .map(_ => ()),
           inbox.hear(o, SourceId("spawn"), "heard", ana, Said, Reach.Nowhere, None),
           inbox.posted(o, SourceId("spawn"), "posted", PostedAt, Asking, ana).map(_ => ()),
           inbox

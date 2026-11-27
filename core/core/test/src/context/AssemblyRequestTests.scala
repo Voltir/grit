@@ -26,7 +26,8 @@ object AssemblyRequestTests extends TestSuite {
       Integrity.Member
     )
 
-  private val continued = Payload.Continuation(TurnSeq.First, 1, WentOn.AtLimit)
+  private val continued =
+    Payload.Continuation(TurnSeq.First, 1, WentOn.AtLimit, grit.core.store.CheckoutState.Unread)
 
   private def continuing(task: Option[EntrySeq]): AssemblyRequest =
     AssemblyRequest(TurnRef(c, TurnSeq(2)), Width.Deployed, CarriedWindow.Empty, task = task)

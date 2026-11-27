@@ -1319,14 +1319,15 @@ object TurnFixtures {
   }
 
   /** Records grit's note beginning turn `turn` of the task turn `task` began, gone on with for
-    * `reason`, the first entry of the conversation's next turn, as
+    * `reason` with `checkout` read, the first entry of the conversation's next turn, as
     * [[grit.core.inbox.Inbox.continued]] records it.
     */
   def continuing(
       entries: EntryStore,
       task: TurnSeq,
       turn: Int,
-      reason: grit.core.store.WentOn = grit.core.store.WentOn.AtLimit
+      reason: grit.core.store.WentOn = grit.core.store.WentOn.AtLimit,
+      checkout: grit.core.store.CheckoutState = grit.core.store.CheckoutState.Unread
   ): TurnRef = {
     given Tx = TestTx.fake
     val next = entries.lockNext(conversation).getOrElse(sys.error("in-memory store"))
@@ -1337,7 +1338,7 @@ object TurnFixtures {
         next.turnSeq,
         None,
         next.seq,
-        Payload.Continuation(task, turn, reason),
+        Payload.Continuation(task, turn, reason, checkout),
         Instant.EPOCH,
         Integrity.Member
       )
@@ -1385,7 +1386,7 @@ object TurnFixtures {
         case Payload.Message(other) => Some(other.toString)
         case Payload.Heard(text) => Some(s"heard: $text")
         case Payload.Posted(text) => Some(s"posted: $text")
-        case Payload.Continuation(task, turn, _) =>
+        case Payload.Continuation(task, turn, _, _) =>
           Some(s"continuation: turn $turn of ${TurnSeq.value(task)}")
         case Payload.Occasion(_, _, key) =>
           Some(s"occasion: ${grit.core.occasion.OccasionKey.value(key)}")

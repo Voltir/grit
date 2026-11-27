@@ -21,6 +21,7 @@ import grit.core.speech.{Reach, SpeechStore}
 import grit.core.spend.{Budget, Spending}
 import grit.core.stitch.Opening
 import grit.core.store.{
+  CheckoutState,
   ConversationStore,
   Entry,
   EntryStore,
@@ -146,6 +147,7 @@ private[engine] final class Recorder(
       task: TurnSeq,
       turn: Int,
       reason: WentOn,
+      checkout: CheckoutState,
       by: Account,
       at: Instant
   )(using Tx^): Either[StoreError, Either[InboxError, TurnRef]] =
@@ -160,10 +162,10 @@ private[engine] final class Recorder(
               recorded(
                 origin,
                 source,
-                Payload.Continuation(task, turn, reason),
+                Payload.Continuation(task, turn, reason, checkout),
                 by,
                 c.label,
-                Some(WentOn.believed(reason, f.integrity.meet(integrity))),
+                Some(WentOn.believed(reason, checkout, f.integrity.meet(integrity))),
                 at,
                 capped = true,
                 None

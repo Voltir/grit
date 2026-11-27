@@ -127,17 +127,47 @@ object PayloadJsonTests extends TestSuite {
     }
 
     test("a continuation at its limit is stored with no reason, as rows were before reasons") {
-      val note = Payload.Continuation(TurnSeq(7), 2, WentOn.AtLimit)
+      val note = Payload.Continuation(TurnSeq(7), 2, WentOn.AtLimit, CheckoutState.Unread)
       val stored = """{"kind":"continuation","task":7,"turn":2}"""
       PayloadJson.write(note).render() ==> stored
       PayloadJson.read(ujson.read(stored)) ==> Right(note)
     }
 
     test(
+      "a continuation keeps what was read of its checkout, its diff and its failed command, each piece only when read; a row without them reads as nothing read"
+    ) {
+      val diff = CheckoutState.Diff.of("origin/main", " a.scala | 2 +-", Vector("b.txt"), 3)
+      val failed = CheckoutState.Failed.of("make test", Some(2), "4\t[error] boom")
+      val both =
+        Payload.Continuation(TurnSeq(7), 2, WentOn.AtLimit, CheckoutState(Some(diff), Some(failed)))
+      val killed = Payload.Continuation(
+        TurnSeq(7),
+        2,
+        WentOn.Unpushed,
+        CheckoutState(None, Some(CheckoutState.Failed.of("make test", None, "x")))
+      )
+      val stored = """{"kind":"continuation","task":7,"turn":2,"checkout":{"diff":""" +
+        """{"base":"origin/main","stat":" a.scala | 2 +-","untracked":["b.txt"],"more":3},""" +
+        """"failed":{"command":"make test","exit":2,"lines":"4\t[error] boom"}}}"""
+      val old = """{"kind":"continuation","task":7,"turn":2,"reason":{"kind":"unpushed"}}"""
+      (
+        PayloadJson.write(both).render(),
+        PayloadJson.read(ujson.read(stored)),
+        PayloadJson.read(PayloadJson.write(killed)),
+        PayloadJson.read(ujson.read(old))
+      ) ==> (
+        stored,
+        Right(both),
+        Right(killed),
+        Right(Payload.Continuation(TurnSeq(7), 2, WentOn.Unpushed, CheckoutState.Unread))
+      )
+    }
+
+    test(
       "a continuation after a branch not offered is stored as unpushed or unopened, and read back"
     ) {
-      val unpushed = Payload.Continuation(TurnSeq(7), 2, WentOn.Unpushed)
-      val unopened = Payload.Continuation(TurnSeq(7), 3, WentOn.Unopened)
+      val unpushed = Payload.Continuation(TurnSeq(7), 2, WentOn.Unpushed, CheckoutState.Unread)
+      val unopened = Payload.Continuation(TurnSeq(7), 3, WentOn.Unopened, CheckoutState.Unread)
       val stored = Vector(
         """{"kind":"continuation","task":7,"turn":2,"reason":{"kind":"unpushed"}}""",
         """{"kind":"continuation","task":7,"turn":3,"reason":{"kind":"unopened"}}"""
@@ -188,8 +218,18 @@ object PayloadJsonTests extends TestSuite {
 
     test("a continuation after a failed check keeps its command, exit code and output") {
       val command = TestWentOn.command("make test")
-      val failed = Payload.Continuation(TurnSeq(7), 3, WentOn.failed(command, Some(2), "1 failed"))
-      val stopped = Payload.Continuation(TurnSeq(7), 3, WentOn.failed(command, None, "slow"))
+      val failed = Payload.Continuation(
+        TurnSeq(7),
+        3,
+        WentOn.failed(command, Some(2), "1 failed"),
+        CheckoutState.Unread
+      )
+      val stopped = Payload.Continuation(
+        TurnSeq(7),
+        3,
+        WentOn.failed(command, None, "slow"),
+        CheckoutState.Unread
+      )
       val stored = """{"kind":"continuation","task":7,"turn":3,"reason":""" +
         """{"kind":"check-failed","command":"make test","exit":2,"tail":"1 failed"}}"""
       (

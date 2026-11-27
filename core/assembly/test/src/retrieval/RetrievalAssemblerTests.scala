@@ -1561,7 +1561,12 @@ object RetrievalAssemblerTests extends TestSuite {
       "a continuation's boundary draws its newest earlier turn without the note that turn began with"
     ) {
       // Turn 5 began with grit's note going on with the task; this turn's own note supersedes it.
-      val note = Payload.Continuation(TurnSeq.First, 5, grit.core.store.WentOn.AtLimit)
+      val note = Payload.Continuation(
+        TurnSeq.First,
+        5,
+        grit.core.store.WentOn.AtLimit,
+        grit.core.store.CheckoutState.Unread
+      )
       val turns =
         (0 to 4).map(filler).toVector :+ Vector(note, Payload.Message(reply("answer05"))) :+ ask
       val world = store(turns*)
