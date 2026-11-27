@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.{Files, Path}
 
 import grit.core.message.Tokens
+import grit.kit.environment.DotEnv
 import grit.models.{JevClassifier, JevConfig}
 import grit.tools.MachineGuard
 
@@ -11,20 +12,21 @@ import grit.tools.MachineGuard
   * replay. It calls Jev, so it is run by hand, never by a test:
   * {{{
   * at=extensions/tools/test/resources/machine-guard
-  * JEV_API_KEY=… ./mill grit.kit.test.runMain grit.kit.run.RecordGuardAnswers \
+  * GRIT_ENV_FILE=<a .env holding JEV_API_KEY> ./mill grit.kit.test.runMain grit.kit.run.RecordGuardAnswers \
   *   "$PWD/$at/pending.json" "$PWD/$at/answers.json"
   * }}}
   * Each state the first file lists is asked of Jev with [[MachineGuard.Questions]], one request
   * of about 300 input tokens each, its answer added to the second (`{"state", "model",
   * "harms"}`, the probabilities in [[MachineGuard.Harms]]'s order), and the first left empty.
-  * Nothing is written when the key is unset, a file does not read, or a request gets no answer.
+  * The key is read from the environment over `GRIT_ENV_FILE` ([[DotEnv.loadDefault]]), never
+  * shown. Nothing is written when the key is unset, a file does not read, or a request gets no answer.
   */
 object RecordGuardAnswers {
 
   def main(args: Array[String]): Unit =
     args.toList match {
       case pending :: answers :: Nil =>
-        record(Path.of(pending), Path.of(answers), sys.env) match {
+        DotEnv.loadDefault(sys.env).flatMap(record(Path.of(pending), Path.of(answers), _)) match {
           case Right(said) => println(said)
           case Left(why) =>
             System.err.println(s"record: $why")
