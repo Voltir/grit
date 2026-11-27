@@ -705,6 +705,27 @@ object TurnOfferTests extends TestSuite {
       writesOf(set, "post_e") ==> Some(Vector("trial"))
     }
 
+    test(
+      "what a gate hides is sealed only for a turn briefed for one task in a workspace: a run of work, or a coding child"
+    ) {
+      val at = Some(Place.of(dir))
+      def hiding(
+          workspace: Option[Place],
+          briefing: grit.core.recipe.Briefing,
+          root: TurnOffer.Root
+      ) =
+        TurnOffer
+          .Recorded(workspace, ToolSet.Empty.id, Vector.empty, root, briefing = briefing)
+          .hiding
+      val child = TurnOffer.Root.Spawned(grit.core.agent.SubagentFixtures.coder)
+      Vector(
+        hiding(at, grit.core.recipe.Briefing.Tasked, TurnOffer.Root.Addressed),
+        hiding(at, grit.core.recipe.Briefing.Tasked, child),
+        hiding(None, grit.core.recipe.Briefing.Tasked, child),
+        hiding(at, grit.core.recipe.Briefing.Conversing, TurnOffer.Root.Addressed)
+      ) ==> Vector(Hiding.Sealed, Hiding.Sealed, Hiding.Readable, Hiding.Readable)
+    }
+
     test("a TUI conversation is offered its directory's tools at its own room's label") {
       val tx =
         TestTx.fake(Clearance.inRoom(Place.of(dir), confidentialTrial, Label.Public), labelled)

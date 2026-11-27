@@ -20,7 +20,7 @@ import grit.core.visibility.{Integrity, Subject}
 
 import TurnLoop.{Pending, Round}
 import TurnBasis.Why
-import TurnShown.{gateNotes, gatedOffer, loopShape, shown, stubsAt}
+import TurnShown.{gateNotes, gatedOffer, loopShape, readsHidden, shown, stubsAt}
 
 /** What a turn's rounds act through ([[TurnRound.Env]]), over `env` and `tooling`: its model
   * told through `heard`, offered the tools its offer chose of `tooling`'s, their results kept
@@ -48,7 +48,7 @@ private[turn] final class Rounding[C^](
       pins <- at.looping.routed.picked(env)
       tools <- Rounding.tools(tooling, offer, at.looping.asked)
       l = at.looping
-      stubs = stubsAt(at.gates, at.round, tools.set)
+      stubs = stubsAt(at.gates, at.round, tools.set, l.offer.hiding)
       reply <- Rounding.callShaped(
         heard,
         l.turn,
@@ -308,7 +308,7 @@ private[turn] final class Rounding[C^](
       (Bound.Runs | Bound.Hosted | Bound.Keeping | Bound.Delegating)^{C, env, tooling, reads, X}
     ] = {
       val box: Toolbox[caps.CapSet^{C, env, X}] =
-        if (!tools.set.mayGate) tools
+        if (!readsHidden(tools.set, at.looping.offer.hiding)) tools
         else {
           val g = at.gates.get(at.round.index)
           val text = Rounding.itemText(env, at.looping.turn, at.looping.seen)(using pins)
@@ -347,7 +347,7 @@ private[turn] object Rounding {
   ): Either[TurnFailure, (Map[ItemRef, String], ModelRequest -> ModelRequest)] =
     tools(tooling, offer, at.looping.asked).map(tools =>
       (
-        stubsAt(at.gates, at.round, tools.set),
+        stubsAt(at.gates, at.round, tools.set, at.looping.offer.hiding),
         shapeAs(at, tools, pins)
       )
     )
@@ -376,10 +376,18 @@ private[turn] object Rounding {
     val handoff = at.looping.offer.handoff
     loopShape(
       at.looping.asked,
-      TurnLoop.offered(handoff, gatedOffer(tools.set, tools.schemas(strict), strict), strict),
+      TurnLoop.offered(
+        handoff,
+        gatedOffer(tools.set, at.looping.offer.hiding, tools.schemas(strict), strict),
+        strict
+      ),
       settings.afterResult,
       settings.guidance,
-      gateNotes(at.gates, at.round, tools.set) ++ TurnLoop.notes(at.budget, handoff, at.round) ++
+      gateNotes(at.gates, at.round, tools.set, at.looping.offer.hiding) ++ TurnLoop.notes(
+        at.budget,
+        handoff,
+        at.round
+      ) ++
         TurnLoop.readingNote(at.looping.budget, handoff, tools.set, at.replies, at.round)
     )
   }
@@ -561,7 +569,7 @@ private[turn] object Rounding {
             None,
             TurnLoop.offered(
               recorded.handoff,
-              gatedOffer(tools.set, tools.schemas(strict), strict),
+              gatedOffer(tools.set, recorded.hiding, tools.schemas(strict), strict),
               strict
             ),
             settings.afterResult,

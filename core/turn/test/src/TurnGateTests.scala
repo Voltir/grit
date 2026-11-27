@@ -159,19 +159,35 @@ object TurnGateTests extends TestSuite {
     test(
       "a stub says where the item comes from, what reading it costs, how to read it, and how to ask it"
     ) {
-      TurnGate.stub(issue, Fate.Hidden(named("h1"), Vector(post, note)), offered) ==>
+      TurnGate.stub(
+        issue,
+        Fate.Hidden(named("h1"), Vector(post, note)),
+        offered,
+        Hiding.Readable
+      ) ==>
         "Hidden here as h1: a result from a place people outside the team can write in. If " +
         "your answer needs what it says, read it: call read_hidden with name h1. After that " +
         "you can't post to channels or use note until you've answered. To ask it a short " +
         "question instead, answered yes or no, with a whole number, a date, one of options " +
         "you list or a short code, call extract with name h1: that never stops you doing " +
         "anything."
-      TurnGate.stub(guest, Fate.Hidden(named("h2"), Vector(post)), offered) ==>
+      TurnGate.stub(guest, Fate.Hidden(named("h2"), Vector(post)), offered, Hiding.Readable) ==>
         "Hidden here as h2: something from a guest, written from outside the team. If your " +
         "answer needs what it says, read it: call read_hidden with name h2. After that you " +
         "can't post to channels until you've answered. To ask it a short question instead, " +
         "answered yes or no, with a whole number, a date, one of options you list or a short " +
         "code, call extract with name h2: that never stops you doing anything."
+    }
+
+    test("a sealed stub says where the item comes from and that nothing here can read it") {
+      Vector(issue, guest).map(
+        TurnGate.stub(_, Fate.Hidden(named("h1"), Vector(post)), offered, Hiding.Sealed)
+      ) ==> Vector(
+        "Hidden here: a result from a place people outside the team can write in. Nothing " +
+          "here can read it, so do the task without it.",
+        "Hidden here: something from a guest, written from outside the team. Nothing here " +
+          "can read it, so do the task without it."
+      )
     }
 
     test("a hidden item's name is h and a number from 1, with no leading zero") {

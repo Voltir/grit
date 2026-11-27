@@ -116,8 +116,13 @@ object TurnGateTurnTests extends TestSuite {
       s"of options you list or a short code, call extract with name $name: that never stops " +
       "you doing anything."
 
-  /** `turn` answered by `provider` with [[gatedTools]] offered over `files`. */
-  private def gatedRun(durable: InMemoryDurable, entries: InMemoryEntryStore, turn: TurnRef)(
+  /** `turn` answered by `provider` with [[gatedTools]] offered over `files`, under `recipe`. */
+  private def gatedRun(
+      durable: InMemoryDurable,
+      entries: InMemoryEntryStore,
+      turn: TurnRef,
+      recipe: grit.core.recipe.TurnRecipe = grit.core.recipe.TurnRecipe.Shipped
+  )(
       provider: Scripted
   ): String = {
     val ws = new Files(files)
@@ -130,7 +135,8 @@ object TurnGateTurnTests extends TestSuite {
         NoClassifier,
         ws,
         gatedTools(ws),
-        5
+        5,
+        recipe = recipe
       )
     )
   }
@@ -278,6 +284,39 @@ object TurnGateTurnTests extends TestSuite {
       // Never having read the result, the turn may post.
       kept(entries, "result:c1:0:1:0").map(_.payload) ==> Some(
         Payload.Result(Message.ToolResult(ToolCallId("t2"), "posted", false), "post a.txt")
+      )
+    }
+
+    test(
+      "a turn briefed for one task in a workspace is offered neither read_hidden nor extract, and what its gate hides is shown as a stub saying it cannot be read, under the guidance saying so"
+    ) {
+      val entries = new InMemoryEntryStore
+      val provider = gatedScript
+      gatedRun(
+        new InMemoryDurable,
+        entries,
+        say(entries, "read and post"),
+        grit.core.recipe.TurnRecipe.Tasked
+      )(provider)
+      val note = Message.User(Fenced.noted(Vector(TurnGate.SealedGuidance)))
+      (
+        provider.requests.map(_.tools.map(_.name)).distinct,
+        provider.requests.map(resultOf(_, "t1")),
+        provider.requests.map(_.messages.count(_ == note))
+      ) ==> (
+        Vector(Vector("topic", "peek", "post", "task_status")),
+        Vector(
+          None,
+          Some(
+            "Hidden here: a result from a place people outside the team can write in. " +
+              "Nothing here can read it, so do the task without it."
+          ),
+          Some(
+            "Hidden here: a result from a place people outside the team can write in. " +
+              "Nothing here can read it, so do the task without it."
+          )
+        ),
+        Vector(0, 1, 1)
       )
     }
 

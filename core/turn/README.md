@@ -65,6 +65,11 @@ Of its own tools a turn is offered, in that order, by four questions: what runs 
 `operator`), and what it answers in which room (its root and audience: `administering`). The coding
 tools, `hosted`, the deployment's `Offered` chose.
 
+Before them all, a turn whose gate could hide an item (`ToolSet.mayGate`) is offered `read_hidden`
+and `extract`, unless it is briefed for one task in a workspace (a run of `grit work`, or a spawned
+coding child: `Hiding.Sealed`, `TurnOffer.Recorded.hiding`): what such a turn's gate hides stays
+unread, and its stub and the gate's note say so.
+
 A spawned child's turn (root `Spawned`) is offered from its type's tooling instead
 (`TurnTooling.at`): briefed for one task, its type's persona, the services its type reaches, and,
 for a coding type, the coding tools its allowlist permits, at its type's repository; none of the

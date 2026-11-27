@@ -96,7 +96,9 @@ object PlainWordsTests extends TestSuite {
 
     test("a stub and a withdrawal say nothing a person would not follow") {
       val costs = Vector(ToolName("slack_post"), ToolName("remind_me"), ToolName("file_note"))
-      val stubs = Vector(issue, cards, guest).map(TurnGate.stub(_, Fate.Hidden(h1, costs), offered))
+      val stubs = Vector(issue, cards, guest).map(
+        TurnGate.stub(_, Fate.Hidden(h1, costs), offered, Hiding.Readable)
+      )
       val before = TurnGate.decide(Integrity.Member, offered, Vector.empty, Map.empty, Map.empty)
       val now =
         TurnGate.decide(Integrity.Member, offered, Vector(issue), Map(issue.ref -> h1), Map.empty)
@@ -107,13 +109,22 @@ object PlainWordsTests extends TestSuite {
       (stubs ++ line).map(unplain) ==> Vector.fill(4)(Vector.empty[String])
     }
 
-    test("the guidance says nothing a person would not follow, and words to avoid only quoted") {
+    test(
+      "the guidance and a sealed stub say nothing a person would not follow, and words to avoid only quoted"
+    ) {
+      val guidance = Vector(TurnGate.Guidance, TurnGate.SealedGuidance)
+      val sealedStubs = Vector(issue, cards, guest).map(
+        TurnGate.stub(_, Fate.Hidden(h1, Vector(ToolName("slack_post"))), offered, Hiding.Sealed)
+      )
       // The words to avoid are named in quotes: only here is a quoted span not read.
-      unplain(TurnGate.Guidance.replaceAll("\"[^\"]*\"", "")) ==> Vector.empty
+      (guidance.map(_.replaceAll("\"[^\"]*\"", "")) ++ sealedStubs).map(unplain) ==>
+        Vector.fill(5)(Vector.empty[String])
       assert(
-        TurnGate.Guidance.endsWith(
-          "Use everyday words: don't say \"integrity\", \"stub\", \"hidden item\", \"turn\" " +
-            "or the names of your tools."
+        guidance.forall(
+          _.endsWith(
+            "Use everyday words: don't say \"integrity\", \"stub\", \"hidden item\", " +
+              "\"turn\" or the names of your tools."
+          )
         )
       )
     }

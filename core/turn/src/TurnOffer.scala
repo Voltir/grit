@@ -87,6 +87,15 @@ object TurnOffer {
 
     /** How its turn's calls offer [[TaskStatus]], from its `briefing` and `root`. */
     def handoff: TaskStatus.Handoff = TaskStatus.Handoff.of(briefing, root)
+
+    /** Whether its turn may read what its gate hides: [[Hiding.Sealed]] for a turn briefed for
+      * one task in a workspace (a run of `grit work`, or a spawned coding child), whose tools
+      * work in a checkout; [[Hiding.Readable]] for any other.
+      */
+    def hiding: Hiding = (briefing, workspace) match {
+      case (Briefing.Tasked, Some(_)) => Hiding.Sealed
+      case _ => Hiding.Readable
+    }
   }
 
   /** The zones a turn's message is dated in ([[TurnShown.answering]]), as its `offer` step found

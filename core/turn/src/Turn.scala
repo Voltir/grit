@@ -468,7 +468,11 @@ object Turn {
       own = Toolbox.of[{}](set.tools.map(Tool.gone)*).getOrElse(Toolbox.Empty)
       tools <- offered(own, asking, byRef.root).left.map(reason)
       schemas = tools.schemas(strict)
-      offering = TurnLoop.offered(byRef.handoff, gatedOffer(tools.set, schemas, strict), strict)
+      offering = TurnLoop.offered(
+        byRef.handoff,
+        gatedOffer(tools.set, byRef.hiding, schemas, strict),
+        strict
+      )
       // How round `round`'s call was shaped, as it was live, with `more` notes besides.
       shapeAt = (round: Round, more: Vector[(Round, String)]) =>
         loopShape(
@@ -476,7 +480,7 @@ object Turn {
           offering,
           settings.afterResult,
           settings.guidance,
-          gateNotes(gates, round, tools.set) ++ limits.fold(Vector.empty)(l =>
+          gateNotes(gates, round, tools.set, byRef.hiding) ++ limits.fold(Vector.empty)(l =>
             TurnLoop.notes(l.budget.after(replies.take(round.index)), byRef.handoff, round) ++
               TurnLoop.readingNote(l.budget, byRef.handoff, tools.set, replies, round)
           ) ++ more
@@ -520,7 +524,7 @@ object Turn {
             showing,
             turn,
             reply,
-            stubsAt(gates, round, tools.set),
+            stubsAt(gates, round, tools.set, byRef.hiding),
             offer.zoned,
             place,
             shapeAt(round, more)
@@ -566,7 +570,7 @@ object Turn {
                       turn,
                       reply,
                       prompt.render,
-                      stubsAt(gates, last, tools.set),
+                      stubsAt(gates, last, tools.set, byRef.hiding),
                       offer.zoned,
                       place,
                       shapeAt(last, Vector.empty)

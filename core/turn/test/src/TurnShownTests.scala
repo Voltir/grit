@@ -374,17 +374,22 @@ object TurnShownTests extends TestSuite {
     }
 
     test(
-      "the offer is the tool set's: read_hidden and extract whenever a tool requires above the least, whatever the gates decide; a withheld tool stays offered"
+      "the offer is the tool set's: read_hidden and extract whenever a tool requires above the least and what is hidden is readable, whatever the gates decide; a withheld tool stays offered"
     ) {
       // post requires member, so a gate may withhold it; peek and poke require nothing.
       val gating = TurnFixtures.gatedTools(TurnFixtures.NoCheckout)
       val plain = TurnFixtures.tools(TurnFixtures.NoCheckout)
-      def offer(set: ToolSet, schemas: Vector[ToolSchema]) =
-        TurnShown.gatedOffer(set, schemas, false).map(_.name)
+      def offer(set: ToolSet, schemas: Vector[ToolSchema], hiding: Hiding) =
+        TurnShown.gatedOffer(set, hiding, schemas, false).map(_.name)
       Vector(
-        offer(gating.set, gating.schemas(false)),
-        offer(plain.set, plain.schemas(false))
-      ) ==> Vector(Vector("read_hidden", "extract", "peek", "post"), Vector("peek", "poke"))
+        offer(gating.set, gating.schemas(false), Hiding.Readable),
+        offer(gating.set, gating.schemas(false), Hiding.Sealed),
+        offer(plain.set, plain.schemas(false), Hiding.Readable)
+      ) ==> Vector(
+        Vector("read_hidden", "extract", "peek", "post"),
+        Vector("peek", "post"),
+        Vector("peek", "poke")
+      )
     }
   }
 }

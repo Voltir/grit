@@ -72,33 +72,44 @@ private[turn] object TurnShown {
   }
 
   /** What every request of every turn offered `offered` offers of `schemas`, whatever its gates
-    * decide: when [[ToolSet.mayGate]], read_hidden and extract first ([[ReadHidden]],
-    * [[Extract]], `strict` as `schemas` are); then `schemas`. A tool a round's gate withholds,
-    * the first's included, stays offered, and a call of it is refused
-    * ([[grit.core.tool.CallError.Withheld]]), as that round's note says ([[gateNotes]]).
+    * decide: when [[ToolSet.mayGate]] and `hiding` is [[Hiding.Readable]], read_hidden and
+    * extract first ([[ReadHidden]], [[Extract]], `strict` as `schemas` are); then `schemas`. A
+    * tool a round's gate withholds, the first's included, stays offered, and a call of it is
+    * refused ([[grit.core.tool.CallError.Withheld]]), as that round's note says ([[gateNotes]]).
     */
   def gatedOffer(
       offered: ToolSet,
+      hiding: Hiding,
       schemas: Vector[ToolSchema],
       strict: Boolean
   ): Vector[ToolSchema] =
-    Vector(unread.schema(strict), unasked.schema(strict)).filter(_ => offered.mayGate) ++ schemas
+    Vector(unread.schema(strict), unasked.schema(strict))
+      .filter(_ => readsHidden(offered, hiding)) ++ schemas
+
+  /** Whether a turn offered `offered` binds and offers read_hidden and extract. */
+  private[turn] def readsHidden(offered: ToolSet, hiding: Hiding): Boolean =
+    offered.mayGate && hiding == Hiding.Readable
 
   /** The note each round up to `round` adds, oldest first, as `gates`, each round's gate by
-    * its index, made them: [[TurnGate.Guidance]] on the first round whose gate hid an item,
+    * its index, made them: [[TurnGate.guidance]] for `hiding` on the first round whose gate hid an item,
     * then the withdrawal the round's gate makes against the round before's
     * ([[TurnGate.withdrawn]]; the first round's against one withholding nothing), its tools as
     * `offered` says them; each note as [[Fenced.noted]] fences it. A round adding neither has
     * none.
     */
-  def gateNotes(gates: Map[Int, Gated], round: Round, offered: ToolSet): Vector[(Round, String)] = {
+  def gateNotes(
+      gates: Map[Int, Gated],
+      round: Round,
+      offered: ToolSet,
+      hiding: Hiding
+  ): Vector[(Round, String)] = {
     val firstHid = gates.collect { case (index, g) if g.hidden.nonEmpty => index }.minOption
     (Round.First.index to round.index).toVector.flatMap { index =>
       gates.get(index).flatMap { now =>
         val before =
           if (index == Round.First.index) Some(now.copy(withheld = Vector.empty))
           else gates.get(index - 1)
-        val lines = Vector(TurnGate.Guidance).filter(_ => firstHid.contains(index)) ++
+        val lines = Vector(TurnGate.guidance(hiding)).filter(_ => firstHid.contains(index)) ++
           before.flatMap(TurnGate.withdrawn(_, now, offered))
         Option.when(lines.nonEmpty)(Round.at(index) -> Fenced.noted(lines))
       }
@@ -157,7 +168,8 @@ private[turn] object TurnShown {
     }
 
   /** The stubs `round`'s request shows, by the ref of the item each stands for, as its gate
-    * in `gates` hid them, their tools as `offered` says them ([[TurnGate.stub]]); none for a
+    * in `gates` hid them, their tools as `offered` says them and read as `hiding` lets them
+    * ([[TurnGate.stub]]); none for a
     * round with no gate. A round's gate keeps every item an earlier one hid as it hid it, and
     * hides none an earlier one showed, whose integrity dominates every later level
     * ([[TurnGate.decide]]): so each round's stubs hold every earlier round's, unchanged.
@@ -165,12 +177,13 @@ private[turn] object TurnShown {
   def stubsAt(
       gates: Map[Int, Gated],
       round: Round,
-      offered: ToolSet
+      offered: ToolSet,
+      hiding: Hiding
   ): Map[ItemRef, String] =
     gates
       .get(round.index)
       .fold(Map.empty)(
-        _.hidden.map((item, h) => item.ref -> TurnGate.stub(item, h, offered)).toMap
+        _.hidden.map((item, h) => item.ref -> TurnGate.stub(item, h, offered, hiding)).toMap
       )
 
   /** What a later call that repeats `request`'s system prompt, tools and messages, byte for

@@ -29,7 +29,7 @@ object TurnSpawnTests extends TestSuite {
   private val repository: Place = SubagentFixtures.scratch.place
   private val room: Place = Origin.Slack("T1", "C1", "1.0").place
 
-  /** The tools grit adds to a child's turn. */
+  /** The tools grit may add to a child's turn. */
   private val every = Set("read_hidden", "extract", "task_status")
 
   private def calling(text: String, calls: (String, String)*): Message.Assistant =
@@ -146,6 +146,24 @@ object TurnSpawnTests extends TestSuite {
     Set.empty
   )
 
+  /** The coding type of [[coders]], its coding tool `fetch` requiring a member, as every coding
+    * tool's calls are stamped at least at one: so a gate could hide what such a child is shown.
+    */
+  private val gatedCoders: Spawnable = Spawnable.of(
+    Subagents
+      .of(
+        Vector(
+          SubagentFixtures.ok(
+            SubagentFixtures
+              .subagent(SubagentFixtures.coder, SubagentFixtures.coding, Integrity.WritesOut)
+          )
+        )
+      )
+      .fold(why => throw new java.lang.AssertionError(why), identity),
+    _ => Vector(hostedFetch.requiring(Integrity.Member)),
+    Set.empty
+  )
+
   private final class PricedClassifier extends grit.core.classify.Classifier {
     protected def answer(
         state: ujson.Value,
@@ -192,7 +210,9 @@ object TurnSpawnTests extends TestSuite {
       (offered(provider) -- every, edge.sent) ==> (Set.empty[String], Vector.empty)
     }
 
-    test("a child is offered task_status and never topic: its one message is never asked about") {
+    test(
+      "a coding child is offered task_status and none of topic, read_hidden and extract: its one message is never asked about, and nothing hidden from it can be read"
+    ) {
       val entries = new InMemoryEntryStore
       val turn = spawn(entries, SubagentFixtures.coder, "Fix the typo.")
       val durable = new InMemoryDurable
@@ -203,11 +223,14 @@ object TurnSpawnTests extends TestSuite {
           provider,
           edgeAt(durable, repository),
           new Files(Map.empty),
-          coders,
+          gatedCoders,
           spawnedFrom(repository)
         )
       )
-      offered(provider).intersect(Set("topic", "task_status")) ==> Set("task_status")
+      offered(provider).intersect(
+        Set("topic", "task_status", "read_hidden", "extract", "fetch")
+      ) ==>
+        Set("task_status", "fetch")
     }
 
     test("a child's task_status is worded for a handoff going back to its parent, on every call") {
