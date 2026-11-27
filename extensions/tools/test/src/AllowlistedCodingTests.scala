@@ -169,13 +169,13 @@ object AllowlistedCodingTests extends TestSuite {
       val noted = new Noting(scripts)
       val runs = Allowlisted.over(noted, allowlist(2.minutes))
       val host = new CodingTests.Scripted()
-      val jev = new GuardFixtures.Judging(Right(Vector(0.9, 0.0, 0.0, 0.0)))
+      val jev = new GuardFixtures.Judging(Right(Vector(0.0, 0.0, 0.0, 0.9)))
       val guard = GuardFixtures.guard(Right(jev))
       def ran(program: String, args: String*) =
         settle(host, runs, "run", ujson.Obj("program" -> program, "args" -> args), guard)
       val refused =
-        "Nothing ran: the check that guards this machine judged that this command would change " +
-          "files outside the checkout. Commands here may change only what is inside the " +
+        "Nothing ran: the check that guards this machine judged that this command would send " +
+          "or change something on another machine. Commands here may change only what is inside the " +
           "checkout /home/coder/work/co: rewrite it to stay inside, or leave that step to a person."
       (
         ran("./mill", "clean"),

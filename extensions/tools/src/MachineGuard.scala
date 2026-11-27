@@ -13,7 +13,7 @@ import grit.core.host.{AbsPath, Allowlist, Argv, Reach, Reached, Stashes}
   *     read as the home directory `home` (`None`: unknown) and an option's value read as a
   *     word of its own.
   *
-  * Any other command is judged by `classifier` ([[MachineGuard.Questions]]) and refused when
+  * Any other command is judged by `classifier` ([[MachineGuard.questions]]) and refused when
   * any harm is at least [[MachineGuard.Refuses]], or when there is no classifier (`Left`: why)
   * or it does not answer.
   */
@@ -50,6 +50,7 @@ final class MachineGuard(
       shaped: Boolean
   ): Verdict = {
     val state = State(argv.written, AbsPath.value(root), outsideLines(outside, unread))
+    val asking = questions(state)
     val because =
       if (outside.nonEmpty) s"has an argument leading outside it: ${led(outside)}"
       else if (unread.nonEmpty)
@@ -66,7 +67,7 @@ final class MachineGuard(
             "do not retry it."
         )
       case Right(c) =>
-        c.ask(state, Questions) match {
+        c.ask(state, asking) match {
           case Left(error) =>
             Verdict.Unjudged(
               Some(error),
@@ -202,70 +203,89 @@ object MachineGuard {
   }
 
   /** What Jev is shown: `command` as a person would type it, the `checkout`'s real path, and
-    * `outside`, one line per argument that leads outside the checkout (or names a variable the
-    * check cannot read), `none` when none does.
+    * `outside`, one line per argument that leads outside the checkout or names a variable the
+    * check cannot read; `None`, and no such field, when every argument leads inside.
     */
-  final case class State(command: String, checkout: String, outside: String) extends caps.Pure
+  final case class State(command: String, checkout: String, outside: Option[String])
+      extends caps.Pure
 
   given StateJson[State] = StateJson.instance(s =>
-    ujson.Obj("command" -> s.command, "checkout" -> s.checkout, "outside" -> s.outside)
+    ujson.Obj.from(
+      Vector("command" -> ujson.Str(s.command), "checkout" -> ujson.Str(s.checkout)) ++
+        s.outside.map(o => "outside" -> ujson.Str(o))
+    )
   )
 
-  /** Each harm's probability, as [[Questions]] asks it. */
+  /** Each harm's probability, as [[questions]] asks it: `changesOutside` is `None` when code
+    * found every argument inside the checkout, and the question was not asked.
+    */
   final case class Harms(
-      changesOutside: Double,
+      changesOutside: Option[Double],
       changesShared: Double,
       stopsProcesses: Double,
       changesRemote: Double
   ) extends caps.Pure {
 
-    /** The highest of the four. */
-    def most: Double = Vector(changesOutside, changesShared, stopsProcesses, changesRemote).max
+    /** The highest of those asked. */
+    def most: Double =
+      (changesOutside.toVector ++ Vector(changesShared, stopsProcesses, changesRemote)).max
 
     /** What the refusal says of each harm at [[Refuses]] or above, `outside` the arguments that
       * led out of the checkout, in the questions' order.
       */
     private[tools] def found(outside: Vector[(String, AbsPath)]): Vector[String] =
-      Vector(
-        (
-          changesOutside,
-          if (outside.isEmpty) "change files outside the checkout"
-          else s"change files outside the checkout (${led(outside)})"
-        ),
+      (changesOutside
+        .map(p =>
+          (
+            p,
+            if (outside.isEmpty) "change files outside the checkout"
+            else s"change files outside the checkout (${led(outside)})"
+          )
+        )
+        .toVector ++ Vector(
         (changesShared, "delete or rewrite what other checkouts of this repository share"),
         (stopsProcesses, "stop processes it did not start"),
         (changesRemote, "send or change something on another machine")
-      ).collect { case (p, said) if p >= Refuses => said }
+      )).collect { case (p, said) if p >= Refuses => said }
   }
 
-  /** The four yes/no questions asked of a command's [[State]] in one request, in [[Harms]]'s
-    * order.
+  /** The yes/no questions asked of `state` in one request, in [[Harms]]'s order: whether it
+    * changes files outside the checkout only when `state.outside` says where its arguments lead,
+    * since code answers it otherwise; then the other three.
     */
-  val Questions: Ask[State, Harms] =
+  def questions(state: State): Ask[State, Harms] =
+    state.outside.fold(Others.map((shared, stops, remote) => Harms(None, shared, stops, remote)))(
+      _ =>
+        ChangesOutside.zip(Others).map { case (outside, (shared, stops, remote)) =>
+          Harms(Some(outside), shared, stops, remote)
+        }
+    )
+
+  private val ChangesOutside: Ask[State, Double] =
+    Ask.yesNo[State](
+      "Running `command` in the directory `checkout` would create, change, move or delete a " +
+        "file or directory that is not inside `checkout`. `outside` lists where its arguments " +
+        "lead outside `checkout`.",
+      Some(
+        "It writes, overwrites, moves, empties or deletes something outside `checkout`, such " +
+          "as the home directory, a credentials file, or another checkout."
+      ),
+      Some("It only reads outside `checkout`, or changes only what is inside it.")
+    )
+
+  private val Others: Ask[State, (Double, Double, Double)] =
     Ask
       .yesNo[State](
-        "Running `command` in the directory `checkout` would create, change, move or delete a " +
-          "file or directory that is not inside `checkout`. `outside` lists where its arguments " +
-          "lead outside `checkout`.",
+        "Running `command` would delete or rewrite something that other checkouts of the " +
+          "same git repository share: another branch, a tag, an entry in the stash, or the " +
+          "repository's settings.",
         Some(
-          "It writes, overwrites, moves, empties or deletes something outside `checkout`, such " +
-            "as the home directory, a credentials file, or another checkout."
+          "It deletes, moves or rewrites another branch, a tag, a stash entry, or a setting " +
+            "other checkouts use."
         ),
-        Some("It only reads outside `checkout`, or changes only what is inside it.")
-      )
-      .zip(
-        Ask.yesNo[State](
-          "Running `command` would delete or rewrite something that other checkouts of the " +
-            "same git repository share: another branch, a tag, an entry in the stash, or the " +
-            "repository's settings.",
-          Some(
-            "It deletes, moves or rewrites another branch, a tag, a stash entry, or a setting " +
-              "other checkouts use."
-          ),
-          Some(
-            "It only reads them, adds a commit or a stash entry, or changes only this " +
-              "checkout's own branch."
-          )
+        Some(
+          "It only reads them, adds a commit or a stash entry, or changes only this " +
+            "checkout's own branch."
         )
       )
       .zip(
@@ -285,7 +305,7 @@ object MachineGuard {
           Some("It works on this machine only, or only downloads.")
         )
       )
-      .map { case (((outside, shared), stops), remote) => Harms(outside, shared, stops, remote) }
+      .map { case ((shared, stops), remote) => (shared, stops, remote) }
 
   /** The paths `word` may name, as a shell would read them whether or not one does: the word;
     * for an option its value after `=` (`--output=/x`); and for a short one, its value glued
@@ -355,11 +375,14 @@ object MachineGuard {
   private def led(outside: Vector[(String, AbsPath)]): String =
     outside.map((w, real) => s"`$w` leads to ${AbsPath.value(real)}").mkString(", ")
 
-  private def outsideLines(outside: Vector[(String, AbsPath)], unread: Vector[String]): String =
+  private def outsideLines(
+      outside: Vector[(String, AbsPath)],
+      unread: Vector[String]
+  ): Option[String] =
     (outside.map((w, real) => s"`$w` leads to ${AbsPath.value(real)}") ++
       unread.map(w => s"`$w` names a variable that cannot be read")) match {
-      case Vector() => "none"
-      case lines => lines.mkString("\n")
+      case Vector() => None
+      case lines => Some(lines.mkString("\n"))
     }
 
   private def and(said: Vector[String]): String = said match {

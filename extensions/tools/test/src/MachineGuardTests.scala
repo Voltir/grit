@@ -80,6 +80,21 @@ object MachineGuardTests extends TestSuite {
     }
 
     test(
+      "a command whose every argument leads inside is not asked whether it changes files outside, nor shown where they lead"
+    ) {
+      val jev = new Judging(Right(Vector(0.9, 0.01, 0.01, 0.01)))
+      val g = guard(Right(jev))
+      val inside = g.judge(argv("rm", "-rf", "a/../b"))
+      val out = g.judge(argv("rm", "-rf", "../b"))
+      (inside.why, out.why.isDefined, jev.states.map(_.obj.keySet.toSet), jev.asked) ==> (
+        None,
+        true,
+        Vector(Set("command", "checkout"), Set("command", "checkout", "outside")),
+        Vector(3, 4)
+      )
+    }
+
+    test(
       "a harm at Refuses is refused in words naming it and where the command led; just under, it starts"
     ) {
       val at = guard(Right(new Judging(Right(Vector(0.3, 0.01, 0.01, 0.3)))))

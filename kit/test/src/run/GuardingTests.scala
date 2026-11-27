@@ -22,7 +22,8 @@ object GuardingTests extends TestSuite {
     ) {
       val asked = guarding(Placer.Stub) match {
         case Right(c) =>
-          c.ask(MachineGuard.State("find src -name x", "/co", "none"), MachineGuard.Questions)
+          val state = MachineGuard.State("find src -name x", "/co", None)
+          c.ask(state, MachineGuard.questions(state))
             .map(_.value.most >= MachineGuard.Refuses)
         case Left(why) => Left(why)
       }

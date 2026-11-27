@@ -36,10 +36,11 @@ Decision:
   entries and `git stash apply`. The stash is read by git the guard runs itself
   (`Stashes`), never through the model's runs. Entries are never deleted for a coder: a
   shared clone's stash grows by each `push` its coders do not pop.
-- **Then Jev.** Anything else is put to the deployment's classifier as four yes/no questions
-  about one state (the command, the checkout, where its arguments lead outside it): whether
-  it would change files outside the checkout, rewrite what other checkouts share, stop
-  processes it did not start, or change another machine. Any answer at `MachineGuard.Refuses`
+- **Then Jev.** Anything else is put to the deployment's classifier as yes/no questions about
+  one state (the command, the checkout, where its arguments lead outside it): whether it would
+  rewrite what other checkouts share, stop processes it did not start, or change another
+  machine, and, only when an argument leads outside or cannot be read, whether it would change
+  files outside the checkout. When every argument leads inside, code has answered that one. Any answer at `MachineGuard.Refuses`
   or above refuses it, naming the harm. The threshold is set from a corpus of commands,
   catastrophic and benign, judged against Jev's recorded answers.
 - **Failing closed.** No classifier, one not cleared for every label the deployment declares

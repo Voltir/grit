@@ -15,9 +15,9 @@ import grit.tools.MachineGuard
   * GRIT_ENV_FILE=<a .env holding JEV_API_KEY> ./mill grit.kit.test.runMain grit.kit.run.RecordGuardAnswers \
   *   "$PWD/$at/pending.json" "$PWD/$at/answers.json"
   * }}}
-  * Each state the first file lists is asked of Jev with [[MachineGuard.Questions]], one request
+  * Each state the first file lists is asked of Jev with [[MachineGuard.questions]], one request
   * of about 300 input tokens each, its answer added to the second (`{"state", "model",
-  * "harms"}`, the probabilities in [[MachineGuard.Harms]]'s order), and the first left empty.
+  * "harms"}`, the probabilities of the questions asked, in [[MachineGuard.Harms]]'s order), and the first left empty.
   * The key is read from the environment over `GRIT_ENV_FILE` ([[DotEnv.loadDefault]]), never
   * shown. Nothing is written when the key is unset, a file does not read, or a request gets no answer.
   */
@@ -54,9 +54,13 @@ object RecordGuardAnswers {
         case (Left(why), _) => Left(why)
         case (Right(so), state) =>
           val s =
-            MachineGuard.State(state("command").str, state("checkout").str, state("outside").str)
+            MachineGuard.State(
+              state("command").str,
+              state("checkout").str,
+              state.obj.get("outside").map(_.str)
+            )
           jev
-            .ask(s, MachineGuard.Questions)
+            .ask(s, MachineGuard.questions(s))
             .left
             .map(e => s"${s.command}: ${e.said}")
             .map { a =>
@@ -64,8 +68,10 @@ object RecordGuardAnswers {
               val answer = ujson.Obj(
                 "state" -> state,
                 "model" -> a.model,
-                "harms" -> ujson
-                  .Arr(h.changesOutside, h.changesShared, h.stopsProcesses, h.changesRemote)
+                "harms" -> ujson.Arr.from(
+                  h.changesOutside.toVector ++
+                    Vector(h.changesShared, h.stopsProcesses, h.changesRemote)
+                )
               )
               so :+ (state, answer, Tokens.value(a.usage.input))
             }

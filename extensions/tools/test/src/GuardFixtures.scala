@@ -71,13 +71,22 @@ object GuardFixtures {
     // Kept only for the test's assertions, on the test's own thread.
     @caps.unsafe.untrackedCaptures
     var states: Vector[ujson.Value] = Vector.empty
+    // How many questions each request asked, kept likewise.
+    @caps.unsafe.untrackedCaptures
+    var asked: Vector[Int] = Vector.empty
     protected def answer(
         state: ujson.Value,
         questions: Vector[Question]
     ): Either[ClassifierError, Answers] = {
       states = states :+ state
+      asked = asked :+ questions.size
+      // Asked fewer than the four, it is asked the last of them.
       answer.map(ps =>
-        Answers(ps.map(Answer.YesNo(_)), Usage(Tokens(300), Tokens.Zero, Tokens.Zero, None), "jev")
+        Answers(
+          ps.takeRight(questions.size).map(Answer.YesNo(_)),
+          Usage(Tokens(300), Tokens.Zero, Tokens.Zero, None),
+          "jev"
+        )
       )
     }
   }
