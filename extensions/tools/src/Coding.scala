@@ -67,6 +67,9 @@ object Coding {
   /** The most arguments an allowlisted `run` passes a program. */
   val MaxArgs = 256
 
+  /** The most lines `read` shows when the call gives no `limit`. */
+  val ReadPage = 200
+
   /** The deepest `list` goes. */
   val MaxDepth = 5
 
@@ -150,9 +153,10 @@ object Coding {
     new Hosted(
       ToolSpec(
         ToolName("read"),
-        "Read a UTF-8 text file in the checkout. Shows at most " + limits + ", from " +
-          "`offset`; a note after the text says which lines were shown and the offset to " +
-          "continue from. Each line is shown as its number, right-aligned, a tab, then its " +
+        s"Read a UTF-8 text file in the checkout, from line `offset`: $ReadPage lines, or " +
+          "`limit` lines, and at most " + limits + ". When lines are left out, a note after " +
+          "the text says which lines were shown, of how many, and the offset to continue " +
+          "from. Each line is shown as its number, right-aligned, a tab, then its " +
           "text, numbered from 1 as `search` numbers them; the number and tab are not part " +
           "of the file. Fails when the file does not exist, is a " +
           s"directory, is over ${mb(Workspace.MaxFileBytes)} or is not UTF-8, or when " +
@@ -163,7 +167,9 @@ object Coding {
               path = Field.text("The file, relative to the checkout's root."),
               offset =
                 Field.count("The line to start at, counting from 1.", 1, Int.MaxValue).optional,
-              limit = Field.count("The most lines to read.", 1, Clipped.MaxLines).optional
+              limit = Field
+                .count(s"The most lines to read; $ReadPage when not given.", 1, Clipped.MaxLines)
+                .optional
             )
           )
           .refine(a => located(a.path).map(p => (path = p, offset = a.offset, limit = a.limit))),
@@ -177,7 +183,9 @@ object Coding {
 
   def read(ws: Workspace^): Tool[ReadArgs]^{ws} =
     readHosted.over(a =>
-      outcome(ws.read(a.path, Lines.of(a.offset.getOrElse(1), a.limit)))(c => c.show)
+      outcome(ws.read(a.path, Lines.of(a.offset.getOrElse(1), Some(a.limit.getOrElse(ReadPage)))))(
+        c => c.show
+      )
     )
 
   /** `list` as the engine offers it: an edge runs it ([[list]]). */

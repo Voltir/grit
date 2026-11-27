@@ -46,8 +46,10 @@ object LocalHostTests extends TestSuite {
           shown(ws.read(path("a.txt"), Lines.All)) ==> Right(
             "     1\tone\n     2\ttwo\n     3\tthree"
           )
+          shown(ws.read(path("a.txt"), Lines.of(1, Some(2)))) ==>
+            Right("     1\tone\n     2\ttwo\n\n[Showing lines 1-2 of 3. Use offset=3 to continue.]")
           shown(ws.read(path("a.txt"), Lines.of(2, Some(1)))) ==>
-            Right("     2\ttwo\n\n[1 more lines in the file. Use offset=3 to continue.]")
+            Right("     2\ttwo\n\n[Showing line 2 of 3. Use offset=3 to continue.]")
           shown(ws.read(path("a.txt"), Lines.of(3, None))) ==> Right("     3\tthree")
         }
       }
@@ -65,7 +67,7 @@ object LocalHostTests extends TestSuite {
           val ws = new LocalWorkspace(dir, noSecrets)
           shown(ws.search("needle", path("s.txt"))) ==> Right("s.txt:3: needle")
           shown(ws.read(path("s.txt"), Lines.of(3, Some(1)))) ==>
-            Right("     3\tneedle\n\n[1 more lines in the file. Use offset=4 to continue.]")
+            Right("     3\tneedle\n\n[Showing line 3 of 4. Use offset=4 to continue.]")
         }
       }
       test("failures") {

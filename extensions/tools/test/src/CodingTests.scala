@@ -276,6 +276,7 @@ object CodingTests extends TestSuite {
       val schemas = all(new Scripted()).schemas(strict = false)
       val described = schemas.map(s => s.name -> s.description).toMap
       assert(
+        described.get("read").exists(_.contains("200 lines, or `limit` lines")),
         described.get("read").exists(_.contains("2000 lines and 50 KB")),
         described.get("run").exists(_.contains("60 seconds when not given")),
         described.get("edit").exists(_.contains("exactly once")),
@@ -293,13 +294,13 @@ object CodingTests extends TestSuite {
       )
     }
 
-    test("read runs free, passing offset and limit") {
+    test("read runs free, passing offset and limit, and a page of lines when no limit is given") {
       val host = new Scripted()
       settle(host, "read", ujson.Obj("path" -> "src/a.scala", "offset" -> 10, "limit" -> 5)) ==>
         Right((None, Outcome.Done("text\n\n[hint]")))
       settle(host, "read", ujson.Obj("path" -> "./b", "offset" -> ujson.Null)) ==>
         Right((None, Outcome.Done("text\n\n[hint]")))
-      host.log ==> Vector("read src/a.scala 10 Some(5)", "read b 1 None")
+      host.log ==> Vector("read src/a.scala 10 Some(5)", "read b 1 Some(200)")
     }
 
     test("a host failure is a failed outcome in its words") {

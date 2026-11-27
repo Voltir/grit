@@ -83,17 +83,20 @@ final class LocalWorkspace(root: Path, redaction: Redaction) extends Workspace {
       end: Int,
       total: Int
   ): Option[Kept] -> Option[String] = {
-    case Some(Kept(0, _, _)) =>
-      Some(
-        s"Line $first is over ${Clipped.MaxBytes / 1024} KB, too long to show. Read part of " +
-          s"it with a command, such as: sed -n '${first}p' ${RelPath.value(path)} | cut -c1-2000"
-      )
-    case Some(k) =>
-      val last = first + k.lines - 1
-      Some(s"Showing lines $first-$last of $total. Use offset=${last + 1} to continue.")
-    case None if end < total =>
-      Some(s"${total - end} more lines in the file. Use offset=${end + 1} to continue.")
-    case None => None
+    def showing(last: Int): String = {
+      val lines = if (first == last) s"line $first" else s"lines $first-$last"
+      s"Showing $lines of $total. Use offset=${last + 1} to continue."
+    }
+    {
+      case Some(Kept(0, _, _)) =>
+        Some(
+          s"Line $first is over ${Clipped.MaxBytes / 1024} KB, too long to show. Read part of " +
+            s"it with a command, such as: sed -n '${first}p' ${RelPath.value(path)} | cut -c1-2000"
+        )
+      case Some(k) => Some(showing(first + k.lines - 1))
+      case None if end < total => Some(showing(end))
+      case None => None
+    }
   }
 
   /** Every entry under `dir`, `depth` levels down, with whether it is a directory; a
