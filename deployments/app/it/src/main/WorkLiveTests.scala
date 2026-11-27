@@ -382,12 +382,10 @@ object WorkLiveTests extends TestSuite {
         ) ==> (
           Right(()),
           Some(Rehearsed.Answered.Unsent),
-          // The allowlisted coding tools and scout's, beside what every turn is offered; none of
-          // grit's conversation tools, the turn briefed for one task; task_status from its first
-          // call, so the tools never change within the turn.
-          Some(
-            "edit,extract,list,read,read_hidden,run,scout_find,search,stop,tail,task_status,topic,write"
-          ),
+          // The allowlisted coding tools and scout's, beside topic; none of grit's conversation
+          // tools, nor read_hidden or extract, the turn briefed for one task in its checkout;
+          // task_status from its first call, so the tools never change within the turn.
+          Some("edit,list,read,run,scout_find,search,stop,tail,task_status,topic,write"),
           Some(false)
         )
       }
