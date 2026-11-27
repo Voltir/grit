@@ -169,8 +169,8 @@ object MachineGuard {
     */
   val Refuses: Double = 0.3
 
-  /** How every refusal begins, which a bench's readout counts. */
-  val Lead: String = "Nothing ran: the check that guards this machine"
+  /** How every refusal begins ([[grit.core.host.Allowlisted.GuardLead]]). */
+  val Lead: String = grit.core.host.Allowlisted.GuardLead
 
   /** The commands code clears unasked when every argument leads inside the checkout: git's
     * reads, adds and commits, the stash's pushes, lists, shows and applies, and the shell's

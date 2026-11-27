@@ -1,26 +1,46 @@
-package grit.eval.harness.main
+package grit.kit.run
 
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.{Files, Path}
 
+import grit.core.message.Tokens
 import grit.models.{JevClassifier, JevConfig}
 import grit.tools.MachineGuard
 
-/** `scripts/eval machine-guard`: Jev's answers to the machine guard's corpus, recorded for its
-  * tests to replay (`MachineGuardCorpusTests`).
+/** Jev's answers to the machine guard's corpus, recorded for `MachineGuardCorpusTests` to
+  * replay. It calls Jev, so it is run by hand, never by a test:
+  * {{{
+  * at=extensions/tools/test/resources/machine-guard
+  * JEV_API_KEY=… ./mill grit.kit.test.runMain grit.kit.run.RecordGuardAnswers \
+  *   "$PWD/$at/pending.json" "$PWD/$at/answers.json"
+  * }}}
+  * Each state the first file lists is asked of Jev with [[MachineGuard.Questions]], one request
+  * of about 300 input tokens each, its answer added to the second (`{"state", "model",
+  * "harms"}`, the probabilities in [[MachineGuard.Harms]]'s order), and the first left empty.
+  * Nothing is written when the key is unset, a file does not read, or a request gets no answer.
   */
-object GuardCommands {
+object RecordGuardAnswers {
 
-  /** Each state `pending` lists asked of Jev with [[MachineGuard.Questions]], one request each,
-    * its answer added to `answers` (`{"state", "model", "harms"}`, the four probabilities in
-    * [[MachineGuard.Harms]]'s order) and `pending` left empty; how many it recorded and their
-    * input tokens. `Left` when the key is not set, a file does not read, or a request gets no
-    * answer, before anything is written. It calls Jev, so it is run by hand, never by a test.
-    */
-  def record(f: Map[String, String], env: Map[String, String]): Either[String, String] =
+  def main(args: Array[String]): Unit =
+    args.toList match {
+      case pending :: answers :: Nil =>
+        record(Path.of(pending), Path.of(answers), sys.env) match {
+          case Right(said) => println(said)
+          case Left(why) =>
+            System.err.println(s"record: $why")
+            sys.exit(1)
+        }
+      case _ =>
+        System.err.println("usage: RecordGuardAnswers <pending.json> <answers.json>")
+        sys.exit(2)
+    }
+
+  private def record(
+      pendingAt: Path,
+      answersAt: Path,
+      env: Map[String, String]
+  ): Either[String, String] =
     for {
-      pendingAt <- Cli.need(f, "pending").map(Path.of(_))
-      answersAt <- Cli.need(f, "answers").map(Path.of(_))
       config <- JevConfig.fromEnv(env).left.map(_.toString)
       pending <- read(pendingAt)
       kept <- read(answersAt)
@@ -45,7 +65,7 @@ object GuardCommands {
                 "harms" -> ujson
                   .Arr(h.changesOutside, h.changesShared, h.stopsProcesses, h.changesRemote)
               )
-              so :+ (state, answer, grit.core.message.Tokens.value(a.usage.input))
+              so :+ (state, answer, Tokens.value(a.usage.input))
             }
       }
     } yield {

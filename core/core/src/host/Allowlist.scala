@@ -121,6 +121,11 @@ sealed trait Allowlisted extends caps.SharedCapability {
 
 object Allowlisted {
 
+  /** How every refusal of the machine guard a coding tool's `run` asks begins (ADR 0069): what a
+    * bench's readout counts it by.
+    */
+  val GuardLead: String = "Nothing ran: the check that guards this machine"
+
   /** `runs` narrowed to what `allowlist` permits. */
   def over(runs: Runs^, allowlist: Allowlist): Allowlisted^ = {
     val permitted = allowlist

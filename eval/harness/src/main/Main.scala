@@ -26,12 +26,10 @@ object Main {
       case "bench" :: rest => exit(flags(rest).flatMap(bench(_, clock)))
       case "propose" :: rest => exit(flags(rest).flatMap(propose(_, clock)))
       case "blind" :: rest => exit(blind(rest))
-      case "machine-guard" :: rest =>
-        println(exit(flags(rest).flatMap(GuardCommands.record(_, sys.env))))
       case _ =>
         exit(
           Left(
-            "usage: scripts/eval context|bench|propose|blind|machine-guard (scripts/eval says what each takes)"
+            "usage: scripts/eval context|bench|propose|blind (scripts/eval says what each takes)"
           )
         )
     }

@@ -4,11 +4,11 @@ import java.nio.charset.StandardCharsets
 
 import scala.util.Try
 
+import grit.core.host.Allowlisted
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.model.{Pinned, Pricing}
 import grit.core.provider.CallLine
 import grit.models.{AnthropicJson, AnthropicRates}
-import grit.tools.MachineGuard
 import grit.turn.TurnRecord
 
 /** One model call of a run, its usage priced by [[AnthropicRates]], or when `reported` (a grit
@@ -170,7 +170,8 @@ object Consumed {
 
   /** Counts of a transcript's tool calls, as [[Tried.work]] names them: every call, its edits,
     * those of them whose result was an error, its suite runs, its commits, and its runs the
-    * machine guard refused ([[grit.tools.MachineGuard]]; none for a harness without one).
+    * machine guard refused, by its lead ([[Allowlisted.GuardLead]]; none for a harness without
+    * one).
     */
   final case class Work private (
       tools: Int,
@@ -279,7 +280,7 @@ object Consumed {
     val before = if (firstEdit < 0) None else Some(turn.messages.take(firstEdit))
     val failed = turn.messages.collect { case Message.ToolResult(id, _, true) => id }.toSet
     val guarded = turn.messages.collect {
-      case Message.ToolResult(id, text, true) if text.startsWith(MachineGuard.Lead) => id
+      case Message.ToolResult(id, text, true) if text.startsWith(Allowlisted.GuardLead) => id
     }.toSet
     val denials = turn.messages
       .collect { case Message.ToolResult(id, _, true) =>

@@ -153,7 +153,7 @@ object ConsumedTests extends TestSuite {
           calling("t11", "run", run),
           Message.ToolResult(
             ToolCallId("t11"),
-            s"${grit.tools.MachineGuard.Lead} judged that this command would change files.",
+            s"${grit.core.host.Allowlisted.GuardLead} judged that this command would change files.",
             isError = true
           ),
           calling("t12", "run", run),

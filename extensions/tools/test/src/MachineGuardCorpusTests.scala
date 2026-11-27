@@ -14,7 +14,7 @@ import utest.*
   * the reference allowlist clears them. What code decides is checked here outright. What it
   * puts to Jev is answered from Jev's recorded answers (`machine-guard/answers.json`, one per
   * state); a state not yet recorded must be listed in `machine-guard/pending.json`, which
-  * `scripts/eval machine-guard` records. A changed question or state leaves its recording
+  * `grit.kit.run.RecordGuardAnswers` records. A changed question or state leaves its recording
   * behind, and this suite names it.
   */
 object MachineGuardCorpusTests extends TestSuite {
