@@ -134,10 +134,9 @@ final class LocalBranch(
     */
   private[git] def ahead(): Either[HostError, Boolean] =
     for {
-      symbolic <- local("symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
-      default <-
-        if (symbolic.exit == 0) Right(symbolic.output.text.trim)
-        else Left(HostError.Failed("The clone names no default branch of origin."))
+      default <- DefaultBranch
+        .of(local(_*))
+        .flatMap(_.toRight(HostError.Failed("The clone names no default branch of origin.")))
       count <- local("rev-list", "--count", s"$default..$ref")
       n <- count.output.text.trim.toIntOption
         .filter(_ => count.exit == 0)

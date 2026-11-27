@@ -601,14 +601,9 @@ final class WorkingCopies(
       _ <- declared(origin.output.text.linesIterator.nextOption().getOrElse("").trim)
     } yield ()
 
-  /** The default branch `refs/remotes/origin/HEAD` names, `origin/{name}`; `None` when it names
-    * none. Nothing is asked of origin.
-    */
+  /** The clone's default branch of origin, as [[DefaultBranch.of]] reads it. */
   private def defaultBranch(): Either[HostError, Option[String]] =
-    ran(home, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD").map { (_, r) =>
-      val default = r.output.text.trim
-      Option.when(r.exit == 0 && default.startsWith("origin/"))(default)
-    }
+    DefaultBranch.of(args => ran(home, args*).map(_._2))
 
   /** `dir`, its last use now. */
   private def used(dir: Path): Either[HostError, Path] =
