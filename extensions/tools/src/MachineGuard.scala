@@ -40,14 +40,13 @@ final class MachineGuard(
         }.distinct
         val shaped = (Unasked ++ cleared).exists(_.permits(argv))
         if (shaped && outside.isEmpty && unread.isEmpty) Verdict.Cleared
-        else asked(argv, outside, unread, shaped)
+        else asked(argv, outside, unread)
     }
 
   private def asked(
       argv: Argv,
       outside: Vector[(String, AbsPath)],
-      unread: Vector[String],
-      shaped: Boolean
+      unread: Vector[String]
   ): Verdict = {
     val state = State(argv.written, AbsPath.value(root), outsideLines(outside, unread))
     val asking = questions(state)
