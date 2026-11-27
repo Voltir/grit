@@ -229,6 +229,22 @@ object MachineGuardTests extends TestSuite {
       )
     }
 
+    test(
+      "ask puts its questions about a command to the guard's classifier, shown with no outside; with none, Unavailable saying why"
+    ) {
+      val jev = new Judging(Right(Vector(0.8)))
+      val q = grit.core.classify.Ask.yesNo[MachineGuard.State]("Is it?", None, None)
+      (
+        guard(Right(jev)).ask(argv("cat", "a/B.scala"), q).map(_.value),
+        jev.states,
+        guard(Left("JEV_API_KEY is not set")).ask(argv("cat", "a"), q).map(_.value)
+      ) ==> (
+        Right(0.8),
+        Vector(ujson.Obj("command" -> "cat a/B.scala", "checkout" -> "/home/coder/work/co")),
+        Left(ClassifierError.Unavailable("JEV_API_KEY is not set"))
+      )
+    }
+
     test("in a clone of its own, a stash's pop, drop and clear start, nothing asked") {
       val jev = new Judging(Right(Vector(0.9, 0.9, 0.9, 0.9)))
       val g = guard(Right(jev))

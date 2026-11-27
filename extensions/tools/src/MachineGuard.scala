@@ -47,6 +47,16 @@ final class MachineGuard(
         }
     }
 
+  /** `questions` about `argv` asked of this guard's classifier in a request of their own, `argv`
+    * shown as [[judge]] shows a command whose every argument leads inside; `Unavailable`, with
+    * why, when there is no classifier.
+    */
+  def ask[T](argv: Argv, questions: Ask[State, T]): Either[ClassifierError, Answered[T]] =
+    classifier match {
+      case Left(why) => Left(ClassifierError.Unavailable(why))
+      case Right(c) => c.ask(State(argv.written, AbsPath.value(root), None), questions)
+    }
+
   /** Where `words` lead outside the checkout, each with the real path it leads to, and those
     * naming a variable that cannot be read.
     */

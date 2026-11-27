@@ -88,10 +88,11 @@ object AllowlistedCodingTests extends TestSuite {
       host: CodingTests.Scripted^,
       runs: Allowlisted^,
       guard: MachineGuard^ = GuardFixtures.harmless,
-      refusals: Refusals^ = Refusals.kept()
+      refusals: Refusals^ = Refusals.kept(),
+      sources: Option[SourceTools] = None
   ): Toolbox[caps.CapSet^{host, runs, guard, refusals}] =
     Coding
-      .allowlisted(host, host, runs, guard, refusals)
+      .allowlisted(host, host, runs, guard, refusals, sources)
       .fold(d => throw new java.lang.AssertionError(d), identity)
 
   private def call(name: String, args: ujson.Value): AssistantBlock.ToolCall =
@@ -107,9 +108,10 @@ object AllowlistedCodingTests extends TestSuite {
       args: ujson.Value,
       guard: MachineGuard^ = GuardFixtures.harmless,
       refusals: Refusals^ = Refusals.kept(),
-      at: grit.core.id.CallSlot = TestCallSlots.First
+      at: grit.core.id.CallSlot = TestCallSlots.First,
+      sources: Option[SourceTools] = None
   ): Either[String, (Boolean, Outcome)] =
-    tools(host, runs, guard, refusals)
+    tools(host, runs, guard, refusals, sources)
       .requested(
         call(name, args),
         Repairs.All,
@@ -586,6 +588,60 @@ object AllowlistedCodingTests extends TestSuite {
         branch.map(_ + RunRefusals.Again)
       )
       assert(branch.exists(_.startsWith(MachineGuard.Lead)))
+    }
+
+    test(
+      "a read of a source answers after the line naming its tools when the classifier says yes at Points, by rule when none answers, and not under it, of another file or with no source tools"
+    ) {
+      val cat = argv("cat", "a/B.scala")
+      val readme = argv("cat", "README.md")
+      val listing = Allowlist
+        .of(Vector(Allowlist.Rule.Leading(argv("cat"))), 1.minute)
+        .fold(e => throw new java.lang.AssertionError(e), identity)
+      val shown = Map(
+        cat -> ScriptedRuns.Script("object B\n", "", Some(Duration.Zero), 0),
+        readme -> ScriptedRuns.Script("# x\n", "", Some(Duration.Zero), 0)
+      )
+      val scala = SourceTools
+        .of("Scala", Vector(".scala"), "`show` for a definition", "`uses` for every use")
+        .toOption
+      val host = new CodingTests.Scripted()
+      // `answer` the classifier's p(yes), `None` with no classifier: the outcome, and how many
+      // requests the classifier was sent.
+      def read(
+          command: Argv,
+          answer: Option[Double],
+          sources: Option[SourceTools] = scala
+      ): (Option[Outcome], Int) = {
+        val jev = new GuardFixtures.Judging(Right(answer.toVector))
+        val runs = Allowlisted.over(new Noting(shown), listing)
+        val outcome = settle(
+          host,
+          runs,
+          "run",
+          ujson.Obj("program" -> command.program, "args" -> command.args),
+          GuardFixtures.guard(
+            if (answer.isDefined) Right(jev) else Left("JEV_API_KEY is not set")
+          ),
+          sources = sources
+        ).toOption.map(_._2)
+        (outcome, jev.states.size)
+      }
+      val line = "Answered in fewer tokens by `show` for a definition.\n"
+      val body = "Exit code 0. Output:\nobject B\n"
+      (
+        read(cat, Some(0.7)),
+        read(cat, Some(0.69)),
+        read(cat, None),
+        read(readme, Some(0.9)),
+        read(cat, Some(0.9), None)
+      ) ==> (
+        (Some(Outcome.Done(line + body)), 1),
+        (Some(Outcome.Done(body)), 1),
+        (Some(Outcome.Done(line + body)), 0),
+        (Some(Outcome.Done("Exit code 0. Output:\n# x\n")), 0),
+        (Some(Outcome.Done(body)), 0)
+      )
     }
 
     test("run's description lists every command the allowlist permits, and how long it waits") {

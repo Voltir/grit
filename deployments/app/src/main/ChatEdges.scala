@@ -41,34 +41,45 @@ private[main] object ChatEdges {
   )(use: Console.Edge^ => A): Either[String, A] = {
     val log = org.slf4j.LoggerFactory.getLogger("grit.edge")
     LocalEdge
-      .serving(directory, offered, redaction, clock, fresh, copies, pushing, guarding, log) {
-        coding =>
-          scout match {
-            case None => Right(use(coding))
-            case Some(server) =>
-              ScoutAt match {
-                case Left(why) => Left(s"$ScoutVar: $why")
-                case Right(at) =>
-                  // scout's program is started now, so a binary that cannot start refuses the start.
-                  McpEdge.local(
-                    at,
-                    server,
-                    new LocalProcesses(root, sys.env, redaction),
-                    clock,
-                    Some(ScoutInstructions),
-                    line => log.info(line)
-                  ) match {
-                    case Left(why) => Left(s"$ScoutVar: $why")
-                    case Right(local) =>
-                      try
-                        Right(use((desks: Desks^) => {
-                          coding.serve(desks)
-                          local.serve(desks)
-                        }))
-                      finally local.close()
-                  }
-              }
-          }
+      .serving(
+        directory,
+        offered,
+        redaction,
+        clock,
+        fresh,
+        copies,
+        pushing,
+        guarding,
+        // A shell read of Scala names scout's tools only where scout serves them.
+        scout.map(_ => Offered.ReferenceSources),
+        log
+      ) { coding =>
+        scout match {
+          case None => Right(use(coding))
+          case Some(server) =>
+            ScoutAt match {
+              case Left(why) => Left(s"$ScoutVar: $why")
+              case Right(at) =>
+                // scout's program is started now, so a binary that cannot start refuses the start.
+                McpEdge.local(
+                  at,
+                  server,
+                  new LocalProcesses(root, sys.env, redaction),
+                  clock,
+                  Some(ScoutInstructions),
+                  line => log.info(line)
+                ) match {
+                  case Left(why) => Left(s"$ScoutVar: $why")
+                  case Right(local) =>
+                    try
+                      Right(use((desks: Desks^) => {
+                        coding.serve(desks)
+                        local.serve(desks)
+                      }))
+                    finally local.close()
+                }
+            }
+        }
       }
       .flatten
   }

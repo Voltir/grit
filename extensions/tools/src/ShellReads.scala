@@ -132,42 +132,58 @@ private[tools] object ShellReads {
     "--binary-files"
   )
 
-  /** grep's words but its patterns: each `-e`'s or `--regexp`'s value, else its first operand.
+  /** The patterns `argv`, a `grep`, searches for: each `-e`'s or `--regexp`'s value, else its
+    * first operand.
     */
-  private def grepPaths(words: Vector[String]): Vector[String] = {
-    // Each word with whether it is a pattern.
-    def walk(rest: List[String], options: Boolean, patterned: Boolean): List[(String, Boolean)] =
+  def grepPatterns(argv: Argv): Vector[String] =
+    grepWords(argv.args.toVector).collect { case (_, Some(p)) => p }
+
+  /** grep's words but its patterns. */
+  private def grepPaths(words: Vector[String]): Vector[String] =
+    grepWords(words).collect { case (w, None) => w }
+
+  /** Each of grep's words, with the pattern it gives when it gives one. */
+  private def grepWords(words: Vector[String]): Vector[(String, Option[String])] = {
+    def walk(
+        rest: List[String],
+        options: Boolean,
+        patterned: Boolean
+    ): List[(String, Option[String])] =
       rest match {
         case Nil => Nil
         case "--" :: more if options => walk(more, false, patterned)
         case w :: more if options && w.startsWith("--") =>
           val name = w.takeWhile(_ != '=')
           val regexp = name == "--regexp"
-          if (w.contains('=') || !GrepLongValued(name)) (w, regexp) :: walk(more, true, patterned)
+          if (w.contains('='))
+            (w, Option.when(regexp)(w.drop(name.length + 1))) :: walk(more, true, patterned)
+          else if (!GrepLongValued(name)) (w, None) :: walk(more, true, patterned)
           else
             more match {
               case v :: further =>
-                (w, false) :: (v, regexp) :: walk(further, true, patterned)
-              case Nil => List((w, false))
+                (w, None) :: (v, Option.when(regexp)(v)) :: walk(further, true, patterned)
+              case Nil => List((w, None))
             }
         case w :: more if options && w.length > 1 && w.startsWith("-") =>
           val at = w.indexWhere(GrepValued, 1)
-          if (at < 0) (w, false) :: walk(more, true, patterned)
+          if (at < 0) (w, None) :: walk(more, true, patterned)
           else {
             val pattern = w(at) == 'e'
-            if (at < w.length - 1) (w, pattern) :: walk(more, true, patterned)
+            if (at < w.length - 1)
+              (w, Option.when(pattern)(w.drop(at + 1))) :: walk(more, true, patterned)
             else
               more match {
-                case v :: further => (w, false) :: (v, pattern) :: walk(further, true, patterned)
-                case Nil => List((w, false))
+                case v :: further =>
+                  (w, None) :: (v, Option.when(pattern)(v)) :: walk(further, true, patterned)
+                case Nil => List((w, None))
               }
           }
-        case w :: more => (w, !patterned) :: walk(more, options, true)
+        case w :: more => (w, Option.when(!patterned)(w)) :: walk(more, options, true)
       }
     val patterned = words.exists(w =>
       w == "--regexp" || w.startsWith("--regexp=") || w == "--file" || w.startsWith("--file=") ||
         (w.startsWith("-") && !w.startsWith("--") && w.drop(1).exists(c => c == 'e' || c == 'f'))
     )
-    walk(words.toList, true, patterned).collect { case (w, false) => w }.toVector
+    walk(words.toList, true, patterned).toVector
   }
 }

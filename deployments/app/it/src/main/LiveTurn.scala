@@ -374,6 +374,7 @@ object LiveTurn {
             Fresh.random(),
             copies,
             Left("no machine check in a live turn"),
+            None,
             pushing
           ),
           NoInstructions,

@@ -74,5 +74,14 @@ object ChatEdgesTests extends TestSuite {
           "and every implementation of it; use read for files that are not Scala."
       )
     }
+
+    test("the reference sources name, in backticks, only tools scout offers") {
+      val named = "`(scout_[a-z]+)`".r
+      val offered = ChatEdges.ScoutTools.map((tool, _) => s"scout_$tool").toSet
+      val sources = Offered.ReferenceSources
+      val tools = named.findAllMatchIn(sources.reading + sources.searching).map(_.group(1)).toVector
+      (tools, tools.filterNot(offered)) ==>
+        (Vector("scout_show", "scout_file", "scout_uses", "scout_find"), Vector())
+    }
   }
 }

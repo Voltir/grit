@@ -119,15 +119,19 @@ object Coding {
   /** The tools [[allowlistedHosted]] describes for `runs.allowlist`, each `run` refused, running
     * nothing, when `runs` does not permit it (naming what its list admits instead) or `guard`
     * does not clear it (in the guard's words, [[MachineGuard.Verdict.why]]), a refusal its turn
-    * was given before saying so ([[Refusals]]); and `tail` and `stop` reaching only what `runs`
-    * started. `Left` names a tool that cannot be offered with the others.
+    * was given before saying so ([[Refusals]]); a shell read of `sources`' files answering after
+    * the line naming what reads them ([[SourceTools.line]]) when the guard's classifier finds it
+    * one at [[SourceTools.Points]] ([[SourceTools.question]]), or, when it gives no answer, the
+    * rule does ([[SourceTools.ruled]]); and `tail` and `stop` reaching only what `runs` started.
+    * `Left` names a tool that cannot be offered with the others.
     */
   def allowlisted(
       ws: Workspace^,
       edits: Edits^,
       runs: Allowlisted^,
       guard: MachineGuard^,
-      refusals: Refusals^
+      refusals: Refusals^,
+      sources: Option[SourceTools]
   ): Either[SetRefusal, Toolbox[caps.CapSet^{ws, edits, runs, guard, refusals}]] =
     Toolbox.of(
       read(ws),
@@ -135,7 +139,7 @@ object Coding {
       search(ws),
       writing(freeWrite, edits),
       editing(freeEdit, edits),
-      argvRun(runs, guard, refusals),
+      argvRun(runs, guard, refusals, sources),
       tail(runs),
       stop(runs)
     )
@@ -506,13 +510,23 @@ object Coding {
   private def argvRun(
       runs: Allowlisted^,
       guard: MachineGuard^,
-      refusals: Refusals^
+      refusals: Refusals^,
+      sources: Option[SourceTools]
   ): Tool[ArgvArgs]^{runs, guard, refusals} =
     argvRunHosted(runs.allowlist).calling { (a, at) =>
+      // The line a shell read of `sources`' files answers after: asked of the guard's
+      // classifier, by rule when it gives no answer.
+      def line: String =
+        sources.flatMap(s => s.read(a.argv).map((s, _))).fold("") { (s, read) =>
+          val points = guard
+            .ask(a.argv, s.question)
+            .fold(_ => s.ruled(a.argv, read), _.value >= SourceTools.Points)
+          if (points) s.line(read) + "\n" else ""
+        }
       def started: Outcome =
         runs
           .start(a.argv, a.timeout, a.wait)
-          .fold(e => Outcome.Failed(e.message), s => standing(s.id, s.status))
+          .fold(e => Outcome.Failed(e.message), s => standing(s.id, s.status, line))
       // `said`, and when `subject` was refused before this turn, that it was.
       def refused(subject: String, said: String, again: Int => String): Outcome = {
         val before = refusals.again(at.turn, subject)

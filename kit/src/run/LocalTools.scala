@@ -14,14 +14,16 @@ import grit.edge.desk.{Run, Tools}
 import grit.host.checkout.{LocalEdits, LocalReach, LocalRuns, LocalShell, LocalWorkspace, Redaction}
 import grit.host.git.{LocalStashes, WorkingCopies}
 import grit.kit.deployment.Offered
-import grit.tools.{Coding, MachineGuard, Refusals, Versioning}
+import grit.tools.{Coding, MachineGuard, Refusals, SourceTools, Versioning}
 
 /** The coding tools this process's edge runs a request with, over the directory it was routed
   * to, or for a repository route in the working copy `copies` keeps for its run (a request
   * routed to a service, or to a repository `copies` does not keep, is `Failed`, and nothing
   * runs; so is one whose copy cannot be opened, with why): those `offered` hosts
   * ([[Offered.hosted]]), an allowlisted `run` starting only what its allowlist permits and its
-  * machine guard clears, the guard asking `guarding` (`Left`: why there is none). A command
+  * machine guard clears, the guard asking `guarding` (`Left`: why there is none), and a shell
+  * read of `sources`' files answering after the line naming what reads them, as
+  * [[Coding.allowlisted]] says (`None`: no line). A command
   * sees the process's own environment, not `.env`'s; what a tool shows is cleared by
   * `redaction`, the deployment's one. A command an allowlisted `run` left going is one of its
   * directory's runs, which every later request routed there reaches, whichever conversation
@@ -35,6 +37,7 @@ final class LocalTools(
     fresh: Fresh^,
     copies: Option[WorkingCopies^],
     guarding: Either[String, Classifier^],
+    sources: Option[SourceTools],
     pushing: Option[Pushing^] = None
 ) extends Tools
     with AutoCloseable
@@ -134,7 +137,8 @@ final class LocalTools(
             new LocalEdits(root, redaction),
             Allowlisted.over(runsAt(root), allowlist),
             guardAt(root, allowlist),
-            refusals
+            refusals,
+            sources
           )
           .fold(refused, tools => Run.request(request, tools))
     }

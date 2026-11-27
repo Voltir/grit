@@ -23,6 +23,10 @@ One package, `grit.tools`:
   show it (paths, the stash, and the shell's and git's reads, which `ShellReads` holds to the
   checkout) and by the deployment's classifier otherwise, failing closed (ADR 0069). Its
   corpus is `MachineGuardCorpusTests`, over Jev's recorded answers.
+- `SourceTools` — the tools that read one language's sources by name (for grit, scout's), which
+  an allowlisted `run` names on a line ahead of a shell read of those files: put to the
+  machine guard's classifier as its own question, by rule when it gives no answer. A
+  deployment declares it; it is the field a stack will hold.
 - `RunAnswer` — how an allowlisted `run`, `tail` and `stop` answer with a run's output: whole
   when it is short, else as its size and file, its lines that look like failures and its tail.
 - `FailedRuns` — a turn's last failed run, read back from the answers `RunAnswer` wrote, its

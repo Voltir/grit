@@ -19,6 +19,7 @@ import grit.host.checkout.{LocalInstructions, LocalProcesses, LocalShell, Redact
 import grit.host.git.{Branches, WorkingCopies}
 import grit.kit.deployment.{Deployment, Offered, RepositoryClone}
 import grit.kit.environment.Secrets
+import grit.tools.SourceTools
 
 /** The edge a process serves for its own checkout (ADR 0017), and the edges a served deployment
   * serves its repositories through.
@@ -73,7 +74,8 @@ object LocalEdge {
   /** `use` given the edge this process serves for `directory` ([[over]]): the coding tools
     * `offered` names, run there ([[LocalTools]]), and for each run of `copies`' repository in
     * its working copy, offering its branch as `pushing` does when given, with what they show
-    * cleared by `redaction`, each allowlisted `run` judged by a machine guard asking `guarding`,
+    * cleared by `redaction`, each allowlisted `run` judged by a machine guard asking `guarding`
+    * and a shell read of `sources`' files answering after the line naming what reads them,
     * and the instruction files around the directory as this machine reads them; the tools closed
     * once `use` returns or
     * throws, which ends any command they left running. Why not, before `use` runs: a tool
@@ -88,9 +90,11 @@ object LocalEdge {
       copies: Option[WorkingCopies^],
       pushing: Option[Pushing^],
       guarding: Either[String, Classifier^],
+      sources: Option[SourceTools],
       log: org.slf4j.Logger
   )(use: Console.Edge^ => A): Either[String, A] = {
-    val tools = new LocalTools(offered, redaction, clock, fresh, copies, guarding, pushing)
+    val tools =
+      new LocalTools(offered, redaction, clock, fresh, copies, guarding, sources, pushing)
     try
       over(directory, tools, new LocalInstructions(), log) match {
         case Left(refused) => Left(refused.refusing("the coding tools"))
@@ -178,6 +182,7 @@ object LocalEdge {
               )
             ),
             Launch.guarding(deployment, secrets),
+            None,
             None
           )
           val opened = tools.hostedInRepository match {

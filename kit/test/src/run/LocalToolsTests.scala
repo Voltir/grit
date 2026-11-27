@@ -39,7 +39,8 @@ object LocalToolsTests extends TestSuite {
         Clock.system(),
         Fresh.random(),
         copies,
-        Unguarded
+        Unguarded,
+        None
       )
     try body(tools)
     finally tools.close()
@@ -186,6 +187,7 @@ object LocalToolsTests extends TestSuite {
       Fresh.random(),
       Some(copies),
       Unguarded,
+      None,
       Some(pushing(repo, remoteRepository))
     )
     try body(tools, copies)
@@ -334,7 +336,8 @@ object LocalToolsTests extends TestSuite {
           Clock.system(),
           Fresh.random(),
           None,
-          Unguarded
+          Unguarded,
+          None
         )
       tools.close()
       call(tools, root, "list", ujson.Obj()) ==>

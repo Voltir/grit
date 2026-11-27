@@ -45,7 +45,7 @@ import grit.models.JevClassifier
 import grit.std.collect.Collect.firstRepeat
 import grit.std.either.Proven
 import grit.std.either.Traversal.sequence
-import grit.tools.{Coding, Names}
+import grit.tools.{Coding, Names, SourceTools}
 import grit.turn.{Turn, TurnLoop, TurnVerdict}
 
 /** What every turn's model is offered, at every place, in at most `rounds` model calls. */
@@ -89,6 +89,23 @@ object Offered {
     * whole check of a repository the size of grit's.
     */
   val ReferenceLongest: FiniteDuration = 30.minutes
+
+  /** Scala's sources as scout reads them, where the reference deployment serves scout:
+    * `scout_show` and `scout_file` for a read of a file, `scout_uses` and `scout_find` for a
+    * search.
+    */
+  val ReferenceSources: SourceTools =
+    // A language, two blank-free tool lists and one suffix starting with `.`.
+    Proven.right(
+      SourceTools.of(
+        "Scala",
+        Vector(".scala"),
+        "`scout_show` for a definition by name (its body with `body`), or `scout_file` for a " +
+          "file's imports and layout",
+        "`scout_uses` for every use of a definition, or `scout_find` for a definition by part " +
+          "of its name"
+      )
+    )
 
   /** The reference deployment's allowlist: git's `status`, `diff`, `log`, `show`, `add`,
     * `commit`, `stash` and `restore`, `git checkout --` with the files to restore, the shell's

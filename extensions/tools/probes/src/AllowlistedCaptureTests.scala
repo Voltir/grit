@@ -34,9 +34,9 @@ object AllowlistedCaptureTests extends TestSuite {
        |  )""".stripMargin
 
   private val itself =
-    "def made(ws: Workspace^, e: Edits^, r: Allowlisted^, g: MachineGuard^, f: Refusals^): Either[SetRefusal, Toolbox[caps.CapSet^{ws, e, r, g, f}]] = Coding.allowlisted(ws, e, r, g, f)"
+    "def made(ws: Workspace^, e: Edits^, r: Allowlisted^, g: MachineGuard^, f: Refusals^): Either[SetRefusal, Toolbox[caps.CapSet^{ws, e, r, g, f}]] = Coding.allowlisted(ws, e, r, g, f, None)"
   private val forgettingRefusals =
-    "def forgetting(ws: Workspace^, e: Edits^, r: Allowlisted^, g: MachineGuard^, f: Refusals^): Either[SetRefusal, Toolbox[caps.CapSet^{ws, e, r, g}]] = Coding.allowlisted(ws, e, r, g, f)"
+    "def forgetting(ws: Workspace^, e: Edits^, r: Allowlisted^, g: MachineGuard^, f: Refusals^): Either[SetRefusal, Toolbox[caps.CapSet^{ws, e, r, g}]] = Coding.allowlisted(ws, e, r, g, f, None)"
   private val throughAllowlisted =
     model(
       "",
