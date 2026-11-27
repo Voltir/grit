@@ -790,10 +790,15 @@ private[grit] object Launch {
     * holds for [[Placer.Jev]], as the party [[JevClassifier.Service]]; the stub as
     * [[StubClassifier.Service]].
     */
-  private def classifier(d: Deployment, s: Secrets): ClearedClassifier^ =
+  private def classifier(d: Deployment, s: Secrets): ClearedClassifier^ = jev(d, s, c => c)
+
+  /** The classifier `d` places messages with, as [[classifier]] makes it, Jev's settings first
+    * changed by `config`: every other classifier the deployment asks is this one.
+    */
+  private def jev(d: Deployment, s: Secrets, config: JevConfig -> JevConfig): ClearedClassifier^ =
     (d.placer, s.jev) match {
-      case (Placer.Jev, Some(config)) =>
-        ClearedClassifier.of(JevClassifier.Service, new JevClassifier(config))
+      case (Placer.Jev, Some(c)) =>
+        ClearedClassifier.of(JevClassifier.Service, new JevClassifier(config(c)))
       case (Placer.Jev, None) => ClearedClassifier.none("JEV_API_KEY is not set")
       case (Placer.Stub, _) => ClearedClassifier.of(StubClassifier.Service, new StubClassifier)
       case (Placer.Off(reason), _) => ClearedClassifier.none(reason)
@@ -803,18 +808,7 @@ private[grit] object Launch {
     * [[Mentions.AskWithin]], so a call the weighing gave up on ends there too.
     */
   private def weighing(d: Deployment, s: Secrets): ClearedClassifier^ =
-    (d.placer, s.jev) match {
-      case (Placer.Jev, Some(config)) =>
-        ClearedClassifier.of(
-          JevClassifier.Service,
-          new JevClassifier(
-            config.copy(timeout = java.time.Duration.ofMillis(Mentions.AskWithin.toMillis))
-          )
-        )
-      case (Placer.Jev, None) => ClearedClassifier.none("JEV_API_KEY is not set")
-      case (Placer.Stub, _) => ClearedClassifier.of(StubClassifier.Service, new StubClassifier)
-      case (Placer.Off(reason), _) => ClearedClassifier.none(reason)
-    }
+    jev(d, s, _.copy(timeout = java.time.Duration.ofMillis(Mentions.AskWithin.toMillis)))
 
   /** Each of `d`'s shadows by name, asking its question of the model [[shadowModel]] names,
     * through the classifier `d` places messages with ([[classifier]]) made for that model.
@@ -828,18 +822,8 @@ private[grit] object Launch {
         val model = shadowModel(d.placer, v)
         asked(rest).updated(v.name, ShadowAsking(v.questions, model, classifying(model)))
     }
-    def classifying(model: String): ClearedClassifier^ =
-      (d.placer, s.jev) match {
-        case (Placer.Jev, Some(config)) =>
-          ClearedClassifier.of(
-            JevClassifier.Service,
-            new JevClassifier(config.copy(model = model))
-          )
-        case (Placer.Stub, _) => ClearedClassifier.of(StubClassifier.Service, new StubClassifier)
-        case (Placer.Jev, None) => ClearedClassifier.none("JEV_API_KEY is not set")
-        // Deployment.of refuses shadows with the placer off.
-        case (Placer.Off(reason), _) => ClearedClassifier.none(reason)
-      }
+    // Deployment.of refuses shadows with the placer off.
+    def classifying(model: String): ClearedClassifier^ = jev(d, s, _.copy(model = model))
     asked(d.shadows.toList)
   }
 
