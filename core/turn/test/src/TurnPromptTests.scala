@@ -226,14 +226,23 @@ object TurnPromptTests extends TestSuite {
     }
 
     test(
-      "reach at a repository says the tools act on this run's working copy of it, never that a person is asked; served with none offered, or unserved, says so"
+      "reach at a repository says the tools act on this run's working copy of it, never that a person is asked, then how to work there: independent calls together, one suite seen failing first, a commit each step, the named formatter before it; served with none offered, or unserved, says so"
     ) {
       (
         TurnPrompt.reach(Some(repo.place), TurnPrompt.Serving.Offering(set(false, true))).text,
         TurnPrompt.reach(Some(repo.place), TurnPrompt.Serving.Offering(ToolSet.Empty)).text,
         TurnPrompt.reach(Some(repo.place), TurnPrompt.Serving.Unserved).text
       ) ==> (
-        "Your file and command tools act on this run's working copy of the repository grit.",
+        "Your file and command tools act on this run's working copy of the repository grit.\n\n" +
+          "Work in small steps:\n" +
+          "- When calls do not depend on each other's results, make them together in one " +
+          "reply, such as several reads at once.\n" +
+          "- Before you change code, run the one test suite that covers the change and see it " +
+          "fail for the reason the change is for. Then make the change and run that suite " +
+          "again until it passes.\n" +
+          "- Commit each step once its test passes, so your branch holds the work as you go.\n" +
+          "- Before each commit, run the formatter the repository's instructions name, if they " +
+          "name one.",
         "The tools of the repository grit are not available in this conversation, so you " +
           "cannot read or change files there or run commands.",
         "Nothing is serving the repository grit right now, so you cannot read or change files " +

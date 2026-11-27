@@ -359,8 +359,9 @@ object TurnPrompt {
     * when no edge does; that its tools are not available in this conversation, when one does and
     * none is offered (the conversation's labels allow none), naming only the directory, the
     * service or the repository; that it has no workspace, when the conversation has none (a
-    * place neither a directory, a service nor a repository reads as none). Worded by workspace,
-    * never by what serves it, so another edge serving the same one leaves the prompt the same.
+    * place neither a directory, a service nor a repository reads as none). At a repository whose
+    * tools are offered, then how to work there ([[Working]]). Worded by workspace, never by what
+    * serves it, so another edge serving the same one leaves the prompt the same.
     */
   def reach(workspace: Option[Place], serving: Serving): Fragment = {
     val tools = serving match {
@@ -402,12 +403,27 @@ object TurnPrompt {
       // No sentence on asking: nobody answers during a run of work.
       case (None, None, Some(repository)) =>
         s"Your file and command tools act on this run's working copy of the repository " +
-          s"${repository.name}."
+          s"${repository.name}.\n\n$Working"
       case (None, None, None) =>
         "This conversation has no directory, so you cannot read or change files or run commands."
     }
     Fragment(Layer.Reach, Fragment.Grit, text)
   }
+
+  /** How a run of work in a repository is told to work ([[reach]]): independent calls in one
+    * reply, one suite seen failing before a change, a commit at each step, and the formatter
+    * the repository's instructions name before each commit.
+    */
+  private val Working: String =
+    "Work in small steps:\n" +
+      "- When calls do not depend on each other's results, make them together in one reply, " +
+      "such as several reads at once.\n" +
+      "- Before you change code, run the one test suite that covers the change and see it " +
+      "fail for the reason the change is for. Then make the change and run that suite again " +
+      "until it passes.\n" +
+      "- Commit each step once its test passes, so your branch holds the work as you go.\n" +
+      "- Before each commit, run the formatter the repository's instructions name, if they " +
+      "name one."
 
   /** Whether an edge serves a turn's workspace now, and what of it the turn is offered. */
   enum Serving {
