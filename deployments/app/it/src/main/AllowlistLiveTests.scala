@@ -30,9 +30,14 @@ object AllowlistLiveTests extends TestSuite {
 
   private val touch = right(Argv.of("touch", "x"))
 
-  /** The checkout's allowlist: its own `./hello` script, with any arguments. */
-  private val allowlist =
-    right(Allowlist.of(Vector(Allowlist.Rule.Leading(right(Argv.of("./hello")))), 30.seconds))
+  /** The checkout's allowlist: its own `./hello` script, with any arguments, cleared so the
+    * machine guard starts it unasked when its arguments stay inside, as a deployment clears its
+    * builds (ADR 0069): this turn runs with no classifier for the guard to ask.
+    */
+  private val allowlist = {
+    val hello = Allowlist.Rule.Leading(right(Argv.of("./hello")))
+    right(Allowlist.of(Vector(hello), 30.seconds, Vector(hello)))
+  }
 
   /** Calls `write`, then `run` of `./hello`, then `run` of `touch x`, one per model call, then
     * answers with each result in order.
