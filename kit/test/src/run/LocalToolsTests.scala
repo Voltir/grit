@@ -433,9 +433,10 @@ object LocalToolsTests extends TestSuite {
       (answered, Files.exists(root.resolve("ran"))) ==> (
         Outcome.Failed(
           "Nothing ran: the check that guards this machine clears by itself only `git status …`, " +
-            "`git diff …`, `git log …`, `git show …`, `git add …`, `git commit …`, " +
-            "`git stash push …`, `git stash list …`, `git stash show …`, `git stash apply …`, " +
-            "`ls …`, `cat …`, `head …`, `tail …`, `wc …`, `grep …`, `diff …`, `git stash`, " +
+            "`git diff …`, `git log …`, `git show …`, `ls …`, `cat …`, `head …`, `tail …`, " +
+            "`wc …`, `grep …`, `diff …`, `find …`, `sed -n …`, `git add …`, `git commit …`, " +
+            "`git restore …`, `git checkout -- …`, `git stash push …`, `git stash list …`, " +
+            "`git stash show …`, `git stash apply …`, `git stash`, " +
             "`./hello …`, each with every argument inside the checkout, and this command has an " +
             s"argument leading outside it: `out/x` leads to $base/x. No check is configured here " +
             "to ask (none here), so it will be refused again: do not retry it."

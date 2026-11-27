@@ -29,6 +29,16 @@ Decision:
   pushes and applies, the shell's reads that cannot write or run a program, and the rules an
   `Allowlist` marks cleared: its builds) starts unasked when every argument leads inside the
   checkout.
+- **Reads, by code alone.** The shell's reads (`ls`, `cat`, `head`, `tail`, `wc`, `grep`,
+  `diff`, `find`, `sed -n`) and git's (`status`, `diff`, `log`, `show`) are held to the
+  checkout: one whose words that may name a path (all but a pattern: `grep`'s, `sed`'s
+  script, `find`'s name tests, git's `--grep` and `-S`) lead outside, name a variable, or name
+  a secrets file as `RelPath` reads one, is refused, and otherwise starts. That closes
+  `git diff --no-index ~/.ssh/id_rsa /dev/null`, which Jev's questions, asking only what a
+  command changes, let through. A `find` with an action that writes or runs a program
+  (`-exec`, `-execdir`, `-ok`, `-okdir`, `-delete`, `-fprint…`, `-fls`) and a `sed` but
+  `sed -n` printing a line range or a pattern's lines are refused, so no `find` or `sed`
+  reaches Jev, whose questions ask nothing of starting a program.
 - **The stash, by code alone.** A clone's stash is shared by all its worktrees. In a checkout
   that is its own clone, `pop`, `drop` and `clear` start. In a shared one, `pop` and `drop`
   start only for an entry its `git stash list` label says was made on the checkout's own
@@ -54,5 +64,7 @@ Decision:
 Consequences: an unattended coder may be given the shell's reads and the stash without one
 command reaching past its checkout. What the guard does not bound is ADR 0055's: a listed
 build runs the checkout's code, and reading outside the checkout (a credentials file) is not
-refused. Each change to an allowlist reviews the corpus. Enforced by `MachineGuardTests` and
+refused of a command that is no read. A read is held by the words it is given: a recursive
+`grep -r` or `diff -r` reads a secrets file it meets inside the tree, and `grep -R` follows
+the links it meets, as a listed build may. Each change to an allowlist reviews the corpus. Enforced by `MachineGuardTests` and
 `MachineGuardCorpusTests`, and the probe `MachineGuardCaptureTests`.

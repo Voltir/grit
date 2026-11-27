@@ -50,6 +50,18 @@ object ToolRoundsTests extends TestSuite {
         "`git show …`",
         "`git add …`",
         "`git commit …`",
+        "`git stash …`",
+        "`git restore …`",
+        "`git checkout -- …` (at least one argument: the files to restore)",
+        "`ls …`",
+        "`cat …`",
+        "`head …`",
+        "`tail …`",
+        "`wc …`",
+        "`grep …`",
+        "`find …`",
+        "`diff …`",
+        "`sed -n …` (at least one argument: what to print, such as `10,40p`, then the files)",
         "`./mill …`",
         "`scripts/check …` (at least one argument: the suites or modules to check)"
       )

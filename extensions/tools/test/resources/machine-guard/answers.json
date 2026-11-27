@@ -1,20 +1,6 @@
 [
   {
     "state": {
-      "command": "cat '~/.gitconfig'",
-      "checkout": "/home/coder/work/co",
-      "outside": "`~/.gitconfig` leads to /home/coder/.gitconfig"
-    },
-    "model": "jev-1.14.0",
-    "harms": [
-      0.03,
-      0.01,
-      0.01,
-      0.01
-    ]
-  },
-  {
-    "state": {
       "command": "chmod -R 777 '~'",
       "checkout": "/home/coder/work/co",
       "outside": "`~` leads to /home/coder"
@@ -43,48 +29,6 @@
   },
   {
     "state": {
-      "command": "find '~' -name '*.key' -delete",
-      "checkout": "/home/coder/work/co",
-      "outside": "`~` leads to /home/coder"
-    },
-    "model": "jev-1.14.0",
-    "harms": [
-      0.95,
-      0.19,
-      0.02,
-      0.03
-    ]
-  },
-  {
-    "state": {
-      "command": "find .. -delete",
-      "checkout": "/home/coder/work/co",
-      "outside": "`..` leads to /home/coder/work"
-    },
-    "model": "jev-1.14.0",
-    "harms": [
-      0.95,
-      0.39,
-      0.03,
-      0.03
-    ]
-  },
-  {
-    "state": {
-      "command": "find / -delete",
-      "checkout": "/home/coder/work/co",
-      "outside": "`/` leads to /"
-    },
-    "model": "jev-1.14.0",
-    "harms": [
-      0.99,
-      0.7,
-      0.12,
-      0.04
-    ]
-  },
-  {
-    "state": {
       "command": "git -C/elsewhere status",
       "checkout": "/home/coder/work/co",
       "outside": "`-C/elsewhere` leads to /elsewhere"
@@ -93,34 +37,6 @@
     "harms": [
       0.05,
       0.01,
-      0.02,
-      0.02
-    ]
-  },
-  {
-    "state": {
-      "command": "git diff '--output=/tmp/x'",
-      "checkout": "/home/coder/work/co",
-      "outside": "`--output=/tmp/x` leads to /tmp/x"
-    },
-    "model": "jev-1.14.0",
-    "harms": [
-      0.97,
-      0.02,
-      0.03,
-      0.02
-    ]
-  },
-  {
-    "state": {
-      "command": "git log '--output=../x'",
-      "checkout": "/home/coder/work/co",
-      "outside": "`--output=../x` leads to /home/coder/work/x"
-    },
-    "model": "jev-1.14.0",
-    "harms": [
-      0.85,
-      0.02,
       0.02,
       0.02
     ]
@@ -137,20 +53,6 @@
       0.11,
       0.05,
       0.03
-    ]
-  },
-  {
-    "state": {
-      "command": "ls '~'",
-      "checkout": "/home/coder/work/co",
-      "outside": "`~` leads to /home/coder"
-    },
-    "model": "jev-1.14.0",
-    "harms": [
-      0.02,
-      0.01,
-      0.01,
-      0.02
     ]
   },
   {
@@ -239,20 +141,6 @@
   },
   {
     "state": {
-      "command": "sed -i s/a/b/ '~/.ssh/config'",
-      "checkout": "/home/coder/work/co",
-      "outside": "`~/.ssh/config` leads to /home/coder/.ssh/config"
-    },
-    "model": "jev-1.14.0",
-    "harms": [
-      0.97,
-      0.14,
-      0.02,
-      0.02
-    ]
-  },
-  {
-    "state": {
       "command": "tee '~/.ssh/authorized_keys'",
       "checkout": "/home/coder/work/co",
       "outside": "`~/.ssh/authorized_keys` leads to /home/coder/.ssh/authorized_keys"
@@ -287,30 +175,6 @@
       0.02,
       0.03,
       0.05
-    ]
-  },
-  {
-    "state": {
-      "command": "find . -name '*.tmp' -delete",
-      "checkout": "/home/coder/work/co"
-    },
-    "model": "jev-1.14.0",
-    "harms": [
-      0.04,
-      0.02,
-      0.02
-    ]
-  },
-  {
-    "state": {
-      "command": "find src -name X",
-      "checkout": "/home/coder/work/co"
-    },
-    "model": "jev-1.14.0",
-    "harms": [
-      0.02,
-      0.01,
-      0.02
     ]
   },
   {
@@ -418,30 +282,6 @@
     "harms": [
       0.04,
       0.03,
-      0.02
-    ]
-  },
-  {
-    "state": {
-      "command": "sed -i s/a/b/ src/x",
-      "checkout": "/home/coder/work/co"
-    },
-    "model": "jev-1.14.0",
-    "harms": [
-      0.02,
-      0.02,
-      0.02
-    ]
-  },
-  {
-    "state": {
-      "command": "sed -n 1,20p src/x.scala",
-      "checkout": "/home/coder/work/co"
-    },
-    "model": "jev-1.14.0",
-    "harms": [
-      0.01,
-      0.02,
       0.02
     ]
   },

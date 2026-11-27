@@ -90,21 +90,38 @@ object Offered {
     */
   val ReferenceLongest: FiniteDuration = 30.minutes
 
-  /** The reference deployment's allowlist: `git status`, `git diff`, `git log`, `git show`,
-    * `git add` and `git commit`, `./mill` and `scripts/check`, each with any further arguments,
-    * for at most [[ReferenceLongest]]. A listed build runs the checkout's code (ADR 0055); the
-    * two builds are cleared, unasked, by the machine guard (ADR 0069).
+  /** The reference deployment's allowlist: git's `status`, `diff`, `log`, `show`, `add`,
+    * `commit`, `stash` and `restore`, `git checkout --` with the files to restore, the shell's
+    * reads `ls`, `cat`, `head`, `tail`, `wc`, `grep`, `find` and `diff`, `sed -n` with what to
+    * print, and `./mill` and `scripts/check`, each with any further arguments, for at most
+    * [[ReferenceLongest]]. No interpreter, `rg` (not on every machine), `git reset`, `push` or
+    * branch checkout. A listed build runs the checkout's code (ADR 0055); the two builds are
+    * cleared, unasked, by the machine guard, which holds the rest to the checkout (ADR 0069).
     */
   val ReferenceAllowlist: Allowlist = {
     def leading(program: String, args: String*): Either[String, Allowlist.Rule] =
       Argv.of(program, args*).map(Allowlist.Rule.Leading(_))
+    def following(what: String, program: String, args: String*): Either[String, Allowlist.Rule] =
+      Argv.of(program, args*).map(Allowlist.Rule.Following(_, what))
     val reads = Vector(
       leading("git", "status"),
       leading("git", "diff"),
       leading("git", "log"),
       leading("git", "show"),
       leading("git", "add"),
-      leading("git", "commit")
+      leading("git", "commit"),
+      leading("git", "stash"),
+      leading("git", "restore"),
+      following("the files to restore", "git", "checkout", "--"),
+      leading("ls"),
+      leading("cat"),
+      leading("head"),
+      leading("tail"),
+      leading("wc"),
+      leading("grep"),
+      leading("find"),
+      leading("diff"),
+      following("what to print, such as `10,40p`, then the files", "sed", "-n")
     )
     val builds = Vector(
       leading("./mill"),

@@ -116,6 +116,39 @@ object DeploymentTests extends TestSuite {
       ) ==> (false, false, false, false, true)
     }
     test(
+      "the reference allowlist admits the shell's reads, git's restores and its stash, and no interpreter, rg, git reset or branch checkout"
+    ) {
+      def permits(words: String*): Boolean =
+        grit.core.host.Argv.of(words.head, words.tail*).exists(Offered.ReferenceAllowlist.permits)
+      val admitted = Vector(
+        Vector("grep", "-rn", "Turn", "core"),
+        Vector("find", ".", "-name", "*.scala"),
+        Vector("ls"),
+        Vector("cat", "a"),
+        Vector("head", "-n", "5", "a"),
+        Vector("tail", "a"),
+        Vector("wc", "-l", "a"),
+        Vector("diff", "a", "b"),
+        Vector("sed", "-n", "1,5p", "a"),
+        Vector("git", "stash", "pop"),
+        Vector("git", "restore", "--source", "HEAD~1", "a"),
+        Vector("git", "checkout", "--", "a")
+      )
+      val refused = Vector(
+        Vector("python3", "-c", "1"),
+        Vector("bash", "scripts/check", "x"),
+        Vector("rg", "Turn"),
+        Vector("sed", "-n"),
+        Vector("sed", "-i", "s/a/b/", "a"),
+        Vector("git", "reset", "--hard", "HEAD~1"),
+        Vector("git", "checkout", "main"),
+        Vector("git", "checkout", "HEAD~1", "--", "a"),
+        Vector("curl", "https://example.com")
+      )
+      (admitted.filterNot(w => permits(w*)), refused.filter(w => permits(w*))) ==>
+        (Vector(), Vector())
+    }
+    test(
       "Offered.All is refused while an edge is Unanswered, and an allowlisted set, which asks no one, is not; an edge that is Never does not block it"
     ) {
       (

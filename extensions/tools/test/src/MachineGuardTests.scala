@@ -25,9 +25,10 @@ object MachineGuardTests extends TestSuite {
   }
 
   private val unasked =
-    "`git status …`, `git diff …`, `git log …`, `git show …`, `git add …`, `git commit …`, " +
-      "`git stash push …`, `git stash list …`, `git stash show …`, `git stash apply …`, `ls …`, " +
-      "`cat …`, `head …`, `tail …`, `wc …`, `grep …`, `diff …`, `git stash`"
+    "`git status …`, `git diff …`, `git log …`, `git show …`, `ls …`, `cat …`, `head …`, " +
+      "`tail …`, `wc …`, `grep …`, `diff …`, `find …`, `sed -n …`, `git add …`, " +
+      "`git commit …`, `git restore …`, `git checkout -- …`, `git stash push …`, " +
+      "`git stash list …`, `git stash show …`, `git stash apply …`, `git stash`"
 
   private def shared(branch: Option[String], entries: Option[String]*): Held =
     new Held(Right(Stashes.Held(true, branch, entries.toVector)))
@@ -49,17 +50,17 @@ object MachineGuardTests extends TestSuite {
 
     test("an option's value is a word of its own: after `=`, or glued from its first `/` or `~`") {
       (
-        outside("git", "diff", "--output=/tmp/x"),
-        outside("git", "log", "--output=../x"),
+        outside("tar", "--file=/tmp/x"),
+        outside("tar", "--file=../x"),
         outside("git", "-C/elsewhere", "status"),
         outside("tar", "-xf/a", "-o../x"),
-        outside("grep", "-r", "x", "--include=~/y")
+        outside("touch", "--reference=~/y")
       ) ==> (
-        "`--output=/tmp/x` leads to /tmp/x",
-        "`--output=../x` leads to /home/coder/work/x",
+        "`--file=/tmp/x` leads to /tmp/x",
+        "`--file=../x` leads to /home/coder/work/x",
         "`-C/elsewhere` leads to /elsewhere",
         "`-xf/a` leads to /a\n`-o../x` leads to /home/coder/work/x",
-        "`--include=~/y` leads to /home/coder/y"
+        "`--reference=~/y` leads to /home/coder/y"
       )
     }
 
@@ -67,10 +68,10 @@ object MachineGuardTests extends TestSuite {
       "`~` and `$HOME` read as the home directory, a link out is followed, another variable is unread"
     ) {
       (
-        outside("cat", "~"),
-        outside("cat", "$HOME/.ssh/k", "${HOME}"),
-        outside("cat", "link-out/x"),
-        outside("cat", "$FOO/x", "~bob/y")
+        outside("touch", "~"),
+        outside("touch", "$HOME/.ssh/k", "${HOME}"),
+        outside("touch", "link-out/x"),
+        outside("touch", "$FOO/x", "~bob/y")
       ) ==> (
         "`~` leads to /home/coder",
         "`$HOME/.ssh/k` leads to /home/coder/.ssh/k\n`${HOME}` leads to /home/coder",
@@ -114,10 +115,10 @@ object MachineGuardTests extends TestSuite {
     test(
       "a command needing a classifier that gives no answer is refused: try again when unavailable, not at all when there is none"
     ) {
-      val find = argv("find", "src", "-name", "x")
+      val rm = argv("rm", "out/x")
       val unavailable =
-        guard(Right(new Judging(Left(ClassifierError.Unavailable("529 overloaded"))))).judge(find)
-      val none = guard(Left("JEV_API_KEY is not set")).judge(find)
+        guard(Right(new Judging(Left(ClassifierError.Unavailable("529 overloaded"))))).judge(rm)
+      val none = guard(Left("JEV_API_KEY is not set")).judge(rm)
       val head =
         s"Nothing ran: the check that guards this machine clears by itself only $unasked, each " +
           "with every argument inside the checkout, and this command is not one of them."
@@ -132,6 +133,99 @@ object MachineGuardTests extends TestSuite {
           s"$head No check is configured here to ask (JEV_API_KEY is not set), so it will be " +
             "refused again: do not retry it."
         )
+      )
+    }
+
+    test(
+      "a read leading outside the checkout, naming a variable or a secrets file is refused by code, nothing asked"
+    ) {
+      val jev = new Judging(Right(clean))
+      val g = guard(Right(jev))
+      val lead =
+        "Nothing ran: the check that guards this machine keeps reads inside the checkout, and"
+      val inside =
+        "Read what is inside the checkout, with `read`, `list` and `search` or these programs."
+      (
+        Vector(
+          argv("cat", "~/.gitconfig"),
+          argv("git", "diff", "--no-index", "~/.ssh/id_rsa", "/dev/null"),
+          argv("git", "log", "--", "/outside"),
+          argv("ls", "$FOO"),
+          argv("grep", "-r", "key", "config/.env.local"),
+          argv("head", "link-in/../.env")
+        ).map(g.judge(_).why),
+        jev.states
+      ) ==> (
+        Vector(
+          Some(
+            s"$lead `cat '~/.gitconfig'` reads outside it: `~/.gitconfig` leads to " +
+              s"/home/coder/.gitconfig. $inside"
+          ),
+          Some(
+            s"$lead `git diff --no-index '~/.ssh/id_rsa' /dev/null` reads outside it: " +
+              s"`~/.ssh/id_rsa` leads to /home/coder/.ssh/id_rsa, `/dev/null` leads to /dev/null. $inside"
+          ),
+          Some(
+            s"$lead `git log -- /outside` reads outside it: `/outside` leads to /outside. $inside"
+          ),
+          Some(s"$lead `ls '$$FOO'` names a variable the check cannot read: `$$FOO`. $inside"),
+          Some(
+            s"$lead `grep -r key config/.env.local` reads a secrets file: `config/.env.local` " +
+              "names a secrets file (.env or .env.*), which tools may not touch."
+          ),
+          Some(
+            s"$lead `head link-in/../.env` reads a secrets file: `link-in/../.env` names a " +
+              "secrets file (.env or .env.*), which tools may not touch."
+          )
+        ),
+        Vector.empty
+      )
+    }
+
+    test("a read's pattern, script and name tests are no paths, and a read inside starts unasked") {
+      val jev = new Judging(Right(Vector(0.9, 0.9, 0.9, 0.9)))
+      val g = guard(Right(jev))
+      (
+        Vector(
+          argv("grep", "-rn", "/api/v1", "src"),
+          argv("grep", "-e", "~x", "src/a.scala"),
+          argv("sed", "-n", "/^def /p", "src/a.scala"),
+          argv("sed", "-n", "10,40p", "src/a.scala"),
+          argv("find", "src", "-path", "/x/*", "-name", "*.scala"),
+          argv("git", "log", "--grep=/fix", "-S/api"),
+          argv("git", "restore", "--source", "HEAD~1", "src/a"),
+          argv("git", "checkout", "--", "src/a")
+        ).map(g.judge),
+        jev.states
+      ) ==> (Vector.fill(8)(Verdict.Cleared), Vector.empty)
+    }
+
+    test(
+      "a find that writes or runs a program, and a sed but `sed -n` printing lines, are refused by code, naming what runs"
+    ) {
+      val jev = new Judging(Right(clean))
+      val g = guard(Right(jev))
+      val find =
+        "Nothing ran: the check that guards this machine runs `find` only to list what it finds: " +
+          "with no `-exec`, `-execdir`, `-ok`, `-okdir`, `-delete`, `-fprint`, `-fprint0`, " +
+          "`-fprintf` or `-fls`. Change files with `edit` and `write`."
+      val sed =
+        "Nothing ran: the check that guards this machine runs `sed` only as `sed -n <lines>p " +
+          "<files>`, printing a line range (`10,40p`, `5p`, `$p`) or the lines a pattern " +
+          "matches (`/x/p`, `/x/,/y/p`). Change files with `edit` and `write`."
+      (
+        Vector(
+          argv("find", ".", "-name", "*.tmp", "-delete"),
+          argv("find", "src", "-execdir", "rm", "{}", ";"),
+          argv("find", ".", "-fprintf", "out/x", "%p"),
+          argv("sed", "-i", "s/a/b/", "src/x"),
+          argv("sed", "-n", "s/a/b/w out/x", "src/y"),
+          argv("sed", "-n", "-e", "1p", "src/y")
+        ).map(g.judge(_).why),
+        jev.states
+      ) ==> (
+        Vector(Some(find), Some(find), Some(find), Some(sed), Some(sed), Some(sed)),
+        Vector.empty
       )
     }
 

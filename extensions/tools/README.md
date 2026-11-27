@@ -19,8 +19,9 @@ One package, `grit.tools`:
   permits a command able to clone it.
 - `MachineGuard` — what an allowlisted `run` asks before it starts a command its list admits:
   whether it would harm the machine beyond the checkout, decided by code where its arguments
-  show it (paths, the stash) and by the deployment's classifier otherwise, failing closed
-  (ADR 0069). Its corpus is `MachineGuardCorpusTests`, over Jev's recorded answers.
+  show it (paths, the stash, and the shell's and git's reads, which `ShellReads` holds to the
+  checkout) and by the deployment's classifier otherwise, failing closed (ADR 0069). Its
+  corpus is `MachineGuardCorpusTests`, over Jev's recorded answers.
 - `RunAnswer` — how an allowlisted `run`, `tail` and `stop` answer with a run's output: whole
   when it is short, else as its size and file, its lines that look like failures and its tail.
 - `FailedRuns` — a turn's last failed run, read back from the answers `RunAnswer` wrote, its

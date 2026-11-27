@@ -47,6 +47,12 @@ enum PathError {
   case Secret(path: String)
   case Malformed(path: String)
 
+  /** Whether the path names a secrets file. */
+  def secretsFile: Boolean = this match {
+    case Secret(_) => true
+    case _ => false
+  }
+
   /** One sentence: what is wrong with the path, and what is allowed. */
   def message: String = this match {
     case Absolute(p) =>

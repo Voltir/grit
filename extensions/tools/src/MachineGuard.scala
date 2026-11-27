@@ -1,13 +1,18 @@
 package grit.tools
 
 import grit.core.classify.{Answered, Ask, Classifier, ClassifierError, StateJson}
-import grit.core.host.{AbsPath, Allowlist, Argv, Reach, Reached, Stashes}
+import grit.core.host.{AbsPath, Allowlist, Argv, PathError, Reach, Reached, RelPath, Stashes}
 
 /** Whether a command an allowlist admits may start without harming this machine beyond the
   * checkout at `root` (ADR 0069). Code decides first:
   *   - `git stash pop`, `drop` and `clear` by the stash `stashes` reads: in a checkout whose
   *     clone no other checkout shares, each starts; in a shared one, `pop` and `drop` start
   *     only for an entry made on the checkout's own branch, and `clear` never;
+  *   - a `find` with an action that writes or runs a program, and a `sed` but `sed -n`
+  *     printing lines, are refused;
+  *   - a read (`ls`, `cat`, `grep`, git's `diff` and the others of [[MachineGuard.Unasked]]'s
+  *     reads) is refused when a word that may name a path leads outside the checkout, names a
+  *     variable or names a secrets file, and otherwise starts;
   *   - any other command starts unasked when it is one of [[MachineGuard.Unasked]] or of
   *     `cleared` and every argument leads inside the checkout (`reach`), `~` and `$HOME`
   *     read as the home directory `home` (`None`: unknown) and an option's value read as a
@@ -31,17 +36,67 @@ final class MachineGuard(
     stashTaken(argv) match {
       case Some(taken) => byStash(taken)
       case None =>
-        val words = argv.args.toVector.map(w => (w, MachineGuard.paths(w, home)))
-        val unread = words.collect { case (w, Left(())) => w }.distinct
-        val outside = words.flatMap {
-          case (w, Right(paths)) =>
-            paths.map(reach.reached).collect { case Reached.Outside(real) => (w, real) }
-          case _ => Vector.empty
-        }.distinct
-        val shaped = (Unasked ++ cleared).exists(_.permits(argv))
-        if (shaped && outside.isEmpty && unread.isEmpty) Verdict.Cleared
-        else asked(argv, outside, unread)
+        ShellReads.writing(argv) match {
+          case Some(why) => Verdict.Refused(s"$Lead $why")
+          case None if ShellReads.reads(argv) => read(argv)
+          case None =>
+            val (outside, unread) = reaching(argv.args.toVector)
+            val shaped = (Unasked ++ cleared).exists(_.permits(argv))
+            if (shaped && outside.isEmpty && unread.isEmpty) Verdict.Cleared
+            else asked(argv, outside, unread)
+        }
     }
+
+  /** Where `words` lead outside the checkout, each with the real path it leads to, and those
+    * naming a variable that cannot be read.
+    */
+  private def reaching(words: Vector[String]): (Vector[(String, AbsPath)], Vector[String]) = {
+    val read = words.map(w => (w, MachineGuard.paths(w, home)))
+    val unread = read.collect { case (w, Left(())) => w }.distinct
+    val outside = read.flatMap {
+      case (w, Right(paths)) =>
+        paths.map(reach.reached).collect { case Reached.Outside(real) => (w, real) }
+      case _ => Vector.empty
+    }.distinct
+    (outside, unread)
+  }
+
+  /** A read: refused when a word that may name a path leads outside the checkout, names a
+    * variable that cannot be read, or names a secrets file; else cleared.
+    */
+  private def read(argv: Argv): Verdict = {
+    val words = ShellReads.pathWords(argv)
+    val (outside, unread) = reaching(words)
+    val keeps = s"$Lead keeps reads inside the checkout, and `${argv.written}`"
+    val inside =
+      "Read what is inside the checkout, with `read`, `list` and `search` or these programs."
+    // Why a path inside the checkout may not be read, as `RelPath` reads secrets files: a
+    // relative one as written, an absolute one from the root.
+    def refusing(path: String): Option[PathError] = {
+      val at = AbsPath.resolve(root, path)
+      val relative =
+        if (!path.startsWith("/")) path
+        else AbsPath.value(at).drop(AbsPath.value(root).length).stripPrefix("/")
+      Option
+        .when(AbsPath.within(at, root))(RelPath.of(relative).left.toOption)
+        .flatten
+        .filter(_.secretsFile)
+    }
+    if (outside.nonEmpty) Verdict.Refused(s"$keeps reads outside it: ${led(outside)}. $inside")
+    else if (unread.nonEmpty)
+      Verdict.Refused(
+        s"$keeps names a variable the check cannot read: " +
+          s"${unread.map(w => s"`$w`").mkString(", ")}. $inside"
+      )
+    else
+      words.iterator
+        .flatMap(w => MachineGuard.paths(w, home).toOption.toVector.flatten)
+        .flatMap(refusing)
+        .nextOption() match {
+        case Some(error) => Verdict.Refused(s"$keeps reads a secrets file: ${error.message}")
+        case None => Verdict.Cleared
+      }
+  }
 
   private def asked(
       argv: Argv,
@@ -151,7 +206,10 @@ object MachineGuard {
       */
     case Unjudged(error: Option[ClassifierError], refusal: String)
 
-    /** Code refused it: a stash entry this checkout may not take off, or a stash unread. */
+    /** Code refused it: a stash entry this checkout may not take off, a stash unread, a read
+      * leading outside the checkout, naming a variable or a secrets file, or a `find` or `sed`
+      * that would write or run a program.
+      */
     case Refused(refusal: String)
 
     /** What the model reads when it may not start; `None` when it may. */
@@ -172,31 +230,24 @@ object MachineGuard {
   /** How every refusal begins ([[grit.core.host.Allowlisted.GuardLead]]). */
   val Lead: String = grit.core.host.Allowlisted.GuardLead
 
-  /** The commands code clears unasked when every argument leads inside the checkout: git's
-    * reads, adds and commits, the stash's pushes, lists, shows and applies, and the shell's
-    * reads that cannot write or run another program.
+  /** The commands code clears unasked when every argument leads inside the checkout: the
+    * shell's and git's reads, `find` with no action that writes or runs a program and `sed` only
+    * as `sed -n` printing lines; git's adds, commits and restores; and the stash's pushes,
+    * lists, shows and applies. A read leading outside, naming a variable or a secrets file is
+    * refused unasked.
     */
   val Unasked: Vector[Allowlist.Rule] = {
     def leading(words: String*): Vector[Allowlist.Rule] =
       Argv.of(words.head, words.tail*).toOption.map(Allowlist.Rule.Leading(_)).toVector
-    Vector(
-      Vector("git", "status"),
-      Vector("git", "diff"),
-      Vector("git", "log"),
-      Vector("git", "show"),
+    ShellReads.Rules ++ Vector(
       Vector("git", "add"),
       Vector("git", "commit"),
+      Vector("git", "restore"),
+      Vector("git", "checkout", "--"),
       Vector("git", "stash", "push"),
       Vector("git", "stash", "list"),
       Vector("git", "stash", "show"),
-      Vector("git", "stash", "apply"),
-      Vector("ls"),
-      Vector("cat"),
-      Vector("head"),
-      Vector("tail"),
-      Vector("wc"),
-      Vector("grep"),
-      Vector("diff")
+      Vector("git", "stash", "apply")
     ).flatMap(w => leading(w*)) ++
       Argv.of("git", "stash").toOption.map(Allowlist.Rule.Exactly(_)).toVector
   }

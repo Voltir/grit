@@ -406,6 +406,19 @@ object Coding {
     */
   private def argvRunHosted(allowlist: Allowlist): Hosted[ArgvArgs] = {
     val longest = allowlist.longest
+    // The machine guard's reads this list admits, as the model is told of them.
+    val listed = ShellReads.Rules.collect {
+      case Allowlist.Rule.Leading(argv)
+          if Argv.of(argv.program, (argv.args :+ "x")*).exists(allowlist.permits) =>
+        s"`${argv.written}`"
+    }
+    val reads = listed match {
+      case init :+ last =>
+        s" A read (${if (init.isEmpty) last else s"${init.mkString(", ")} or $last"}) is " +
+          "refused, running nothing, when an argument leads outside the checkout or names a " +
+          "secrets file (.env or .env.*)."
+      case _ => ""
+    }
     new Hosted(
       ToolSpec(
         ToolName("run"),
@@ -428,7 +441,7 @@ object Coding {
           "argument inside the checkout, is checked for harm to this machine beyond the " +
           "checkout, and refused, running nothing, if it would change files outside it, " +
           "rewrite what other checkouts share, stop other processes, or change another " +
-          "machine. A command is killed " +
+          s"machine.$reads A command is killed " +
           "with everything it started when it runs past `timeout` (at most " +
           s"${longest.toSeconds} seconds, and that when not given) or its output passes " +
           s"${mb(Workspace.MaxFileBytes)}. The commands it runs, where `…` stands for any " +

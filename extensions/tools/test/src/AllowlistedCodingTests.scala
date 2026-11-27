@@ -459,6 +459,32 @@ object AllowlistedCodingTests extends TestSuite {
       )
     }
 
+    test("run's description names the reads its list admits as held inside the checkout") {
+      def describing(rules: Allowlist.Rule*): Vector[String] =
+        Coding
+          .allowlistedHosted(
+            Allowlist
+              .of(rules.toVector, 1.minute)
+              .fold(e => throw new java.lang.AssertionError(e), identity)
+          )
+          .map(_.entry)
+          .collect { case e if ToolName.value(e.name) == "run" => e.does }
+      val reads = describing(
+        Allowlist.Rule.Leading(argv("cat")),
+        Allowlist.Rule.Following(argv("sed", "-n"), "what to print"),
+        Allowlist.Rule.Leading(argv("git", "diff"))
+      )
+      val none = describing(Allowlist.Rule.Leading(argv("./mill")))
+      val said =
+        "or change another machine. A read (`git diff`, `cat` or `sed -n`) is refused, running " +
+          "nothing, when an argument leads outside the checkout or names a secrets file (.env or " +
+          ".env.*). A command is killed"
+      (reads.map(_.contains(said)), none.map(_.contains("A read ("))) ==> (
+        Vector(true),
+        Vector(false)
+      )
+    }
+
     test("run, tail and stop are shown as their name, then the command or the id") {
       val box = Toolbox
         .of(Coding.allowlistedHosted(allowlist(10.minutes))*)
