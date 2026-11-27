@@ -117,23 +117,25 @@ object Coding {
     )
 
   /** The tools [[allowlistedHosted]] describes for `runs.allowlist`, each `run` refused, running
-    * nothing, when `runs` does not permit it or `guard` does not clear it (in the guard's words,
-    * [[MachineGuard.Verdict.why]]), and `tail` and `stop` reaching only what `runs` started;
-    * `Left` names a tool that cannot be offered with the others.
+    * nothing, when `runs` does not permit it (naming what its list admits instead) or `guard`
+    * does not clear it (in the guard's words, [[MachineGuard.Verdict.why]]), a refusal its turn
+    * was given before saying so ([[Refusals]]); and `tail` and `stop` reaching only what `runs`
+    * started. `Left` names a tool that cannot be offered with the others.
     */
   def allowlisted(
       ws: Workspace^,
       edits: Edits^,
       runs: Allowlisted^,
-      guard: MachineGuard^
-  ): Either[SetRefusal, Toolbox[caps.CapSet^{ws, edits, runs, guard}]] =
+      guard: MachineGuard^,
+      refusals: Refusals^
+  ): Either[SetRefusal, Toolbox[caps.CapSet^{ws, edits, runs, guard, refusals}]] =
     Toolbox.of(
       read(ws),
       list(ws),
       search(ws),
       writing(freeWrite, edits),
       editing(freeEdit, edits),
-      argvRun(runs, guard),
+      argvRun(runs, guard, refusals),
       tail(runs),
       stop(runs)
     )
@@ -436,7 +438,8 @@ object Coding {
           "then keeps running, and the answer gives its id and its output so far; follow it " +
           s"with `tail`, or end it with `stop`. At most ${Runs.Most} commands run at once in a " +
           "checkout. Fails, running nothing, when the command is not on the list or " +
-          s"${Runs.Most} are already running, and when it cannot start. Before it starts, a " +
+          s"${Runs.Most} are already running, and when it cannot start; a refusal says what " +
+          "runs instead, and when it was refused before this turn. Before it starts, a " +
           "command that is not one of the reads the check clears by itself, with every " +
           "argument inside the checkout, is checked for harm to this machine beyond the " +
           "checkout, and refused, running nothing, if it would change files outside it, " +
@@ -500,14 +503,40 @@ object Coding {
   }
 
   // The allowlist first, so the guard judges only what may start at all.
-  private def argvRun(runs: Allowlisted^, guard: MachineGuard^): Tool[ArgvArgs]^{runs, guard} =
-    argvRunHosted(runs.allowlist).over { a =>
+  private def argvRun(
+      runs: Allowlisted^,
+      guard: MachineGuard^,
+      refusals: Refusals^
+  ): Tool[ArgvArgs]^{runs, guard, refusals} =
+    argvRunHosted(runs.allowlist).calling { (a, at) =>
       def started: Outcome =
         runs
           .start(a.argv, a.timeout, a.wait)
           .fold(e => Outcome.Failed(e.message), s => standing(s.id, s.status))
-      if (!runs.allowlist.permits(a.argv)) started
-      else guard.judge(a.argv).why.fold(started)(Outcome.Failed(_))
+      // `said`, and when `subject` was refused before this turn, that it was.
+      def refused(subject: String, said: String, again: Int => String): Outcome = {
+        val before = refusals.again(at.turn, subject)
+        Outcome.Failed(if (before == 0) said else said + again(before + 1))
+      }
+      val allowlist = runs.allowlist
+      if (!allowlist.permits(a.argv))
+        allowlist.wanting(a.argv) match {
+          case Some(what) =>
+            val unfinished = HostError.Unfinished(a.argv, what)
+            refused(a.argv.program, unfinished.message, RunRefusals.repeated(a.argv.program, _))
+          case None =>
+            val hint = RunRefusals.unlisted(a.argv, allowlist)
+            refused(
+              hint.subject,
+              s"${HostError.Unlisted(a.argv).message} ${hint.said}",
+              RunRefusals.repeated(hint.subject, _)
+            )
+        }
+      else
+        guard
+          .judge(a.argv)
+          .why
+          .fold(started)(why => refused(s"guard ${a.argv.written}", why, _ => RunRefusals.Again))
     }
 
   /** `tail` as an allowlisted set offers it: asking no one, bound at any integrity, as `read`. */

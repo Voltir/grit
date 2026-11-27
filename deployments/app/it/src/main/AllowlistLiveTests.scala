@@ -127,7 +127,11 @@ object AllowlistLiveTests extends TestSuite {
             Vector(
               ("Wrote made.txt: 1 line.", false),
               (s"Exit code 0. Output:\nhello from $root\n", false),
-              (HostError.Unlisted(touch).message, true)
+              (
+                s"${HostError.Unlisted(touch).message} Only these programs run here: " +
+                  "`./hello`, each as the run tool's description lists it.",
+                true
+              )
             ),
             Some("made\n"),
             false

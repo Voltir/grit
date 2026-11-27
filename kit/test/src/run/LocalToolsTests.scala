@@ -411,7 +411,10 @@ object LocalToolsTests extends TestSuite {
         Files.exists(root.resolve("x"))
       ) ==> (
         Outcome.Done(s"Exit code 0. Output:\nhello from $root\n"),
-        Outcome.Failed(HostError.Unlisted(touch).message),
+        Outcome.Failed(
+          s"${HostError.Unlisted(touch).message} Only these programs run here: `./hello`, each " +
+            "as the run tool's description lists it."
+        ),
         false
       )
     }

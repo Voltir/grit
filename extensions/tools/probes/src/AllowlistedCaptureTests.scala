@@ -16,7 +16,7 @@ object AllowlistedCaptureTests extends TestSuite {
       |import grit.core.host.{Allowlisted, Argv, Edits, Processes, RelPath, Runs, Workspace}
       |import grit.core.store.Tx
       |import grit.core.tool.{Args, Believed, Gate, Hosted, Outcome, SetRefusal, ToolName, ToolSpec, Toolbox}
-      |import grit.tools.{Coding, MachineGuard}
+      |import grit.tools.{Coding, MachineGuard, Refusals}
       |""".stripMargin
 
   /* A model of `Coding.allowlisted` at its declared type, one of its tools running `body`. */
@@ -34,7 +34,9 @@ object AllowlistedCaptureTests extends TestSuite {
        |  )""".stripMargin
 
   private val itself =
-    "def made(ws: Workspace^, e: Edits^, r: Allowlisted^, g: MachineGuard^): Either[SetRefusal, Toolbox[caps.CapSet^{ws, e, r, g}]] = Coding.allowlisted(ws, e, r, g)"
+    "def made(ws: Workspace^, e: Edits^, r: Allowlisted^, g: MachineGuard^, f: Refusals^): Either[SetRefusal, Toolbox[caps.CapSet^{ws, e, r, g, f}]] = Coding.allowlisted(ws, e, r, g, f)"
+  private val forgettingRefusals =
+    "def forgetting(ws: Workspace^, e: Edits^, r: Allowlisted^, g: MachineGuard^, f: Refusals^): Either[SetRefusal, Toolbox[caps.CapSet^{ws, e, r, g}]] = Coding.allowlisted(ws, e, r, g, f)"
   private val throughAllowlisted =
     model(
       "",
@@ -54,7 +56,7 @@ object AllowlistedCaptureTests extends TestSuite {
   private lazy val compiled =
     Probes.batch(
       prelude,
-      List(itself, throughAllowlisted, throughProcesses, throughRuns, holdingTx)
+      List(itself, forgettingRefusals, throughAllowlisted, throughProcesses, throughRuns, holdingTx)
     )
 
   val tests = Tests {
@@ -83,6 +85,14 @@ object AllowlistedCaptureTests extends TestSuite {
         compiled
           .errors(throughRuns)
           .exists(_.contains("capability `rs` cannot flow into capture set {ws, e, r}"))
+      )
+    }
+
+    test("the set typed without the refusals its run keeps is rejected") {
+      assert(
+        compiled
+          .errors(forgettingRefusals)
+          .exists(_.contains("capability `f` cannot flow into capture set {ws, e, r, g}"))
       )
     }
 

@@ -14,7 +14,7 @@ import grit.edge.desk.{Run, Tools}
 import grit.host.checkout.{LocalEdits, LocalReach, LocalRuns, LocalShell, LocalWorkspace, Redaction}
 import grit.host.git.{LocalStashes, WorkingCopies}
 import grit.kit.deployment.Offered
-import grit.tools.{Coding, MachineGuard, Versioning}
+import grit.tools.{Coding, MachineGuard, Refusals, Versioning}
 
 /** The coding tools this process's edge runs a request with, over the directory it was routed
   * to, or for a repository route in the working copy `copies` keeps for its run (a request
@@ -133,7 +133,8 @@ final class LocalTools(
             ws,
             new LocalEdits(root, redaction),
             Allowlisted.over(runsAt(root), allowlist),
-            guardAt(root, allowlist)
+            guardAt(root, allowlist),
+            refusals
           )
           .fold(refused, tools => Run.request(request, tools))
     }
@@ -152,6 +153,9 @@ final class LocalTools(
 
   /** Whether [[close]] was called. */
   private val closed = new java.util.concurrent.atomic.AtomicBoolean(false)
+
+  /** What every allowlisted `run` here has refused, by turn. */
+  private val refusals: Refusals^ = Refusals.kept()
 
   /** The runs of each directory that is gone, a copy its sweep removed, closed and dropped. */
   private def pruned(): Unit = synchronized {

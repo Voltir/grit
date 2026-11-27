@@ -35,6 +35,31 @@ object AllowlistedCodingTests extends TestSuite {
       )
       .fold(e => throw new java.lang.AssertionError(e), identity)
 
+  /** git's status, restore, checkout of files and stash, `grep`, and `scripts/check`: forms a
+    * refusal may name.
+    */
+  private val refusing: Allowlist =
+    Allowlist
+      .of(
+        Vector(
+          Allowlist.Rule.Leading(argv("git", "status")),
+          Allowlist.Rule.Leading(argv("git", "restore")),
+          Allowlist.Rule.Following(argv("git", "checkout", "--"), "the files to restore"),
+          Allowlist.Rule.Leading(argv("git", "stash")),
+          Allowlist.Rule.Leading(argv("grep")),
+          Allowlist.Rule.Following(argv("scripts/check"), "the suites or modules to check")
+        ),
+        2.minutes
+      )
+      .fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** What `rm -rf 'a b'` is refused with under [[allowlist]]. */
+  private val rmRefused: Outcome =
+    Outcome.Failed(
+      s"${HostError.Unlisted(argv("rm", "-rf", "a b")).message} Only these programs run here: " +
+        "`git`, `./mill`, `scripts/check`, each as the run tool's description lists it."
+    )
+
   /** What the scripted commands do: `git status` ends at once, `./mill compile` after two
     * minutes, and `./mill hang` and `./mill quiet`, which writes nothing, never.
     */
@@ -62,10 +87,11 @@ object AllowlistedCodingTests extends TestSuite {
   private def tools(
       host: CodingTests.Scripted^,
       runs: Allowlisted^,
-      guard: MachineGuard^ = GuardFixtures.harmless
-  ): Toolbox[caps.CapSet^{host, runs, guard}] =
+      guard: MachineGuard^ = GuardFixtures.harmless,
+      refusals: Refusals^ = Refusals.kept()
+  ): Toolbox[caps.CapSet^{host, runs, guard, refusals}] =
     Coding
-      .allowlisted(host, host, runs, guard)
+      .allowlisted(host, host, runs, guard, refusals)
       .fold(d => throw new java.lang.AssertionError(d), identity)
 
   private def call(name: String, args: ujson.Value): AssistantBlock.ToolCall =
@@ -79,9 +105,11 @@ object AllowlistedCodingTests extends TestSuite {
       runs: Allowlisted^,
       name: String,
       args: ujson.Value,
-      guard: MachineGuard^ = GuardFixtures.harmless
+      guard: MachineGuard^ = GuardFixtures.harmless,
+      refusals: Refusals^ = Refusals.kept(),
+      at: grit.core.id.CallSlot = TestCallSlots.First
   ): Either[String, (Boolean, Outcome)] =
-    tools(host, runs, guard)
+    tools(host, runs, guard, refusals)
       .requested(
         call(name, args),
         Repairs.All,
@@ -91,7 +119,7 @@ object AllowlistedCodingTests extends TestSuite {
       .left
       .map(_.message)
       .map {
-        case free: Bound.Free => (false, free(TestCallSlots.First))
+        case free: Bound.Free => (false, free(at))
         case _: Bound.Gated => (true, Outcome.Failed("asks first"))
         case _ => (false, Outcome.Failed("not run here"))
       }
@@ -158,7 +186,7 @@ object AllowlistedCodingTests extends TestSuite {
         settle(host, runs, "run", ujson.Obj("program" -> "rm", "args" -> ujson.Arr("-rf", "a b")))
       ) ==> (
         Right((false, Outcome.Done("Exit code 0. Output:\nok\n"))),
-        Right((false, Outcome.Failed(HostError.Unlisted(argv("rm", "-rf", "a b")).message)))
+        Right((false, rmRefused))
       )
       noted.log ==> Vector((argv("git", "status"), 2.minutes))
     }
@@ -185,7 +213,7 @@ object AllowlistedCodingTests extends TestSuite {
         jev.states.size
       ) ==> (
         Right((false, Outcome.Failed(refused))),
-        Right((false, Outcome.Failed(HostError.Unlisted(argv("rm", "-rf", "a b")).message))),
+        Right((false, rmRefused)),
         Right((false, Outcome.Done("Exit code 0. Output:\nok\n"))),
         Vector((argv("git", "status"), 2.minutes)),
         1
@@ -421,6 +449,145 @@ object AllowlistedCodingTests extends TestSuite {
       )
     }
 
+    test(
+      "an unlisted command's refusal names what works: the tool, the one word, the listed form, or the programs that run"
+    ) {
+      val runs = Allowlisted.over(new Noting(scripts), refusing)
+      val host = new CodingTests.Scripted()
+      def refused(program: String, args: String*): Either[String, (Boolean, Outcome)] =
+        settle(host, runs, "run", ujson.Obj("program" -> program, "args" -> args))
+      def unlisted(written: String, hint: String) =
+        Right(
+          (
+            false,
+            Outcome.Failed(
+              s"`$written` is not on this checkout's command list, so nothing ran. Only the " +
+                s"commands the run tool's description lists may run. $hint"
+            )
+          )
+        )
+      (
+        refused("read", "a"),
+        refused("git status"),
+        refused("scripts", "check", "grit.x"),
+        refused("bash", "scripts/check", "grit.x"),
+        refused("python3", "-c", "print(1)"),
+        refused("rg", "Turn"),
+        refused("curl", "https://example.com")
+      ) ==> (
+        unlisted("read a", "`read` is a tool of its own, not a program: call `read` itself."),
+        unlisted(
+          "'git status'",
+          "A program is one word: give `git` as `program`, and `status` among `args`."
+        ),
+        unlisted(
+          "scripts check grit.x",
+          "A program is one word with its path: give `scripts/check` as `program`."
+        ),
+        unlisted(
+          "bash scripts/check grit.x",
+          "Run it as a program of its own: `program` `scripts/check`, `args` [`grit.x`]. No " +
+            "shell or interpreter runs here: one program per call, no pipes."
+        ),
+        unlisted(
+          "python3 -c 'print(1)'",
+          "No shell or interpreter runs here: `run` starts one listed program per call, with its " +
+            "arguments: no pipes, no scripts, no `-c` lines. For what it was for, `search` finds " +
+            "lines in files, `read` reads a file, `list` lists a directory, and `edit` and " +
+            "`write` change files."
+        ),
+        unlisted(
+          "rg Turn",
+          "`search` finds the lines matching a pattern in files; `grep …` runs here too."
+        ),
+        unlisted(
+          "curl https://example.com",
+          "Only these programs run here: `git`, `grep`, `scripts/check`, each as the run tool's " +
+            "description lists it."
+        )
+      )
+    }
+
+    test(
+      "git's refusals name its listed forms: a push is a person's, a reset or a branch checkout restores"
+    ) {
+      val runs = Allowlisted.over(new Noting(scripts), refusing)
+      val host = new CodingTests.Scripted()
+      def said(args: String*): Vector[String] =
+        settle(host, runs, "run", ujson.Obj("program" -> "git", "args" -> args)).toOption.toVector
+          .collect { case (_, Outcome.Failed(why)) => why.split("may run. ").last }
+      val older = "For a file as an older commit had it: `git restore --source <commit> <path>`."
+      (
+        said("push", "origin", "x"),
+        said("reset", "--hard", "HEAD~1"),
+        said("checkout", "HEAD~1", "--", "a"),
+        said("branch", "-D", "x")
+      ) ==> (
+        Vector("Pushing is left to a person here: say in your reply that the branch is ready."),
+        Vector(
+          "`git reset` does not run here. To undo changes to a file: `git restore <path>` or " +
+            s"`git checkout -- <path>`. To set work aside: `git stash`. $older"
+        ),
+        Vector(
+          "`git checkout` runs here only as `git checkout -- <path>`, to restore files: this " +
+            s"checkout stays on its branch. $older"
+        ),
+        Vector(
+          "The git commands that run here: `git status …`, `git restore …`, `git checkout -- …`, " +
+            "`git stash …`."
+        )
+      )
+    }
+
+    test(
+      "a refusal repeated this turn says so, a script's by the script in whatever form, a guard's word for word; a new turn starts the count again"
+    ) {
+      val runs = Allowlisted.over(new Noting(scripts), refusing)
+      val host = new CodingTests.Scripted()
+      val refusals = Refusals.kept()
+      val guard = GuardFixtures.guard(Left("JEV_API_KEY is not set"))
+      val later = TestCallSlots.at(
+        grit.core.id.TurnRef(grit.core.id.ConversationId("c"), grit.core.id.TurnSeq.First.next)
+      )
+      def ran(at: grit.core.id.CallSlot, program: String, args: String*): Option[String] =
+        settle(
+          host,
+          runs,
+          "run",
+          ujson.Obj("program" -> program, "args" -> args),
+          guard,
+          refusals,
+          at
+        ).toOption.collect { case (_, Outcome.Failed(why)) => why }
+      val first = TestCallSlots.First
+      def unlisted(written: String, after: String = "") =
+        Some(
+          s"`$written` is not on this checkout's command list, so nothing ran. Only the " +
+            "commands the run tool's description lists may run. `run` starts only the listed " +
+            "programs; no form of starting `scripts/kb-delta` is one, through `bash`, `sh` or any " +
+            "other program. Do not retry it. If your task needs what it does, say so in your " +
+            s"reply and go on without it.$after"
+        )
+      def again(n: Int) =
+        s" This is refusal $n of `scripts/kb-delta` this turn: no form of it runs here, so stop " +
+          "trying it and go on with what does."
+      val branch = ran(first, "git", "stash", "branch", "x")
+      (
+        ran(first, "scripts/kb-delta"),
+        ran(first, "bash", "scripts/kb-delta", "x"),
+        ran(first, "sh", "-c", "scripts/kb-delta delta"),
+        ran(later, "scripts/kb-delta"),
+        ran(first, "git", "stash", "branch", "x")
+      ) ==> (
+        unlisted("scripts/kb-delta"),
+        unlisted("bash scripts/kb-delta x", again(2)),
+        unlisted("sh -c 'scripts/kb-delta delta'", again(3)),
+        unlisted("scripts/kb-delta"),
+        branch.map(_ + RunRefusals.Again)
+      )
+      assert(branch.exists(_.startsWith(MachineGuard.Lead)))
+    }
+
     test("run's description lists every command the allowlist permits, and how long it waits") {
       val run = described("run")
       assert(
@@ -437,7 +604,8 @@ object AllowlistedCodingTests extends TestSuite {
               "running, and the answer gives its id and its output so far; follow it with " +
               "`tail`, or end it with `stop`. At most 4 commands run at once in a checkout. " +
               "Fails, running nothing, when the command is not on the list or 4 are already " +
-              "running, and when it cannot start. Before it starts, a command that is not one " +
+              "running, and when it cannot start; a refusal says what runs instead, and when it " +
+              "was refused before this turn. Before it starts, a command that is not one " +
               "of the reads the check clears by itself, with every argument inside the " +
               "checkout, is checked for harm to this machine beyond the checkout, and refused, " +
               "running nothing, if it would change files outside it, rewrite what other " +
