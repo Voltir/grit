@@ -1,6 +1,6 @@
 # 0055. In an allowlisted tool set the deployment's declared command list stands in for a person's approval, and bounds what `run` starts, not what runs
 
-Status: accepted (2026-11-02); revised (2026-11-26)
+Status: accepted (2026-11-02); revised (2026-11-27)
 
 Context: ADR 0017 has a person approve each `write`, `edit` and `run` before it runs, and a
 deployment with no one to answer (a run with arguments, `grit serve`) offers only the tools that
@@ -36,7 +36,8 @@ Decision:
   - the OS user's other credentials (ADR 0054's adversaries).
   So the list names the programs `run` starts and removes the shell; it is not a boundary on what
   those programs do. What it buys is an accident bound: no one-line `rm -rf` or `curl … | sh`,
-  and two deliberate calls before foreign code runs.
+  and two deliberate calls before foreign code runs. What one admitted command would do to the
+  machine beyond the checkout is the machine guard's to judge (ADR 0069).
 - **Why it is accepted:** it is the grant a Claude Code coder runs under, its allowed commands
   and no prompts, so a bench compares the two harnesses on like terms; and it holds only until an
   OS boundary contains what runs.
