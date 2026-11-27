@@ -628,7 +628,7 @@ object Coding {
   /** How the run `id` stands, as the model reads it, after `lead`. A run past its timeout
     * fails, as one that timed out within the call always has.
     */
-  private def standing(id: RunId, status: RunStatus, lead: String = ""): Outcome = status match {
+  private def standing(id: RunId, status: RunStatus, lead: String): Outcome = status match {
     case RunStatus.Going(elapsed, timeout, output) =>
       val so =
         if (output.text.isEmpty) " No output yet."
