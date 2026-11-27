@@ -373,7 +373,7 @@ object ShownTests extends TestSuite {
     }
 
     test(
-      "grit's continuation note is one user message, grit's own note, unescaped, in its turn and in a later window alike"
+      "grit's continuation note at its limit is one user message, grit's own note, unescaped, in its turn and in a later window alike, saying to start from the last reply's next step and not to read again what it records"
     ) {
       val note = entry(
         Payload.Continuation(
@@ -386,9 +386,10 @@ object ShownTests extends TestSuite {
       val expected = Message.User(
         "<grit_note>\nYour last turn on this task reached its limit and ended. This turn starts " +
           "afresh: it holds the task and your last reply, but not your earlier replies, your " +
-          "tool calls or their results.\n\nGo on with the task from where your last reply " +
-          "left off. Read again whatever you need, and do not redo what your last reply says is " +
-          "done.\n</grit_note>"
+          "tool calls or their results.\n\nStart from the next step your last reply names. Do " +
+          "not read again what it already records, such as the files it names or what it found " +
+          "in them; read only what that step needs and your reply does not say. Do not redo " +
+          "what your last reply says is done.\n</grit_note>"
       )
       (Shown.of(note, Speakers.none), Shown.turn(Vector(note), Speakers.none)) ==>
         (Some(expected), Vector(expected))
@@ -419,9 +420,10 @@ object ShownTests extends TestSuite {
           Message.User(
             "<grit_note>\nYour last turn on this task reached its limit and ended. This turn starts " +
               "afresh: it holds the task and your last reply, but not your earlier replies, your " +
-              "tool calls or their results.\n\nGo on with the task from where your last reply " +
-              "left off. Read again whatever you need, and do not redo what your last reply says is " +
-              "done.\n\nAfter this note, grit shows how your branch differs from origin/trunk, " +
+              "tool calls or their results.\n\nStart from the next step your last reply names. Do " +
+              "not read again what it already records, such as the files it names or what it " +
+              "found in them; read only what that step needs and your reply does not say. Do not " +
+              "redo what your last reply says is done.\n\nAfter this note, grit shows how your branch differs from origin/trunk, " +
               "committed or not, as read after your last turn, the files git does not track yet, " +
               "and the lines that look like failures in the last command you ran that failed. " +
               "Start from them rather than running commands to find this out again.\n</grit_note>\n\n" +

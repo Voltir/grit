@@ -128,8 +128,9 @@ object Shown {
     "Your last turn on this task reached its limit and ended. This turn starts afresh: it " +
       "holds the task and your last reply, but not your earlier replies, your tool calls " +
       "or their results.",
-    "Go on with the task from where your last reply left off. Read again whatever you " +
-      "need, and do not redo what your last reply says is done."
+    "Start from the next step your last reply names. Do not read again what it already " +
+      "records, such as the files it names or what it found in them; read only what that " +
+      "step needs and your reply does not say. Do not redo what your last reply says is done."
   )
 
   /** grit's words after a check passed with its branch not offered ([[WentOn.Unpushed]]). */
