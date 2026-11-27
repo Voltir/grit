@@ -273,6 +273,7 @@ object TurnTests extends TestSuite {
         "gate",
         "call",
         "DBOS.patch-last-call-refused",
+        "DBOS.patch-task-status-done-early",
         "record-verdict",
         "append",
         "judge",

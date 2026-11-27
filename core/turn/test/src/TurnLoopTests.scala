@@ -134,10 +134,11 @@ object TurnLoopTests extends TestSuite {
         TurnLoop.next(cutAt5, Handoff.ToParent, round(4), read)
       ) ==> (
         Handoff.ToParent,
-        "Say whether the task is done, once you are told this run is ending; before then it is " +
-          "not recorded. Call it alone. Either way the run ends, and your handoff is passed back " +
-          "to the conversation that started this run: done says the task is finished, more says " +
-          "work is left, which this run will not continue.",
+        "Say whether the task is done. Call it alone. Either way the run ends, and your " +
+          "handoff is passed back to the conversation that started this run: done says the " +
+          "task is finished, so call it with done as soon as it is; more says work is left, " +
+          "which this run will not continue, and is recorded only once you are told this run " +
+          "is ending.",
         Some("done: the task is finished. more: work is left that this run did not get to."),
         Some(
           "Your reply, passed back to the conversation that started this run, which sees none " +
@@ -228,6 +229,39 @@ object TurnLoopTests extends TestSuite {
         Next.Settle(Vector(Pending.Run(call("a")), refused), round(3)),
         Next.Settle(Vector(Pending.Run(call("a")), refused), round(3)),
         Next.Settle(Vector(Pending.Run(call("a")), Pending.Run(status)), round(3))
+      )
+    }
+
+    test(
+      "task_status alone declaring done before a turn briefed for one task is ending ends it, its handoff the answer, unless its history is from before the patch; more stays refused as early"
+    ) {
+      def status(state: String): AssistantBlock.ToolCall = AssistantBlock.ToolCall(
+        ToolCallId("s"),
+        "task_status",
+        ujson.Obj("state" -> state, "handoff" -> "All moved.")
+      )
+      def alone(c: AssistantBlock.ToolCall): Message.Assistant =
+        Message.Assistant(Vector(c), StopReason.ToolUse, Usage.Zero, "m")
+      def refused(c: AssistantBlock.ToolCall) =
+        Vector(Pending.Refused(c, Outcome.Failed(TaskStatus.Early)))
+      val answered = Ended.Answer(
+        Message.Assistant(
+          Vector(AssistantBlock.Text("All moved.")),
+          StopReason.ToolUse,
+          Usage.Zero,
+          "m"
+        )
+      )
+      (
+        TurnLoop.next(cutAt5, Handoff.ToNextTurn, round(2), alone(status("done"))),
+        TurnLoop.next(budget(5), Handoff.ToParent, round(0), alone(status("done"))),
+        TurnLoop.next(budget(5), Handoff.ToNextTurn, round(2), alone(status("more"))),
+        TurnLoop.next(budget(5), Handoff.Unoffered, round(2), alone(status("done")))
+      ) ==> (
+        Next.DoneEarly(refused(status("done")), round(3), answered),
+        Next.DoneEarly(refused(status("done")), round(1), answered),
+        Next.Settle(refused(status("more")), round(3)),
+        Next.Settle(Vector(Pending.Run(status("done"))), round(3))
       )
     }
 

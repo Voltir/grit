@@ -6,9 +6,11 @@ import grit.core.recipe.Briefing
 import grit.core.tool.{Args, ArgsError, Field, ToolName, ToolSpec}
 
 /** The `task_status` tool, where a turn briefed for one task that is ending, its input limit
-  * met or its calls run out, says whether its task is done ([[TurnLoop.declared]]). It is offered on every call of such a
-  * turn ([[TurnLoop.offered]]), and never run: a reply that declares ends the turn, its handoff
-  * the reply's text; a call before the turn is ending is refused ([[Early]]).
+  * met or its calls run out, says whether its task is done ([[TurnLoop.declared]]), and where
+  * any of its calls may say it is done ([[TurnLoop.Next.DoneEarly]]). It is offered on every
+  * call of such a turn ([[TurnLoop.offered]]), and never run: a reply that declares ends the
+  * turn, its handoff the reply's text; any other call before the turn is ending is refused
+  * ([[Early]]).
   */
 object TaskStatus {
 
@@ -73,9 +75,10 @@ object TaskStatus {
       Name,
       if (toParent) ToParentDescription
       else
-        "Say whether the task is done, once you are told this turn is ending; before then it " +
-          "is not recorded. Call it alone: done gives your " +
-          "answer to the person; more hands the work to a new turn, which goes on from your handoff.",
+        "Say whether the task is done. Call it alone. done gives your answer to the person: " +
+          "call it with done as soon as the task is finished. more hands the work to a new " +
+          "turn, which goes on from your handoff, and is recorded only once you are told this " +
+          "turn is ending.",
       Args
         .of(
           (
@@ -98,10 +101,10 @@ object TaskStatus {
   }
 
   private val ToParentDescription =
-    "Say whether the task is done, once you are told this run is ending; before then it is " +
-      "not recorded. Call it alone. Either way the run ends, and your handoff is passed back " +
-      "to the conversation that started this run: done says the task is finished, more says " +
-      "work is left, which this run will not continue."
+    "Say whether the task is done. Call it alone. Either way the run ends, and your handoff " +
+      "is passed back to the conversation that started this run: done says the task is " +
+      "finished, so call it with done as soon as it is; more says work is left, which this " +
+      "run will not continue, and is recorded only once you are told this run is ending."
 
   private val ToParentState =
     "done: the task is finished. more: work is left that this run did not get to."
@@ -131,10 +134,10 @@ object TaskStatus {
     "Not recorded. Call task_status alone, with state done or more and a handoff that is not " +
       "blank."
 
-  /** What a call to it is answered before its turn is ending: before its budget's last call
-    * with tools ([[TurnLoop.asksStatus]]).
+  /** What a call to it is answered before its turn is ending (before its budget's last call
+    * with tools, [[TurnLoop.asksStatus]]) when it does not declare done alone.
     */
   val Early: String =
-    "Not recorded: task_status is for a turn that is ending, and you will be told when this " +
-      "one is. Go on with the task, and answer in text when it is done."
+    "Not recorded: until you are told this turn is ending, task_status takes only state done, " +
+      "called alone, once the task is finished. Go on with the task."
 }

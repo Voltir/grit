@@ -452,7 +452,10 @@ private[turn] object TurnRound {
       .andThen(Flow.decide(calling)(replied))
       .andThen(
         Flow.either(
-          Flow.either(settles.map[Either[Progress, Looped]](Left(_)), retried),
+          Flow.either(
+            settles.map[Either[Progress, Looped]](Left(_)),
+            Flow.either(retried, doneEarly)
+          ),
           Flow.pass[Looped].map[Either[Progress, Looped]](Right(_))
         )
       )
@@ -470,13 +473,24 @@ private[turn] object TurnRound {
     */
   private final case class Retry(settle: Settle, before: Either[Stalled, Looped])
 
+  /** The patch under which a turn briefed for one task whose reply calls task_status alone,
+    * declaring done, before the turn is ending, ends with its handoff (ADR 0004); a history from
+    * before it refused that call as early and went on.
+    */
+  val DoneEarly: String = "task-status-done-early"
+
+  /** A reply declaring done early ([[Next.DoneEarly]]): how the round ends, `after`; `before`,
+    * its call settled refused, for a history recorded before the patch `task-status-done-early`.
+    */
+  private final case class Early(before: Settle, after: Either[Stalled, Looped])
+
   /** What a round does after its call came to `called`: ends, answers, settles its calls, or
     * settles them refused and makes the last call again.
     */
   private def replied(
       at: Progress,
       called: Either[TurnFailure, Message.Assistant]
-  ): Either[Stalled, Either[Either[Settle, Retry], Looped]] =
+  ): Either[Stalled, Either[Either[Settle, Either[Retry, Early]], Looped]] =
     called match {
       case Left(failure) => Left(Stalled(failure, at))
       case Right(reply) =>
@@ -485,9 +499,21 @@ private[turn] object TurnRound {
           case Next.Ends(ending) => ends(now, ending).map(Right(_))
           case Next.Settle(calls, next) => Right(Left(Left(Settle(now, reply, calls, next))))
           case Next.Again(calls, next, before) =>
-            Right(Left(Right(Retry(Settle(now, reply, calls, next), ends(now, before)))))
+            Right(Left(Right(Left(Retry(Settle(now, reply, calls, next), ends(now, before))))))
+          case Next.DoneEarly(calls, next, ending) =>
+            Right(Left(Right(Right(Early(Settle(now, reply, calls, next), ends(now, ending))))))
         }
     }
+
+  /** After a reply that declared done early: the round's ending; a history recorded before the
+    * patch `task-status-done-early` holds the call settled refused here instead, and goes on to
+    * the round after, as it did then (ADR 0004).
+    */
+  private def doneEarly: Flow[Env, Early, Stalled, Either[Progress, Looped]] =
+    Flow.patch[Env, Early, Stalled, Either[Progress, Looped]](DoneEarly)(
+      Flow.pass[Early].map(_.before).andThen(settles.map[Either[Progress, Looped]](Left(_))),
+      Flow.fromEither[Early, Stalled, Either[Progress, Looped]](_.after.map(Right(_)))
+    )
 
   /** How the round `now` stands at, its reply the last of `now.replies`, ends as `ending`. */
   private def ends(now: Progress, ending: TurnLoop.Ended): Either[Stalled, Looped] =

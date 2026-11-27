@@ -43,6 +43,7 @@ object TurnReplayTests extends TestSuite {
     "DBOS.patch-carried-window" -> 0, // a taken patch's marker, which records no output
     "DBOS.patch-carry-reasons" -> 0, // a taken patch's marker, which records no output
     "DBOS.patch-last-call-refused" -> 0, // a taken patch's marker, which records no output
+    "DBOS.patch-task-status-done-early" -> 0, // a taken patch's marker, which records no output
     Turn.Step.Carried -> 128, // the carried window record's id, or why none
     Turn.Step.Assemble -> 640, // the window's entry seqs and notes, and its cost
     Turn.Step.RecordWindow -> 128, // the loop's limits
@@ -138,6 +139,8 @@ object TurnReplayTests extends TestSuite {
       "loop-cut-declared.json" -> reasoned,
       "loop-tasked-calls-ran-out.json" -> reasoned,
       "loop-tasked-calls-ended.json" -> reasoned,
+      "loop-tasked-done-early-refused.json" -> reasoned,
+      "loop-tasked-done-early.json" -> reasoned,
       "heard-reached-read.json" -> reasoned,
       // A channel's top level and a thread under it, likewise; the first searched, its one
       // candidate, a room's closing, judged in the first batch.
@@ -352,6 +355,8 @@ object TurnReplayTests extends TestSuite {
         "loop-cut-declared.json",
         "loop-tasked-calls-ran-out.json",
         "loop-tasked-calls-ended.json",
+        "loop-tasked-done-early-refused.json",
+        "loop-tasked-done-early.json",
         "heard-reached-read.json",
         "room-closing-found.json",
         "room-thread-asked.json",

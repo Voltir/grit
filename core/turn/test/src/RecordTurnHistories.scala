@@ -732,6 +732,21 @@ object RecordTurnHistories {
       }
     )
 
+    /** `peek` a, then task_status alone, declaring done; then the answer in text. */
+    def doneEarly = new TurnFixtures.Scripted((_, n) =>
+      Right(
+        n match {
+          case 0 => calling("moving", ("t0", "peek", peeking("a.txt")))
+          case 1 =>
+            calling(
+              "",
+              ("status", "task_status", ujson.Obj("state" -> "done", "handoff" -> "Moved a."))
+            )
+          case _ => calling("Moved a.")
+        }
+      )
+    )
+
     Vector(
       "loop-three-rounds" -> looping(Vector("read them"), threeRounds),
       // Every reply calls peek, its last's too: recorded before the patch last-call-refused,
@@ -822,6 +837,21 @@ object RecordTurnHistories {
               )
           )
         ),
+        recipe = grit.core.recipe.TurnRecipe.Tasked
+      ),
+      // A turn briefed for one task that calls task_status alone, declaring done, before it is
+      // ending: recorded before the patch task-status-done-early, that call was refused as
+      // early, and the next call answered in text.
+      "loop-tasked-done-early-refused" -> looping(
+        Vector("move them"),
+        doneEarly,
+        recipe = grit.core.recipe.TurnRecipe.Tasked
+      ),
+      // The same turn under the patch task-status-done-early: its task_status ends it, its
+      // handoff the answer.
+      "loop-tasked-done-early" -> looping(
+        Vector("move them"),
+        doneEarly,
         recipe = grit.core.recipe.TurnRecipe.Tasked
       ),
       // A result believed at nothing withholds post, which requires member, from the next

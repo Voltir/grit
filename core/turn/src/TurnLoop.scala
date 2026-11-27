@@ -301,6 +301,12 @@ object TurnLoop {
       * (ADR 0004).
       */
     case Again(calls: Vector[Pending], round: Round, before: Ended)
+
+    /** The turn ends as `ending` says; a history recorded before the patch
+      * `task-status-done-early` settles `calls` instead, each refused, then makes the call
+      * `round` (ADR 0004).
+      */
+    case DoneEarly(calls: Vector[Pending], round: Round, ending: Ended)
   }
 
   /** How a reply ends its turn: one round's reply, as the loop reads it. How the whole turn
@@ -383,7 +389,9 @@ object TurnLoop {
     * [[LastRefused]]. Otherwise its calls are settled, each run, or each refused with
     * [[CutOff]] when the reply stopped at max tokens; a call to [[TaskStatus]] on a turn
     * offered it refused with [[TaskStatus.Early]] before the cut's last call with tools, and
-    * with [[TaskStatus.Unrecorded]] from it; then the next call is made.
+    * with [[TaskStatus.Unrecorded]] from it; then the next call is made. Before that last call,
+    * a reply whose only calls are to [[TaskStatus]], the first declaring done, is
+    * [[Next.DoneEarly]], answering with its handoff as a declaring reply does.
     */
   def next(
       budget: Rounds,
@@ -393,36 +401,48 @@ object TurnLoop {
   ): Next = {
     val calls = reply.blocks.collect { case c: AssistantBlock.ToolCall => c }
     val last = budget.last
-    val status = declared(budget, handoff, round, reply)
-    if (status.isDefined) {
-      // Its call becomes the reply's text: no tool call reaches the conversation.
-      val kept = reply.blocks.filter(_.isInstanceOf[AssistantBlock.Reasoning])
-      Next.Ends(
-        Ended.Answer(reply.copy(blocks = kept ++ status.map(d => AssistantBlock.Text(d.handoff))))
+    // A declaration's call becomes the reply's text: no tool call reaches the conversation.
+    def handed(d: TaskStatus.Declared): Ended = Ended.Answer(
+      reply.copy(blocks =
+        reply.blocks.filter(_.isInstanceOf[AssistantBlock.Reasoning]) :+
+          AssistantBlock.Text(d.handoff)
       )
-    } else if (calls.isEmpty || round > last) Next.Ends(ended(reply))
-    else if (round == last) {
-      val refusal =
-        if (reply.stop == StopReason.MaxTokens) CutOff
-        else if (budget.endsAtLimit && declares(handoff))
-          (if (handoff == TaskStatus.Handoff.ToParent) EndingRefusedToParent else EndingRefused)
-        else LastRefused
-      Next.Again(calls.map(Pending.Refused(_, refusal)), round + 1, ended(reply))
-    } else {
-      val ending = asksStatus(budget, round)
-      val pending =
-        if (reply.stop == StopReason.MaxTokens) calls.map(Pending.Refused(_, CutOff))
-        else
-          calls.map(c =>
-            // Offered, it is never run: early, beside other calls, or unreadable, it is refused.
-            if (declares(handoff) && c.name == ToolName.value(TaskStatus.Name))
-              Pending.Refused(
-                c,
-                Outcome.Failed(if (ending) TaskStatus.Unrecorded else TaskStatus.Early)
-              )
-            else Pending.Run(c)
-          )
-      Next.Settle(pending, round + 1)
+    )
+    declared(budget, handoff, round, reply) match {
+      case Some(d) => Next.Ends(handed(d))
+      case None if calls.isEmpty || round > last => Next.Ends(ended(reply))
+      case None if round == last =>
+        val refusal =
+          if (reply.stop == StopReason.MaxTokens) CutOff
+          else if (budget.endsAtLimit && declares(handoff))
+            (if (handoff == TaskStatus.Handoff.ToParent) EndingRefusedToParent else EndingRefused)
+          else LastRefused
+        Next.Again(calls.map(Pending.Refused(_, refusal)), round + 1, ended(reply))
+      case None =>
+        val ending = asksStatus(budget, round)
+        val pending =
+          if (reply.stop == StopReason.MaxTokens) calls.map(Pending.Refused(_, CutOff))
+          else
+            calls.map(c =>
+              // Offered, it is never run: early, beside other calls, or unreadable, it is refused.
+              if (declares(handoff) && c.name == ToolName.value(TaskStatus.Name))
+                Pending.Refused(
+                  c,
+                  Outcome.Failed(if (ending) TaskStatus.Unrecorded else TaskStatus.Early)
+                )
+              else Pending.Run(c)
+            )
+        // Done declared alone before the turn is ending ends it too; more there stays refused.
+        val doneEarly = Option
+          .when(
+            declares(handoff) && !ending && reply.stop != StopReason.MaxTokens &&
+              TaskStatus.calls(reply).size == calls.size
+          )(TaskStatus.of(reply))
+          .flatten
+          .filter(_.state == TaskStatus.State.Done)
+        doneEarly.fold(Next.Settle(pending, round + 1))(d =>
+          Next.DoneEarly(pending, round + 1, handed(d))
+        )
     }
   }
 

@@ -1168,12 +1168,12 @@ object TurnLoopTurnTests extends TestSuite {
     }
 
     test(
-      "a call to task_status before a turn briefed for one task is ending is refused as early, and the turn goes on"
+      "task_status declaring more before a turn briefed for one task is ending is refused as early, and the turn goes on"
     ) {
       val entries = new InMemoryEntryStore
       val ws = new Files(files)
       val provider = new Scripted((_, n) =>
-        Right(if (n == 0) declaring("done", "All moved.") else TurnFixtures.said("moved"))
+        Right(if (n == 0) declaring("more", "Half moved.") else TurnFixtures.said("moved"))
       )
       val turn = say(entries, "move them")
       val said = new InMemoryDurable().run(turn.workflowId)(
@@ -1198,6 +1198,35 @@ object TurnLoopTurnTests extends TestSuite {
         "replied: reply:c1:0; summarised: summary:c1:0",
         Some((ToolCallId("status"), true, true))
       )
+    }
+
+    test(
+      "task_status alone declaring done before a turn briefed for one task is ending ends the turn, its handoff the reply"
+    ) {
+      val entries = new InMemoryEntryStore
+      val ws = new Files(files)
+      val provider = new Scripted((_, n) =>
+        Right(if (n == 0) declaring("done", "All moved.") else TurnFixtures.said("moved"))
+      )
+      val turn = say(entries, "move them")
+      new InMemoryDurable().run(turn.workflowId)(
+        tooledBody(
+          entries,
+          provider,
+          new InMemoryUsageLedger,
+          new StubProvider(),
+          NoClassifier,
+          ws,
+          tools(ws),
+          5,
+          recipe = grit.core.recipe.TurnRecipe.Tasked
+        )
+      )
+      val replies = entries.everything.collect {
+        case Entry(_, _, _, _, _, Payload.Message(m: Message.Assistant), _, _) =>
+          AssistantBlock.text(m.blocks)
+      }
+      (provider.requests.size, replies) ==> (1, Vector("All moved."))
     }
 
     test("a pin's context length, not a smaller window, bounds a turn's input") {

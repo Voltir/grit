@@ -21,8 +21,8 @@ object TurnReadTests extends TestSuite {
   /** The markers of the turn's patches, each with the records its point may follow:
     * `heard-quiet-exit` comes after the last batch judged, `ask:relevance-2`, or that batch's
     * record when it kept one; `carried-window` after the message is placed, `record-topic`;
-    * `carry-reasons` after `carried-window`'s marker; `last-call-refused` after a round's
-    * model call, `ask:n`.
+    * `carry-reasons` after `carried-window`'s marker; `last-call-refused` and
+    * `task-status-done-early` after a round's model call, `ask:n`.
     */
   private val Patches: Map[String, String => Boolean] =
     Map[String, String => Boolean](
@@ -30,6 +30,9 @@ object TurnReadTests extends TestSuite {
       StepRecord.marker(TurnAssembly.Carrying) -> Set("record-topic"),
       StepRecord.marker(TurnAssembly.CarryReasons) -> Set(StepRecord.marker(TurnAssembly.Carrying)),
       StepRecord.marker(TurnRound.LastCallRefused) -> ((name: String) =>
+        Turn.Step.family(name).contains(Turn.Step.Ask)
+      ),
+      StepRecord.marker(TurnRound.DoneEarly) -> ((name: String) =>
         Turn.Step.family(name).contains(Turn.Step.Ask)
       )
     )
