@@ -375,6 +375,8 @@ object Tried {
       case Right(Some(TurnRecord.EndedBy.Budget)) => "last turn ended by its call budget"
       case Right(Some(TurnRecord.EndedBy.InputLimit)) => "last turn ended by its input limit"
       case Right(Some(TurnRecord.EndedBy.Reply)) => "last turn ended by its reply"
+      case Right(Some(TurnRecord.EndedBy.OutOfOutput)) =>
+        "last turn ended by its output budget, all thinking and no reply"
       case Right(None) => "last turn's end not recorded"
       case Left(_) => "last turn's end not read"
     }

@@ -1361,6 +1361,48 @@ object TurnLoopTurnTests extends TestSuite {
     }
 
     test(
+      "a turn whose reply used its whole output budget thinking reads back as ended by it, and a silent one by nothing recorded"
+    ) {
+      def endedBy(stop: StopReason): Either[String, Option[TurnRecord.EndedBy]] = {
+        val entries = new InMemoryEntryStore
+        val durable = new InMemoryDurable
+        val reply: Message.Assistant = Message.Assistant(
+          Vector(AssistantBlock.Reasoning("weighing it", None)),
+          stop,
+          Usage(Tokens(10), Tokens(4096), Tokens.Zero, None),
+          "m"
+        )
+        val turn = say(entries, "go")
+        val _ = looped(
+          durable,
+          entries,
+          entries,
+          turn,
+          new Scripted((_, _) => Right(reply)),
+          new Files(files)
+        )
+        TurnRecord.endedBy(
+          durable
+            .history(turn.workflowId)
+            .map(s =>
+              grit.core.durable.StepRecord(
+                s.name,
+                s.outcome match {
+                  case InMemoryDurable.Outcome.Output(value) => Some(value)
+                  case InMemoryDurable.Outcome.Threw(_) | InMemoryDurable.Outcome.Marker => None
+                },
+                None
+              )
+            )
+        )
+      }
+      (endedBy(StopReason.MaxTokens), endedBy(StopReason.EndTurn)) ==> (
+        Right(Some(TurnRecord.EndedBy.OutOfOutput)),
+        Right(None)
+      )
+    }
+
+    test(
       "unsure of the item: topic offered first, asked for on every call at the same message, its verdict recorded"
     ) {
       val entries = new InMemoryEntryStore

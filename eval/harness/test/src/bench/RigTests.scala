@@ -1210,7 +1210,7 @@ object RigTests extends TestSuite {
     }
 
     test(
-      "a grit trial's under: line ends with what ended its last turn: its call budget, its input limit or its reply, or that it recorded none or did not read"
+      "a grit trial's under: line ends with what ended its last turn: its call budget, its input limit, its reply or its output budget, or that it recorded none or did not read"
     ) {
       def ended(by: Either[String, Option[TurnRecord.EndedBy]]) =
         Tried.under(Arm.Settings(), RanUnder(Right(None), Right(None), by)).split("; ").last
@@ -1218,12 +1218,14 @@ object RigTests extends TestSuite {
         Right(Some(TurnRecord.EndedBy.Budget)),
         Right(Some(TurnRecord.EndedBy.InputLimit)),
         Right(Some(TurnRecord.EndedBy.Reply)),
+        Right(Some(TurnRecord.EndedBy.OutOfOutput)),
         Right(None),
         Left("gone")
       ).map(ended) ==> Vector(
         "last turn ended by its call budget",
         "last turn ended by its input limit",
         "last turn ended by its reply",
+        "last turn ended by its output budget, all thinking and no reply",
         "last turn's end not recorded",
         "last turn's end not read"
       )

@@ -134,10 +134,11 @@ object TurnRecord {
     read[Either[TurnFailure, TurnRound.Limits]](steps, Turn.Step.RecordWindow)
       .map(_.flatMap(_.toOption))
 
-  /** What ended the turn `steps` recorded, once its reply was kept, as its loop decided it live
-    * from its limits and its replies. `None` when no reply was kept (the turn failed, or has
-    * not answered), or no offer or window was recorded. `Left` naming a step whose output does
-    * not read.
+  /** What ended the turn `steps` recorded, as its loop decided it live from its limits and its
+    * replies: once its reply was kept, its reply, call budget or input limit; when none was
+    * kept, [[EndedBy.OutOfOutput]] if its last call's reply was that. `None` for any other turn
+    * that kept no reply (it failed otherwise, or has not answered), or one that kept a reply
+    * with no offer or window recorded. `Left` naming a step whose output does not read.
     */
   def endedBy(steps: Vector[StepRecord]): Either[String, Option[EndedBy]] = {
     val rounds = steps.flatMap(s => Loop.of(s.name).collect { case Loop.Ask(n) => n }).sorted
@@ -146,19 +147,28 @@ object TurnRecord {
       window <- limits(steps)
       appended <- read[Either[TurnFailure, TurnSteps.Appended]](steps, Turn.Step.Append)
       replied <- replies(steps, rounds)
-    } yield
-      for {
-        o <- offered
-        w <- window
-        _ <- appended.flatMap(_.toOption)
-        last <- rounds.lastOption
-      } yield {
-        // The budget as the loop held it at the round that answered.
-        val cut = w.budget.after(replied)
-        if (TurnLoop.notes(cut, o.handoff, TurnLoop.Round.at(last)).isEmpty) EndedBy.Reply
-        else if (cut.calls < w.budget.calls) EndedBy.InputLimit
-        else EndedBy.Budget
-      }
+      lastReply <- rounds.lastOption.fold(Right(None))(n =>
+        read[Either[TurnFailure, Message.Assistant]](steps, Loop.Ask(n).name)
+          .map(_.flatMap(_.toOption))
+      )
+    } yield appended.flatMap(_.toOption) match {
+      case Some(_) =>
+        for {
+          o <- offered
+          w <- window
+          last <- rounds.lastOption
+        } yield {
+          // The budget as the loop held it at the round that answered.
+          val cut = w.budget.after(replied)
+          if (TurnLoop.notes(cut, o.handoff, TurnLoop.Round.at(last)).isEmpty) EndedBy.Reply
+          else if (cut.calls < w.budget.calls) EndedBy.InputLimit
+          else EndedBy.Budget
+        }
+      case None =>
+        lastReply.map(TurnLoop.ended).collect { case TurnLoop.Ended.OutOfOutput(_) =>
+          EndedBy.OutOfOutput
+        }
+    }
   }
 
   /** The replies `steps` recorded to the loop's `rounds`, in their order; a round whose call
@@ -190,6 +200,11 @@ object TurnRecord {
 
     /** Its model's own reply, before its loop told it its calls were running out. */
     case Reply
+
+    /** Its last call's output budget: that reply was all thinking, with no text and no tool call
+      * ([[TurnLoop.Ended.OutOfOutput]]), so the turn failed and kept no reply.
+      */
+    case OutOfOutput
   }
 
   /** The pin the turn's own calls were made under: the one its `route` step picked from the
