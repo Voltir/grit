@@ -61,9 +61,12 @@ object AllowlistedCodingTests extends TestSuite {
 
   private def tools(
       host: CodingTests.Scripted^,
-      runs: Allowlisted^
-  ): Toolbox[caps.CapSet^{host, runs}] =
-    Coding.allowlisted(host, host, runs).fold(d => throw new java.lang.AssertionError(d), identity)
+      runs: Allowlisted^,
+      guard: MachineGuard^ = GuardFixtures.harmless
+  ): Toolbox[caps.CapSet^{host, runs, guard}] =
+    Coding
+      .allowlisted(host, host, runs, guard)
+      .fold(d => throw new java.lang.AssertionError(d), identity)
 
   private def call(name: String, args: ujson.Value): AssistantBlock.ToolCall =
     AssistantBlock.ToolCall(ToolCallId("c1"), name, args)
@@ -75,9 +78,10 @@ object AllowlistedCodingTests extends TestSuite {
       host: CodingTests.Scripted,
       runs: Allowlisted^,
       name: String,
-      args: ujson.Value
+      args: ujson.Value,
+      guard: MachineGuard^ = GuardFixtures.harmless
   ): Either[String, (Boolean, Outcome)] =
-    tools(host, runs)
+    tools(host, runs, guard)
       .requested(
         call(name, args),
         Repairs.All,
@@ -157,6 +161,35 @@ object AllowlistedCodingTests extends TestSuite {
         Right((false, Outcome.Failed(HostError.Unlisted(argv("rm", "-rf", "a b")).message)))
       )
       noted.log ==> Vector((argv("git", "status"), 2.minutes))
+    }
+
+    test(
+      "a listed run the machine guard refuses fails in its words, starting nothing; an unlisted one is refused by the list, the guard not asked"
+    ) {
+      val noted = new Noting(scripts)
+      val runs = Allowlisted.over(noted, allowlist(2.minutes))
+      val host = new CodingTests.Scripted()
+      val jev = new GuardFixtures.Judging(Right(Vector(0.9, 0.0, 0.0, 0.0)))
+      val guard = GuardFixtures.guard(Right(jev))
+      def ran(program: String, args: String*) =
+        settle(host, runs, "run", ujson.Obj("program" -> program, "args" -> args), guard)
+      val refused =
+        "Nothing ran: the check that guards this machine judged that this command would change " +
+          "files outside the checkout. Commands here may change only what is inside the " +
+          "checkout /home/coder/work/co: rewrite it to stay inside, or leave that step to a person."
+      (
+        ran("./mill", "clean"),
+        ran("rm", "-rf", "a b"),
+        ran("git", "status"),
+        noted.log,
+        jev.states.size
+      ) ==> (
+        Right((false, Outcome.Failed(refused))),
+        Right((false, Outcome.Failed(HostError.Unlisted(argv("rm", "-rf", "a b")).message))),
+        Right((false, Outcome.Done("Exit code 0. Output:\nok\n"))),
+        Vector((argv("git", "status"), 2.minutes)),
+        1
+      )
     }
 
     test("write and edit run unasked") {
@@ -404,7 +437,12 @@ object AllowlistedCodingTests extends TestSuite {
               "running, and the answer gives its id and its output so far; follow it with " +
               "`tail`, or end it with `stop`. At most 4 commands run at once in a checkout. " +
               "Fails, running nothing, when the command is not on the list or 4 are already " +
-              "running, and when it cannot start. A command is killed with everything it " +
+              "running, and when it cannot start. Before it starts, a command that is not one " +
+              "of the reads the check clears by itself, with every argument inside the " +
+              "checkout, is checked for harm to this machine beyond the checkout, and refused, " +
+              "running nothing, if it would change files outside it, rewrite what other " +
+              "checkouts share, stop other processes, or change another machine. A command is " +
+              "killed with everything it " +
               "started when it runs past `timeout` (at most 120 seconds, and that when not " +
               "given) or its output passes 16 MB."
           )

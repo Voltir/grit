@@ -4,22 +4,24 @@ import java.nio.file.{Files, Path}
 
 import scala.jdk.CollectionConverters.*
 
+import grit.core.classify.Classifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.edge.{Route, ToolRequest}
-import grit.core.host.{Allowlisted, HostError, RepositoryInstructions}
+import grit.core.host.{AbsPath, Allowlisted, HostError, RepositoryInstructions}
 import grit.core.place.{Directory, Repository}
 import grit.core.tool.{Outcome, SetRefusal, ToolSet}
 import grit.edge.desk.{Run, Tools}
-import grit.host.checkout.{LocalEdits, LocalRuns, LocalShell, LocalWorkspace, Redaction}
-import grit.host.git.WorkingCopies
+import grit.host.checkout.{LocalEdits, LocalReach, LocalRuns, LocalShell, LocalWorkspace, Redaction}
+import grit.host.git.{LocalStashes, WorkingCopies}
 import grit.kit.deployment.Offered
-import grit.tools.{Coding, Versioning}
+import grit.tools.{Coding, MachineGuard, Versioning}
 
 /** The coding tools this process's edge runs a request with, over the directory it was routed
   * to, or for a repository route in the working copy `copies` keeps for its run (a request
   * routed to a service, or to a repository `copies` does not keep, is `Failed`, and nothing
   * runs; so is one whose copy cannot be opened, with why): those `offered` hosts
-  * ([[Offered.hosted]]), an allowlisted `run` starting only what its allowlist permits. A command
+  * ([[Offered.hosted]]), an allowlisted `run` starting only what its allowlist permits and its
+  * machine guard clears, the guard asking `guarding` (`Left`: why there is none). A command
   * sees the process's own environment, not `.env`'s; what a tool shows is cleared by
   * `redaction`, the deployment's one. A command an allowlisted `run` left going is one of its
   * directory's runs, which every later request routed there reaches, whichever conversation
@@ -32,6 +34,7 @@ final class LocalTools(
     clock: Clock^,
     fresh: Fresh^,
     copies: Option[WorkingCopies^],
+    guarding: Either[String, Classifier^],
     pushing: Option[Pushing^] = None
 ) extends Tools
     with AutoCloseable
@@ -129,7 +132,8 @@ final class LocalTools(
           .allowlisted(
             ws,
             new LocalEdits(root, redaction),
-            Allowlisted.over(runsAt(root), allowlist)
+            Allowlisted.over(runsAt(root), allowlist),
+            guardAt(root, allowlist)
           )
           .fold(refused, tools => Run.request(request, tools))
     }
@@ -156,6 +160,21 @@ final class LocalTools(
       runs.get(root).close()
       val _ = runs.remove(root)
     }
+  }
+
+  /** The machine guard of `root`, a checkout run under `allowlist`: its links followed and its
+    * stash read on this machine, `~` read from the process's `HOME`.
+    */
+  private def guardAt(root: Path, allowlist: grit.core.host.Allowlist): MachineGuard^ = {
+    val real = scala.util.Try(root.toRealPath()).getOrElse(root.toAbsolutePath)
+    new MachineGuard(
+      new LocalReach(root),
+      new LocalStashes(root, sys.env, redaction),
+      guarding,
+      AbsPath.of(real.toString).getOrElse(AbsPath.Root),
+      sys.env.get("HOME").flatMap(AbsPath.of(_).toOption),
+      allowlist.cleared
+    )
   }
 
   /** `root`'s runs, made when it has none. */

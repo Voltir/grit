@@ -280,7 +280,7 @@ object Kit {
     // place no live edge serves is answered as not served.
     Serving.open(
       // Its repositories' edges after its own: a hosted repository's child is served by them.
-      (deployment.edges ++ deployment.hosted.map(LocalEdge.served(_))).toList,
+      (deployment.edges ++ deployment.hosted.map(LocalEdge.served(_, deployment, secrets))).toList,
       edge =>
         stores(
           link,

@@ -373,6 +373,7 @@ object LiveTurn {
             Clock.system(),
             Fresh.random(),
             copies,
+            Left("no machine check in a live turn"),
             pushing
           ),
           NoInstructions,

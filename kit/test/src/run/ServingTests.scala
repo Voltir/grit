@@ -226,9 +226,13 @@ object ServingTests extends TestSuite {
         )
         val clone =
           grit.kit.deployment.RepositoryClone(GitFixture.repository, repo.source, repo.root)
-        val hosted = grit.kit.deployment.Deployments
+        val deployment = grit.kit.deployment.Deployments
           .of(subagents = subagents, repositories = Vector(clone))
-          .fold(r => sys.error(r.message), _.hosted)
+          .fold(r => sys.error(r.message), identity)
+        val hosted = deployment.hosted
+        val secrets = grit.kit.environment.Secrets
+          .of(Map("GRIT_DATABASE_URL" -> "jdbc:postgresql://localhost:5432/grit_test"), deployment)
+          .fold(r => sys.error(r.toString), identity)
         val name = s"grit-advert ${GitFixture.repository.place.written}"
         def advertising: Boolean =
           scala.jdk.CollectionConverters
@@ -236,7 +240,7 @@ object ServingTests extends TestSuite {
             .asScala
             .exists(t => t.getName == name && t.isAlive)
         val edge = hosted.toList match {
-          case h :: Nil => LocalEdge.served(h, every = 10.millis)
+          case h :: Nil => LocalEdge.served(h, deployment, secrets, every = 10.millis)
           case other => sys.error(s"hosted: $other")
         }
         val before = edge.open(stores, Map.empty, Clock.system(), _ => ()) match {

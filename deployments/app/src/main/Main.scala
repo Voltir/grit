@@ -337,6 +337,9 @@ object Main {
     // The process's own time and fresh values, read here at its root and passed down.
     val clock: Clock^ = Clock.system() // clock-check: the reference deployment's composition root
     val fresh: Fresh^ = Fresh.random()
+    // The machine guard's classifier, cleared for everything this deployment labels, or why not.
+    val guarding: Either[String, grit.core.classify.Classifier^] =
+      Launch.guarding(deployment, secrets)
     val failure: Option[String] =
       if (serving) {
         // Who may lower a label or label a public channel, said before serving starts.
@@ -422,8 +425,18 @@ object Main {
                 )
               exitOnLeft(
                 ChatEdges
-                  .serving(directory, root, offered, scoutServer, redaction, clock, fresh, None) {
-                    here => Work.run(asked, text, cap, under, here, clock, fresh, println)
+                  .serving(
+                    directory,
+                    root,
+                    offered,
+                    scoutServer,
+                    redaction,
+                    clock,
+                    fresh,
+                    guarding,
+                    None
+                  ) { here =>
+                    Work.run(asked, text, cap, under, here, clock, fresh, println)
                   }
               ).swap.toOption
             case Some(in) =>
@@ -464,6 +477,7 @@ object Main {
                     redaction,
                     clock,
                     fresh,
+                    guarding,
                     Some(copies),
                     pushing
                   ) { here =>
@@ -496,25 +510,34 @@ object Main {
         // A command a run left going ends with the chat; a signal leaves it to the next start's
         // sweep in its checkout.
         exitOnLeft(
-          ChatEdges.serving(directory, root, offered, scoutServer, redaction, clock, fresh, None) {
-            here =>
-              val opener = Kit.console(deployment, secrets, stubDelay.millis, clock, here) match {
-                case Right(found) => found
-                case Left(refused) => failed.refuse(refused.message)
-              }
-              Chat.run(
-                opener,
-                origin,
-                model = modelName,
-                session = s"$session · ${written(root)}",
-                startTheme,
-                budget,
-                CharEstimate,
-                prefs = prefsFile,
-                log = Some(java.nio.file.Path.of(log)),
-                clock,
-                fresh
-              )
+          ChatEdges.serving(
+            directory,
+            root,
+            offered,
+            scoutServer,
+            redaction,
+            clock,
+            fresh,
+            guarding,
+            None
+          ) { here =>
+            val opener = Kit.console(deployment, secrets, stubDelay.millis, clock, here) match {
+              case Right(found) => found
+              case Left(refused) => failed.refuse(refused.message)
+            }
+            Chat.run(
+              opener,
+              origin,
+              model = modelName,
+              session = s"$session · ${written(root)}",
+              startTheme,
+              budget,
+              CharEstimate,
+              prefs = prefsFile,
+              log = Some(java.nio.file.Path.of(log)),
+              clock,
+              fresh
+            )
           }
         )
         None

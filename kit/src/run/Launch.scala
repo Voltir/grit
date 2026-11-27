@@ -10,7 +10,7 @@ import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
 import grit.core.act.Dreaming
 import grit.core.admin.Administration
-import grit.core.classify.ClearedClassifier
+import grit.core.classify.{Classifier, ClearedClassifier}
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.ContextAssembler
 import grit.core.durable.Durable
@@ -30,7 +30,7 @@ import grit.core.speech.Unprompted
 import grit.core.stitch.{StitchReads, StrandExcerpts, StrandShelf, Tuning as StitchTuning}
 import grit.core.store.{Askers, Db, Jot, LifecycleStore, StoreError}
 import grit.core.tool.{SetRefusal, Tool, Toolbox}
-import grit.core.visibility.Subject
+import grit.core.visibility.{Label, Subject}
 import grit.dbos.engine.{Engine, Runtime, Stores}
 import grit.dbos.sql.DbConfig
 import grit.host.blobs.LocalBlobs
@@ -791,6 +791,31 @@ private[grit] object Launch {
     * [[StubClassifier.Service]].
     */
   private def classifier(d: Deployment, s: Secrets): ClearedClassifier^ = jev(d, s, c => c)
+
+  /** The classifier the machine guard of `d`'s coding tools asks ([[grit.tools.MachineGuard]]):
+    * [[classifier]]'s, each request given up after [[GuardWithin]], cleared for every label `d`
+    * declares ([[ClearedClassifier.everywhere]]); `Left`, why not, when there is none or it is
+    * not cleared. Under the stub placer it is the stub, which finds every harm likely, so every
+    * command code does not clear is refused.
+    */
+  private[grit] def guarding(d: Deployment, s: Secrets): Either[String, Classifier^] = {
+    val cleared = jev(d, s, _.copy(timeout = java.time.Duration.ofMillis(GuardWithin.toMillis)))
+    cleared.missing match {
+      case Some(why) => Left(why)
+      case None =>
+        cleared
+          .everywhere(d.visibility)
+          .left
+          .map(u =>
+            s"${cleared.upstream.getOrElse("its classifier")} is not cleared for what may be " +
+              s"read here, ${Label.shown(u.classification)}"
+          )
+    }
+  }
+
+  /** 10 seconds: the longest the machine guard waits on its classifier before refusing. */
+  val GuardWithin: scala.concurrent.duration.FiniteDuration =
+    scala.concurrent.duration.FiniteDuration(10, java.util.concurrent.TimeUnit.SECONDS)
 
   /** The classifier `d` places messages with, as [[classifier]] makes it, Jev's settings first
     * changed by `config`: every other classifier the deployment asks is this one.

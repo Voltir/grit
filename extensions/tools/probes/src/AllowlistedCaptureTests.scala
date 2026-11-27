@@ -16,7 +16,7 @@ object AllowlistedCaptureTests extends TestSuite {
       |import grit.core.host.{Allowlisted, Argv, Edits, Processes, RelPath, Runs, Workspace}
       |import grit.core.store.Tx
       |import grit.core.tool.{Args, Believed, Gate, Hosted, Outcome, SetRefusal, ToolName, ToolSpec, Toolbox}
-      |import grit.tools.Coding
+      |import grit.tools.{Coding, MachineGuard}
       |""".stripMargin
 
   /* A model of `Coding.allowlisted` at its declared type, one of its tools running `body`. */
@@ -34,7 +34,7 @@ object AllowlistedCaptureTests extends TestSuite {
        |  )""".stripMargin
 
   private val itself =
-    "def made(ws: Workspace^, e: Edits^, r: Allowlisted^): Either[SetRefusal, Toolbox[caps.CapSet^{ws, e, r}]] = Coding.allowlisted(ws, e, r)"
+    "def made(ws: Workspace^, e: Edits^, r: Allowlisted^, g: MachineGuard^): Either[SetRefusal, Toolbox[caps.CapSet^{ws, e, r, g}]] = Coding.allowlisted(ws, e, r, g)"
   private val throughAllowlisted =
     model(
       "",

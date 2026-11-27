@@ -117,22 +117,23 @@ object Coding {
     )
 
   /** The tools [[allowlistedHosted]] describes for `runs.allowlist`, each `run` refused, running
-    * nothing, when `runs` does not permit it, and `tail` and `stop` reaching only what `runs`
-    * started; `Left` names a tool that cannot be offered with
-    * the others.
+    * nothing, when `runs` does not permit it or `guard` does not clear it (in the guard's words,
+    * [[MachineGuard.Verdict.why]]), and `tail` and `stop` reaching only what `runs` started;
+    * `Left` names a tool that cannot be offered with the others.
     */
   def allowlisted(
       ws: Workspace^,
       edits: Edits^,
-      runs: Allowlisted^
-  ): Either[SetRefusal, Toolbox[caps.CapSet^{ws, edits, runs}]] =
+      runs: Allowlisted^,
+      guard: MachineGuard^
+  ): Either[SetRefusal, Toolbox[caps.CapSet^{ws, edits, runs, guard}]] =
     Toolbox.of(
       read(ws),
       list(ws),
       search(ws),
       writing(freeWrite, edits),
       editing(freeEdit, edits),
-      argvRun(runs),
+      argvRun(runs, guard),
       tail(runs),
       stop(runs)
     )
@@ -422,7 +423,12 @@ object Coding {
           "then keeps running, and the answer gives its id and its output so far; follow it " +
           s"with `tail`, or end it with `stop`. At most ${Runs.Most} commands run at once in a " +
           "checkout. Fails, running nothing, when the command is not on the list or " +
-          s"${Runs.Most} are already running, and when it cannot start. A command is killed " +
+          s"${Runs.Most} are already running, and when it cannot start. Before it starts, a " +
+          "command that is not one of the reads the check clears by itself, with every " +
+          "argument inside the checkout, is checked for harm to this machine beyond the " +
+          "checkout, and refused, running nothing, if it would change files outside it, " +
+          "rewrite what other checkouts share, stop other processes, or change another " +
+          "machine. A command is killed " +
           "with everything it started when it runs past `timeout` (at most " +
           s"${longest.toSeconds} seconds, and that when not given) or its output passes " +
           s"${mb(Workspace.MaxFileBytes)}. The commands it runs, where `…` stands for any " +
@@ -480,12 +486,16 @@ object Coding {
       .changing
   }
 
-  private def argvRun(runs: Allowlisted^): Tool[ArgvArgs]^{runs} =
-    argvRunHosted(runs.allowlist).over(a =>
-      runs
-        .start(a.argv, a.timeout, a.wait)
-        .fold(e => Outcome.Failed(e.message), s => standing(s.id, s.status))
-    )
+  // The allowlist first, so the guard judges only what may start at all.
+  private def argvRun(runs: Allowlisted^, guard: MachineGuard^): Tool[ArgvArgs]^{runs, guard} =
+    argvRunHosted(runs.allowlist).over { a =>
+      def started: Outcome =
+        runs
+          .start(a.argv, a.timeout, a.wait)
+          .fold(e => Outcome.Failed(e.message), s => standing(s.id, s.status))
+      if (!runs.allowlist.permits(a.argv)) started
+      else guard.judge(a.argv).why.fold(started)(Outcome.Failed(_))
+    }
 
   /** `tail` as an allowlisted set offers it: asking no one, bound at any integrity, as `read`. */
   private lazy val tailHosted: Hosted[TailArgs] =

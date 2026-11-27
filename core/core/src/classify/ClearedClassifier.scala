@@ -17,6 +17,9 @@ sealed trait ClearedClassifier extends caps.SharedCapability {
     */
   def upstream: Option[String]
 
+  /** Why there is no classifier: `Some` only for [[ClearedClassifier.none]], with its reason. */
+  def missing: Option[String]
+
   /** The classifier to ask about what was read under `routed`; `Left` when its service is not
     * cleared for `routed`, and then nothing may be sent to it.
     */
@@ -53,6 +56,7 @@ object ClearedClassifier {
 
   private final class Of(service: Service, classifier: Classifier^) extends ClearedClassifier {
     def upstream: Option[String] = Some(service.place.written)
+    def missing: Option[String] = scala.None
     def at(routed: Routed): Either[Uncleared, Classifier^] =
       if (routed.clears(Party.Service(service))) Right(classifier)
       else Left(Uncleared(routed.classification.label))
@@ -69,6 +73,7 @@ object ClearedClassifier {
 
   private final class None(why: String) extends ClearedClassifier {
     def upstream: Option[String] = scala.None
+    def missing: Option[String] = Some(why)
     def at(routed: Routed): Either[Uncleared, Classifier^] = Right(Classifier.none(why))
     def everywhere(visibility: Visibility): Either[Uncleared, Classifier^] =
       Right(Classifier.none(why))

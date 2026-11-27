@@ -106,6 +106,7 @@ object WorkLiveTests extends TestSuite {
         Redaction.of(Map.empty),
         clock,
         Fresh.random(),
+        Left("no machine check here"),
         None
       ) { here =>
         Kit.console(
@@ -167,6 +168,7 @@ object WorkLiveTests extends TestSuite {
             Redaction.of(Map.empty),
             clock,
             Fresh.random(),
+            Left("no machine check here"),
             None
           )(here =>
             Work.run(
@@ -455,6 +457,7 @@ object WorkLiveTests extends TestSuite {
               Redaction.of(Map.empty),
               clock,
               Fresh.random(),
+              Left("no machine check here"),
               Some(copies)
             )(here =>
               Work.run(
@@ -614,6 +617,7 @@ object WorkLiveTests extends TestSuite {
         Redaction.of(Map.empty),
         clock,
         Fresh.random(),
+        Left("no machine check here"),
         Some(copies),
         Some(pushing)
       )(here =>

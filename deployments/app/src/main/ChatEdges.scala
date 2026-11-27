@@ -1,5 +1,6 @@
 package grit.app.main
 
+import grit.core.classify.Classifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.edge.{Console, Desks}
 import grit.core.host.Argv
@@ -19,7 +20,8 @@ private[main] object ChatEdges {
 
   /** `use` given the edge this process serves for `directory`: the coding tools `offered`
     * names, run in `root` ([[LocalEdge.serving]]) and in each working copy of `copies` for its
-    * run, its branch offered as `pushing` does, with the instruction files around `root`, and scout's
+    * run, its branch offered as `pushing` does, each allowlisted `run` judged by a machine guard
+    * asking `guarding`, with the instruction files around `root`, and scout's
     * tools when `scout` declares its server, its program started now. Both are closed once `use`
     * returns or throws, which ends any command the tools left running. Why not, before `use`
     * runs: the coding tools' edge cannot be made, or scout's program cannot start or lists no
@@ -33,38 +35,40 @@ private[main] object ChatEdges {
       redaction: Redaction,
       clock: Clock^,
       fresh: Fresh^,
+      guarding: Either[String, Classifier^],
       copies: Option[WorkingCopies^],
       pushing: Option[Pushing^] = None
   )(use: Console.Edge^ => A): Either[String, A] = {
     val log = org.slf4j.LoggerFactory.getLogger("grit.edge")
     LocalEdge
-      .serving(directory, offered, redaction, clock, fresh, copies, pushing, log) { coding =>
-        scout match {
-          case None => Right(use(coding))
-          case Some(server) =>
-            ScoutAt match {
-              case Left(why) => Left(s"$ScoutVar: $why")
-              case Right(at) =>
-                // scout's program is started now, so a binary that cannot start refuses the start.
-                McpEdge.local(
-                  at,
-                  server,
-                  new LocalProcesses(root, sys.env, redaction),
-                  clock,
-                  Some(ScoutInstructions),
-                  line => log.info(line)
-                ) match {
-                  case Left(why) => Left(s"$ScoutVar: $why")
-                  case Right(local) =>
-                    try
-                      Right(use((desks: Desks^) => {
-                        coding.serve(desks)
-                        local.serve(desks)
-                      }))
-                    finally local.close()
-                }
-            }
-        }
+      .serving(directory, offered, redaction, clock, fresh, copies, pushing, guarding, log) {
+        coding =>
+          scout match {
+            case None => Right(use(coding))
+            case Some(server) =>
+              ScoutAt match {
+                case Left(why) => Left(s"$ScoutVar: $why")
+                case Right(at) =>
+                  // scout's program is started now, so a binary that cannot start refuses the start.
+                  McpEdge.local(
+                    at,
+                    server,
+                    new LocalProcesses(root, sys.env, redaction),
+                    clock,
+                    Some(ScoutInstructions),
+                    line => log.info(line)
+                  ) match {
+                    case Left(why) => Left(s"$ScoutVar: $why")
+                    case Right(local) =>
+                      try
+                        Right(use((desks: Desks^) => {
+                          coding.serve(desks)
+                          local.serve(desks)
+                        }))
+                      finally local.close()
+                  }
+              }
+          }
       }
       .flatten
   }

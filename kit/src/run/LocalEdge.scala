@@ -5,6 +5,7 @@ import java.nio.file.Files
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import grit.assembly.estimate.CharEstimate
+import grit.core.classify.Classifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.edge.{Console, Desks, EdgeRefusal, EdgeStores, ServedEdge, Variable}
 import grit.core.host.Instructions
@@ -17,6 +18,7 @@ import grit.edge.desk.{PlaceFragments, Server}
 import grit.host.checkout.{LocalInstructions, LocalProcesses, LocalShell, Redaction}
 import grit.host.git.{Branches, WorkingCopies}
 import grit.kit.deployment.{Deployment, Offered, RepositoryClone}
+import grit.kit.environment.Secrets
 
 /** The edge a process serves for its own checkout (ADR 0017), and the edges a served deployment
   * serves its repositories through.
@@ -71,8 +73,9 @@ object LocalEdge {
   /** `use` given the edge this process serves for `directory` ([[over]]): the coding tools
     * `offered` names, run there ([[LocalTools]]), and for each run of `copies`' repository in
     * its working copy, offering its branch as `pushing` does when given, with what they show
-    * cleared by `redaction`, and the instruction files
-    * around the directory as this machine reads them; the tools closed once `use` returns or
+    * cleared by `redaction`, each allowlisted `run` judged by a machine guard asking `guarding`,
+    * and the instruction files around the directory as this machine reads them; the tools closed
+    * once `use` returns or
     * throws, which ends any command they left running. Why not, before `use` runs: a tool
     * `offered` names cannot be offered with the others.
     */
@@ -84,9 +87,10 @@ object LocalEdge {
       fresh: Fresh^,
       copies: Option[WorkingCopies^],
       pushing: Option[Pushing^],
+      guarding: Either[String, Classifier^],
       log: org.slf4j.Logger
   )(use: Console.Edge^ => A): Either[String, A] = {
-    val tools = new LocalTools(offered, redaction, clock, fresh, copies, pushing)
+    val tools = new LocalTools(offered, redaction, clock, fresh, copies, guarding, pushing)
     try
       over(directory, tools, new LocalInstructions(), log) match {
         case Left(refused) => Left(refused.refusing("the coding tools"))
@@ -122,7 +126,9 @@ object LocalEdge {
   /** The edge, named [[Deployment.edgeOf]] its repository, that serves `hosted`'s repository at
     * its place: registered for grit, it offers there the coding tools `hosted.allowlist`
     * permits, run in the working copy of the run each request is routed to (a spawned child's,
-    * by its name) on `grit/{work}`, with the repository's instruction file read again every
+    * by its name) on `grit/{work}`, each `run` judged by a machine guard asking
+    * [[Launch.guarding]] of `deployment` and `secrets`,
+    * with the repository's instruction file read again every
     * `every`, as [[over]]'s is; it offers no pull request. What a run leaves uncommitted is
     * committed to its branch once its copy is abandoned ([[WorkingCopies.Leftovers.Committed]]);
     * what its copies' sweeps remove, and any advert that later fails, is logged under
@@ -132,6 +138,8 @@ object LocalEdge {
     */
   private[run] def served(
       hosted: Deployment.Hosted,
+      deployment: Deployment,
+      secrets: Secrets,
       every: FiniteDuration = AdvertEvery
   ): ServedEdge =
     new ServedEdge {
@@ -169,6 +177,7 @@ object LocalEdge {
                 WorkingCopies.Leftovers.Committed
               )
             ),
+            Launch.guarding(deployment, secrets),
             None
           )
           val opened = tools.hostedInRepository match {

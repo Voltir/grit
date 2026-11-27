@@ -22,6 +22,9 @@ import utest.*
 /** [[LocalTools]] over an allowlisted offer, running real programs in a temporary checkout. */
 object LocalToolsTests extends TestSuite {
 
+  /** No classifier for the machine guard: what code does not clear is refused. */
+  private val Unguarded: Either[String, grit.core.classify.Classifier^] = Left("none here")
+
   private def right[A](e: Either[String, A]): A =
     e.fold(why => throw new java.lang.AssertionError(why), identity)
 
@@ -30,7 +33,14 @@ object LocalToolsTests extends TestSuite {
       body: LocalTools^ => A
   ): A = {
     val tools =
-      new LocalTools(offered, Redaction.of(Map.empty), Clock.system(), Fresh.random(), copies)
+      new LocalTools(
+        offered,
+        Redaction.of(Map.empty),
+        Clock.system(),
+        Fresh.random(),
+        copies,
+        Unguarded
+      )
     try body(tools)
     finally tools.close()
   }
@@ -175,6 +185,7 @@ object LocalToolsTests extends TestSuite {
       Clock.system(),
       Fresh.random(),
       Some(copies),
+      Unguarded,
       Some(pushing(repo, remoteRepository))
     )
     try body(tools, copies)
@@ -317,7 +328,14 @@ object LocalToolsTests extends TestSuite {
       val root = Files.createTempDirectory("closed").toRealPath()
       val _ = Files.writeString(root.resolve("a.txt"), "a")
       val tools =
-        new LocalTools(Offered.Read, Redaction.of(Map.empty), Clock.system(), Fresh.random(), None)
+        new LocalTools(
+          Offered.Read,
+          Redaction.of(Map.empty),
+          Clock.system(),
+          Fresh.random(),
+          None,
+          Unguarded
+        )
       tools.close()
       call(tools, root, "list", ujson.Obj()) ==>
         Outcome.Failed("These coding tools are closed; nothing ran.")
@@ -329,7 +347,8 @@ object LocalToolsTests extends TestSuite {
       Files.writeString(script, "#!/bin/sh\necho begun\nsleep 1\necho finished\n")
       Files.setPosixFilePermissions(script, PosixFilePermissions.fromString("rwx------"))
       val listed = Allowlist.Rule.Leading(right(Argv.of("./slow")))
-      val offered = Offered.Allowlisted(right(Allowlist.of(Vector(listed), 5.seconds)))
+      val offered =
+        Offered.Allowlisted(right(Allowlist.of(Vector(listed), 5.seconds, Vector(listed))))
       offering(offered) { tools =>
         val started =
           call(tools, root, "run", ujson.Obj("program" -> "./slow", "wait" -> 0), Some(_))
@@ -357,7 +376,8 @@ object LocalToolsTests extends TestSuite {
       )
       Files.setPosixFilePermissions(script, PosixFilePermissions.fromString("rwx------"))
       val listed = Allowlist.Rule.Leading(right(Argv.of("./build")))
-      val offered = Offered.Allowlisted(right(Allowlist.of(Vector(listed), 5.seconds)))
+      val offered =
+        Offered.Allowlisted(right(Allowlist.of(Vector(listed), 5.seconds, Vector(listed))))
       def text(o: Outcome): String = o match {
         case Outcome.Done(t, _, _, _, _) => t
         case other => s"not done: $other"
@@ -382,7 +402,8 @@ object LocalToolsTests extends TestSuite {
       Files.writeString(script, "#!/bin/sh\necho \"hello from $(pwd)\"\n")
       Files.setPosixFilePermissions(script, PosixFilePermissions.fromString("rwx------"))
       val listed = Allowlist.Rule.Leading(right(Argv.of("./hello")))
-      val offered = Offered.Allowlisted(right(Allowlist.of(Vector(listed), 5.seconds)))
+      val offered =
+        Offered.Allowlisted(right(Allowlist.of(Vector(listed), 5.seconds, Vector(listed))))
       val touch = right(Argv.of("touch", "x"))
       (
         run(offered, root, "run", ujson.Obj("program" -> "./hello")),
@@ -396,6 +417,34 @@ object LocalToolsTests extends TestSuite {
     }
 
     test(
+      "a cleared program whose argument leads out of the checkout through a link is refused by the machine guard, running nothing"
+    ) {
+      val base = Files.createTempDirectory("guarded").toRealPath()
+      val root = Files.createDirectories(base.resolve("co"))
+      val script = root.resolve("hello")
+      Files.writeString(script, "#!/bin/sh\ntouch ran\n")
+      Files.setPosixFilePermissions(script, PosixFilePermissions.fromString("rwx------"))
+      val _ = Files.createSymbolicLink(root.resolve("out"), base)
+      val listed = Allowlist.Rule.Leading(right(Argv.of("./hello")))
+      val offered =
+        Offered.Allowlisted(right(Allowlist.of(Vector(listed), 5.seconds, Vector(listed))))
+      val answered =
+        run(offered, root, "run", ujson.Obj("program" -> "./hello", "args" -> ujson.Arr("out/x")))
+      (answered, Files.exists(root.resolve("ran"))) ==> (
+        Outcome.Failed(
+          "Nothing ran: the check that guards this machine clears by itself only `git status …`, " +
+            "`git diff …`, `git log …`, `git show …`, `git add …`, `git commit …`, " +
+            "`git stash push …`, `git stash list …`, `git stash show …`, `git stash apply …`, " +
+            "`ls …`, `cat …`, `head …`, `tail …`, `wc …`, `grep …`, `diff …`, `git stash`, " +
+            "`./hello …`, each with every argument inside the checkout, and this command has an " +
+            s"argument leading outside it: `out/x` leads to $base/x. No check is configured here " +
+            "to ask (none here), so it will be refused again: do not retry it."
+        ),
+        false
+      )
+    }
+
+    test(
       "a change to the checkout runs only when its request's destination is the checkout: write, edit and run told none, or another place, are misdirected and change nothing"
     ) {
       val root = Files.createTempDirectory("changing").toRealPath()
@@ -403,7 +452,8 @@ object LocalToolsTests extends TestSuite {
       Files.writeString(script, "#!/bin/sh\necho hi > ran\n")
       Files.setPosixFilePermissions(script, PosixFilePermissions.fromString("rwx------"))
       val listed = Allowlist.Rule.Leading(right(Argv.of("./hello")))
-      val offered = Offered.Allowlisted(right(Allowlist.of(Vector(listed), 5.seconds)))
+      val offered =
+        Offered.Allowlisted(right(Allowlist.of(Vector(listed), 5.seconds, Vector(listed))))
       val other = Place.of(right(Directory.of("/elsewhere")))
       def misdirected(tool: String, to: Option[Place]): Outcome =
         CallError.Misdirected(right(ToolName.of(tool)), to).outcome
