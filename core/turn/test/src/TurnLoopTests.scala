@@ -11,6 +11,7 @@ import grit.core.model.{
   ModelId,
   ModelRef,
   Pinned,
+  PriceRise,
   Pricing,
   Profile,
   Rates,
@@ -347,6 +348,40 @@ object TurnLoopTests extends TestSuite {
         500_000L, 972_904L, 22_904L, 1L, 77_000L, 477_000L, 177_000L, 50_000L, 14_000L, 10_000L,
         7_000L, 77_000L
       )
+    }
+
+    test(
+      "a pin whose price rise is billed is held to its effective context, else its context less its output, past where its price first rises; one whose rise ends turns keeps that bound"
+    ) {
+      def rates(input: String, write: String, read: String, output: String) =
+        Rates
+          .of(BigDecimal(input), BigDecimal(write), BigDecimal(read), BigDecimal(output))
+          .getOrElse(throw new java.lang.AssertionError())
+      // Haiku's catalog pricing: its price first rises past 100,000 tokens of input.
+      val haiku = Pricing
+        .of(
+          rates("0.10", "0.125", "0.01", "0.50"),
+          Vector(Pricing.Tier(Tokens(100_000), rates("0.50", "0.625", "0.05", "2.50")))
+        )
+        .getOrElse(throw new java.lang.AssertionError())
+      def limit(rise: Option[PriceRise], effective: Option[Long]): Long = {
+        val profile = Profile(
+          pair,
+          contextLength = Known.Of(Tokens(1_000_000), said),
+          effectiveContext = effective.fold(Known.Unmeasured)(e => Known.Of(Tokens(e), said)),
+          pricing = Known.Of(haiku, said),
+          priceRise = rise.fold(Known.Unmeasured)(Known.Of(_, said))
+        )
+        Tokens.value(TurnLoop.inputLimit(None, pinned(profile), Tokens(23_000), Tokens(37_000)))
+      }
+      // 500,000 effective less 23,000 is 477,000; 1,000,000 less 4,096 out and 23,000 is
+      // 972,904; 100,000 less 23,000 is 77,000.
+      Vector(
+        limit(Some(PriceRise.Billed), Some(500_000)),
+        limit(Some(PriceRise.Billed), None),
+        limit(Some(PriceRise.EndsTurn), Some(500_000)),
+        limit(None, Some(500_000))
+      ) ==> Vector(477_000L, 972_904L, 77_000L, 77_000L)
     }
 
     test("a budget is at least 2 calls") {

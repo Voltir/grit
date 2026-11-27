@@ -121,8 +121,8 @@ recorded its route (`TurnRecord.pinned`), with the `--effort` set beside it when
 the replay its pin sent under, with the `--replay` set beside it when the two differ;
 the window a boundary draws (`--window-tokens`, or the linear assembler's default); the input
 limit its last turn recorded with its window
-(`TurnLoop.inputLimit`: the pin's effective context or first price rise where its profile gives
-them, else grit's 500,000-token backstop, less room for one clipped tool result); and what ended
+(`TurnLoop.inputLimit`: the pin's effective context or first price rise, unless its profile
+declares the rise billed, where its profile gives them, else grit's 500,000-token backstop, less room for one clipped tool result); and what ended
 that turn, read from its recorded steps (`TurnRecord.endedBy`): its call budget, when it answered
 once its loop had told it its calls were running out (`--max-rounds`), its input limit, when its
 input had cut those calls short, or its own reply, before either; a run the trial row

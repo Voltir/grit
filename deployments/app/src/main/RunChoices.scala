@@ -116,8 +116,8 @@ private[main] object RunChoices {
 
   /** The most input a turn's request may reach, as its provider counts it: 500,000 tokens. A
     * backstop for a pin whose profile declares no bound below its context (the seed's
-    * gemini-3.5-flash-lite); a pin's effective context and its first price rise, where its
-    * profile gives them, hold it lower (`TurnLoop.inputLimit`).
+    * gemini-3.5-flash-lite); a pin's effective context and its first price rise, unless the
+    * rise is billed, hold it lower where its profile gives them (`TurnLoop.inputLimit`).
     */
   private[main] val InputLimit: Tokens = Tokens(500_000)
 

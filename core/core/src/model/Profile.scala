@@ -113,12 +113,23 @@ enum ToolGuidance {
   case SystemLines
 }
 
+/** What a pair's first price rise does to a turn (`TurnLoop.inputLimit`). */
+enum PriceRise {
+
+  /** The turn ends before its input reaches the rise. */
+  case EndsTurn
+
+  /** The turn grows past the rise, its calls billed at the higher rates. */
+  case Billed
+}
+
 /** Everything grit knows about one pair: data, read and stored as is. A call is made under
   * the [[Settings]] a profile resolves to, never the profile itself. `contextLength` is the
   * most tokens, input and output together, the pair accepts in one request;
   * `effectiveContext`, the longest prompt (a request's input) it does its best work within;
   * `pricing`, what it bills a call; `density`, the characters of text a token its tokenizer
-  * averages, fitted from its usage-ledger rows.
+  * averages, fitted from its usage-ledger rows; `priceRise`, whether a turn may grow past
+  * where its price first rises.
   */
 final case class Profile(
     ref: ModelRef,
@@ -132,7 +143,8 @@ final case class Profile(
     effectiveContext: Known[Tokens] = Known.Unmeasured,
     pricing: Known[Pricing] = Known.Unmeasured,
     density: Known[Density] = Known.Unmeasured,
-    quirks: Known[Set[WireQuirk]] = Known.Unmeasured
+    quirks: Known[Set[WireQuirk]] = Known.Unmeasured,
+    priceRise: Known[PriceRise] = Known.Unmeasured
 ) {
 
   /** Each of `other`'s settings over this one's where its source ranks higher
@@ -152,7 +164,8 @@ final case class Profile(
       effectiveContext.orOver(other.effectiveContext),
       pricing.orOver(other.pricing),
       density.orOver(other.density),
-      quirks.orOver(other.quirks)
+      quirks.orOver(other.quirks),
+      priceRise.orOver(other.priceRise)
     )
 }
 
@@ -160,7 +173,8 @@ final case class Profile(
   * `contextLength` is `None` when no profile gives it, and a turn's requests are then bounded
   * by its window's limit, not a context (`TurnLoop.inputLimit`). `effectiveContext` and
   * `pricing` are `None` when no profile gives them: a call is then unpriced (`Cost.AtLeast`),
-  * and a turn is bounded by neither. `density` is `None` when no profile gives it: a call's
+  * and a turn is bounded by neither; a turn ends before its price first rises unless
+  * `priceRise` is [[PriceRise.Billed]]. `density` is `None` when no profile gives it: a call's
   * request is then costed by the deployment's estimator unchanged
   * (`TokenEstimator.withSettings`). `quirks` are empty when no profile gives them.
   */
@@ -176,7 +190,8 @@ final case class Settings(
     effectiveContext: Option[Tokens] = None,
     pricing: Option[Pricing] = None,
     density: Option[Density] = None,
-    quirks: Set[WireQuirk] = Set.empty
+    quirks: Set[WireQuirk] = Set.empty,
+    priceRise: PriceRise = PriceRise.EndsTurn
 )
 
 object Settings {
@@ -184,7 +199,8 @@ object Settings {
   /** `profile` with each unmeasured setting as grit behaved before profiles: strict
     * [[StrictSchemas.Ignored]] (not sent), reasoning [[ReasoningReplay.Details]], names
     * [[NameRepair.HarmonyCut]], every [[ArgRepair]], notes as a [[AfterToolResult.UserMessage]],
-    * guidance [[ToolGuidance.SchemaOnly]]. No profile: all of those, and not `profiled`.
+    * guidance [[ToolGuidance.SchemaOnly]], a price rise [[PriceRise.EndsTurn]]. No profile:
+    * all of those, and not `profiled`.
     */
   def of(profile: Option[Profile]): Settings = {
     def known[A](setting: Profile => Known[A]): Known[A] = profile.fold(Known.Unmeasured)(setting)
@@ -200,7 +216,8 @@ object Settings {
       known(_.effectiveContext).toOption,
       known(_.pricing).toOption,
       known(_.density).toOption,
-      known(_.quirks).getOr(Set.empty)
+      known(_.quirks).getOr(Set.empty),
+      known(_.priceRise).getOr(PriceRise.EndsTurn)
     )
   }
 }

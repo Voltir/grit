@@ -2,7 +2,7 @@ package grit.turn
 
 import grit.core.allot.Allotment
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens}
-import grit.core.model.{AfterToolResult, Pinned, ToolGuidance}
+import grit.core.model.{AfterToolResult, Pinned, PriceRise, ToolGuidance}
 import grit.core.prompt.{Fenced, Stripped, Tag}
 import grit.core.provider.{ModelRequest, ToolSchema}
 import grit.core.tool.{Outcome, ToolName}
@@ -115,16 +115,20 @@ object TurnLoop {
     * a prompt by its context length less its output budget (for a pin whose context no profile
     * gives, by `drawn`, its assembler's limit plus what its system prompt and tools cost, all by
     * the deployment's estimator unchanged, as the assembler draws), by
-    * its effective context, and by its pricing's [[grit.core.model.Pricing.flatTo]], where its
-    * price first rises. Never below one token. With the context known, the window bounds only
+    * its effective context, and, unless its price rise is
+    * [[grit.core.model.PriceRise.Billed]], by its pricing's
+    * [[grit.core.model.Pricing.flatTo]], where its price first rises. Never below one token. With the context known, the window bounds only
     * what a boundary draws (ADR 0052), not how far the turn grows.
     */
   def inputLimit(own: Option[Tokens], pin: Pinned, clipped: Tokens, drawn: Tokens): Tokens = {
     val s = pin.settings
     val ceiling =
       s.contextLength.fold(Tokens.value(drawn))(l => Tokens.value(l) - pin.assignment.maxTokens)
-    val held = (Vector(ceiling) ++ (s.effectiveContext ++ s.pricing.flatMap(_.flatTo))
-      .map(Tokens.value)).min
+    val rise = s.priceRise match {
+      case PriceRise.EndsTurn => s.pricing.flatMap(_.flatTo)
+      case PriceRise.Billed => None
+    }
+    val held = (Vector(ceiling) ++ (s.effectiveContext ++ rise).map(Tokens.value)).min
     val roomed = math.max(1L, held - Tokens.value(clipped))
     Tokens(own.fold(roomed)(o => math.min(Tokens.value(o), roomed)))
   }

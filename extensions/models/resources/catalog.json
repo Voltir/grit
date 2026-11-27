@@ -64,7 +64,8 @@
           ]
         },
         "source": { "kind": "advertised", "on": "2026-10-29" }
-      }
+      },
+      "priceRise": { "value": "billed", "source": { "kind": "declared", "by": "nick", "on": "2026-11-27" } }
     },
     {
       "model": "anthropic/claude-sonnet-5-5",

@@ -202,6 +202,13 @@ object CatalogJson {
       case ToolGuidance.SystemLines => "system-lines"
     }
   )
+  private val RiseWords: Words[PriceRise] = Words(
+    PriceRise.values.toVector,
+    {
+      case PriceRise.EndsTurn => "ends-turn"
+      case PriceRise.Billed => "billed"
+    }
+  )
   private val GradeWords: Words[Grade] = Words(Grade.values.toVector, _.word)
   private val EffortWords: Words[Effort] = Words(Effort.values.toVector, _.word)
 
@@ -266,6 +273,7 @@ object CatalogJson {
     put("pricing", p.pricing, pricing)
     put("density", p.density, d => ujson.Num(d.perToken))
     put("quirks", p.quirks, quirks)
+    put("priceRise", p.priceRise, v => ujson.Str(RiseWords.of(v)))
     o
   }
 
@@ -322,6 +330,7 @@ object CatalogJson {
     s.pricing.foreach(p => o("settings")("pricing") = pricing(p))
     s.density.foreach(d => o("settings")("density") = d.perToken)
     if (s.quirks.nonEmpty) o("settings")("quirks") = quirks(s.quirks)
+    if (s.priceRise != PriceRise.EndsTurn) o("settings")("priceRise") = RiseWords.of(s.priceRise)
     o
   }
 
@@ -474,6 +483,7 @@ object CatalogJson {
       priced <- readKnown(o, "pricing", at)(readPricing)
       dense <- readKnown(o, "density", at)(readDensity)
       quirked <- readKnown(o, "quirks", at)(readQuirks)
+      rise <- readKnown(o, "priceRise", at)(RiseWords.read)
     } yield Profile(
       r,
       strict,
@@ -486,7 +496,8 @@ object CatalogJson {
       effective,
       priced,
       dense,
-      quirked
+      quirked,
+      rise
     )
 
   /** A pin [[writePinned]] wrote, or the first thing wrong with it, named by its path from
@@ -514,6 +525,7 @@ object CatalogJson {
       priced <- optional(so, "pricing", sat)(readPricing)
       dense <- optional(so, "density", sat)(readDensity)
       quirked <- optional(so, "quirks", sat)(readQuirks)
+      rise <- optional(so, "priceRise", sat)(RiseWords.read)
     } yield Pinned(
       CatalogVersion(version),
       grade,
@@ -530,7 +542,8 @@ object CatalogJson {
         effective,
         priced,
         dense,
-        quirked.getOrElse(Set.empty)
+        quirked.getOrElse(Set.empty),
+        rise.getOrElse(PriceRise.EndsTurn)
       )
     )
 

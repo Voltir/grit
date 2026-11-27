@@ -13,6 +13,7 @@ import grit.core.model.{
   ModelRef,
   NameRepair,
   Pinned,
+  PriceRise,
   Pricing,
   Profile,
   Rates,
@@ -152,6 +153,23 @@ object CatalogModelsTests extends TestSuite {
           Some(Known.Of(Pricing.flat(rates("4", "5", "0.20", "20")), page))
         ),
         Vector.fill(4)(Some(best)),
+        Some(Known.Unmeasured)
+      )
+    }
+
+    test(
+      "the seed bills Claude Haiku 5.5's turns at Anthropic's API past its first price rise, by Nick's declaration; its other Claude pairs keep the rise's bound"
+    ) {
+      val direct = Vector("haiku", "sonnet", "opus").map(m =>
+        seed.profile(pinned(s"anthropic/claude-$m-5-5", "api.anthropic.com").assignment.ref)
+      )
+      val routed = ModelId
+        .of("anthropic/claude-haiku-5.5")
+        .flatMap(id => seed.profile(ModelRef(id, None)))
+      (direct :+ routed).map(_.map(_.priceRise)) ==> Vector(
+        Some(Known.Of(PriceRise.Billed, Source.Declared("nick", LocalDate.of(2026, 11, 27)))),
+        Some(Known.Unmeasured),
+        Some(Known.Unmeasured),
         Some(Known.Unmeasured)
       )
     }

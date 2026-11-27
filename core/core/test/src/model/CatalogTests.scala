@@ -313,6 +313,31 @@ object CatalogTests extends TestSuite {
       ) ==> (profileForm, Right(priced), pinForm, Right(t.turn.first))
     }
 
+    test(
+      "stored form: a price rise declared billed is written in its profile and its pin and read back; one that ends turns is not written in its pin"
+    ) {
+      val billed = ossProfile.copy(priceRise = Known.Of(PriceRise.Billed, nick))
+      val declared =
+        """{"value":"billed","source":{"kind":"declared","by":"nick","on":"2026-09-25"}}"""
+      def turn(p: Profile) =
+        Catalog.of(policy.copy(summary = policy.turn, query = policy.turn), Vector(p)).pin
+      val pins = Vector(billed, ossProfile.copy(priceRise = Known.Of(PriceRise.EndsTurn, nick)))
+        .map(p => turn(p))
+      (
+        CatalogJson.writeProfile(billed)("priceRise").render(),
+        CatalogJson.readProfile(CatalogJson.writeProfile(billed)),
+        pins.map(t => CatalogJson.writePinned(t.turn.first)("settings").obj.get("priceRise")),
+        pins.map(t =>
+          CatalogJson.readTurn(ujson.read(CatalogJson.writeTurn(t).render())).map(_.turn.first)
+        )
+      ) ==> (
+        declared,
+        Right(billed),
+        Vector(Some(ujson.Str("billed")), None),
+        pins.map(t => Right(t.turn.first))
+      )
+    }
+
     test("stored form: a turn profile") {
       val t =
         Catalog.of(policy.copy(summary = policy.turn, query = policy.turn), Vector(ossProfile)).pin

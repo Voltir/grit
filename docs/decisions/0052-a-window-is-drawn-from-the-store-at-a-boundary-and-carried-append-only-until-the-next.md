@@ -1,6 +1,6 @@
 # 0052. A window is drawn from the store at a boundary and carried, append-only, until the next
 
-Status: accepted (2026-10-29); revised (2026-11-10)
+Status: accepted (2026-10-29); revised (2026-11-27)
 
 Context: a provider caches a request from the front, and current models refuse a history that
 carries thinking blocks once anything before them is edited. Turned down: redrawing the window
@@ -41,8 +41,10 @@ Decision:
   its output budget, its effective context, where its price first rises), at most the
   deployment's own limit, a backstop for a pin that declares none. How far a turn grows is a
   fact of the model, kept in its profile: a pin whose price steps up past a prompt length ends
-  before the step, which reprices the whole prompt on every later call. The limit is read
-  against each reply's input as the provider counted it, plus the largest growth one round has
+  before the step, which reprices the whole prompt on every later call, unless its profile
+  declares the rise billed (`PriceRise.Billed`; the shared seed's direct Haiku, by Nick).
+  The limit is read against each reply's input as the provider counted it, plus the largest
+  growth one round has
   added so far (`Rounds.reach`), so a turn read back cuts where it cut live. **A turn at the
   limit, or whose calls run out, ends** (`TurnEnding.AtLimit`, ADR 0058), its last calls told
   so, and the next turn draws a boundary: nothing is cleared inside a turn. Turned down: the
