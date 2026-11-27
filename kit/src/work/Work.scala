@@ -9,22 +9,23 @@ import scala.concurrent.duration.FiniteDuration
 
 import grit.core.clock.{Clock, Fresh}
 import grit.core.edge.{Console, Reply, TurnStatus}
-import grit.core.host.{Branch, Clipped, HostError, RunId, RunStatus, Runs}
+import grit.core.host.{Branch, Clipped, HostError, Processes, RunId, RunStatus, Runs}
 import grit.core.id.{Sha256, SourceId, TurnRef, WorkflowId}
 import grit.core.identity.Account
 import grit.core.inbox.{InboxError, TurnEnding}
 import grit.core.message.Message
 import grit.core.place.{Repository, WorkName}
-import grit.core.store.{CheckoutState, Origin, Payload, WentOn}
+import grit.core.store.{CheckoutState, Entry, Origin, Payload, WentOn}
 import grit.core.visibility.Subject
 import grit.dbos.sql.DbConfig
-import grit.host.checkout.{LocalRuns, LocalShell, Redaction}
-import grit.host.git.WorkingCopies
+import grit.host.checkout.{LocalProcesses, LocalRuns, LocalShell, Redaction}
+import grit.host.git.{BranchDiff, WorkingCopies}
 import grit.kit.deployment.Deployment
 import grit.kit.environment.Secrets
 import grit.kit.rehearse.{RehearsalRunner, Rehearse, Rehearsed, Situation, StandIns}
 import grit.kit.run.{Kit, Pushing}
 import grit.std.either.Proven
+import grit.tools.FailedRuns
 import grit.turn.TurnStream
 
 /** `work`: one text said to a deployment in a directory's session and its turns awaited, or
@@ -436,7 +437,8 @@ object Work {
         stands: () => Option[Stood]
     ): Either[String, Option[URI]] = {
       val checks: LocalRuns^ = new LocalRuns(root, under.env, under.redaction, clock, fresh)
-      try said(console, origin, text, cap, asked.check, checks, stands, print)
+      val git: Processes^ = new LocalProcesses(root, under.env, under.redaction)
+      try said(console, origin, text, cap, asked.check, checks, git, stands, print)
       finally checks.close()
     }
     val step: Console^ ->{under, clock, fresh} Either[String, Unit] = console =>
@@ -479,7 +481,8 @@ object Work {
     * line, as a run with arguments prints a message's. While a turn ends at its limit, or
     * answers and its task's acceptance command `check` then fails ([[checked]] over `work`),
     * the task goes on in a new turn rooted on grit's continuation note
-    * ([[grit.core.inbox.Inbox.continued]]), as [[after]] says, up to `cap` turns, each said
+    * ([[grit.core.inbox.Inbox.continued]]), carrying what [[checkout]] reads of the checkout
+    * through `git`, as [[after]] says, up to `cap` turns, each said
     * under [[source]] of its number, so a rerun walks the chain to where it stopped: a turn
     * that answered and was followed by a recorded turn is not checked again, its failure
     * printed as recorded. A turn that answered, once its check passes or with no check, reads
@@ -496,6 +499,7 @@ object Work {
       cap: Int,
       check: Option[WentOn.Command],
       work: Runs^,
+      git: Processes^,
       stands: () => Option[Stood],
       print: String -> Unit
   ): Either[String, Option[URI]] =
@@ -545,17 +549,21 @@ object Work {
                       case WentOn.AtLimit => None
                       case other => Some(other)
                     }
-                    started(
-                      console.inbox.continued(
-                        origin,
-                        source(text, next),
-                        task.turnSeq,
-                        next,
-                        reason,
-                        CheckoutState.Unread,
-                        Account.Local
+                    entriesOf(console, turn)
+                      .flatMap(entries =>
+                        started(
+                          console.inbox.continued(
+                            origin,
+                            source(text, next),
+                            task.turnSeq,
+                            next,
+                            reason,
+                            checkout(named, reason, check, entries, git, print),
+                            Account.Local
+                          )
+                        )
                       )
-                    ).flatMap(go(_, next, failed))
+                      .flatMap(go(_, next, failed))
                 }
             }
           }
@@ -588,14 +596,45 @@ object Work {
     console.inbox.ingested(origin, source).left.map(InboxError.told).flatMap {
       case None => Right(None)
       case Some(next) =>
-        console.db
-          .read(Subject.Turn(next))(console.entries.ofTurn(next))
-          .left
-          .map(e => s"unreadable: $e")
-          .map(_.map(_.payload).collectFirst {
-            case Payload.Continuation(_, _, r, _) if r != WentOn.AtLimit => (next, r)
-          })
+        entriesOf(console, next).map(_.map(_.payload).collectFirst {
+          case Payload.Continuation(_, _, r, _) if r != WentOn.AtLimit => (next, r)
+        })
     }
+
+  /** The entries `turn` recorded. Why not: the store cannot be read. */
+  private def entriesOf(console: Console^, turn: TurnRef): Either[String, Vector[Entry]] =
+    console.db
+      .read(Subject.Turn(turn))(console.entries.ofTurn(turn))
+      .left
+      .map(e => s"unreadable: $e")
+
+  /** What the turn named `named` left in the task's checkout, read once it ended, for the note
+    * its task goes on with for `reason` (ADR 0058): the checkout's diff, read by git through
+    * `git` ([[BranchDiff.read]]), and, after a turn at its limit or a failed check, its last
+    * failed run among `entries`, the turn's, the task's check `check` passed over
+    * ([[FailedRuns.last]]). A diff that cannot be read is left out, and why printed through
+    * `print`.
+    */
+  def checkout(
+      named: String,
+      reason: WentOn,
+      check: Option[WentOn.Command],
+      entries: Vector[Entry],
+      git: Processes^,
+      print: String -> Unit
+  ): CheckoutState = {
+    val diff = BranchDiff.read(git) match {
+      case Right(d) => Some(d)
+      case Left(why) =>
+        print(s"[main] $named: its branch's diff is not shown to the next turn: ${why.message}")
+        None
+    }
+    val failed = reason match {
+      case WentOn.AtLimit | _: WentOn.CheckFailed => FailedRuns.last(entries, check)
+      case WentOn.Unpushed | WentOn.Unopened => None
+    }
+    CheckoutState(diff, failed)
+  }
 
   /** `turn` waited for until its workflow ends, then its workflow id, what the workflow
     * returned and its reply printed through `print` as one line; what it returned, or why not:

@@ -7,12 +7,23 @@ import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 
 import grit.core.clock.{Clock, Fresh}
-import grit.core.host.{Branch, HostError}
-import grit.core.id.{Sha256, SourceId, WorkflowId}
+import grit.core.host.{Argv, Branch, HostError, Processes, RelPath}
+import grit.core.id.{
+  ConversationId,
+  EntryId,
+  EntrySeq,
+  Sha256,
+  SourceId,
+  ToolCallId,
+  TurnSeq,
+  WorkflowId
+}
 import grit.core.inbox.TurnEnding
+import grit.core.message.{AssistantBlock, Message}
 import grit.core.place.{Repository, WorkName}
-import grit.core.store.{TestWentOn, WentOn}
-import grit.host.checkout.{LocalRuns, Redaction}
+import grit.core.store.{CheckoutState, Entry, Payload, TestWentOn, WentOn}
+import grit.core.visibility.Integrity
+import grit.host.checkout.{LocalProcesses, LocalRuns, Redaction}
 import grit.kit.rehearse.{RehearsalRunner, Rehearsed}
 
 import utest.*
@@ -33,7 +44,97 @@ object WorkTests extends TestSuite {
     finally walk.close()
   }
 
+  /** git run in `root` by `processes`, which must exit 0. */
+  private def git(processes: Processes^, args: String*): Unit =
+    Argv
+      .of("git", args*)
+      .flatMap(processes.run(_, RelPath.Root, 30.seconds).left.map(_.message)) match {
+      case Right(r) if r.exit == 0 => ()
+      case other => throw new java.lang.AssertionError(s"git ${args.mkString(" ")}: $other")
+    }
+
+  /** A turn's entries: a `run` of `make test` answered `answer`. */
+  private def ranMakeTest(answer: String): Vector[Entry] = {
+    val call: AssistantBlock.ToolCall = AssistantBlock.ToolCall(
+      ToolCallId("c"),
+      "run",
+      ujson.Obj("program" -> "make", "args" -> ujson.Arr("test"))
+    )
+    Vector(
+      Payload.Message(Message.said("", "test").copy(blocks = Vector(call))),
+      Payload.Message(Message.ToolResult(call.id, answer, isError = false))
+    ).zipWithIndex.map((p, k) =>
+      Entry(
+        EntryId(s"e$k"),
+        ConversationId("c"),
+        TurnSeq(0),
+        None,
+        EntrySeq(k.toLong),
+        p,
+        java.time.Instant.EPOCH,
+        Integrity.Member
+      )
+    )
+  }
+
   val tests: Tests = Tests {
+    test(
+      "a task goes on carrying its checkout's diff, and its turn's last failed run at its limit or after a failed check, not with its branch unoffered; a diff unread is printed, not carried"
+    ) {
+      val root = Files.createTempDirectory("grit-diff").toRealPath()
+      try {
+        val home = Files.createDirectories(root.resolve(".home"))
+        val env = Map("PATH" -> sys.env.getOrElse("PATH", "/usr/bin:/bin"), "HOME" -> home.toString)
+        val processes: Processes^ = new LocalProcesses(root, env, Redaction.of(Map.empty))
+        val printed = new java.util.concurrent.ConcurrentLinkedQueue[String]
+        val entries = ranMakeTest("Exit code 2. Output:\n[error] a.txt: bad")
+        def read(reason: WentOn) =
+          Work.checkout("t", reason, None, entries, processes, l => { val _ = printed.add(l) })
+        val unread = read(WentOn.AtLimit)
+        Files.writeString(root.resolve(".gitignore"), ".home/\n")
+        Files.writeString(root.resolve("a.txt"), "one\n")
+        git(processes, "init", "--quiet", "-b", "main")
+        git(processes, "add", ".")
+        git(
+          processes,
+          "-c",
+          "user.name=t",
+          "-c",
+          "user.email=t@example.invalid",
+          "-c",
+          "commit.gpgsign=false",
+          "commit",
+          "--quiet",
+          "-m",
+          "a"
+        )
+        git(processes, "update-ref", "refs/remotes/origin/main", "HEAD")
+        git(processes, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+        Files.writeString(root.resolve("a.txt"), "one\ntwo\n")
+        val diff = CheckoutState.Diff.of(
+          "origin/main",
+          " a.txt | 1 +\n 1 file changed, 1 insertion(+)",
+          Vector.empty
+        )
+        val failed = CheckoutState.Failed.of("make test", Some(2), "     1\t[error] a.txt: bad")
+        (
+          unread,
+          printed.asScala.toVector,
+          read(WentOn.AtLimit),
+          read(TestWentOn.failed("make check", Some(1), "x")),
+          read(WentOn.Unpushed)
+        ) ==> (
+          CheckoutState(None, Some(failed)),
+          Vector(
+            "[main] t: its branch's diff is not shown to the next turn: The checkout names no " +
+              "default branch of origin (refs/remotes/origin/HEAD)."
+          ),
+          CheckoutState(Some(diff), Some(failed)),
+          CheckoutState(Some(diff), Some(failed)),
+          CheckoutState(Some(diff), None)
+        )
+      } finally removed(root)
+    }
 
     test("a text is said under work: and its SHA-256, so the same text names one source") {
       (Work.source("hi"), Work.source("hi"), Work.source("hi ") == Work.source("hi")) ==> (

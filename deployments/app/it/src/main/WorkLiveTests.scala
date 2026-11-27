@@ -8,12 +8,14 @@ import scala.collection.mutable
 import grit.app.config.RepositoriesEnv
 import grit.core.clock.{Clock, Fresh}
 import grit.core.edge.Console
+import grit.core.host.{Argv, Processes, RelPath}
 import grit.core.place.{Directory, Namespace, Place}
 import grit.core.recipe.TurnRecipe
 import grit.core.secret.{TestSecrets, Variable as SecretVariable}
-import grit.core.store.{Origin, WentOn}
+import grit.core.store.{CheckoutState, Origin, Payload, WentOn}
+import grit.core.visibility.Subject
 import grit.dbos.sql.{DbConfig, TestPostgres}
-import grit.host.checkout.{LocalRuns, Redaction}
+import grit.host.checkout.{LocalProcesses, LocalRuns, Redaction}
 import grit.host.git.{GitFixture, WorkingCopies}
 import grit.kit.deployment.{Deployment, Offered}
 import grit.kit.environment.Secrets
@@ -75,10 +77,12 @@ object WorkLiveTests extends TestSuite {
   /** A turn's workflow id, as `grit work` prints it. */
   private val Id = "[0-9a-f]{8}-[0-9a-f-]+:[0-9]+"
 
-  /** `body` over the runs `grit work` checks a task with in `root`, closed after. */
-  private def checking[A](root: Path)(body: LocalRuns^ => A): A = {
+  /** `body` over the runs `grit work` checks a task with in `root`, closed after, and the
+    * programs it reads `root`'s diff with.
+    */
+  private def checking[A](root: Path)(body: (LocalRuns^, Processes^) => A): A = {
     val runs = new LocalRuns(root, sys.env, Redaction.of(Map.empty), Clock.system(), Fresh.random())
-    try body(runs)
+    try body(runs, new LocalProcesses(root, sys.env, Redaction.of(Map.empty)))
     finally runs.close()
   }
 
@@ -195,16 +199,26 @@ object WorkLiveTests extends TestSuite {
         val first, second = mutable.ArrayBuffer.empty[String]
         val ran = (
           working(root, config, deployment)(c =>
-            checking(root)(r =>
+            checking(root)((r, g) =>
               Work
-                .said(c, origin, "say hello", Work.DefaultTurns, None, r, () => None, first += _)
+                .said(c, origin, "say hello", Work.DefaultTurns, None, r, g, () => None, first += _)
                 .map(_ => ())
             )
           ),
           working(root, config, deployment)(c =>
-            checking(root)(r =>
+            checking(root)((r, g) =>
               Work
-                .said(c, origin, "say hello", Work.DefaultTurns, None, r, () => None, second += _)
+                .said(
+                  c,
+                  origin,
+                  "say hello",
+                  Work.DefaultTurns,
+                  None,
+                  r,
+                  g,
+                  () => None,
+                  second += _
+                )
                 .map(_ => ())
             )
           )
@@ -219,9 +233,38 @@ object WorkLiveTests extends TestSuite {
     }
 
     test(
-      "a work run checks its task once its turn answers: a failure goes on in a fresh turn, a pass ends it; run again, it re-runs no check a later turn followed"
+      "a work run checks its task once its turn answers: a failure goes on in a fresh turn, its note carrying the checkout's diff, a pass ends it; run again, it re-runs no check a later turn followed"
     ) {
       checkout { root =>
+        val git: Processes^ = new LocalProcesses(root, sys.env, Redaction.of(Map.empty))
+        def gitIn(args: String*) =
+          right(
+            Argv
+              .of("git", args*)
+              .flatMap(
+                git
+                  .run(_, RelPath.Root, scala.concurrent.duration.Duration(30, "s"))
+                  .left
+                  .map(_.message)
+              )
+          )
+        val _ = Files.writeString(root.resolve(".gitignore"), ".grit/\n")
+        val _ = gitIn("init", "--quiet", "-b", "main")
+        val _ = gitIn("add", ".")
+        val _ = gitIn(
+          "-c",
+          "user.name=t",
+          "-c",
+          "user.email=t@example.invalid",
+          "-c",
+          "commit.gpgsign=false",
+          "commit",
+          "--quiet",
+          "-m",
+          "a"
+        )
+        val _ = gitIn("update-ref", "refs/remotes/origin/main", "HEAD")
+        val _ = gitIn("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
         val config = TestPostgres.freshDatabase("work_checked")
         val deployment = deployed(root)
         val origin = Origin.Tui(right(Directory.of(root.toString)), "bench")
@@ -233,13 +276,30 @@ object WorkLiveTests extends TestSuite {
           )
         )
         val first, second = mutable.ArrayBuffer.empty[String]
+        val noted = mutable.ArrayBuffer.empty[Payload]
         def run(lines: mutable.ArrayBuffer[String]) =
           working(root, config, deployment)(c =>
-            checking(root)(r =>
+            checking(root)((r, g) =>
               Work
-                .said(c, origin, "say hello", Work.DefaultTurns, check, r, () => None, lines += _)
+                .said(
+                  c,
+                  origin,
+                  "say hello",
+                  Work.DefaultTurns,
+                  check,
+                  r,
+                  g,
+                  () => None,
+                  lines += _
+                )
                 .map(_ => ())
-            )
+            ).map { _ =>
+              c.inbox.ingested(origin, Work.source("say hello", 2)).toOption.flatten.foreach { t =>
+                c.db
+                  .read(Subject.Turn(t))(c.entries.ofTurn(t))
+                  .foreach(es => noted ++= es.map(_.payload).take(1))
+              }
+            }
           )
         val ran = (run(first), Files.readAllLines(root.resolve("runs")).size)
         val again = (run(second), Files.readAllLines(root.resolve("runs")).size)
@@ -274,10 +334,22 @@ object WorkLiveTests extends TestSuite {
               "once; echo 'once is missing'; exit 4; }"
           )
         )
-        (first(2).replaceAll(Id, "<id>"), first(5).replaceAll(Id, "<id>")) ==> (
+        (
+          first(2).replaceAll(Id, "<id>"),
+          first(5).replaceAll(Id, "<id>"),
+          noted.headOption.collect { case Payload.Continuation(_, 2, _: WentOn.CheckFailed, read) =>
+            read
+          }
+        ) ==> (
           "[main] <id>: the check failed (exit 4); going on in a fresh turn (turn 2 of at most 8)" +
             "\n  | once is missing",
-          "[main] <id>: the check passed; the task is done"
+          "[main] <id>: the check passed; the task is done",
+          Some(
+            CheckoutState(
+              Some(CheckoutState.Diff.of("origin/main", "", Vector("once", "runs"))),
+              None
+            )
+          )
         )
       }
     }

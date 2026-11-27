@@ -67,7 +67,8 @@ In dependency order:
   a run may go on when another process runs the engine: a turn runs on the engine holding the
   database, so an attached run is offered that engine's deployment's tools, not its own.
   `Work.Where` says where its text is said and its check runs: at an origin in a directory, or
-  as a run of work in that run's working copy, held while the run goes on.
+  as a run of work in that run's working copy, held while the run goes on. A task that goes on carries in
+  its note what `Work.checkout` read of the checkout after the turn before (ADR 0058).
   ← `deployment`, `environment`, `run`, `rehearse`
 
 No source file sits at the module's root, and the test tree mirrors it.
