@@ -32,7 +32,7 @@ trait Workspace extends caps.SharedCapability {
     * the directories [[Workspace.skipped]], files over [[Workspace.MaxFileBytes]] and files
     * that are not UTF-8. Answered as [[Workspace.searched]] says: every matching line, or,
     * past [[Workspace.SearchLines]] lines or [[Workspace.SearchBytes]] bytes, each matching
-    * file's count instead. Fails on a pattern that does not compile or an `under` that is
+    * file's first lines and how many more it has. Fails on a pattern that does not compile or an `under` that is
     * missing.
     */
   def search(pattern: String, under: RelPath): Either[HostError, Clipped]
@@ -62,32 +62,50 @@ object Workspace {
 
   /** A search's answer from `found`, each searched file's path and its matching lines in path
     * order: "No matches." when no file has one; every matching line when they are at most
-    * [[SearchLines]] and [[SearchBytes]]; else no line, but how many matched in how many files,
-    * which limit they passed, that the counts follow and to narrow the path or the pattern,
-    * then `path: n` for each matching file. Not a partial listing: the counts say where to
-    * search again. Clipped from the head ([[Clipped.cutHint]]) when even the counts are over
-    * its limits.
+    * [[SearchLines]] and [[SearchBytes]]; else how many matched in how many files, which limit
+    * they passed and to narrow the path or the pattern, then each matching file's first `k`
+    * lines, for the most `k` whose lines are within those limits, each followed by
+    * `path: n more` when the file has `n` more. When not even one line of each file is within
+    * them, `path: n` for each matching file in their place. Clipped from the head
+    * ([[Clipped.cutHint]]) when even that is over its limits.
     */
   def searched(found: Vector[(String, Vector[String])]): Clipped = {
     val matching = found.filter(_._2.nonEmpty)
     val lines = matching.flatMap(_._2)
-    val bytes = lines.map(_.getBytes(java.nio.charset.StandardCharsets.UTF_8).length + 1).sum
     if (lines.isEmpty) Clipped.head("No matches.", _ => None)
-    else if (lines.size <= SearchLines && bytes <= SearchBytes)
+    else if (within(lines))
       Clipped.head(lines.mkString("\n"), Clipped.cutHint)
     else {
       val files = Words.counted(matching.size, "file")
       val why =
         if (lines.size > SearchLines) s"too many to show (the limit is $SearchLines)"
         else s"too long to show (the limit is ${SearchBytes / 1024} KB)"
-      Clipped.head(
-        ((s"${lines.size} matches in $files, $why. Matches per file are below; narrow the " +
-          "path or the pattern to see the lines.") +:
-          matching.map((path, ls) => s"$path: ${ls.size}")).mkString("\n"),
-        Clipped.cutHint
-      )
+      val lead = s"${lines.size} matches in $files, $why."
+      // `firsts(k)` grows with `k`, so the first `k` past the limits ends the search.
+      val firsts = (k: Int) => matching.flatMap(_._2.take(k))
+      val k = Iterator.from(1).takeWhile(k => within(firsts(k))).foldLeft(0)((_, k) => k)
+      val answer =
+        if (k == 0)
+          (s"$lead Matches per file are below; narrow the path or the pattern to see the lines.") +:
+            matching.map((path, ls) => s"$path: ${ls.size}")
+        else {
+          val first = if (k == 1) "first match" else s"first $k matches"
+          (s"$lead Below, each file's $first, then how many more it has; narrow the path or the " +
+            "pattern to see the rest.") +:
+            matching.flatMap((path, ls) =>
+              ls.take(k) ++ Option.when(ls.size > k)(s"$path: ${ls.size - k} more")
+            )
+        }
+      Clipped.head(answer.mkString("\n"), Clipped.cutHint)
     }
   }
+
+  /** Whether a search's matching `lines` are few and short enough to show: at most
+    * [[SearchLines]] of them, in at most [[SearchBytes]] bytes, a newline each.
+    */
+  private def within(lines: Vector[String]): Boolean =
+    lines.size <= SearchLines &&
+      lines.map(_.getBytes(java.nio.charset.StandardCharsets.UTF_8).length + 1).sum <= SearchBytes
 
   /** Build output and package directories, which [[Workspace.list]] and
     * [[Workspace.search]] do not enter.

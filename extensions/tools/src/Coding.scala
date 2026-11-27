@@ -234,8 +234,8 @@ object Coding {
           s"files over ${mb(Workspace.MaxFileBytes)} and files that are not UTF-8. A line is " +
           s"cut at ${Workspace.MaxLineChars} characters. Shows at most " +
           s"${Workspace.SearchLines} matches and ${Workspace.SearchBytes / 1024} KB; when more " +
-          "match, it shows how many matched in each file instead, so you can narrow the path " +
-          "or the pattern. Says \"No matches.\" when none match. Fails when the pattern is not a " +
+          "match, it shows each file's first matches, as many as fit, and how many more each " +
+          "file has, so you can narrow the path or the pattern. Says \"No matches.\" when none match. Fails when the pattern is not a " +
           "valid regular expression or the path does not exist." + pathRule,
         Args
           .of(

@@ -280,7 +280,8 @@ object CodingTests extends TestSuite {
         described.get("read").exists(_.contains("2000 lines and 50 KB")),
         described.get("run").exists(_.contains("60 seconds when not given")),
         described.get("edit").exists(_.contains("exactly once")),
-        described.get("search").exists(_.contains("cut at 500 characters"))
+        described.get("search").exists(_.contains("cut at 500 characters")),
+        described.get("search").exists(_.contains("each file's first matches, as many as fit"))
       )
     }
 

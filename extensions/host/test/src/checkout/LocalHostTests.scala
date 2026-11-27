@@ -159,13 +159,28 @@ object LocalHostTests extends TestSuite {
       }
     }
 
-    test("a search matching more lines than it shows answers each file's count instead") {
+    test(
+      "a search matching more lines than it shows answers each file's first matches, as many as fit, then how many more it has"
+    ) {
       val lines = (n: Int) => (1 to n).map(i => s"x $i").mkString("\n")
       inCheckout("a" -> lines(150), "b/c" -> lines(51), "d" -> "y") { dir =>
         shown(new LocalWorkspace(dir, noSecrets).search("x", RelPath.Root)) ==> Right(
-          s"201 matches in 2 files, too many to show (the limit is ${Workspace.SearchLines}). " +
-            "Matches per file are below; narrow the path or the pattern to see the lines.\n" +
-            "a: 150\nb/c: 51"
+          ((s"201 matches in 2 files, too many to show (the limit is ${Workspace.SearchLines}). " +
+            "Below, each file's first 149 matches, then how many more it has; narrow the path " +
+            "or the pattern to see the rest.") +:
+            ((1 to 149).map(i => s"a:$i: x $i") ++ Vector("a: 1 more") ++
+              (1 to 51).map(i => s"b/c:$i: x $i"))).mkString("\n")
+        )
+      }
+    }
+
+    test("a search matching in more files than it shows lines answers each file's count instead") {
+      val names = (1 to Workspace.SearchLines + 1).map(i => f"f$i%03d")
+      inCheckout(names.map(_ -> "x")*) { dir =>
+        shown(new LocalWorkspace(dir, noSecrets).search("x", RelPath.Root)) ==> Right(
+          ((s"201 matches in 201 files, too many to show (the limit is ${Workspace.SearchLines}). " +
+            "Matches per file are below; narrow the path or the pattern to see the lines.") +:
+            names.map(n => s"$n: 1")).mkString("\n")
         )
       }
     }
@@ -179,14 +194,23 @@ object LocalHostTests extends TestSuite {
       }
     }
 
-    test("a search whose matching lines are longer than it shows answers each file's count") {
+    test("a search whose matching lines are longer than it shows answers the first that fit") {
       val wide = (n: Int) => (1 to n).map(_ => "x" * Workspace.MaxLineChars).mkString("\n")
       val n = Workspace.SearchBytes / Workspace.MaxLineChars + 1
       inCheckout("a" -> wide(n)) { dir =>
-        shown(new LocalWorkspace(dir, noSecrets).search("x", RelPath.Root)) ==> Right(
-          s"$n matches in 1 file, too long to show (the limit is ${Workspace.SearchBytes / 1024} KB). " +
-            "Matches per file are below; narrow the path or the pattern to see the lines.\n" +
-            s"a: $n"
+        val got = shown(new LocalWorkspace(dir, noSecrets).search("x", RelPath.Root))
+          .map(Clipped.lines)
+        // 41 lines of `a:N: ` and 500 characters, a newline each, are 20,778 bytes; 40 are 20,271.
+        got.map(ls => (ls.headOption, ls.size, ls.lastOption)) ==> Right(
+          (
+            Some(
+              s"$n matches in 1 file, too long to show (the limit is ${Workspace.SearchBytes / 1024} KB). " +
+                "Below, each file's first 40 matches, then how many more it has; narrow the path " +
+                "or the pattern to see the rest."
+            ),
+            42,
+            Some("a: 1 more")
+          )
         )
       }
     }
