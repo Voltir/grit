@@ -365,6 +365,32 @@ object TurnRequestsTests extends TestSuite {
         Right(provider.requests)
     }
 
+    test(
+      "a turn briefed for one task is told once, from the call after its 40th in a row that only reads, that it has read enough, and is rebuilt so"
+    ) {
+      val entries = new InMemoryEntryStore
+      val provider = new Scripted((_, n) =>
+        Right(if (n < 45) calling("more", (s"t$n", "peek", "a.txt")) else calling("done"))
+      )
+      val turn = say(entries, "go")
+      val recorded = answered(
+        entries,
+        turn,
+        provider,
+        calls = 60,
+        recipe = grit.core.recipe.TurnRecipe.Tasked
+      )
+      val note = TurnLoop.ReadEnough(TurnLoop.ReadAfter)
+      def told(r: ModelRequest): Int = r.messages.count {
+        case Message.User(t) => t == note
+        case Message.ToolResult(_, t, _) => t.endsWith(note)
+        case _ => false
+      }
+      provider.requests.map(told) ==> Vector.fill(40)(0) ++ Vector.fill(6)(1)
+      TurnRecord.requests(turn, recorded, reads(entries)).map(sent(_)) ==>
+        Right(provider.requests)
+    }
+
     test("a turn asked about its item is rebuilt with every call tagged and topic offered") {
       val entries = new InMemoryEntryStore
       val classifier = new CountingClassifier

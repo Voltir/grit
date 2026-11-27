@@ -20,7 +20,7 @@ import grit.core.model.{
   ToolGuidance
 }
 import grit.core.provider.ToolSchema
-import grit.core.tool.Outcome
+import grit.core.tool.{Outcome, Retry, ToolName, ToolSet}
 import grit.turn.TaskStatus.Handoff
 
 import utest.*
@@ -382,6 +382,63 @@ object TurnLoopTests extends TestSuite {
         limit(Some(PriceRise.EndsTurn), Some(500_000)),
         limit(None, Some(500_000))
       ) ==> Vector(477_000L, 972_904L, 77_000L, 77_000L)
+    }
+
+    test(
+      "a turn briefed for one task is told it has read enough once, at the round after a run of 40 calls that only read, a call that changes starting a new run; never in a conversation, with nothing that changes, or from its last call with tools"
+    ) {
+      def entry(name: String, changes: Boolean): ToolSet.Entry = ToolSet.Entry(
+        ToolName.of(name).getOrElse(throw new java.lang.AssertionError()),
+        "T.",
+        ujson.Obj(),
+        false,
+        Retry.Rerun,
+        changes = changes
+      )
+      def setOf(entries: ToolSet.Entry*): ToolSet =
+        ToolSet.of(entries.toVector).getOrElse(throw new java.lang.AssertionError())
+      val coding = setOf(entry("read", false), entry("edit", true))
+      def calls(names: String*): Message.Assistant =
+        reply("").copy(blocks = names.toVector.zipWithIndex.map { (n, i) =>
+          AssistantBlock.ToolCall(ToolCallId(s"c$i"), n, ujson.Obj())
+        })
+      def reads(n: Int): Vector[Message.Assistant] = Vector.fill(n)(calls("read"))
+      def at(
+          replies: Vector[Message.Assistant],
+          set: ToolSet = coding,
+          handoff: Handoff = Handoff.ToNextTurn,
+          calls: Int = 100
+      ): Option[(Int, String)] =
+        TurnLoop
+          .readingNote(budget(calls), handoff, set, replies, round(replies.size))
+          .map((r, note) => (r.index, note))
+      (
+        at(reads(39)),
+        at(reads(40)),
+        at(reads(40) ++ reads(3)),
+        at(reads(38) :+ calls("read", "read", "read", "read", "read")),
+        at(reads(30) ++ Vector(calls("read", "edit")) ++ reads(39)),
+        at(reads(30) ++ Vector(calls("edit", "unknown")) ++ reads(39)),
+        at(reads(40) ++ Vector(calls("edit")) ++ reads(40)),
+        at(reads(40), handoff = Handoff.Unoffered),
+        at(reads(40), handoff = Handoff.ToParent),
+        at(reads(40), set = setOf(entry("read", false))),
+        at(reads(40), calls = 42),
+        at(reads(40), calls = 43)
+      ) ==> (
+        None,
+        Some((40, TurnLoop.ReadEnough(40))),
+        Some((40, TurnLoop.ReadEnough(40))),
+        Some((39, TurnLoop.ReadEnough(43))),
+        None,
+        Some((70, TurnLoop.ReadEnough(40))),
+        Some((40, TurnLoop.ReadEnough(40))),
+        None,
+        Some((40, TurnLoop.ReadEnough(40))),
+        None,
+        None,
+        Some((40, TurnLoop.ReadEnough(40)))
+      )
     }
 
     test("a budget is at least 2 calls") {

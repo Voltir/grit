@@ -5,7 +5,7 @@ import grit.core.message.{AssistantBlock, Message, StopReason, Tokens}
 import grit.core.model.{AfterToolResult, Pinned, PriceRise, ToolGuidance}
 import grit.core.prompt.{Fenced, Stripped, Tag}
 import grit.core.provider.{ModelRequest, ToolSchema}
-import grit.core.tool.{Outcome, ToolName}
+import grit.core.tool.{Outcome, ToolName, ToolSet}
 
 /** What a turn's tool loop decides: the model is called, the tools its reply calls are
   * settled, and it is called again, until a reply calls no tool or the budget's last call, told
@@ -150,6 +150,56 @@ object TurnLoop {
       budget.last -> (if (!ending) LastCall else if (toParent) EndingToParent else Ending)
     ).filter((at, _) => at > 0 && round >= at)
   }
+
+  /** How many calls in a row that only read bring [[ReadEnough]] ([[readingNote]]). */
+  val ReadAfter: Int = 40
+
+  /** The note, by `round`, of a turn briefed for one task (one whose `handoff` offers
+    * [[TaskStatus]]) that has read too long, at the round it is first sent, as [[notes]]' are:
+    * [[ReadEnough]], once a turn, at the first round whose `replies` before it bring a run of
+    * calls that only read to [[ReadAfter]] or past it. A call only reads when it names a tool
+    * of `set` that is [[ToolSet.Entry.readOnly]], or no tool of `set`; a run starts at the
+    * turn's first call or after its last call that does not only read. None when `set` holds
+    * only tools that read, or when that round is the last call with tools of `budget`, the
+    * turn's budget before its replies cut it ([[Rounds.after]]), or later.
+    */
+  def readingNote(
+      budget: Rounds,
+      handoff: TaskStatus.Handoff,
+      set: ToolSet,
+      replies: Vector[Message.Assistant],
+      round: Round
+  ): Option[(Round, String)] = {
+    def reads(name: String): Boolean =
+      set.tools.find(e => ToolName.value(e.name) == name).forall(_.readOnly)
+    if (!declares(handoff) || set.tools.forall(_.readOnly)) None
+    else {
+      val before = replies.take(round)
+      // The run of calls that only read before each round, the first's (none) first.
+      val runs = before.scanLeft(0) { (run, reply) =>
+        reply.blocks.foldLeft(run) {
+          case (n, c: AssistantBlock.ToolCall) => if (reads(c.name)) n + 1 else 0
+          case (n, _) => n
+        }
+      }
+      runs.indexWhere(_ >= ReadAfter) match {
+        // The budget as it stood when that round was sent, so later cuts keep the note.
+        case at if at > 0 && at < budget.after(before.take(at)).lastTools =>
+          Some(Round.at(at) -> ReadEnough(runs(at)))
+        case _ => None
+      }
+    }
+  }
+
+  /** What a turn is told after `calls` calls in a row that only read ([[readingNote]]). */
+  def ReadEnough(calls: Int): String = Fenced.noted(
+    Vector(
+      s"You have made $calls calls in a row that only read, and nothing has changed yet. That " +
+        "is enough to start: make the first change the task needs now and run its test, " +
+        "rather than reading further. Read more only when what you change or run shows you " +
+        "need to."
+    )
+  )
 
   /** What the model is told on the last call with tools. */
   val LastTools: String = Fenced.noted(

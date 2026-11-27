@@ -477,7 +477,8 @@ object Turn {
           settings.afterResult,
           settings.guidance,
           gateNotes(gates, round, tools.set) ++ limits.fold(Vector.empty)(l =>
-            TurnLoop.notes(l.budget.after(replies.take(round.index)), byRef.handoff, round)
+            TurnLoop.notes(l.budget.after(replies.take(round.index)), byRef.handoff, round) ++
+              TurnLoop.readingNote(l.budget, byRef.handoff, tools.set, replies, round)
           ) ++ more
         )
       // What the window showed before the turn's own entries, as every call was sent it: the

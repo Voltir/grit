@@ -379,7 +379,8 @@ private[turn] object Rounding {
       TurnLoop.offered(handoff, gatedOffer(tools.set, tools.schemas(strict), strict), strict),
       settings.afterResult,
       settings.guidance,
-      gateNotes(at.gates, at.round, tools.set) ++ TurnLoop.notes(at.budget, handoff, at.round)
+      gateNotes(at.gates, at.round, tools.set) ++ TurnLoop.notes(at.budget, handoff, at.round) ++
+        TurnLoop.readingNote(at.looping.budget, handoff, tools.set, at.replies, at.round)
     )
   }
 
