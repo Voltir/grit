@@ -631,13 +631,13 @@ object RigTests extends TestSuite {
         Right(
           Some(
             "work: 8 tool calls in 3 model calls (2.7 a call); edits: 2, 1 failed; " +
-              "suite runs: 1; commits: 1"
+              "suite runs: 1; commits: 1; refused by the machine guard: 0"
           )
         ),
         "work: 8 tool calls in 3 model calls (2.7 a call); edits: 0, 0 failed; suite runs: 0; " +
-          "commits: 0",
+          "commits: 0; refused by the machine guard: 0",
         "work: 0 tool calls in 0 model calls (- a call); edits: 0, 0 failed; suite runs: 0; " +
-          "commits: 0"
+          "commits: 0; refused by the machine guard: 0"
       )
     }
 

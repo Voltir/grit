@@ -143,6 +143,29 @@ object ConsumedTests extends TestSuite {
       ) ==> (3, Right(3))
     }
 
+    test(
+      "a grit turn's runs the machine guard refused are counted by its refusal's lead, and no other failed run"
+    ) {
+      val t = gritTurn("SUCCESS")
+      val run = ujson.Obj("program" -> "rm", "args" -> ujson.Arr("-rf", "~"))
+      val guarded = t.copy(messages =
+        t.messages ++ Vector(
+          calling("t11", "run", run),
+          Message.ToolResult(
+            ToolCallId("t11"),
+            s"${grit.tools.MachineGuard.Lead} judged that this command would change files.",
+            isError = true
+          ),
+          calling("t12", "run", run),
+          Message.ToolResult(ToolCallId("t12"), "Exit code 1.", isError = true)
+        )
+      )
+      (
+        Consumed.ofTurn(gritLines, t, None).work.guarded,
+        Consumed.ofTurn(gritLines, guarded, None).work.guarded
+      ) ==> (0, 1)
+    }
+
     test("before the first edit under the checkout: the calls made and the bytes tools returned") {
       Consumed
         .of(Streams.at(checkout), checkout)

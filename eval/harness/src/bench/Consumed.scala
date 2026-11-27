@@ -8,6 +8,7 @@ import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.model.{Pinned, Pricing}
 import grit.core.provider.CallLine
 import grit.models.{AnthropicJson, AnthropicRates}
+import grit.tools.MachineGuard
 import grit.turn.TurnRecord
 
 /** One model call of a run, its usage priced by [[AnthropicRates]], or when `reported` (a grit
@@ -168,22 +169,29 @@ final case class Consumed(
 object Consumed {
 
   /** Counts of a transcript's tool calls, as [[Tried.work]] names them: every call, its edits,
-    * those of them whose result was an error, its suite runs and its commits.
+    * those of them whose result was an error, its suite runs, its commits, and its runs the
+    * machine guard refused ([[grit.tools.MachineGuard]]; none for a harness without one).
     */
   final case class Work private (
       tools: Int,
       edits: Int,
       failedEdits: Int,
       suiteRuns: Int,
-      commits: Int
+      commits: Int,
+      guarded: Int
   ) extends caps.Pure
 
   object Work {
 
-    /** One tool call: whether it is an edit, whether its result was an error, and the command
-      * line it ran when it is a shell run.
+    /** One tool call: whether it is an edit, whether its result was an error, the command line
+      * it ran when it is a shell run, and whether the machine guard refused it.
       */
-    final case class Used(edit: Boolean, failed: Boolean, command: Option[String]) extends caps.Pure
+    final case class Used(
+        edit: Boolean,
+        failed: Boolean,
+        command: Option[String],
+        guarded: Boolean = false
+    ) extends caps.Pure
 
     /** The counts of `used`: a suite run is a command running `scripts/check` with an argument
       * not starting with `-` before the first shell separator or redirect (a suite or module
@@ -197,7 +205,8 @@ object Consumed {
         used.count(_.edit),
         used.count(u => u.edit && u.failed),
         commands.count(suiteRun),
-        commands.count(_.contains("git commit"))
+        commands.count(_.contains("git commit")),
+        used.count(_.guarded)
       )
     }
 
@@ -269,6 +278,9 @@ object Consumed {
     }
     val before = if (firstEdit < 0) None else Some(turn.messages.take(firstEdit))
     val failed = turn.messages.collect { case Message.ToolResult(id, _, true) => id }.toSet
+    val guarded = turn.messages.collect {
+      case Message.ToolResult(id, text, true) if text.startsWith(MachineGuard.Lead) => id
+    }.toSet
     val denials = turn.messages
       .collect { case Message.ToolResult(id, _, true) =>
         toolCalls.find(_.id == id)
@@ -307,7 +319,8 @@ object Consumed {
           Option.when(c.name == "run")(
             (field("program").flatMap(_.strOpt) ++
               field("args").flatMap(_.arrOpt).flatten.flatMap(_.strOpt)).mkString(" ")
-          )
+          ),
+          guarded(c.id)
         )
       })
     )
