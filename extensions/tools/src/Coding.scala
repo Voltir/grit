@@ -17,6 +17,7 @@ import grit.core.host.{
   RunStatus,
   Runs,
   Shell,
+  ShellReads,
   Workspace
 }
 import grit.core.place.Place
@@ -517,10 +518,10 @@ object Coding {
       // The line a shell read of `sources`' files answers after: asked of the guard's
       // classifier, by rule when it gives no answer.
       def line: String =
-        sources.flatMap(s => s.read(a.argv).map((s, _))).fold("") { (s, read) =>
+        sources.flatMap(s => s.sources.read(a.argv).map((s, _))).fold("") { (s, read) =>
           val points = guard
             .ask(a.argv, s.question)
-            .fold(_ => s.ruled(a.argv, read), _.value >= SourceTools.Points)
+            .fold(_ => s.sources.ruled(a.argv, read), _.value >= SourceTools.Points)
           if (points) s.line(read) + "\n" else ""
         }
       def started: Outcome =

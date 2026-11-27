@@ -8,7 +8,7 @@ import grit.core.agent.{Subagent, Subagents}
 import grit.core.document.{DocRef, Document, DocumentSearch, DocumentShelf, DocumentVersion}
 import grit.core.edge.ServedEdge
 import grit.core.files.{FileArea, Formats}
-import grit.core.host.{Allowlist, Argv}
+import grit.core.host.{Allowlist, Argv, Sources}
 import grit.core.id.{
   AgentType,
   AttesterName,
@@ -95,11 +95,10 @@ object Offered {
     * search.
     */
   val ReferenceSources: SourceTools =
-    // A language, two blank-free tool lists and one suffix starting with `.`.
+    // Neither tool list is blank.
     Proven.right(
       SourceTools.of(
-        "Scala",
-        Vector(".scala"),
+        Sources.Scala,
         "`scout_show` for a definition by name (its body with `body`), or `scout_file` for a " +
           "file's imports and layout",
         "`scout_uses` for every use of a definition, or `scout_find` for a definition by part " +

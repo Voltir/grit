@@ -4,13 +4,11 @@ import java.nio.charset.StandardCharsets
 
 import scala.util.Try
 
-import grit.core.host.{Allowlisted, Argv}
+import grit.core.host.{Allowlisted, Argv, Sources}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.model.{Pinned, Pricing}
 import grit.core.provider.CallLine
-import grit.kit.deployment.Offered
 import grit.models.{AnthropicJson, AnthropicRates}
-import grit.tools.SourceTools
 import grit.turn.TurnRecord
 
 /** One model call of a run, its usage priced by [[AnthropicRates]], or when `reported` (a grit
@@ -173,9 +171,9 @@ object Consumed {
   /** Counts of a transcript's tool calls, as [[Tried.work]] names them: every call, its edits,
     * those of them whose result was an error, its suite runs, its commits, and its runs the
     * machine guard refused, by its lead ([[Allowlisted.GuardLead]]; none for a harness without
-    * one); its shell reads of Scala sources ([[Offered.ReferenceSources]]), those of them the
+    * one); its shell reads of Scala sources ([[Sources.Scala]]), those of them the
     * rule points at (what a run with no classifier gives the line to), those answered after the
-    * line ([[SourceTools.Lead]]), and those whose next call names a tool the line names.
+    * line ([[Sources.Lead]]), and those whose next call names a tool the line names.
     */
   final case class Work private (
       tools: Int,
@@ -347,13 +345,13 @@ object Consumed {
         val argv =
           program.headOption.flatMap(p => Argv.of(p, args*).toOption).filter(_ => c.name == "run")
         val source = argv
-          .flatMap(a => Offered.ReferenceSources.read(a).map(r => (a, r)))
+          .flatMap(a => Sources.Scala.read(a).map(r => (a, r)))
           .fold(Work.Source.None) { (a, r) =>
             val answer = results.getOrElse(c.id, "")
-            val pointed = answer.startsWith(SourceTools.Lead)
+            val pointed = answer.startsWith(Sources.Lead)
             val line = answer.linesIterator.nextOption().getOrElse("")
             Work.Source.Read(
-              Offered.ReferenceSources.ruled(a, r),
+              Sources.Scala.ruled(a, r),
               pointed,
               pointed && toolCalls.lift(i + 1).exists(n => line.contains(s"`${n.name}`"))
             )

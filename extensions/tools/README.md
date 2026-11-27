@@ -20,10 +20,11 @@ One package, `grit.tools`:
   permits a command able to clone it.
 - `MachineGuard` — what an allowlisted `run` asks before it starts a command its list admits:
   whether it would harm the machine beyond the checkout, decided by code where its arguments
-  show it (paths, the stash, and the shell's and git's reads, which `ShellReads` holds to the
+  show it (paths, the stash, and the shell's and git's reads, which core's `ShellReads` names, held to the
   checkout) and by the deployment's classifier otherwise, failing closed (ADR 0069). Its
   corpus is `MachineGuardCorpusTests`, over Jev's recorded answers.
-- `SourceTools` — the tools that read one language's sources by name (for grit, scout's), which
+- `SourceTools` — the tools that read one language's sources (core's `Sources`, which says which
+  shell reads read them and which a rule points at) by name (for grit, scout's), which
   an allowlisted `run` names on a line ahead of a shell read of those files: put to the
   machine guard's classifier as its own question, by rule when it gives no answer. A
   deployment declares it; it is the field a stack will hold.

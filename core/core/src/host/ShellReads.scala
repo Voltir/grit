@@ -1,12 +1,10 @@
-package grit.tools
+package grit.core.host
 
-import grit.core.host.{Allowlist, Argv}
-
-/** The shell's reads as the machine guard holds them to the checkout (ADR 0069): which commands
-  * are reads, which of a read's words may name a path, and the `find` and `sed` that would
-  * write or run a program.
+/** The shell's reads as a coding tool's machine guard holds them to the checkout (ADR 0069):
+  * which commands are reads, which of a read's words may name a path or a pattern, and the
+  * `find` and `sed` that would write or run a program.
   */
-private[tools] object ShellReads {
+object ShellReads {
 
   /** The reads: git's `status`, `diff`, `log` and `show`, and `ls`, `cat`, `head`, `tail`, `wc`,
     * `grep`, `diff`, `find` and `sed -n`, each with any further arguments.

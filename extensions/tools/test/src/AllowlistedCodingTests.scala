@@ -603,7 +603,7 @@ object AllowlistedCodingTests extends TestSuite {
         readme -> ScriptedRuns.Script("# x\n", "", Some(Duration.Zero), 0)
       )
       val scala = SourceTools
-        .of("Scala", Vector(".scala"), "`show` for a definition", "`uses` for every use")
+        .of(Sources.Scala, "`show` for a definition", "`uses` for every use")
         .toOption
       val host = new CodingTests.Scripted()
       // `answer` the classifier's p(yes), `None` with no classifier: the outcome, and how many

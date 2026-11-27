@@ -1,7 +1,17 @@
 package grit.tools
 
 import grit.core.classify.{Answered, Ask, Classifier, ClassifierError, StateJson}
-import grit.core.host.{AbsPath, Allowlist, Argv, PathError, Reach, Reached, RelPath, Stashes}
+import grit.core.host.{
+  AbsPath,
+  Allowlist,
+  Argv,
+  PathError,
+  Reach,
+  Reached,
+  RelPath,
+  ShellReads,
+  Stashes
+}
 
 /** Whether a command an allowlist admits may start without harming this machine beyond the
   * checkout at `root` (ADR 0069). Code decides first:
