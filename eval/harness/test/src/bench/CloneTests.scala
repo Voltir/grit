@@ -89,6 +89,20 @@ object CloneTests extends TestSuite {
       }
     }
 
+    test(
+      "a checkout names origin's default branch as origin/main at the task's base, though it has no remote"
+    ) {
+      withOrigin("base", "known", "later") { (work, o) =>
+        val checkout = rel("checkout")
+        Clone.fresh(work)(o.path, o.commits("base"), checkout) ==> Right(())
+        (
+          git(work, checkout, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"),
+          git(work, checkout, "merge-base", "origin/main", "HEAD"),
+          git(work, checkout, "remote")
+        ) ==> ("origin/main", Sha.value(o.commits("base")), "")
+      }
+    }
+
     test("a checkout is never made over a directory already there") {
       withOrigin("base") { (work, o) =>
         (

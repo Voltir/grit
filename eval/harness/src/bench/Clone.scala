@@ -15,8 +15,10 @@ object Clone {
   val Longest: FiniteDuration = 10.minutes
 
   /** A new repository at `dir`, holding `base` of the repository at `repository` (an absolute
-    * path) and its history alone, checked out on the branch `bench`, with no remote. `Left`, with
-    * git's last words: `dir` exists, or a git command fails or runs past [[Longest]].
+    * path) and its history alone, checked out on the branch `bench`, with no remote, but naming
+    * `origin/main` at `base` as origin's default branch (`refs/remotes/origin/HEAD`), so that a
+    * coder's diff against its default branch is its diff from `base`. `Left`, with git's last
+    * words: `dir` exists, or a git command fails or runs past [[Longest]].
     */
   def fresh(work: Processes)(repository: String, base: Sha, dir: RelPath): Either[String, Unit] =
     for {
@@ -24,6 +26,8 @@ object Clone {
       _ <- git(work, dir, "init", "-q", "-b", "bench")
       _ <- git(work, dir, "fetch", "-q", "--no-tags", repository, Sha.value(base))
       _ <- git(work, dir, "checkout", "-q", "-B", "bench", "FETCH_HEAD")
+      _ <- git(work, dir, "update-ref", "refs/remotes/origin/main", Sha.value(base))
+      _ <- git(work, dir, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
     } yield ()
 
   /** As [[fresh]] of `task`'s base, with `task`'s commits then applied in order; `Left` also when
