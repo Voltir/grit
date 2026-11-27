@@ -25,6 +25,15 @@ against it, so its trials say how a tuned coder does on a task it was not tuned 
 `hook-keeps-events`'s brief is a note, not a checkpoint: the change was built from it directly, so
 it may tell less than its coder had.
 
+`commands-as-tools`'s brief was rewritten on 2026-11-27 for a coder working alone. As frozen, it
+told its coder to plan first and stop for a reviewer, said Nick was asleep and its pull request
+waited for him, and appended the whole M19 plan: GLM read through 212 calls toward a plan, and
+Haiku stopped at the plan gate, so neither trial measured building. The rewrite states as its own
+the design its reviewed plan settled (the store's C3 plan note, as the task's commits changed it),
+adding nothing the commits do not show, and drops the cited plan. Its commits and checks are
+unchanged, and still give the known tree; its trials before the rewrite are not comparable with
+those after.
+
 Every run's checkout is removed as the run ends, passed, failed or refused, and a killed run's at the
 next run's start. Its log, `<checkout>.log` beside it, keeps what is worth keeping: the coder's
 commits and its diff against the base (to 200 KB, with a note when cut), and for grit its output.

@@ -1,101 +1,48 @@
 # C3. Commands as turn tools
 
-From [the plan](artifact:grit/plan-m19) (its "Commands are not tools" finding and the Shared design line "A command offered to a turn is the same command"; Settled with wisdom 2: a turn's keep lands without approval, the tools are `Hosted.requiring(outside)` at least, author the asker with the turn's session named). New branch `m19-c3-commands` in the fixer worktree, **from main** (C2a/C2b are on an unmerged branch waiting for Nick; C3 is independent of them). coder-opus: **plan first** (Elision, Capture and separation, Sharing), keep it as the `## Plan` of note `grit/note-m19-c3-plan`, stop for wisdom's review, then build. Nick is asleep: wisdom answers design questions. C3 adds model-facing tool descriptions, so its PR waits for Nick's look before merge.
+The projects plugin's commands are offered to a turn as tools, and a command run by a turn is the same command a person runs through an edge, not a copy: same spec, same `run`, the same believed rule. The design below is settled; build it, red first, and commit as `## Commits` says.
 
 ## Goal
 
-The projects plugin's commands are offered to a turn as tools, and a command run by a turn is the same command a person runs, not a copy.
-
-- **Reads:** a turn reads through `Hosted.reading`/`Bound.Reading`, with `ReadingCommand.run` inside `Reads.read`.
-- **Keeps:** through a new `Bound.Keeping` sibling whose `Tx^` stays inside the step, with a probe that rejects letting it escape.
-- **Integrity:** `believed` is the round's `Gated.level` met with the room's cap (ADR 0036). A scripted-model test pins a keep's believed level.
-- **Which commands:** reads, keep, move and new; not withdraw, migrate, claim or release.
-- **A new ADR replaces 0048** (its title, "no model and no turn", becomes false).
-- `PluginCommands.offered` has no caller today; either it becomes the caller-facing path or it is deleted.
+- **Reads:** a turn reads through `Hosted.reading`/`Bound.Reading`, with `ReadingCommand.run` inside `Reads.read`. A reading command requires nothing.
+- **Keeps:** through a new `Bound.Keeping`, a sibling of `Bound.Reading`, whose `Tx^` stays inside the call's step, with a probe that rejects letting it escape. A keeping command requires `Integrity.Outside`, and a turn's keep lands without asking: keeps and moves are reversible through history.
+- **Integrity:** what a turn keeps is believed at no more than its call's stamp met with the room's declared cap (ADR 0036). A scripted-model test pins a keep's believed level.
+- **Which commands:** the projects plugin's seven reads, `project_new`, `project_keep` and `project_move`; not withdraw, migrate, claim, release or claims (`project_claims` is a keeping command that only reads claims, and is left out with claim and release).
+- **Who wrote it:** a turn's keep is written by the person the turn answers, with the turn named: `"<accounts>, through grit (turn <seq> of conversation <id>)"`. A claim still names the person alone.
+- **A new ADR, 0053, replaces 0048**, whose title ("with no model and no turn") becomes false.
 - Tool descriptions are model-facing and may be repeated to a person: plain words.
 
-## Signatures
+## Design
 
-Settle in the plan, every new or changed public signature with its Scaladoc as written (rule 10). Prefer one command path a person's edge and a turn share.
+1. **core `store`: `Keeps`, the write sibling of `Reads`.** `Jot.as(subject): Keeps^`, as `Db.as`, and `Jot.within(jot, bound): Jot^`, as `Db.within`: a write runs its body only when what its transaction knows is classified at most `bound`. `Keeps.write` takes a body answering a `Keeps.Verdict` (`Commit(kept)` or `Discard(undone)`): committed on `Commit`, rolled back on `Discard` with its value returned. No `Jot` implementation changes.
+2. **core `tool`: `Hosted.keeping` and `Bound.Keeping`.** `Hosted.keeping(spec, shown, requires, output)(run: (A, CallSlot, Integrity) => (Tx^) ?=> Either[StoreError, Outcome])`: told the call and the integrity it was stamped at, run in the transaction its turn opens for the call. It takes no gate: it never asks first. `Toolbox.bind` hands the stamp it checked (`Trusted.check`'s integrity) to the tool's bind, so a turn cannot pass the wrong one; an edge's bind (`Toolbox.requested`) binds at `Untrusted`. An edge answers a keeping call that it is not run there (`Run.request`, as for `Bound.Reading`).
+3. **turn: a keeping call settles in one transaction with its result.** `Rounding.Binding` makes the round's keeps as it makes its reads: `routed.keeps(tooling.jot).as(Subject.Turn(turn))`, with `Turn.Bounded.keeps(jot)` beside `Bounded.reads(db)`. `Settling.keepFrom`: a result already kept is returned and nothing runs; else, in one `Keeps.write`, the run and, on `Done`, its result entry, committed together. Any other outcome is rolled back and kept as the result alone, by the existing settle path; a store failure there is answered `Failed`, saying nothing was kept. A keeping call's kind is `Free`: no new step, name or encoding, so replay is unaffected (ADR 0004; `TurnReplayTests`).
+4. **core `plugin`: one command, two askers.** `CommandBy` (`Direct(person)` through an edge, `Turn(person, turn)` through a turn answering them) replaces `by: Principal.Person` in both `run`s. `KeepingCommand.run` in the object is the believed rule written once: the keeper believes each document at no more than the integrity given, met with the room's cap; `SqlPluginCommands` and the turn's tool both call it. `Commanded` (`Reading(plugin, command)`, `Keeping(plugin, terms, command)`) and `Commanded.of(plugins)` replace `SqlPluginCommands`' private `Runnable`, so the edge and the kit enumerate commands one way. `PluginCommands.offered` stays, as an edge's MCP tool list calls it. `PluginCommand.offeredToTurns` (false unless a command says) and `PluginCommand.shown(args)` (its transcript line, `""` unless it says) are new.
+5. **dbos:** `Stores.claims: PluginName -> Claims` (`SqlClaims`), so the kit reaches a plugin's claims as it reaches `reads` and `keeper`.
+6. **core `plugin`: `CommandTools.of(commanded, reads, keeper, claims, askers, clock): Tool.Offered^{clock}`**, a command as a turn's tool. It runs for the person the turn answers (`Askers`, `CommandBy.Turn`), dated by `clock`, and answers `Failed`, running nothing, when the turn answers no person (`CommandTools.NoPerson`). A reading command runs inside `reads.read`; its `Done` is believed at the least integrity of the documents it read (untrusted for any read of its plugin's cache), as grit's own words when it read none. That least is tracked through a decorated shelf and cache writing a local `var` of the one call, through a function made pure by `caps.unsafe.unsafeAssumePure`, its proof beside it (rule 11): the local is held only by the pure command while it runs and read once after. A keeping command is `Hosted.keeping`, requiring `Outside`, and runs `KeepingCommand.run` with its call's stamp and the room the turn's transaction is opened in; a turn in no room keeps nothing (`CommandTools.NoRoom`), and a refusal is `Failed` with its reason, rolled back.
+7. **kit:** `PluginBinding.commands(plugins, reads, keeper, claims, askers, clock)` gives every command a turn is offered as a tool, through `Commanded.of` and `CommandTools.of`; `Launch.asking` offers them after the plugins' tools, in the plugins' order, its toolbox's capture set gaining `clock`.
+8. **projects:** the ten commands above set `offeredToTurns` and `shown`. A turn's writer as Goal says. The head-showing helper is renamed `headed`, as `shown` is now a command's. Every description names only what a turn is offered (`project_stale` no longer points at `project_withdraw`; its list is candidates to end), and no description ends with the line telling a project artifact from a claude.ai Artifact: unwrap `said` at its call sites and delete it.
+9. **ADR 0053** carries over 0048's standing decisions (a person's command reads under `Subject.Person` and cannot choose whom it reads for; a reading command's transaction is read-only; names unique across commands and tools; no audit row) and adds the turn's: run for the person the turn answers, reads bounded by its route and believed at the least read, a keep requiring `Outside`, never asking, in one transaction with its result, believed at no more than its call's stamp met with the room's cap. 0048 is deleted in the same commit and every reference retargeted (ADRs 0027, 0049, 0051; the projects README; the Scaladoc that cites it).
 
 ## Reads
 
-Before the first edit (root: the fixer worktree, compile first):
+Before the first edit (compile first):
 
-- `show {"symbols":["PluginCommand","PluginCommands","Hosted","Bound","ReadingCommand"],"docs":true}`
-- `uses {"symbols":["PluginCommands.offered","Hosted.reading","Bound.Reading"]}`
-- `area {"names":["projects"]}`, then `show` the commands the plan touches
+- `show {"symbols":["PluginCommand","PluginCommands","Hosted","Bound","ReadingCommand","KeepingCommand"],"docs":true}`
+- `uses {"symbols":["PluginCommands.offered","Hosted.reading","Bound.Reading","SqlPluginCommands"]}`
+- `area {"names":["projects"]}`, then `show` the commands this touches
 - `docs/decisions/0048-*.md`, `0036-*.md`, `docs/decisions/README.md`
 
 At the point of use: the existing tests of `Bound.Reading` and of the projects commands, by name prefix; `docs/capture-checking.md` for the probe.
 
 ## Commits
 
-Each behaviour red first; then bare `scripts/check`, no warnings, `scripts/check --only-unused`. The manager runs the it tier. Report hashes, reds, window used.
+Each behaviour red first, the red quoted in its commit message (a plant's diff with it).
 
-## Cited: grit/plan-m19 (M19 plan: grit's agent on a project)
+1. **turn: a keeping tool runs in the one transaction that keeps its result** (design 1–3). Reds: `TurnToolsTests` (a crash before a keeping call's result is kept keeps nothing, so its rerun keeps afresh; a call not answering done keeps nothing it wrote; its kind is `Free`), `ToolboxTests` (a keeping call is told the integrity it was stamped at), `JotKeepsTests`, `TurnRouteTests` (a keep is bounded by the route), `RunTests` (an edge does not run it), and the probe `KeepingToolCaptureTests` in `grit.core.probes` (a run keeping its `Tx` in a `var` is rejected; plant `(Tx)` for `(Tx^)`).
+2. **plugin: a command runs for whoever asked, through an edge or a turn, believed by one rule** (design 4–5). Red: `ProjectCommandsTests` "a keep through a turn names the person and the turn as its writer".
+3. **plugin: a plugin's commands that say so are offered to a turn as tools** (design 6–8 but the descriptions). Reds: `TurnGateTurnTests` "a turn fallen to outside keeps what it calls believed at outside, not at its trigger's level" (scripted model); a new `CommandToolsTests`; `PluginToolsTests` (a turn is offered each plugin's commands that say so); `ProjectCommandsTests` (a turn is offered the reads, new, keep and move).
+4. **docs: ADR 0053** (design 9).
+5. **projects: a command's description names only what a turn is offered** (design 8's descriptions).
 
-# M19 plan: grit's agent on a project
-
-M19 ([milestone](artifact:grit/m19-grit-agent-on-a-project)). Process and its words: [how work is run](artifact:grit/roadmap-how-work-is-run). Drafted 2026-10-29. Nick agreed the shape, added a direct Anthropic provider and made caching a priority; a turn's session and brief moved to M20 (Nick, 2026-10-29); wisdom's review is folded in. Nick's go given the same day.
-
-**Exit:** the real-use run. In kalandra's chat TUI, Nick and grit triage the open notes or draft a plan. grit reads and writes the store through the project commands as tools. Its window is projected at the conversation's start and grows between boundaries on a cached prefix. Real model through Anthropic's API, a restart mid-turn, cost stated in cents.
-
-## Where the code stands (main 322bdc56)
-
-- **Commands are not tools.** The project commands are `PluginCommand`s (ADR 0048). They take a tool's `ToolSpec`, but they run as a `Principal.Person` in a room under `Tx^`, with `believed` set by the edge. `PluginCommands.offered` has no caller in grit.
-- **The window is fresh every turn, and so is the system prompt.** `ContextAssembler`'s doc says the window is "never carried from the last one". `TurnShown.requestOf` ends each turn's system prompt with a dated line (`TurnShown.answering`, ADR 0016), and it places sections, documents and pieces *before* the window's entries. `LinearAssembler` keeps "the most recent whole turns that fit", so at budget it slides.
-- **One provider.** `grit.models` speaks OpenRouter alone. `ModelRequest` has no cache field. `ToolUse.Required` (forced tool choice) is what `Shaping` uses.
-- **A turn knows no session.** ADR 0050 anticipates one ("a grit turn can record its own"). A claim's holder is a directory's slot, kept by every session started there.
-- **kalandra runs no turns:** `Main.Unread`, `Placer.Off`, `Linear(8000)`. The chat is in unpublished `grit.app` and imports `grit.dbos.engine`; its engine entry points are `private[grit]`.
-
-## Shared design
-
-- **ADR 0052: a window is drawn from the store at a boundary and carried, append-only, until the next. Nothing before a boundary is redrawn.** The boundaries are a start, a clear, a compaction and the limit. Between boundaries, ADR 0040's steps (`ask:needs` … `ask:relevance`) still run each turn. What they admit is appended after the carried entries, never placed before them. The limit is set per deployment through the existing `Assembly` budget, capped by the model's context. At the limit the window is cleared and re-projected, never slid. The ADR revises the thesis line in CLAUDE.md and the trait doc.
-- **Nothing per-turn sits before the messages.** The dated line moves out of the system prompt and into the turn's own message (ADR 0016 is revised in place). Within a turn, what a gate adds is a note kept in place, and system and tools are fixed per turn, so a gated turn keeps its cache (ADR 0036).
-- **Two providers, chosen per model.** Anthropic's Messages API sits beside OpenRouter in `grit.models`, behind the same `Provider`. The catalog routes each use (turn, query, Jev, classifiers) to a model and that model to its provider, so one deployment mixes them. Nick has Claude API credits ($100 a month) for the direct path, and OpenRouter stays for other models. Anthropic-specific facts are verified against the current API docs in the coder's plan, never recalled:
-  - prompt caching through `cache_control` breakpoints (at most four), confirmed by `usage.cache_read_input_tokens`;
-  - **append-only history**: current models refuse an edited history that carries thinking blocks (preserved thinking). Thinking blocks are kept as the turn recorded them and sent back unchanged between boundaries; a boundary is a new history. ADR 0052's rule is the same rule, so the two are designed together;
-  - **no forced tool choice** on current models: `ToolUse.Required` maps to `auto` with `strict` tools, or to structured outputs, in that provider;
-  - a `refusal` stop reason is an expected failure in the return type (rule 3).
-  - Whether it goes through the official Java SDK, quarantined in `grit.models`, or through raw `java.net.http` as OpenRouter does, is settled in the coder's plan by which shares more and keeps the quarantine.
-- **A command offered to a turn is the same command.** A turn reads through `Hosted.reading`/`Bound.Reading`, with `ReadingCommand.run` inside `Reads.read`. A turn keeps through a new `Bound.Keeping` sibling whose `Tx^` stays inside the step (with a probe). `believed` is the round's `Gated.level` met with the room's cap (ADR 0036). **A new ADR replaces 0048**, because its title ("no model and no turn") becomes false.
-- **Moved to [M20](artifact:grit/m20-grit-codes):** a turn's session (through `Sessions.record`, inheriting its directory slot's claim, ADR 0050) and the brief at a boundary (kept as a projects document version on claim, packed by id in `Window.documents`; the digest by `SessionDigest.of`), as wisdom shaped them. M19's run needs neither: a turn reads a brief through `project_brief` when it wants one.
-- **Bounded:** no new table. The per-turn window record (`TurnSteps.windowRecorded`) becomes a delta: the carried record's entry id plus the appended range. Recorded thinking blocks are counted in that bound. Deletion is the journal's raw purge.
-- **Caching is a gate, not a hope** (Nick, 2026-10-29: "very important, get it right"). Every model call records `cache_read`/`cache_write` tokens from `usage` beside its cost, through both providers. A test pins byte-identical requests across turns of one window: the request a turn sends begins with the bytes of the last one's prefix (tools, then system, then carried messages). Silent invalidators are listed and ruled out by that test: tool order, JSON key order, timestamps, ids, and per-turn text placed before the messages. **Target, measured in the real-use run:** on every turn after a window's first, at least 80% of input tokens are cache reads; a miss is diagnosed before the run counts.
-- **Signatures are reviewed where they are written.** Checkpoints C1, C2a and C3 start with a coder plan carrying Elision, Capture-and-separation and Sharing sections, which wisdom reviews before code.
-
-## Checkpoints (hours from M18)
-
-M18 ran about 27 active hours against 19 planned. Coder median 49 min; 1–2.5 h a checkpoint end to end; close 1.3 h.
-
-- **C0. The proving ground** (1.5 h, manager): republish the proving-ground deployment on main's jars. M18's ALTERs on the proving-ground database need Nick's go. Watch it for an hour. Beside it: kalandra's capture records a scout `find`/`area` with no `named` ([note](artifact:grit/note-digest-reads-name-symbols)); coder-haiku.
-- **C0b. A server that loses its engine lock serves again** (1.5 h; dbos, kit; Nick, 2026-10-30). Found in C0's log: a database restart left the proving ground up with no engine until a manual restart (`grit/backlog-engine-lock-lost-outage`). Option (a): wait for the lock, then serve again.
-- **C1a. A cacheable request** (2 h; core, turn). The dated line leaves the system prompt; `ModelRequest.stable` marks the prefix; `Usage` gains cache writes; every round tags the same message (`TurnVerdict.tagged`, a history edit today). Plan in `grit/plan-m19-c1-anthropic-provider`, reviewed in `grit/note-m19-c1-wisdom-review`.
-- **C1c. The Anthropic provider** (2.5 h; models). Raw `java.net.http` with HTTP plumbing shared with OpenRouter; thinking kept and replayed, `Required` mapped to `auto`, `refusal`, cost from published rates, `cache_control` at the marks.
-- **C1d. Routing per model, and the live probe** (1.5 h; models, kit). The reserved upstream `api.anthropic.com`; `ANTHROPIC_API_KEY`; the prefix-identity test; Haiku 5.5 cache reads and the `drop_block` check on Haiku and Sonnet, under a cent.
-- **C1b. Caching through OpenRouter, and an append-only gate** (2 h; models, turn). `cache_control` for Anthropic models on OpenRouter; a gate's lines in a trailing message and its tools offered from round 1, so a gated turn keeps its cache; cache writes in `usage_ledger` (ALTER: Nick's go).
-- **C2a. The assembler projects at a boundary** (2.5 h; core, assembly; ADR 0052). The trait expresses a boundary and a carried window. Linear clears and re-projects at the limit.
-- **C2b. The turn carries its window** (2.5 h; turn; `Durable.patch`). The carried window, thinking blocks included, is read in a step; recall is appended after it; the window record is a delta. The prefix-identity test runs over a scripted multi-turn conversation. `TurnReplayTests` gate; the rehearsal (ADR 0041) is checked.
-- **C3. Commands as turn tools** (3 h; core, act, kit, projects; the ADR replacing 0048). `Bound.Keeping` and its probe, the integrity rule, and a scripted-model test of a keep's believed level.
-- **C4. The chat as a published extension** (3.5 h; tui, app, kit). `extensions/chat` over core, tui and edge, with no kit and no dbos, shaped like `grit.slack`. A trait over opening the engine; the open-or-attach entry made public in kit. `grit.tui` published. `mcp-arch.yaml`, `enola-intent.yaml`, `scripts/enola-plant` and CLAUDE.md's table updated. A change a person sees: Nick looks before merge.
-- **C5. kalandra runs turns** (3.5 h with the run; kalandra). An Anthropic key, a placer, its project tools offered (reads, keep, move, new; not withdraw, migrate, claim or release), a `Budget` cap, an `Assembly` budget that holds a conversation, and `kalandra chat`. **Real-use run** with Nick, reporting the cache-read share per turn against the 80% target.
-- **C6. Close** (2 h): `--milestone`, the janitors, ADRs held to the code, note triage, and the recall query set scored once as the baseline ([recall note](artifact:grit/note-store-recall-measured-then-tuned)).
-
-**Above the cut line: about 28 h**, past the 24 h ceiling. Wisdom split C1 into three windows (C1a, C1c, C1d), the append-only gate joined C1b, and C0b was added for a live bug; caching is Nick's priority.
-
-**Below the cut line:** [one store listener](artifact:grit/backlog-one-store-listener); [the chat follows EdgeWatch](artifact:grit/backlog-chat-follow-on-edgewatch); compaction with a model summary; recall tuning.
-
-Build order: C0; C1a; C1c; C0b; C1d; C1b; C2a; C2b; C3 (independent of C1 and C2); C4; C5; C6.
-
-## Settled with wisdom (2026-10-29), for Nick's go
-
-1. **ADR 0052's wording** is as in Shared design. The limit is per deployment, capped by the model.
-2. **A turn's keep** lands without approval: reads are free, keeps and moves are reversible through history. The tools are `Hosted.requiring(outside)` at least. Author: the asker, with the turn's session named.
-3. **The chat's home:** `extensions/chat` over core, tui and edge; kit keeps the engine entry, made public.
-
-## Decided by Nick (2026-10-29)
-
-- **Models:** probes and tests on Haiku 5.5; the real-use run on Sonnet 5.5 with a 25¢ cap, on the Claude API credits. Anthropic's rates (cached 2026-10-06): Haiku 5.5 $0.10/$0.50 per M tokens, Sonnet 5.5 $2/$10 (cache reads $0.10, per the live pricing page read 2026-10-29; the skill's cached $0.20 was stale).
-- **C0's ALTERs** on the proving-ground database: go.
-- **The plan and the three answers settled with wisdom:** go.
+Every commit compiles with no warnings. End with a short report: the commit hashes and each red.
