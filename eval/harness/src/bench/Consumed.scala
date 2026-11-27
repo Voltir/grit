@@ -18,8 +18,8 @@ import grit.turn.TurnRecord
 final case class Call(id: String, model: String, usage: Usage, reported: Boolean = false)
     extends caps.Pure
 
-/** The grit coder's task as its database recorded it: its conversation's id (its session), the
-  * messages its last turn's last model call was sent, oldest first, the status DBOS gives its
+/** The grit coder's task as its database recorded it: its conversation's id (its session), every
+  * turn's own messages, oldest first, as `sent`'s `ConversationSent.own` gives them, the status DBOS gives its
   * last turn's workflow (`SUCCESS`, `PENDING`, `ERROR`, …), every turn of it as a person reads
   * them, as the eval's `sent` renders a turn, and why its last turn failed, as
   * `<step>: <reason>`, or as `grit work`'s own line ([[Consumed.reported]]), when it ended
@@ -216,9 +216,6 @@ object Consumed {
     }
   }
 
-  /** The tools of Claude Code's whose calls [[Work]] counts as edits. */
-  private val ClaudeEdits: Set[String] = Set("Edit", "MultiEdit")
-
   /** The tools that edit a file. */
   val Edits: Set[String] = Set("Edit", "Write", "MultiEdit", "NotebookEdit")
 
@@ -254,8 +251,8 @@ object Consumed {
     * else why its turn failed, else its workflow's status, in error unless its turn succeeded
     * unstopped under a workflow that succeeded, each `run` that failed
     * a denial; its usage and each model's, its calls' together; no figure of its own beside
-    * grit's, and no key source; its work its turn's tool calls, its edits those of `edit` and
-    * its shell runs those of `run`.
+    * grit's, and no key source; its work its turn's tool calls, its edits those of
+    * [[GritEdits]] and its shell runs those of `run`.
     */
   def ofTurn(lines: Vector[String], turn: GritTurn, stopped: Option[String]): Consumed = {
     val calls = gritCalls(lines)
@@ -305,7 +302,7 @@ object Consumed {
       Work.of(toolCalls.map { c =>
         def field(k: String) = c.arguments.objOpt.flatMap(_.get(k)).toVector
         Work.Used(
-          c.name == "edit",
+          GritEdits(c.name),
           failed(c.id),
           Option.when(c.name == "run")(
             (field("program").flatMap(_.strOpt) ++
@@ -318,7 +315,7 @@ object Consumed {
 
   /** What the run whose output is `lines` consumed, its checkout at `checkout` (an absolute
     * path); a call counted once, at the last usage its message gave; its work its `tool_use`
-    * blocks, its edits those of `Edit` and `MultiEdit` and its shell runs those of `Bash`. `Left`
+    * blocks, its edits those of [[Edits]] and its shell runs those of `Bash`. `Left`
     * naming the first line that is not a JSON object.
     */
   def of(lines: Vector[String], checkout: String): Either[String, Consumed] =
@@ -401,7 +398,7 @@ object Consumed {
     Work.of(blocksOf("assistant").filter(text(_, "type").contains("tool_use")).map { b =>
       val name = text(b, "name").getOrElse("")
       Work.Used(
-        ClaudeEdits(name),
+        Edits(name),
         text(b, "id").exists(failed),
         if (name == "Bash") obj(b, "input").flatMap(text(_, "command")) else None
       )

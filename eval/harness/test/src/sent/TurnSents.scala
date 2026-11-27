@@ -37,7 +37,7 @@ object TurnSents {
   /** A turn of one tool round, then an answer sent `last`, its calls and summary made under
     * `settings`; its rows recorded `first` and `answered` as their estimates under them; run
     * under `epoch`; its summary rebuilt as `summary`, its row recording that request's
-    * estimate.
+    * estimate; its window showing `window` before its own entries.
     */
   def sent(
       last: ModelRequest,
@@ -45,7 +45,8 @@ object TurnSents {
       recorded: Option[Tokens] = None,
       epoch: String = Turn.Epoch,
       summary: Option[ModelRequest] = None,
-      settings: Settings = Settings.of(None)
+      settings: Settings = Settings.of(None),
+      window: Vector[TurnRecord.WindowMessage] = Vector.empty
   ): TurnSent = {
     val estimator = CharEstimate.withSettings(settings)
     val looped = TurnRecord.Call(0, EntryId("call:c1:0:0"), first)
@@ -66,7 +67,7 @@ object TurnSents {
         Some(answered),
         TurnRecord.Schemas.Sent,
         summary,
-        Vector.empty,
+        window,
         settings,
         Some(settings)
       ),

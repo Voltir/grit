@@ -42,9 +42,11 @@ rubric is a new one, its reviews not compared with the old one's. Checked before
 blind re-rank of commands-as-tools' Opus, original and GLM diffs, which gave their known order.
 
 A trial's report, in either arm, says what its tool calls did (`Tried.work`, from the transcript,
-not kept in its row): its tool calls a model call, its edits (`edit`; Claude Code's `Edit` and
-`MultiEdit`) and how many of them failed, its suite runs (a shell run of `scripts/check` naming a
-suite or module, not flags alone) and its commits (one whose command holds `git commit`).
+not kept in its row), over every turn of a grit trial: its tool calls a model call, its edits
+(every call of a tool that changes a file: grit's `write` and `edit`; Claude Code's `Edit`,
+`Write`, `MultiEdit` and `NotebookEdit`) and how many of them failed, its suite runs (a shell run
+of `scripts/check` naming a suite or module, not flags alone) and its commits (one whose command
+holds `git commit`). A shell run that changes a file is not counted as an edit.
 
 ## The Claude Code arm
 

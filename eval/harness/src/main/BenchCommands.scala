@@ -9,7 +9,7 @@ import scala.util.Try
 import grit.core.clock.Clock
 import grit.core.host.{RelPath, Variables}
 import grit.core.id.{ConversationId, TurnRef, WorkflowId}
-import grit.core.message.{Message, Tokens}
+import grit.core.message.Tokens
 import grit.core.model.CatalogJson
 import grit.core.secret.Secret
 import grit.core.store.Tx
@@ -274,8 +274,8 @@ private[main] object BenchCommands {
 
   /** The grit coder's turns in the database `config` names, logged in as `docker-compose.yml`'s
     * user: the conversation of the newest created before `clock`'s now, every turn of it
-    * ([[ConversationSent.read]]) rendered whole ([[SentMarkdown.render]]), with the messages its
-    * last turn's last call was sent; or, when its turns cannot be read back, a turn failed for
+    * ([[ConversationSent.read]]) rendered whole ([[SentMarkdown.render]]), with every turn's own
+    * messages ([[ConversationSent.own]]); or, when its turns cannot be read back, a turn failed for
     * why ([[GritTurn.unread]]).
     */
   private def coderTurns(config: DbConfig, clock: Clock^): CoderTurns^ = new CoderTurns {
@@ -305,7 +305,7 @@ private[main] object BenchCommands {
                 .map(e => s"the grit coder's turn's steps could not be read: ${e.kind}")
             } yield GritTurn(
               session,
-              last.requests.lastOption.fold(Vector.empty[Message])(_._3.messages),
+              task.own,
               status.status,
               task.turns
                 .map(SentMarkdown.render(_, config.endpoint.toString, Cut.Whole))

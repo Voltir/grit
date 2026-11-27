@@ -126,6 +126,23 @@ object ConsumedTests extends TestSuite {
       (w.tools, w.edits, w.failedEdits, w.suiteRuns, w.commits) ==> (10, 2, 1, 2, 1)
     }
 
+    test(
+      "every call that changes a file is an edit: grit's write as its edit, Claude Code's Write"
+    ) {
+      val t = gritTurn("SUCCESS")
+      val written = t.copy(messages =
+        t.messages ++ Vector(
+          calling("t11", "write", ujson.Obj("path" -> "c")),
+          Message.ToolResult(ToolCallId("t11"), "wrote c", isError = false)
+        )
+      )
+      val claude = Streams.at(checkout).map(_.replace("\"name\":\"Read\"", "\"name\":\"Write\""))
+      (
+        Consumed.ofTurn(gritLines, written, None).work.edits,
+        Consumed.of(claude, checkout).map(_.work.edits)
+      ) ==> (3, Right(3))
+    }
+
     test("before the first edit under the checkout: the calls made and the bytes tools returned") {
       Consumed
         .of(Streams.at(checkout), checkout)

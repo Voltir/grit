@@ -3,13 +3,24 @@ package grit.eval.harness.sent
 import java.time.Instant
 
 import grit.core.id.{ConversationId, TurnRef, TurnSeq}
+import grit.core.message.Message
 import grit.core.store.{Entry, Payload, Tx}
 import grit.dbos.internal.Reader
 
 /** A conversation's turns as their models were sent them: `turns`, each [[TurnSent]], oldest
   * first, and `entries`, every entry the conversation keeps, in order.
   */
-final case class ConversationSent(turns: Vector[TurnSent], entries: Vector[Entry])
+final case class ConversationSent(turns: Vector[TurnSent], entries: Vector[Entry]) {
+
+  /** Every turn's own messages, oldest turn first: those its last call was sent after its
+    * window's ([[grit.turn.TurnRecord.Calls.window]]), so an earlier turn a window recalls is not counted
+    * twice. A turn that made no call has none.
+    */
+  def own: Vector[Message] =
+    turns.flatMap(t =>
+      t.requests.lastOption.fold(Vector.empty[Message])(_._3.messages.drop(t.calls.window.size))
+    )
+}
 
 object ConversationSent {
 
