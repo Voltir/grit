@@ -82,18 +82,7 @@ private[tools] object RunAnswer {
   /** The flagged section over `above`, the lines from line 1 above the tail. */
   private def flagged(above: Vector[String], failed: Boolean): String = {
     val last = above.size
-    def numbered(i: Int): String = LineNumbers.show(i + 1, Vector(above(i))).mkString
-    val failing = above.indices.filter(i => Failing.findFirstIn(above(i)).nonEmpty)
-    val noted = above.indices.filter(i =>
-      Failing.findFirstIn(above(i)).isEmpty && Noted.findFirstIn(above(i)).nonEmpty
-    )
-    // Each match with the lines after it, taken whole while the budget lasts: failing ones first.
-    val (chosen, _) = (failing ++ noted).foldLeft((Set.empty[Int], 0)) { case ((in, used), i) =>
-      val fresh = (i to (i + Following).min(last - 1)).filterNot(in)
-      val cost = fresh.map(j => bytes(numbered(j)) + 1).sum
-      if (used + cost <= FlaggedBytes) (in ++ fresh, used + cost) else (in, used)
-    }
-    val unshown = (failing ++ noted).count(i => !chosen(i))
+    val (chosen, unshown) = picked(above.zipWithIndex.map((l, i) => (i + 1, l)), FlaggedBytes)
     if (chosen.isEmpty && unshown == 0)
       if (failed)
         s"None of lines 1 to $last has a usual mark of a failure (`[error]`, `FAILED`, `error:`, " +
@@ -103,11 +92,7 @@ private[tools] object RunAnswer {
       s"Of lines 1 to $last, those that look like errors, warnings or failing tests are too " +
         "long to show here; `search` the file for them."
     else {
-      val sorted = chosen.toVector.sorted
-      // `…` on its own line marks the lines left out between two shown.
-      val lines = sorted.zipWithIndex
-        .map((i, k) => (if (sorted.lift(k - 1).exists(_ != i - 1)) "…\n" else "") + numbered(i))
-        .mkString("\n")
+      val lines = listed(chosen)
       val more =
         if (unshown == 0) ""
         else
@@ -116,6 +101,71 @@ private[tools] object RunAnswer {
         s"after its line number in that file, and the $Following after each:\n$lines$more"
     }
   }
+
+  /** Of `lines`, an output's lines each after its line number in it, in order, those the
+    * flagged rule picks: each that looks like a failure ([[Failing]]), then each that looks like
+    * a warning ([[Noted]]), with those of the [[Following]] after it that are among `lines`,
+    * taken whole while `budget` bytes last, each as [[listed]] numbers it; and how many flagged
+    * lines were left out.
+    */
+  def picked(lines: Vector[(Int, String)], budget: Int): (Vector[(Int, String)], Int) = {
+    val failing = lines.indices.filter(i => Failing.findFirstIn(lines(i)._2).nonEmpty)
+    val noted = lines.indices.filter(i =>
+      Failing.findFirstIn(lines(i)._2).isEmpty && Noted.findFirstIn(lines(i)._2).nonEmpty
+    )
+    // Each match with the lines after it, taken whole while the budget lasts: failing ones first.
+    val (chosen, _) = (failing ++ noted).foldLeft((Set.empty[Int], 0)) { case ((in, used), i) =>
+      val (n, _) = lines(i)
+      val fresh = lines.indices.drop(i).takeWhile(j => lines(j)._1 <= n + Following).filterNot(in)
+      val cost = fresh.map(j => bytes(numbered(lines(j))) + 1).sum
+      if (used + cost <= budget) (in ++ fresh, used + cost) else (in, used)
+    }
+    (chosen.toVector.sorted.map(lines), (failing ++ noted).count(i => !chosen(i)))
+  }
+
+  /** `lines`, in order, each after its line number as [[LineNumbers]] numbers it, `…` on a line of
+    * its own wherever lines between two are left out.
+    */
+  def listed(lines: Vector[(Int, String)]): String =
+    lines.zipWithIndex
+      .map { case (l @ (n, _), k) =>
+        (if (lines.lift(k - 1).exists(_._1 != n - 1)) "…\n" else "") + numbered(l)
+      }
+      .mkString("\n")
+
+  /** The lines of its output an answer [[of]] wrote shows, each with its line number in that
+    * output: every line of one shown whole, else its flagged lines and its tail. `answer` starts
+    * with its heading's line. Lines `of` adds of its own are not among them, so what `of` left
+    * out ("Not shown: …") stays out.
+    */
+  def shown(answer: String): Vector[(Int, String)] = {
+    val lines = Clipped.lines(answer)
+    lines.headOption match {
+      case Some(first) if first.endsWith(":") =>
+        lines.drop(1).zipWithIndex.map((l, i) => (i + 1, l))
+      case _ =>
+        val (above, tail) = lines.drop(1).span(l => TailHead.findFirstIn(l).isEmpty)
+        val flagged = above.flatMap(l =>
+          Numbered.findFirstMatchIn(l).flatMap(m => m.group(1).toIntOption.map((_, m.group(2))))
+        )
+        val fromTail = tail.headOption
+          .flatMap(h => TailHead.findFirstMatchIn(h))
+          .flatMap(m => m.group(1).toIntOption)
+          .fold(Vector.empty[(Int, String)])(from =>
+            tail.drop(1).zipWithIndex.map((l, i) => (from + i, l))
+          )
+        flagged ++ fromTail
+    }
+  }
+
+  /** The line a long output's tail follows: "Its last line, {n}:" or "Its last lines, {a} to {b}:". */
+  private val TailHead = """^Its last lines?, (\d+)(?: to \d+)?:$""".r
+
+  /** A flagged line as [[LineNumbers]] numbers it. */
+  private val Numbered = """^\s*(\d+)\t(.*)$""".r
+
+  private def numbered(line: (Int, String)): String =
+    LineNumbers.show(line._1, Vector(line._2)).mkString
 
   private def bytes(s: String): Int = s.getBytes(UTF_8).length
 }

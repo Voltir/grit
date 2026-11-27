@@ -305,6 +305,32 @@ object AllowlistedCodingTests extends TestSuite {
       )
     }
 
+    test(
+      "a long failed run's answer, read back, is its flagged lines with the 3 after each, then those its tail flags, numbered as in its file"
+    ) {
+      val runs = Allowlisted.over(new Noting(scripts), allowlist(10.minutes))
+      val host = new CodingTests.Scripted()
+      val test = ujson.Obj("program" -> "./mill", "args" -> ujson.Arr("test"))
+      val tail = ujson.Obj("id" -> nth(1), "wait" -> 600)
+      def answer(name: String, args: ujson.Value): String =
+        settle(host, runs, name, args) match {
+          case Right((_, done: Outcome.Done)) => done.text
+          case other => throw new java.lang.AssertionError(other.toString)
+        }
+      val ran =
+        Vector(call("run", test) -> answer("run", test), call("tail", tail) -> answer("tail", tail))
+      FailedRuns.last(FailedRunsTests.turn(ran*), None) ==> Some(
+        grit.core.store.CheckoutState.Failed.of(
+          "./mill test",
+          Some(1),
+          "   100\tFAIL grit.pool.PoolTests > a lease returned is reused\n" +
+            "   101\t  assertion failed: ==> assertion failed: 1 != 2\n" +
+            "   102\tstep 102 went as it should\n   103\tstep 103 went as it should\n" +
+            "   104\tstep 104 went as it should\n…\n   401\t1 FAILED"
+        )
+      )
+    }
+
     test("stop ends a run, answering Stopped with its output until then; again, the same") {
       val runs = Allowlisted.over(new Noting(scripts), allowlist(10.minutes))
       val host = new CodingTests.Scripted()

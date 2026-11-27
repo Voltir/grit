@@ -19,6 +19,8 @@ One package, `grit.tools`:
   permits a command able to clone it.
 - `RunAnswer` — how an allowlisted `run`, `tail` and `stop` answer with a run's output: whole
   when it is short, else as its size and file, its lines that look like failures and its tail.
+- `FailedRuns` — a turn's last failed run, read back from the answers `RunAnswer` wrote, its
+  lines picked by the same rule: what a continuation's note carries (ADR 0058).
 - `Tuning` — `propose_model_setting`: a measured setting of a model, kept once a person
   approves it.
 - `Probes` — `probe_pair`: a battery of calls measuring a (model, upstream) pair.

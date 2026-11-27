@@ -580,7 +580,7 @@ object Coding {
       )
     case RunStatus.TimedOut(after, output) =>
       Outcome.Failed(
-        s"${lead}The command was killed after ${after.toSeconds} seconds. " +
+        s"$lead$KilledLead${after.toSeconds} seconds. " +
           RunAnswer.of("Its output until then", output, failed = true)
       )
     case RunStatus.Stopped(after, output) =>
@@ -623,7 +623,10 @@ object Coding {
     })
 
   /** `Exit code `: what a run's answer begins with, before its exit code. */
-  private val ExitLead: String = "Exit code "
+  private[tools] val ExitLead: String = "Exit code "
+
+  /** What the answer of a run killed at its timeout begins with, before how long it ran. */
+  private[tools] val KilledLead: String = "The command was killed after "
 
   /** `command` runs `git commit` (first, or after `;`, `&&` or `|`, with any `-C <dir>`). */
   private val Commits = """(?:^|[;&|])\s*git\s+(?:-C\s+\S+\s+)?commit\b""".r
