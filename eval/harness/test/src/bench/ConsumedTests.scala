@@ -166,6 +166,36 @@ object ConsumedTests extends TestSuite {
       ) ==> (0, 1)
     }
 
+    test(
+      "a grit turn's shell reads of Scala sources are counted, those the rule points at, those answered after the line, and those whose next call takes it"
+    ) {
+      val t = gritTurn("SUCCESS")
+      def run(program: String, args: String*) =
+        ujson.Obj("program" -> program, "args" -> ujson.Arr.from(args))
+      val line = "Answered in fewer tokens by `scout_show` for a definition by name.\n"
+      val read = t.copy(messages =
+        t.messages ++ Vector(
+          calling("t11", "run", run("cat", "a/B.scala")),
+          Message.ToolResult(ToolCallId("t11"), s"${line}Exit code 0. Output:\nobject B\n", false),
+          calling("t12", "scout_show", ujson.Obj("symbols" -> ujson.Arr("B"))),
+          Message.ToolResult(ToolCallId("t12"), "object B", isError = false),
+          calling("t13", "run", run("grep", "-rn", "is not on", "core")),
+          Message.ToolResult(ToolCallId("t13"), "Exit code 1; no output.", isError = false),
+          calling("t14", "run", run("cat", "a/C.scala")),
+          Message.ToolResult(ToolCallId("t14"), s"${line}Exit code 0. Output:\nobject C\n", false),
+          calling("t15", "read", ujson.Obj("path" -> "a/C.scala")),
+          Message.ToolResult(ToolCallId("t15"), "object C", isError = false),
+          calling("t16", "run", run("cat", "README.md")),
+          Message.ToolResult(ToolCallId("t16"), "Exit code 0. Output:\n# x\n", isError = false)
+        )
+      )
+      def counted(w: Consumed.Work) = (w.sourceReads, w.ruled, w.pointed, w.taken)
+      (
+        counted(Consumed.ofTurn(gritLines, t, None).work),
+        counted(Consumed.ofTurn(gritLines, read, None).work)
+      ) ==> ((0, 0, 0, 0), (3, 2, 2, 1))
+    }
+
     test("before the first edit under the checkout: the calls made and the bytes tools returned") {
       Consumed
         .of(Streams.at(checkout), checkout)

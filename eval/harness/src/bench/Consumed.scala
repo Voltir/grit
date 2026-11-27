@@ -4,11 +4,13 @@ import java.nio.charset.StandardCharsets
 
 import scala.util.Try
 
-import grit.core.host.Allowlisted
+import grit.core.host.{Allowlisted, Argv}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.model.{Pinned, Pricing}
 import grit.core.provider.CallLine
+import grit.kit.deployment.Offered
 import grit.models.{AnthropicJson, AnthropicRates}
+import grit.tools.SourceTools
 import grit.turn.TurnRecord
 
 /** One model call of a run, its usage priced by [[AnthropicRates]], or when `reported` (a grit
@@ -171,7 +173,9 @@ object Consumed {
   /** Counts of a transcript's tool calls, as [[Tried.work]] names them: every call, its edits,
     * those of them whose result was an error, its suite runs, its commits, and its runs the
     * machine guard refused, by its lead ([[Allowlisted.GuardLead]]; none for a harness without
-    * one).
+    * one); its shell reads of Scala sources ([[Offered.ReferenceSources]]), those of them the
+    * rule points at (what a run with no classifier gives the line to), those answered after the
+    * line ([[SourceTools.Lead]]), and those whose next call names a tool the line names.
     */
   final case class Work private (
       tools: Int,
@@ -179,20 +183,38 @@ object Consumed {
       failedEdits: Int,
       suiteRuns: Int,
       commits: Int,
-      guarded: Int
+      guarded: Int,
+      sourceReads: Int,
+      ruled: Int,
+      pointed: Int,
+      taken: Int
   ) extends caps.Pure
 
   object Work {
 
     /** One tool call: whether it is an edit, whether its result was an error, the command line
-      * it ran when it is a shell run, and whether the machine guard refused it.
+      * it ran when it is a shell run, whether the machine guard refused it, and how it stands
+      * to the line naming what reads Scala sources.
       */
     final case class Used(
         edit: Boolean,
         failed: Boolean,
         command: Option[String],
-        guarded: Boolean = false
+        guarded: Boolean = false,
+        source: Source = Source.None
     ) extends caps.Pure
+
+    /** How a tool call stands to the line naming what reads Scala sources. */
+    enum Source extends caps.Pure {
+
+      /** It was no shell read of Scala sources. */
+      case None
+
+      /** It was one: whether the rule points at it, whether its answer began with the line, and
+        * whether the next call named a tool the line names.
+        */
+      case Read(ruled: Boolean, pointed: Boolean, taken: Boolean)
+    }
 
     /** The counts of `used`: a suite run is a command running `scripts/check` with an argument
       * not starting with `-` before the first shell separator or redirect (a suite or module
@@ -201,13 +223,18 @@ object Consumed {
       */
     def of(used: Vector[Used]): Work = {
       val commands = used.flatMap(_.command)
+      val reads = used.collect { case Used(_, _, _, _, r: Source.Read) => r }
       Work(
         used.size,
         used.count(_.edit),
         used.count(u => u.edit && u.failed),
         commands.count(suiteRun),
         commands.count(_.contains("git commit")),
-        used.count(_.guarded)
+        used.count(_.guarded),
+        reads.size,
+        reads.count(_.ruled),
+        reads.count(_.pointed),
+        reads.count(_.taken)
       )
     }
 
@@ -279,6 +306,7 @@ object Consumed {
     }
     val before = if (firstEdit < 0) None else Some(turn.messages.take(firstEdit))
     val failed = turn.messages.collect { case Message.ToolResult(id, _, true) => id }.toSet
+    val results = turn.messages.collect { case Message.ToolResult(id, text, _) => id -> text }.toMap
     val guarded = turn.messages.collect {
       case Message.ToolResult(id, text, true) if text.startsWith(Allowlisted.GuardLead) => id
     }.toSet
@@ -312,16 +340,30 @@ object Consumed {
         )
       ),
       None,
-      Work.of(toolCalls.map { c =>
+      Work.of(toolCalls.zipWithIndex.map { (c, i) =>
         def field(k: String) = c.arguments.objOpt.flatMap(_.get(k)).toVector
+        val program = field("program").flatMap(_.strOpt)
+        val args = field("args").flatMap(_.arrOpt).flatten.flatMap(_.strOpt)
+        val argv =
+          program.headOption.flatMap(p => Argv.of(p, args*).toOption).filter(_ => c.name == "run")
+        val source = argv
+          .flatMap(a => Offered.ReferenceSources.read(a).map(r => (a, r)))
+          .fold(Work.Source.None) { (a, r) =>
+            val answer = results.getOrElse(c.id, "")
+            val pointed = answer.startsWith(SourceTools.Lead)
+            val line = answer.linesIterator.nextOption().getOrElse("")
+            Work.Source.Read(
+              Offered.ReferenceSources.ruled(a, r),
+              pointed,
+              pointed && toolCalls.lift(i + 1).exists(n => line.contains(s"`${n.name}`"))
+            )
+          }
         Work.Used(
           GritEdits(c.name),
           failed(c.id),
-          Option.when(c.name == "run")(
-            (field("program").flatMap(_.strOpt) ++
-              field("args").flatMap(_.arrOpt).flatten.flatMap(_.strOpt)).mkString(" ")
-          ),
-          guarded(c.id)
+          Option.when(c.name == "run")((program ++ args).mkString(" ")),
+          guarded(c.id),
+          source
         )
       })
     )

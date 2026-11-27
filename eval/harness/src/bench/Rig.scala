@@ -327,7 +327,9 @@ object Tried {
       else (BigDecimal(work.tools) / calls).setScale(1, BigDecimal.RoundingMode.HALF_UP).toString
     s"work: ${work.tools} tool calls in $calls model calls ($each a call); edits: " +
       s"${work.edits}, ${work.failedEdits} failed; suite runs: ${work.suiteRuns}; " +
-      s"commits: ${work.commits}; refused by the machine guard: ${work.guarded}"
+      s"commits: ${work.commits}; refused by the machine guard: ${work.guarded}; shell reads " +
+      s"scout answers: ${work.sourceReads} (the rule points at ${work.ruled}); pointed to scout: " +
+      s"${work.pointed}, ${work.taken} taken"
   }
 
   /** What a grit coder set by `settings` ran under, as `ran` recorded it, as a person reads it:
