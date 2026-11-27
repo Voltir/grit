@@ -36,6 +36,24 @@ object Checks {
   /** 30 minutes: the longest a check runs. */
   val Longest: FiniteDuration = 30.minutes
 
+  /** The tools the checks read that a checkout's history does not hold, fetched into the
+    * checkout at `dir` by its own script: shellcheck (`bash scripts/fetch-shellcheck.sh`, into
+    * `tools/`), when the checkout holds that script, and nothing otherwise. `Left` naming the
+    * fetch when it fails.
+    */
+  def tooled(work: Processes)(dir: RelPath): Either[String, Unit] =
+    Clone
+      .ran(
+        work,
+        dir,
+        "sh",
+        "-c",
+        "[ ! -e scripts/fetch-shellcheck.sh ] || bash scripts/fetch-shellcheck.sh"
+      )
+      .left
+      .map(why => s"shellcheck could not be fetched into the checkout: $why")
+      .map(_ => ())
+
   /** `checks`, then the law (`bash scripts/fetch-enola.sh`, then `bash scripts/enola-law.sh`),
     * run in `dir` in order, each with `variables` added to its environment; every one runs
     * whatever an earlier gave. `watch` is asked while each runs, as [[Watched.ran]] asks it: a

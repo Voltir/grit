@@ -176,6 +176,7 @@ object RigTests extends TestSuite {
            |env | sort > $root/genv
            |for a in "$$@"; do brief="$$a"; done
            |cat "$$brief" > $root/gbrief
+           |[ -e $root/shellcheck-fetched ] && touch $root/gsaw-shellcheck
            |printf '%s\\n' 'object A { val x = 1 }' > a.scala
            |$print
            |printf 'a log line\\n' >&2
@@ -225,6 +226,11 @@ object RigTests extends TestSuite {
         )
         Files.setPosixFilePermissions(script, PosixFilePermissions.fromString("rwxr-xr-x"))
       }
+      // A stand-in shellcheck fetch, which marks the root once it has run.
+      val _ = Files.writeString(
+        origin.resolve("scripts/fetch-shellcheck.sh"),
+        s"#!/usr/bin/env bash\ntouch $root/shellcheck-fetched\n"
+      )
       // A stand-in Mill: records its arguments, and fails once `mill-fails` exists in the root;
       // once `mill-heavy` does, it first marks the root `heavy` and waits.
       val mill = Files.writeString(
@@ -929,6 +935,18 @@ object RigTests extends TestSuite {
         gritTrial(g, GritFake(gritLines)).map(_ =>
           Option.when(f.exists("mill-argv"))(f.recorded("mill-argv").linesIterator.toVector)
         ) ==> Right(Some(Vector("--ticker", "false", "m.__.compile", "+", "n.it.__.compile")))
+      }
+    }
+
+    test(
+      "a checkout whose base fetches shellcheck fetches it before the coder starts, and before a known run's checks"
+    ) {
+      withTask { f =>
+        val coder = gritTrial(f, GritFake(gritLines)).map(_ => f.exists("gsaw-shellcheck"))
+        Files.deleteIfExists(f.root.resolve("shellcheck-fetched"))
+        val known =
+          Rig.known(f.work)(f.origin, f.task, checkout).map(_ => f.exists("shellcheck-fetched"))
+        (coder, known) ==> (Right(true), Right(true))
       }
     }
 

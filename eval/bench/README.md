@@ -7,7 +7,10 @@ Each directory under `tasks/` is one past change, frozen for the coder bench
   order, applied by `Clone.picked` for the known diff; `checks`, each a runner (`check` for
   `scripts/check`, `it` for `scripts/it`) and its arguments. The law is every task's check, run
   after these. A check names the module holding the suites the commits named, not the suite: a
-  suite new in the known diff would fail a coder who named its tests otherwise.
+  suite new in the known diff would fail a coder who named its tests otherwise. A checkout whose
+  base holds `scripts/fetch-shellcheck.sh` runs it before the coder starts (and before a known
+  run's checks), so `tools/shellcheck`, which no history holds, is there for its suite runs and
+  the checks alike.
 - `brief.md`: what the change's coder was given. A checkpoint's brief is its text as the store held
   it just before the first commit, with every artifact it cites appended, as of that time, under
   `## Cited:`. Text written after the first commit is left out, so the brief tells no more than its
