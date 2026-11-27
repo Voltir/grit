@@ -147,6 +147,12 @@
 #       eval/bench/rubric.md. The key, each letter's label, is <dir>/hidden/key.json: show the
 #       reviewer the files beside hidden/, never it. Prints each file's path. No model call.
 #
+#   scripts/eval machine-guard
+#       Asks Jev each state extensions/tools/test/resources/machine-guard/pending.json lists, with
+#       the machine guard's questions, adds its answers to answers.json beside it for
+#       MachineGuardCorpusTests to replay, and empties pending.json. Calls Jev (JEV_API_KEY), one
+#       request a state, about 300 input tokens each; run by hand, never by a test.
+#
 # Its data is the main checkout's .local/eval/, whichever checkout runs it. It never writes
 # to the database it reads a turn from.
 set -euo pipefail
@@ -317,8 +323,15 @@ blind() {
   harness blind "${args[@]}" --tasks "$here/eval/bench/tasks" --rubric "$here/eval/bench/rubric.md"
 }
 
+machine_guard() {
+  [ $# -eq 0 ] || usage
+  local at="$here/extensions/tools/test/resources/machine-guard"
+  harness machine-guard --pending "$at/pending.json" --answers "$at/answers.json"
+}
+
 case $1 in
   context) shift; context "$@" ;;
+  machine-guard) shift; machine_guard "$@" ;;
   bench) shift; bench "$@" ;;
   propose) shift; propose "$@" ;;
   blind) shift; blind "$@" ;;
