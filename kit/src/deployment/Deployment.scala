@@ -92,26 +92,34 @@ object Offered {
 
   /** The reference deployment's allowlist: `git status`, `git diff`, `git log`, `git show`,
     * `git add` and `git commit`, `./mill` and `scripts/check`, each with any further arguments,
-    * for at most [[ReferenceLongest]]. A listed build runs the checkout's code (ADR 0055).
+    * for at most [[ReferenceLongest]]. A listed build runs the checkout's code (ADR 0055); the
+    * two builds are cleared, unasked, by the machine guard (ADR 0069).
     */
   val ReferenceAllowlist: Allowlist = {
     def leading(program: String, args: String*): Either[String, Allowlist.Rule] =
       Argv.of(program, args*).map(Allowlist.Rule.Leading(_))
-    val rules = Vector(
+    val reads = Vector(
       leading("git", "status"),
       leading("git", "diff"),
       leading("git", "log"),
       leading("git", "show"),
       leading("git", "add"),
-      leading("git", "commit"),
+      leading("git", "commit")
+    )
+    val builds = Vector(
       leading("./mill"),
       // Bare, it is the whole gate, lint's second build included: more than a coder's check.
       Argv
         .of("scripts/check")
         .map(Allowlist.Rule.Following(_, "the suites or modules to check"))
     )
-    // Every argv above is a non-empty program without a NUL, and ReferenceLongest is in bounds.
-    Proven.right(sequence(rules).flatMap(Allowlist.of(_, ReferenceLongest)))
+    // Every argv above is a non-empty program without a NUL, ReferenceLongest is in bounds,
+    // and the builds cleared are among the rules.
+    Proven.right(for {
+      r <- sequence(reads)
+      b <- sequence(builds)
+      list <- Allowlist.of(r ++ b, ReferenceLongest, b)
+    } yield list)
   }
 }
 

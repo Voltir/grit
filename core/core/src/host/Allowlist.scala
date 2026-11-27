@@ -7,8 +7,11 @@ import scala.concurrent.duration.FiniteDuration
   * the checkout's code, with the network, and a file `write` changes may be what a listed command
   * runs next (ADR 0055).
   */
-final case class Allowlist private (rules: Vector[Allowlist.Rule], longest: FiniteDuration)
-    extends caps.Pure {
+final case class Allowlist private (
+    rules: Vector[Allowlist.Rule],
+    longest: FiniteDuration,
+    cleared: Vector[Allowlist.Rule]
+) extends caps.Pure {
 
   /** Whether a rule lets `argv` run. */
   def permits(argv: Argv): Boolean = rules.exists(_.permits(argv))
@@ -65,18 +68,29 @@ object Allowlist {
     }
   }
 
-  /** `rules`, each command they permit run for at most `longest`, or why not, refused at the
-    * deployment's start: no rules, or `longest` under a second or over [[Runs.Longest]].
+  /** `rules`, each command they permit run for at most `longest`, `cleared` among them, or why
+    * not, refused at the deployment's start: no rules, `longest` under a second or over
+    * [[Runs.Longest]], or a cleared rule that is not one of `rules`. A cleared rule's commands
+    * are started without asking the machine guard's classifier when every argument leads inside
+    * the checkout: a build's, whose effects its words do not show (ADR 0069).
     */
-  def of(rules: Vector[Rule], longest: FiniteDuration): Either[String, Allowlist] =
+  def of(
+      rules: Vector[Rule],
+      longest: FiniteDuration,
+      cleared: Vector[Rule] = Vector.empty
+  ): Either[String, Allowlist] =
     if (rules.isEmpty) Left("an allowlist names no command")
+    else if (!cleared.forall(rules.contains))
+      Left(
+        s"an allowlist clears only rules it lists, not ${cleared.filterNot(rules.contains).map(_.written).mkString(", ")}"
+      )
     else if (
       longest < FiniteDuration(1, java.util.concurrent.TimeUnit.SECONDS) || longest > Runs.Longest
     )
       Left(
         s"an allowlist's longest run must be at least a second and at most ${Runs.Longest}, not $longest"
       )
-    else Right(new Allowlist(rules, longest))
+    else Right(new Allowlist(rules, longest, cleared))
 }
 
 /** Running at the checkout's root only what one [[Allowlist]] permits: the narrowed view of

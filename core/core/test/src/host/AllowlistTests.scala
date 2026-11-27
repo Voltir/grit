@@ -81,6 +81,16 @@ object AllowlistTests extends TestSuite {
       )
     }
 
+    test("of clears only rules it lists, naming one it does not") {
+      (
+        Allowlist.of(Vector(gitStatus, gitDiff), 1.minute, Vector(gitDiff)).map(_.cleared),
+        Allowlist.of(Vector(gitStatus), 1.minute, Vector(gitStatus, gitDiff))
+      ) ==> (
+        Right(Vector(gitDiff)),
+        Left(s"an allowlist clears only rules it lists, not ${gitDiff.written}")
+      )
+    }
+
     test(
       "an unlisted command is refused and never reaches the runs; a listed one starts there"
     ) {
