@@ -18,10 +18,6 @@ private[tools] object RunAnswer {
     */
   val WholeBytes: Int = 8 * 1024
 
-  /** 40 lines within 4 KB: the most of a long output's end shown. */
-  val TailLines = 40
-  val TailBytes: Int = 4 * 1024
-
   /** 3 KB: the most of the flagged lines above the tail shown, numbered, with the [[Following]]
     * lines after each; [[Failing]]'s first, then [[Noted]]'s in what is left. The rest are
     * counted.
@@ -67,9 +63,9 @@ private[tools] object RunAnswer {
       val kept = shown.reverseIterator
         .scanLeft(0)((used, l) => used + bytes(l) + 1)
         .drop(1)
-        .takeWhile(_ <= TailBytes + 1)
+        .takeWhile(_ <= Clipped.TailBytes + 1)
         .size
-        .min(TailLines)
+        .min(Clipped.TailLines)
         .max(1)
       val from = total - kept + 1
       val tail =

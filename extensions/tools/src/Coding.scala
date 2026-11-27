@@ -415,7 +415,7 @@ object Coding {
           "A non-zero exit is returned, not an error. An output over " +
           s"${RunAnswer.WholeBytes / 1024} KB is answered with its size, its lines that look " +
           "like errors, warnings or failing tests, each after its line number, and up to its " +
-          s"last ${RunAnswer.TailLines} lines. All of it is in a file in the checkout the answer " +
+          s"last ${Clipped.TailLines} lines. All of it is in a file in the checkout the answer " +
           s"names, for `read` and `search`, kept until ${Runs.MostEnded} newer commands have " +
           "ended. Give `git commit` its message with `-m`: no editor can open. Waits up " +
           s"to `wait` seconds (${Runs.Wait.toSeconds} when not given): a command still running " +

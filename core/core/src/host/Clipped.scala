@@ -20,6 +20,46 @@ object Clipped {
   /** The most bytes of UTF-8 a clipped text keeps, newlines counted. */
   val MaxBytes: Int = 50 * 1024
 
+  /** 40 lines within 4 KB: the most of a long text's end shown, by [[ends]] and by a run's
+    * answer.
+    */
+  val TailLines = 40
+  val TailBytes: Int = 4 * 1024
+
+  /** `text` as its first lines and its last when it does not [[fits]] whole: a head within
+    * [[MaxLines]] less [[TailLines]] lines and [[MaxBytes]] less [[TailBytes]] bytes, then a
+    * tail within [[TailLines]] lines and [[TailBytes]] bytes, and what lies between; a first or
+    * last line alone over its end's share is cut at a character. `None` when it fits.
+    */
+  def ends(text: String): Option[Ends] =
+    Option.when(!fits(text)) {
+      val all = lines(text)
+      val n = all.size
+      // Where each line starts in `text`, as `String` indexes it.
+      val starts = all.scanLeft(0)((at, l) => at + l.length + 1)
+      val headed = fitting(all, MaxBytes - TailBytes, MaxLines - TailLines)
+      // A text that does not fit has more past a whole-line head than the tail holds, so the
+      // line after the head is never in it; past a cut first line, all the rest may be.
+      val rest = all.drop(headed.max(1))
+      val tailed =
+        fitting(rest.reverse, TailBytes, TailLines).min(rest.size - (if (headed > 0) 1 else 0))
+      val (head, from) =
+        if (headed > 0) (all.take(headed).mkString("\n"), starts(headed))
+        else {
+          val start = prefix(all.headOption.getOrElse(""), MaxBytes - TailBytes)
+          (start, start.length)
+        }
+      val (tail, to) =
+        if (tailed > 0) (all.takeRight(tailed).mkString("\n"), starts(n - tailed) - 1)
+        else {
+          val last = all.lastOption.getOrElse("")
+          val end = endBytes(last, TailBytes)
+          (end, starts(n - 1) + last.length - end.length)
+        }
+      val whole = Option.when(headed > 0 && tailed > 0)(Ends.Lines(headed + 1, n - tailed, n))
+      Ends(head, Ends.Span(from, bytes(text.substring(from, to)), text.length, whole), tail)
+    }
+
   /** `text` whole when it fits in [[MaxLines]] lines and `bytes` bytes ([[MaxBytes]] by
     * default), else its first whole lines that do: none when its first line alone is over
     * `bytes`. `hint` is told what was kept, `None` when nothing was cut, and gives the hint.
@@ -97,15 +137,7 @@ object Clipped {
     if (all.size <= maxLines && bytes(text) <= max) Clipped(text, hint(None))
     else {
       val ordered = if (fromEnd) all.reverse else all
-      // The most lines, from the kept end, whose bytes and joining newlines fit.
-      var used = 0
-      var n = 0
-      var fits = true
-      while (fits && n < ordered.size && n < maxLines) {
-        val size = bytes(ordered(n)) + (if (n > 0) 1 else 0)
-        if (used + size <= max) { used += size; n += 1 }
-        else fits = false
-      }
+      val n = fitting(ordered, max, maxLines)
       val kept = ordered.take(n)
       if (n == 0 && fromEnd) {
         val last = all.lastOption.getOrElse("")
@@ -116,6 +148,21 @@ object Clipped {
         Clipped(shown, hint(Some(Kept(n, all.size, partial = false))))
       }
     }
+  }
+
+  /** How many of `ordered`'s first lines, at most `maxLines`, fit in `max` bytes with the
+    * newlines joining them.
+    */
+  private def fitting(ordered: Vector[String], max: Int, maxLines: Int): Int = {
+    var used = 0
+    var n = 0
+    var fits = true
+    while (fits && n < ordered.size && n < maxLines) {
+      val size = bytes(ordered(n)) + (if (n > 0) 1 else 0)
+      if (used + size <= max) { used += size; n += 1 }
+      else fits = false
+    }
+    n
   }
 
   /** The start of `s` in at most `max` bytes of UTF-8, ending on a character. */
@@ -139,3 +186,20 @@ object Clipped {
   * `partial` when the one line kept is only the end of the text's last line.
   */
 final case class Kept(lines: Int, total: Int, partial: Boolean)
+
+/** What [[Clipped.ends]] kept of a long text: its `head` and its `tail`, and the `span` left out
+  * between them.
+  */
+final case class Ends private[host] (head: String, span: Ends.Span, tail: String)
+
+object Ends {
+
+  /** What [[Clipped.ends]] left out of a text of `chars` characters: `bytes` of UTF-8 from
+    * character `offset`, characters counted as `String` indexes the text; `lines` when it is
+    * whole lines.
+    */
+  final case class Span private[host] (offset: Int, bytes: Int, chars: Int, lines: Option[Lines])
+
+  /** Lines `from` to `to`, counted from 1, of the text's `total`. */
+  final case class Lines private[host] (from: Int, to: Int, total: Int)
+}

@@ -101,6 +101,25 @@ object HostTests extends TestSuite {
         tail.text ==> (501 to 2500).map(i => s"l$i").mkString("\n")
         tail.hint ==> Some("2000/2500")
       }
+      test("a long text's ends are its first and last lines, the lines between them counted") {
+        def run(from: Int, to: Int) = (from to to).map(i => s"l$i").mkString("\n")
+        Clipped.ends(run(1, 2000)) ==> None
+        // Lines l1..l1960 are 8693 characters and 1960 newlines; l1961..l2960 are five each.
+        Clipped.ends(run(1, 3000)) ==> Some(
+          Ends(
+            run(1, 1960),
+            Ends.Span(10653, 5999, 16892, Some(Ends.Lines(1961, 2960, 3000))),
+            run(2961, 3000)
+          )
+        )
+      }
+      test("a line too long for either end is cut at a character, its offset a String index") {
+        // Each face is 4 bytes of UTF-8 and 2 of a String's characters.
+        val face = "😀"
+        Clipped.ends(face * 20000) ==> Some(
+          Ends(face * 11776, Ends.Span(23552, 28800, 40000, None), face * 1024)
+        )
+      }
       test("bytes cut before lines do, counting UTF-8 and newlines") {
         val line = "é" * 1000 // 2000 bytes
         val text = Vector.fill(30)(line).mkString("\n")
