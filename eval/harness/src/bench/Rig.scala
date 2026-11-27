@@ -539,7 +539,8 @@ object Rig {
     * stopped, or that ended in error,
     * is a trial not passed; a run that writes nothing for `quiet` is stopped and its trial kept
     * the same way; one that wrote no session is a `Left`, as is a `cap` whose pair is not at the
-    * Anthropic API, before anything runs. `output`, the run's log, is begun
+    * Anthropic API, before anything runs. A run that changed no source line of the task's base
+    * is a trial not passed, whatever its checks say. `output`, the run's log, is begun
     * afresh; whatever happens, what the coder left in the checkout ([[Clone.left]]) is added to
     * it, and then the checkout is removed.
     */
@@ -952,7 +953,8 @@ object Rig {
   /** A coder's run, as `coded` makes it in the checkout whose absolute path it is given, on
     * `task` under `cap` by `arm` in a new checkout at `dir` of `repository`; then the task's
     * checks run there, `watch` asked as [[Checks.run]] says, and its diff measured against the
-    * known diff. Tidied as [[trial]] says.
+    * known diff. It passes only when its checks pass, its run ended in no error and it changed
+    * a source line ([[DiffLines]]). Tidied as [[trial]] says.
     */
   private def tried(work: Processes)(
       repository: String,
@@ -994,7 +996,9 @@ object Rig {
               c.wall,
               c.consumed.readBeforeEdit,
               c.consumed.callsBeforeEdit,
-              passed = checked.passed && c.consumed.ended.exists(!_.error),
+              // A tree left at its base passes no task, though the task's checks are green there.
+              passed = checked.passed && c.consumed.ended.exists(!_.error) &&
+                changed.lines.nonEmpty,
               distance = Option.when(changed.lines.nonEmpty)(DiffLines.distance(changed, known)),
               standing = Standing.ofArm(arm).map(_.sha256)
             )

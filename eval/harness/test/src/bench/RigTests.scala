@@ -420,6 +420,19 @@ object RigTests extends TestSuite {
       }
     }
 
+    test(
+      "a run that leaves no diff from the task's base is kept not passed, though it succeeded and its checks pass"
+    ) {
+      withTask { f =>
+        val succeeded = Streams.run.map(
+          _.replace("\"error_max_turns\",\"is_error\":true", "\"success\",\"is_error\":false")
+        )
+        trial(f, Fake("object A", succeeded)).map(t =>
+          (t.checked.passed, t.consumed.ended.exists(!_.error), t.trial.passed, t.trial.distance)
+        ) ==> Right((true, true, false, None))
+      }
+    }
+
     test("claude reads the key through its apiKeyHelper, from a file only its user can read") {
       withTask { f =>
         val _ = trial(f, Fake("object A { val x = 1 }"))
