@@ -2,7 +2,7 @@ package grit.core.classify
 
 import grit.core.place.Service
 import grit.core.route.{Routed, Uncleared}
-import grit.core.visibility.{Label, Party}
+import grit.core.visibility.{Label, Party, Visibility}
 
 /** The deployment's classifier behind its clearance check (ADR 0031): its states go to one
   * service, cleared like any party, as the deployment's visibility declares. A capability
@@ -21,6 +21,13 @@ sealed trait ClearedClassifier extends caps.SharedCapability {
     * cleared for `routed`, and then nothing may be sent to it.
     */
   def at(routed: Routed): Either[Uncleared, Classifier^]
+
+  /** The classifier to ask at a site that knows no classification of what it sends, as an edge
+    * judging a tool call: `Left`, naming the first label its service is not cleared for, unless
+    * it is cleared for every label `visibility` declares ([[Visibility.labels]]); then nothing
+    * may be sent to it.
+    */
+  def everywhere(visibility: Visibility): Either[Uncleared, Classifier^]
 
   /** [[at]]'s classifier; when that is `Left`, one that answers every call `Unavailable` at
     * once, naming its service and the classification, and sends nothing: what a site whose
@@ -49,6 +56,10 @@ object ClearedClassifier {
     def at(routed: Routed): Either[Uncleared, Classifier^] =
       if (routed.clears(Party.Service(service))) Right(classifier)
       else Left(Uncleared(routed.classification.label))
+    def everywhere(visibility: Visibility): Either[Uncleared, Classifier^] = {
+      val clearance = visibility.clearances.of(Party.Service(service))
+      visibility.labels.find(!clearance.dominates(_)).map(Uncleared(_)).toLeft(classifier)
+    }
     protected def unavailable(uncleared: Uncleared): Classifier =
       Classifier.none(
         s"its service, ${service.place.written}, is not cleared for what was read, " +
@@ -59,6 +70,8 @@ object ClearedClassifier {
   private final class None(why: String) extends ClearedClassifier {
     def upstream: Option[String] = scala.None
     def at(routed: Routed): Either[Uncleared, Classifier^] = Right(Classifier.none(why))
+    def everywhere(visibility: Visibility): Either[Uncleared, Classifier^] =
+      Right(Classifier.none(why))
     protected def unavailable(uncleared: Uncleared): Classifier = Classifier.none(why)
   }
 }

@@ -29,6 +29,18 @@ final case class Visibility private (
   def invites(room: Place): Boolean =
     invited.exists(p => room != p && room.within(p))
 
+  /** Every label what grit keeps may be classified at, as declared: each room's ([[RoomLabels]]:
+    * those declared at places, the default's and open rooms'; for another labeller, restricted
+    * in every compartment it requires) and each grant's.
+    */
+  def labels: Vector[Label] = {
+    val ofRooms: Vector[Label] = rooms match {
+      case r: RoomLabels => r.declared.map(_._2) :+ r.otherwise.label :+ r.open.label
+      case other => Vector(Label.at(Level.Restricted, other.requires*))
+    }
+    ofRooms ++ grants.map(_.label)
+  }
+
   /** The cap on what is said at `place` ([[Cap]]): the declared one at the deepest place `place`
     * is or lies within; `None` when no declared cap covers it.
     */

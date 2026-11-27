@@ -62,6 +62,45 @@ object ClearedClassifierTests extends TestSuite {
     Routed.of(using TestTx.fake(Clearance.of(floor), visibility))
 
   val tests = Tests {
+    test(
+      "asked where no classification is known, a classifier is cleared only when its service is for every declared label, else Uncleared at the first it is not"
+    ) {
+      def at(jevCleared: Label): Visibility = {
+        val rooms = RoomLabels
+          .of(
+            Vector(
+              grit.core.place.Place
+                .read("slack:acme")
+                .fold(e => throw new java.lang.AssertionError(e), identity) -> internal
+            ),
+            Labelled.Mapped(Label.Public)
+          )
+          .fold(p => throw new java.lang.AssertionError(p.toString), identity)
+        Visibility
+          .of(
+            Compartments
+              .of(Vector.empty)
+              .fold(c => throw new java.lang.AssertionError(c.toString), identity),
+            rooms,
+            Vector.empty,
+            Vector.empty,
+            Vector(Cleared(Party.Service(jev), jevCleared))
+          )
+          .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+      }
+      val inner = new Counting
+      val cleared = ClearedClassifier.of(jev, inner)
+      def model(v: Visibility) = cleared.everywhere(v) match {
+        case Right(c) => Right(c.ask(Note("x"), urgent).map(_.model))
+        case Left(u) => Left(u)
+      }
+      (model(at(internal)), model(at(Label.Public)), model(visibility)) ==> (
+        Right(Right("jev")),
+        Left(grit.core.route.Uncleared(internal)),
+        Left(grit.core.route.Uncleared(Label.at(Level.Restricted)))
+      )
+    }
+
     test("a classifier whose service is cleared for what was read is asked") {
       val inner = new Counting
       val cleared = ClearedClassifier.of(jev, inner)
