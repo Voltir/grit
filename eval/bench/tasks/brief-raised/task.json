@@ -11,5 +11,10 @@
     {"runner": "check", "args": ["grit.projects"]},
     {"runner": "it", "args": ["grit.dbos.it.testOnly", "grit.dbos.engine.SqlDocumentsTests"]},
     {"runner": "it", "args": ["grit.app.it.testOnly", "grit.app.main.ProjectsLiveTests"]}
-  ]
+  ],
+  "held": {
+    "files": ["extensions/projects/test/src/plugin/HeldBriefRaisedTests.scala"],
+    "checks": [{"runner": "check", "args": ["grit.projects.plugin.HeldBriefRaisedTests"]}]
+  },
+  "complete": {"commits": 3, "exists": [], "absent": [], "holds": []}
 }
