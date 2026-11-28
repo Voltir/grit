@@ -19,7 +19,7 @@ import grit.core.secret.{Secret, Variable}
 import grit.dbos.internal.TrialRows
 import grit.dbos.sql.DbConfig
 import grit.kit.environment.DotEnv
-import grit.models.{AnthropicProvider, AnthropicRates, ModelRole, OpenRouterConfig}
+import grit.models.{AnthropicProvider, AnthropicRates, JevConfig, ModelRole, OpenRouterConfig}
 import grit.turn.TurnRecord
 
 /** What one run may spend: its pair, a Claude model at the Anthropic API or an OpenRouter model
@@ -596,6 +596,16 @@ object Rig {
         }
       }
 
+  /** The key [[gritTrial]] hands grit for its machine guard's classifier, `JEV_API_KEY` in `env`.
+    * `Left` when it is unset or blank: grit's guard would have no classifier and refuse every
+    * command it would ask about, so the trial would not measure the coder.
+    */
+  def guardKey(env: Map[String, String]): Either[String, Secret] =
+    Secret.read(env, JevConfig.KeyVar).left.map(r => s"${r.message}: $GuardUnkeyed")
+
+  private val GuardUnkeyed =
+    "grit's machine guard would have no classifier, and would refuse every command it asks about"
+
   /** The grit coder, as `arm` runs `grit work` under `cap`, on `task` in a new checkout at `dir`
     * of the repository at `repository`, as [[trial]] runs Claude Code's: the checks run after it,
     * the diff measured, the checkout tidied, and a quiet run stopped. Before grit starts, the
@@ -606,7 +616,8 @@ object Rig {
     * grit starts from an empty environment, but for `arm`'s passed variables and those that
     * point it at its database, `cap`'s pair in every role it sets ([[Caps.pair]]), its
     * allowlisted tools and scout, `cap`'s turns as its rounds, the linear assembler, `arm`'s
-    * settings ([[Arm.Settings]]), and `key` as [[Caps.key]] names it, read from its file. A run whose calls reach `cap`'s budget is
+    * settings ([[Arm.Settings]]), `key` as [[Caps.key]] names it, and `jev` ([[guardKey]]) as its
+    * own variable names it, each read from its file. A run whose calls reach `cap`'s budget is
     * stopped, a trial not passed, as is one whose processes, all those working in the checkout
     * ([[Memory.held]]), hold more than `memoryCap` allows or leave the machine under its floor
     * ([[MemoryCap.stops]]), or one whose turn did not succeed; that budget holds for the compile
@@ -633,6 +644,7 @@ object Rig {
       cap: Caps,
       memoryCap: MemoryCap,
       key: Secret,
+      jev: Secret,
       dir: RelPath,
       quiet: FiniteDuration,
       output: Path
@@ -658,12 +670,18 @@ object Rig {
             )
           _ <- warmed(work)(task, arm, cap, dir, output, holding(memory, dir, memoryCap))
           streamed <- briefed(arm, task) { brief =>
+            val keys = Vector(key, jev)
             handing
-              .started(dir, key, none) { file =>
+              .startedAll(dir, keys, none) { files =>
                 Watched.limited(
                   Longest,
-                  gritEnvironment(arm, cap) ++
-                    Vector("sh", "-c", handed(cap.key), "sh", file, arm.launcher, "work", brief)*
+                  gritEnvironment(arm, cap) ++ Vector(
+                    "sh",
+                    "-c",
+                    handed(Vector(cap.key, jev.variable)),
+                    "sh"
+                  ) ++
+                    files ++ Vector(arm.launcher, "work", brief)*
                 )
               }(s =>
                 timed(clock)(
@@ -928,13 +946,16 @@ object Rig {
       ) ++
       s.replay.map(r => OpenRouterConfig.ReplayVar -> CatalogJson.replay(r))
 
-  /** The script `sh -c` runs to start grit with its key: the key read from the file its first
-    * argument names into `key`, then the rest of its arguments run in its place, so the key is in
-    * no program's arguments.
+  /** The script `sh -c` runs to start grit with its keys: each of `keys` read from the file its
+    * argument in the same place names, then the rest of its arguments run in its place, so no key
+    * is in a program's arguments.
     */
-  private def handed(key: Variable): String = {
-    val k = Variable.value(key)
-    s"""$k="$$(cat "$$1")"; export $k; shift; exec "$$@""""
+  private def handed(keys: Vector[Variable]): String = {
+    val read = keys.zipWithIndex.map { (key, i) =>
+      val k = Variable.value(key)
+      s"""$k="$$(cat "$$${i + 1}")"; export $k; """
+    }
+    s"""${read.mkString}shift ${keys.size}; exec "$$@""""
   }
 
   /** `use` of the absolute path of a file holding the grit coder's brief for `task`: `arm`'s

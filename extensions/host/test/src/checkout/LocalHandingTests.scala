@@ -74,6 +74,26 @@ object LocalHandingTests extends TestSuite {
       }
     }
 
+    test("several handed secrets each reach the program in a file of their own, in their order") {
+      inRoot { dir =>
+        val other = TestSecrets.of(Variable("JEV_API_KEY"), "other-handed")
+        val seen =
+          new LocalHanding(dir, sys.env, noSecrets)
+            .startedAll(RelPath.Root, Vector(key, other), variables())(paths =>
+              Argv.of(
+                "sh",
+                Vector(
+                  "-c",
+                  "cat \"$1\"; echo; cat \"$2\"; echo; stat -c %a \"$1\" \"$2\"",
+                  "sh"
+                ) ++
+                  paths*
+              )
+            )(lines)
+        seen ==> Right(Vector(value, "other-handed", "600", "600"))
+      }
+    }
+
     test("a handed program's environment holds its variables and no secret") {
       inRoot { dir =>
         val seen =

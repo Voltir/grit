@@ -210,6 +210,7 @@ private[main] object BenchCommands {
                     else
                       for {
                         key <- Secret.read(env, cap.key).left.map(_.message)
+                        jev <- Rig.guardKey(env)
                         coderDb <- DbConfig.fromEnv(Map(DbConfig.UrlVar -> url)).left.map(_.message)
                         _ = println(s"the run's log: $output")
                         _ <- kept(f, env, clock)(() =>
@@ -226,6 +227,7 @@ private[main] object BenchCommands {
                             cap,
                             memoryCap,
                             key,
+                            jev,
                             dir,
                             Rig.Quiet,
                             output

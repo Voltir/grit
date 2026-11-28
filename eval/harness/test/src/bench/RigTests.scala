@@ -60,8 +60,9 @@ object RigTests extends TestSuite {
     def sleep(duration: FiniteDuration): Unit = ()
   }
 
-  private val env = Map("ANTHROPIC_API_KEY" -> "sk-ant-test-0123")
+  private val env = Map("ANTHROPIC_API_KEY" -> "sk-ant-test-0123", "JEV_API_KEY" -> "jev-test-4567")
   private val key = TestSecrets.of(Variable("ANTHROPIC_API_KEY"), "sk-ant-test-0123")
+  private val jev = TestSecrets.of(Variable("JEV_API_KEY"), "jev-test-4567")
   private val cap =
     Caps.of("claude-haiku-5-5", None, "0.05", "4").getOrElse(throw new java.lang.AssertionError())
   private val deepseek = Caps
@@ -353,6 +354,7 @@ object RigTests extends TestSuite {
       caps,
       eightGb,
       key,
+      jev,
       checkout,
       Rig.Quiet,
       f.root.resolve("grit.log")
@@ -736,7 +738,7 @@ object RigTests extends TestSuite {
     }
 
     test(
-      "grit runs `grit work` on its brief, in an environment of the rig's alone, the key read from its file"
+      "grit runs `grit work` on its brief, in an environment of the rig's alone, its key and Jev's read from their files"
     ) {
       withTask { f =>
         gritTrial(f, GritFake(gritLines)).map { _ =>
@@ -777,12 +779,29 @@ object RigTests extends TestSuite {
               s"HOME=${f.root}",
               s"JAVA_HOME=${sys.props("java.home")}",
               "JDK_JAVA_OPTIONS=-XX:MaxRAMPercentage=15",
+              "JEV_API_KEY=jev-test-4567",
               "LANG=C.UTF-8",
               s"PATH=${sys.env.getOrElse("PATH", "/usr/bin:/bin")}"
             )
           )
         )
       }
+    }
+
+    test(
+      "a grit trial with no JEV_API_KEY, or a blank one, is refused, saying its guard would have no classifier"
+    ) {
+      val refusal =
+        "grit's machine guard would have no classifier, and would refuse every command it asks about"
+      (
+        Rig.guardKey(Map.empty),
+        Rig.guardKey(Map("JEV_API_KEY" -> "  ")),
+        Rig.guardKey(env).map(_.variable)
+      ) ==> (
+        Left(s"JEV_API_KEY is not set: $refusal"),
+        Left(s"JEV_API_KEY is set but blank: $refusal"),
+        Right(Variable("JEV_API_KEY"))
+      )
     }
 
     test(
@@ -1326,6 +1345,7 @@ object RigTests extends TestSuite {
             "GRIT_PROVIDER=fireworks",
             "GRIT_STRONG_MODEL=deepseek/deepseek-v4.1-flash-20260910",
             "GRIT_STRONG_PROVIDER=fireworks",
+            "JEV_API_KEY=jev-test-4567",
             "OPENROUTER_API_KEY=sk-ant-test-0123"
           )
         )

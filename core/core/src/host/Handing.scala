@@ -8,14 +8,22 @@ import grit.core.secret.{Named, Secret}
 trait Handing extends caps.SharedCapability {
 
   /** `body` of the program `argv` names, started in `dir` as [[Processes.started]] starts one,
-    * with `variables` added to its environment and `secret` in a file only this user can read,
-    * in a directory of its own outside the root; `argv` is given the file's absolute path. The
-    * directory is removed when `body` returns or throws. `Left`, `body` not run: as
-    * [[Processes.started]]; `Failed` when the file cannot be written, or with `argv`'s refusal.
+    * with `variables` added to its environment and each of `secrets` in a file of its own only
+    * this user can read, in a directory of its own outside the root; `argv` is given the files'
+    * absolute paths, in `secrets`' order. The directory is removed when `body` returns or throws.
+    * `Left`, `body` not run: as [[Processes.started]]; `Failed` when a file cannot be written,
+    * or with `argv`'s refusal.
     */
-  def started[A](dir: RelPath, secret: Secret, variables: Variables)(
-      argv: String -> Either[String, Argv]
+  def startedAll[A](dir: RelPath, secrets: Vector[Secret], variables: Variables)(
+      argv: Vector[String] -> Either[String, Argv]
   )(body: Started^ => A): Either[HostError, A]
+
+  /** [[startedAll]] handed `secret` alone, `argv` given its file's absolute path. */
+  final def started[A](dir: RelPath, secret: Secret, variables: Variables)(
+      argv: String -> Either[String, Argv]
+  )(body: Started^ => A): Either[HostError, A] =
+    // One secret, so one file: the paths joined are that file's path.
+    startedAll(dir, Vector(secret), variables)(files => argv(files.mkString))(body)
 }
 
 /** Variables added to a program's environment, none named like a secret. */

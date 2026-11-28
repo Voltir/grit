@@ -89,7 +89,11 @@ trials sort by the version of the standing text they ran under. Before grit star
 one; its Mill daemon stays warm for the coder. grit starts from an empty environment: the rig sets every variable it reads
 (`Rig.gritTrial`), its tools the allowlisted coding set and scout, the run's pair in every role it sets
 (a Claude model at the Anthropic API, or with `--upstream` an OpenRouter model at that upstream
-alone), and its key (`ANTHROPIC_API_KEY` or `OPENROUTER_API_KEY`) handed through a file.
+alone), and its key (`ANTHROPIC_API_KEY` or `OPENROUTER_API_KEY`) and Jev's (`JEV_API_KEY`, the
+classifier its machine guard asks) each handed through a file. A run with no `JEV_API_KEY` is
+refused before anything starts: grit's guard would have no classifier and refuse every command it
+asks about, so the trial would measure a coder that cannot run them. Jev's calls are not priced or
+counted in the trial's readout.
 `--max-rounds` is each turn's tool rounds (`GRIT_TOOL_ROUNDS`, at least 2): a turn's loop makes at
 most one model call more than it, or more than twice it when routed hard (`Router.HardCalls`),
 over up to `--work-turns` turns (`Work.DefaultTurns` unset); summary, query, heard and dreaming

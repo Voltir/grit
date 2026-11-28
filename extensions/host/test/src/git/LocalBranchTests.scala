@@ -22,12 +22,12 @@ object LocalBranchTests extends TestSuite {
   private final class Recording(inner: Handing^) extends Handing {
     val argvs = new java.util.concurrent.CopyOnWriteArrayList[Argv]()
     val variables = new java.util.concurrent.CopyOnWriteArrayList[Map[String, String]]()
-    def started[A](dir: RelPath, secret: Secret, vars: Variables)(
-        argv: String -> Either[String, Argv]
+    def startedAll[A](dir: RelPath, secrets: Vector[Secret], vars: Variables)(
+        argv: Vector[String] -> Either[String, Argv]
     )(body: Started^ => A): Either[HostError, A] = {
       val _ = variables.add(vars.values)
-      inner.started(dir, secret, vars) { path =>
-        val built = argv(path)
+      inner.startedAll(dir, secrets, vars) { paths =>
+        val built = argv(paths)
         built.foreach(a => argvs.add(a))
         built
       }(body)
