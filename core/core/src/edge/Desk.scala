@@ -49,13 +49,15 @@ trait Desk extends caps.SharedCapability {
     */
   def orphans(): Either[DeskError, Vector[ToolRequest]]
 
-  /** Replaces what this edge offers in `place`, a registered place: `tools`, and the Place
-    * layer's fragments read there, kept by id.
+  /** Replaces what this edge offers in `place`, a registered place: `tools`, the Place
+    * layer's fragments read there, kept by id, and whether `place` is a directory git tracks
+    * ([[Advert.inWorkTree]]; never so for a service place, whose edges leave it false).
     */
   def advertise(
       place: Place,
       tools: ToolSet,
-      instructions: Vector[Fragment]
+      instructions: Vector[Fragment],
+      inWorkTree: Boolean = false
   ): Either[DeskError, Unit]
 }
 

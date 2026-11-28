@@ -238,12 +238,17 @@ object LocalEdge {
       case Left(e) => Left(EdgeRefusal.Failed(s"this edge could not register: ${e.why}"))
       case Right(desk) =>
         // What each place was last advertised with, and why the repository's file was not read.
-        var atPlace: Option[Vector[Fragment]] = None
+        var atPlace: Option[(Vector[Fragment], Boolean)] = None
         var atRepository: Option[Vector[Fragment]] = None
         var unread: Option[String] = None
         // The refusal of the last advert, if it was refused.
-        def advertised(at: Place, set: ToolSet, now: Vector[Fragment]): Option[String] =
-          desk.advertise(at, set, now) match {
+        def advertised(
+            at: Place,
+            set: ToolSet,
+            now: Vector[Fragment],
+            inWorkTree: Boolean
+        ): Option[String] =
+          desk.advertise(at, set, now, inWorkTree) match {
             case Right(()) => None
             case Left(e) => Some(s"not advertised: ${e.why}")
           }
@@ -251,12 +256,15 @@ object LocalEdge {
         def round(): Option[String] = {
           val atDirectory = place.flatMap { (p, hosted) =>
             val now =
-              p.directory.fold(Vector.empty)(dir =>
-                PlaceFragments.of(instructions.around(dir), CharEstimate)
+              p.directory.fold((Vector.empty, false))(dir =>
+                (
+                  PlaceFragments.of(instructions.around(dir), CharEstimate),
+                  instructions.inWorkTree(dir)
+                )
               )
             if (atPlace.contains(now)) None
             else {
-              val refused = advertised(p, hosted, now)
+              val refused = advertised(p, hosted, now._1, now._2)
               if (refused.isEmpty) atPlace = Some(now)
               refused
             }
@@ -277,7 +285,8 @@ object LocalEdge {
             }
             if (atRepository.contains(files)) None
             else {
-              val refused = advertised(r.place, inRepository, files)
+              // A repository's place is no directory: its reach says how to work in its copy.
+              val refused = advertised(r.place, inRepository, files, false)
               if (refused.isEmpty) atRepository = Some(files)
               refused
             }

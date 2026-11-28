@@ -359,14 +359,16 @@ object TurnPrompt {
     * when no edge does; that its tools are not available in this conversation, when one does and
     * none is offered (the conversation's labels allow none), naming only the directory, the
     * service or the repository; that it has no workspace, when the conversation has none (a
-    * place neither a directory, a service nor a repository reads as none). At a repository whose
-    * tools are offered, then how to work there ([[Working]]). Worded by workspace, never by what
+    * place neither a directory, a service nor a repository reads as none). Then how to work there
+    * ([[Working]]): at a repository whose tools are offered, and at a directory git tracks
+    * ([[Serving.Offering]]'s `inWorkTree`) offered a tool that changes it
+    * ([[grit.core.tool.ToolSet.Entry.changes]]). Worded by workspace, never by what
     * serves it, so another edge serving the same one leaves the prompt the same.
     */
   def reach(workspace: Option[Place], serving: Serving): Fragment = {
-    val tools = serving match {
-      case Serving.Unserved => ToolSet.Empty
-      case Serving.Offering(set) => set
+    val (tools, inWorkTree) = serving match {
+      case Serving.Unserved => (ToolSet.Empty, false)
+      case Serving.Offering(set, tracked) => (set, tracked)
     }
     val served = serving != Serving.Unserved
     val text = (
@@ -387,7 +389,8 @@ object TurnPrompt {
           if (tools.tools.exists(_.asks))
             " Calling one that changes something is how the person is asked to approve it."
           else ""
-        s"Your file and command tools act on the directory ${Directory.value(dir)}.$asks"
+        val working = if (inWorkTree && tools.tools.exists(_.changes)) s"\n\n$Working" else ""
+        s"Your file and command tools act on the directory ${Directory.value(dir)}.$asks$working"
       case (None, Some(service), _) if tools.tools.isEmpty =>
         if (served) s"The tools of ${service.name} are not available in this conversation."
         else s"Nothing is serving ${service.name} right now, so its tools are not offered."
@@ -410,7 +413,7 @@ object TurnPrompt {
     Fragment(Layer.Reach, Fragment.Grit, text)
   }
 
-  /** How a run of work in a repository is told to work ([[reach]]): independent calls in one
+  /** How a turn in a git work tree is told to work ([[reach]]): independent calls in one
     * reply, one suite seen failing before a change, a commit at each step, and the formatter
     * the repository's instructions name before each commit.
     */
@@ -432,9 +435,10 @@ object TurnPrompt {
     case Unserved
 
     /** An edge serves it, and the turn is offered `tools` of what it advertises: none when
-      * the conversation's labels allow none.
+      * the conversation's labels allow none. `inWorkTree`, as the edge advertised it
+      * ([[grit.core.edge.Advert.inWorkTree]]).
       */
-    case Offering(tools: ToolSet)
+    case Offering(tools: ToolSet, inWorkTree: Boolean)
   }
 
   /** What a turn is told of `service`, a service it reaches besides its workspace

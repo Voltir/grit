@@ -667,7 +667,9 @@ object TurnOfferTests extends TestSuite {
       assert(!prompt.contains("vault"), !prompt.contains("attic"), !prompt.contains("elsewhere"))
       assert(
         prompt.contains(
-          TurnPrompt.reach(Some(github.place), TurnPrompt.Serving.Offering(ToolSet.Empty)).text
+          TurnPrompt
+            .reach(Some(github.place), TurnPrompt.Serving.Offering(ToolSet.Empty, false))
+            .text
         )
       )
     }
@@ -1302,7 +1304,10 @@ object TurnOfferTests extends TestSuite {
       ) ++ TurnPrompt.destination(slack) ++ TurnPrompt.called(Persona.Grit, slack) ++ Vector(
         TurnPrompt.room(slack, Label.Public),
         TurnPrompt
-          .reach(Some(github.place), TurnPrompt.Serving.Offering(set(advert("github_search"))))
+          .reach(
+            Some(github.place),
+            TurnPrompt.Serving.Offering(set(advert("github_search")), false)
+          )
       ) ++ TurnPrompt.reached(elsewhere, set(advert("post_x")))).map(_.text).mkString("\n\n")
     }
 

@@ -65,6 +65,23 @@ object LocalInstructionsTests extends TestSuite {
       }
     }
 
+    test(
+      "git tracks a directory below a .git directory or a linked worktree's .git file, and not one below neither, nor a path that is no directory"
+    ) {
+      val local = new LocalInstructions()
+      inTree() { root =>
+        Files.createDirectories(root.resolve(".git"))
+        (local.inWorkTree(dir(root.resolve("a/b"))), local.inWorkTree(dir(root))) ==> (true, true)
+      }
+      inTree("a/.git" -> utf8("gitdir: /elsewhere\n")) { root =>
+        (local.inWorkTree(dir(root.resolve("a/b"))), local.inWorkTree(dir(root))) ==>
+          (true, false)
+      }
+      inTree("a/AGENTS.md" -> utf8("a agents")) { root =>
+        local.inWorkTree(dir(root.resolve("a/AGENTS.md"))) ==> false
+      }
+    }
+
     test("a path that is not a directory has no instructions") {
       inTree("a/AGENTS.md" -> utf8("a agents")) { root =>
         new LocalInstructions().around(dir(root.resolve("a/AGENTS.md"))) ==> Vector

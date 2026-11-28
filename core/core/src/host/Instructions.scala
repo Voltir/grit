@@ -2,8 +2,8 @@ package grit.core.host
 
 import grit.core.place.Directory
 
-/** The instruction files around a directory on this machine: what people wrote for agents
-  * working there.
+/** The instruction files around a directory on this machine, what people wrote for agents
+  * working there, and whether git tracks it.
   */
 trait Instructions extends caps.SharedCapability {
 
@@ -13,6 +13,11 @@ trait Instructions extends caps.SharedCapability {
     * nothing; none at all when `dir` is not a directory.
     */
   def around(dir: Directory): Vector[InstructionFile]
+
+  /** Whether git tracks work in `dir`: it or a directory above it holds `.git` (a repository's
+    * own, or the file a linked worktree has). False when `dir` is not a directory.
+    */
+  def inWorkTree(dir: Directory): Boolean
 }
 
 object Instructions {

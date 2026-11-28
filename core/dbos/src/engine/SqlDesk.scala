@@ -171,7 +171,8 @@ final class SqlDesk private (
   def advertise(
       place: Place,
       tools: ToolSet,
-      instructions: Vector[Fragment]
+      instructions: Vector[Fragment],
+      inWorkTree: Boolean
   ): Either[DeskError, Unit] =
     SqlDesk.inTransaction(dataSource, opener) { (tx: grit.core.store.Tx^) ?=>
       for {
@@ -181,11 +182,12 @@ final class SqlDesk private (
           val c: java.sql.Connection^{tx} = grit.core.store.Tx.connection(tx)
           Using.resource(
             c.prepareStatement(
-              """INSERT INTO grit.edge_places (edge_id, place_id, tools, fragments)
-                |SELECT ?::uuid, p.id, ?, ?::jsonb FROM grit.places p
+              """INSERT INTO grit.edge_places (edge_id, place_id, tools, fragments, in_work_tree)
+                |SELECT ?::uuid, p.id, ?, ?::jsonb, ? FROM grit.places p
                 | WHERE p.path = ARRAY(SELECT jsonb_array_elements_text(?::jsonb))
                 |ON CONFLICT (edge_id, place_id) DO UPDATE
-                |  SET tools = EXCLUDED.tools, fragments = EXCLUDED.fragments""".stripMargin
+                |  SET tools = EXCLUDED.tools, fragments = EXCLUDED.fragments,
+                |      in_work_tree = EXCLUDED.in_work_tree""".stripMargin
             )
           ) { ps =>
             ps.setString(1, EdgeId.value(registration.edge))
@@ -194,7 +196,8 @@ final class SqlDesk private (
               3,
               ujson.Arr.from(instructions.map(f => ujson.Str(FragmentId.value(f.id)))).render()
             )
-            ps.setString(4, SqlToolRequests.pathJson(place))
+            ps.setBoolean(4, inWorkTree)
+            ps.setString(5, SqlToolRequests.pathJson(place))
             ps.executeUpdate()
             ()
           }

@@ -659,14 +659,15 @@ CREATE TABLE IF NOT EXISTS grit.edges (
 CREATE INDEX IF NOT EXISTS idx_edges_key ON grit.edges (key);
 
 -- The places an edge registered, and what it offers in each: the tool set it runs there,
--- and the instruction files it read there (fragment ids, farthest first; their texts in
--- prompt_fragments).
+-- the instruction files it read there (fragment ids, farthest first; their texts in
+-- prompt_fragments), and whether git tracks the place's directory (Advert.inWorkTree).
 -- Retention: kept: with its edge.
 CREATE TABLE IF NOT EXISTS grit.edge_places (
     edge_id   UUID NOT NULL REFERENCES grit.edges(id) ON DELETE CASCADE,
     place_id  UUID NOT NULL REFERENCES grit.places(id),
     tools     TEXT REFERENCES grit.tool_sets(id),
     fragments JSONB NOT NULL DEFAULT '[]'::jsonb,
+    in_work_tree BOOLEAN NOT NULL DEFAULT false,
     PRIMARY KEY (edge_id, place_id)
 );
 

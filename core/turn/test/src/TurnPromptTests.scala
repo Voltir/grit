@@ -176,14 +176,53 @@ object TurnPromptTests extends TestSuite {
     }
 
     test("reach says what is reachable in the directory, by directory, and why nothing is") {
-      TurnPrompt.reach(Some(Place.of(dir)), TurnPrompt.Serving.Offering(set(false, true))).text ==>
+      TurnPrompt
+        .reach(Some(Place.of(dir)), TurnPrompt.Serving.Offering(set(false, true), false))
+        .text ==>
         "Your file and command tools act on the directory /work/api. Calling one that changes something is how the person is asked to approve it."
-      TurnPrompt.reach(Some(Place.of(dir)), TurnPrompt.Serving.Offering(set(false))).text ==>
+      TurnPrompt.reach(Some(Place.of(dir)), TurnPrompt.Serving.Offering(set(false), false)).text ==>
         "Your file and command tools act on the directory /work/api."
       TurnPrompt.reach(Some(Place.of(dir)), TurnPrompt.Serving.Unserved).text ==>
         "Nothing is serving the directory /work/api right now, so you cannot read or change files there or run commands."
-      TurnPrompt.reach(None, TurnPrompt.Serving.Offering(set(false))).text ==>
+      TurnPrompt.reach(None, TurnPrompt.Serving.Offering(set(false), false)).text ==>
         "This conversation has no directory, so you cannot read or change files or run commands."
+    }
+
+    test(
+      "reach at a directory in a git work tree, offered a tool that changes it, then says how to work there; one git does not track, or offered only tools that change nothing, does not"
+    ) {
+      def entry(name: String, changes: Boolean) = ToolSet.Entry(
+        ToolName.of(name).getOrElse(throw new java.lang.AssertionError()),
+        "T.",
+        ujson.Obj(),
+        false,
+        Retry.Rerun,
+        changes = changes
+      )
+      val coding = ToolSet
+        .of(Vector(entry("read", false), entry("edit", true)))
+        .getOrElse(throw new java.lang.AssertionError())
+      val reading =
+        ToolSet.of(Vector(entry("read", false))).getOrElse(throw new java.lang.AssertionError())
+      val acts = "Your file and command tools act on the directory /work/api."
+      (
+        TurnPrompt.reach(Some(Place.of(dir)), TurnPrompt.Serving.Offering(coding, true)).text,
+        TurnPrompt.reach(Some(Place.of(dir)), TurnPrompt.Serving.Offering(coding, false)).text,
+        TurnPrompt.reach(Some(Place.of(dir)), TurnPrompt.Serving.Offering(reading, true)).text
+      ) ==> (
+        s"$acts\n\n" +
+          "Work in small steps:\n" +
+          "- When calls do not depend on each other's results, make them together in one " +
+          "reply, such as several reads at once.\n" +
+          "- Before you change code, run the one test suite that covers the change and see it " +
+          "fail for the reason the change is for. Then make the change and run that suite " +
+          "again until it passes.\n" +
+          "- Commit each step once its test passes, so your branch holds the work as you go.\n" +
+          "- Before each commit, run the formatter the repository's instructions name, if they " +
+          "name one.",
+        acts,
+        acts
+      )
     }
 
     test(
@@ -191,8 +230,10 @@ object TurnPromptTests extends TestSuite {
     ) {
       val github = Place.under(Namespace.Service, Vector("github"))
       (
-        TurnPrompt.reach(Some(github), TurnPrompt.Serving.Offering(ToolSet.Empty)).text,
-        TurnPrompt.reach(Some(Place.of(dir)), TurnPrompt.Serving.Offering(ToolSet.Empty)).text
+        TurnPrompt.reach(Some(github), TurnPrompt.Serving.Offering(ToolSet.Empty, false)).text,
+        TurnPrompt
+          .reach(Some(Place.of(dir)), TurnPrompt.Serving.Offering(ToolSet.Empty, false))
+          .text
       ) ==> (
         "The tools of github are not available in this conversation.",
         "The tools of the directory /work/api are not available in this conversation, so you " +
@@ -215,12 +256,15 @@ object TurnPromptTests extends TestSuite {
           )
         })
         .getOrElse(throw new java.lang.AssertionError())
-      TurnPrompt.reach(Some(github), TurnPrompt.Serving.Offering(tools)).text ==>
+      TurnPrompt.reach(Some(github), TurnPrompt.Serving.Offering(tools, false)).text ==>
         "This conversation works in github: the tools served there are offered to you, and calling one runs it at github."
       TurnPrompt.reach(Some(github), TurnPrompt.Serving.Unserved).text ==>
         "Nothing is serving github right now, so its tools are not offered."
       TurnPrompt
-        .reach(Some(Place.under(Namespace.Slack, Vector("T1"))), TurnPrompt.Serving.Offering(tools))
+        .reach(
+          Some(Place.under(Namespace.Slack, Vector("T1"))),
+          TurnPrompt.Serving.Offering(tools, false)
+        )
         .text ==>
         "This conversation has no directory, so you cannot read or change files or run commands."
     }
@@ -229,8 +273,10 @@ object TurnPromptTests extends TestSuite {
       "reach at a repository says the tools act on this run's working copy of it, never that a person is asked, then how to work there: independent calls together, one suite seen failing first, a commit each step, the named formatter before it; served with none offered, or unserved, says so"
     ) {
       (
-        TurnPrompt.reach(Some(repo.place), TurnPrompt.Serving.Offering(set(false, true))).text,
-        TurnPrompt.reach(Some(repo.place), TurnPrompt.Serving.Offering(ToolSet.Empty)).text,
+        TurnPrompt
+          .reach(Some(repo.place), TurnPrompt.Serving.Offering(set(false, true), false))
+          .text,
+        TurnPrompt.reach(Some(repo.place), TurnPrompt.Serving.Offering(ToolSet.Empty, false)).text,
         TurnPrompt.reach(Some(repo.place), TurnPrompt.Serving.Unserved).text
       ) ==> (
         "Your file and command tools act on this run's working copy of the repository grit.\n\n" +

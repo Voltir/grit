@@ -832,13 +832,19 @@ object TurnFixtures {
     @caps.unsafe.untrackedCaptures
     private var later = Map.empty[CallSlot, Outcome]
 
-    /** Advertises `hosted` at its place, and `files` as the place's instruction files. */
-    def advertise(hosted: Vector[Tool.Offered], files: Vector[Fragment] = Vector.empty): Unit = {
+    /** Advertises `hosted` at its place, `files` as the place's instruction files, and whether
+      * git tracks it.
+      */
+    def advertise(
+        hosted: Vector[Tool.Offered],
+        files: Vector[Fragment] = Vector.empty,
+        inWorkTree: Boolean = false
+    ): Unit = {
       val set = ToolSet.of(hosted.map(_.entry)).getOrElse(ToolSet.Empty)
       // Kept as a desk keeps them, before it advertises their ids.
       Prompts.keep(files)(using TestTx.fake)
       ToolSets.keep(set)(using TestTx.fake)
-      edges.advertiseAs(registration, at, set, files)
+      edges.advertiseAs(registration, at, set, files, inWorkTree)
     }
 
     private def tell(q: ToolRequest, outcome: Outcome): Unit =

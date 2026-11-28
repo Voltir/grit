@@ -25,6 +25,16 @@ final class LocalInstructions extends Instructions {
         .reverse
         .flatMap(LocalInstructions.fileIn)
   }
+
+  def inWorkTree(dir: Directory): Boolean = {
+    val start = Path.of(Directory.value(dir))
+    Files.isDirectory(start) &&
+    Iterator
+      .iterate(Option(start))(_.flatMap(p => Option(p.getParent)))
+      .takeWhile(_.nonEmpty)
+      .flatten
+      .exists(p => Files.exists(p.resolve(".git")))
+  }
 }
 
 private object LocalInstructions {

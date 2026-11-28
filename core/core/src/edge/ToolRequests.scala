@@ -72,10 +72,16 @@ enum RequestState {
   case Answered(outcome: Outcome)
 }
 
-/** What a live edge offers in one place: its tool set there, and the instruction files it
-  * read there (the Place layer's fragments, farthest first).
+/** What a live edge offers in one place: its tool set there, the instruction files it read
+  * there (the Place layer's fragments, farthest first), and whether the place is a directory
+  * git tracks on the edge's machine ([[grit.core.host.Instructions.inWorkTree]]).
   */
-final case class Advert(edge: EdgeId, tools: ToolSetId, instructions: Vector[FragmentId])
+final case class Advert(
+    edge: EdgeId,
+    tools: ToolSetId,
+    instructions: Vector[FragmentId],
+    inWorkTree: Boolean
+)
 
 /** The engine's view of which edges are serving. */
 trait EdgeDirectory {

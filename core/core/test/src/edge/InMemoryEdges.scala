@@ -195,9 +195,10 @@ final class InMemoryEdges extends ToolRequests, EdgeDirectory, Desks {
       reg: Registration,
       place: Place,
       tools: ToolSet,
-      fragments: Vector[Fragment]
+      fragments: Vector[Fragment],
+      inWorkTree: Boolean = false
   ): Unit =
-    advertise(reg, place, tools, fragments)
+    advertise(reg, place, tools, fragments, inWorkTree)
 
   /** Ends `edge` as a crash would: it is no longer live. */
   def kill(edge: EdgeId): Unit = synchronized { live = live - edge }
@@ -267,9 +268,13 @@ final class InMemoryEdges extends ToolRequests, EdgeDirectory, Desks {
       reg: Registration,
       place: Place,
       tools: ToolSet,
-      fragments: Vector[Fragment]
+      fragments: Vector[Fragment],
+      inWorkTree: Boolean
   ): Unit = synchronized {
-    adverts = adverts.updated((reg.edge, place), Advert(reg.edge, tools.id, fragments.map(_.id)))
+    adverts = adverts.updated(
+      (reg.edge, place),
+      Advert(reg.edge, tools.id, fragments.map(_.id), inWorkTree)
+    )
   }
 }
 
@@ -308,8 +313,9 @@ object InMemoryEdges {
     def advertise(
         place: Place,
         tools: ToolSet,
-        instructions: Vector[Fragment]
+        instructions: Vector[Fragment],
+        inWorkTree: Boolean
     ): Either[DeskError, Unit] =
-      Right(edges.advertise(registration, place, tools, instructions))
+      Right(edges.advertise(registration, place, tools, instructions, inWorkTree))
   }
 }

@@ -390,6 +390,7 @@ object LiveTurn {
   /** No instruction files anywhere, so a test's prompts are what it scripts. */
   private object NoInstructions extends Instructions {
     def around(dir: Directory): Vector[InstructionFile] = Vector.empty
+    def inWorkTree(dir: Directory): Boolean = false
   }
 
   /** Ingests `source` and starts its turn. */

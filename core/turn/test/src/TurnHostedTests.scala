@@ -933,6 +933,31 @@ object TurnHostedTests extends TestSuite {
       provider.requests.headOption.map(_.tools.map(_.name)) ==> Some(Vector("topic"))
     }
 
+    test(
+      "a turn whose directory's edge says git tracks it, offered a tool that changes it, is told how to work there; one whose edge says not is not"
+    ) {
+      def told(inWorkTree: Boolean): Option[Boolean] = {
+        val entries = new InMemoryEntryStore
+        val turn = say(entries, "hello")
+        val durable = new InMemoryDurable
+        val edge = new Served(new InMemoryEdges, durable, _ => Serve.Never)
+        // A tool the engine does not describe, so it is offered as advertised: changing.
+        val edit = ToolSet.Entry(
+          ToolName("edit"),
+          "Edits a file.",
+          ujson.Obj("type" -> "object"),
+          false,
+          Retry.Rerun,
+          changes = true
+        )
+        edge.advertise(Hosted.advertised(edit).toVector, inWorkTree = inWorkTree)
+        val provider = model()
+        durable.run(turn.workflowId)(hostedBody(entries, provider, edge))
+        provider.requests.headOption.map(_.system.contains("\n\nWork in small steps:\n"))
+      }
+      (told(true), told(false)) ==> (Some(true), Some(false))
+    }
+
     test("a turn is sent the instruction files its directory's edge read, after grit's own words") {
       val entries = new InMemoryEntryStore
       val turn = say(entries, "hello")

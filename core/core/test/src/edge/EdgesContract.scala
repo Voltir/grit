@@ -373,7 +373,9 @@ abstract class EdgesContract extends TestSuite {
       transaction(requests.settle(r.slot)) ==> Right(RequestState.Claimed)
     }
 
-    test("serving names what the live edge offers in a place, and nothing once it is gone") {
+    test(
+      "serving names what the live edge offers in a place, whether git tracks it as last advertised, and nothing once it is gone"
+    ) {
       val here = place("serving")
       val tools = ToolSet
         .of(Vector(ToolSet.Entry(ToolName("read"), "Reads.", ujson.Obj(), false, Retry.Rerun)))
@@ -384,9 +386,12 @@ abstract class EdgesContract extends TestSuite {
         "Instructions from /contract/serving/AGENTS.md:\n\nBe brief."
       )
       val d = desk(Set(here))
-      d.advertise(here, tools, Vector(file)) ==> Right(())
-      transaction(directory.serving(here)).map(_.map(a => (a.edge, a.tools, a.instructions))) ==>
-        Right(Some((d.registration.edge, tools.id, Vector(file.id))))
+      def served = transaction(directory.serving(here))
+        .map(_.map(a => (a.edge, a.tools, a.instructions, a.inWorkTree)))
+      d.advertise(here, tools, Vector(file), inWorkTree = true) ==> Right(())
+      served ==> Right(Some((d.registration.edge, tools.id, Vector(file.id), true)))
+      d.advertise(here, tools, Vector(file), inWorkTree = false) ==> Right(())
+      served ==> Right(Some((d.registration.edge, tools.id, Vector(file.id), false)))
       kill(d)
       transaction(directory.serving(here)) ==> Right(None)
     }

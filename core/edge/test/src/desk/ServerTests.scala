@@ -74,8 +74,9 @@ object ServerTests extends TestSuite {
     def advertise(
         place: Place,
         tools: ToolSet,
-        instructions: Vector[Fragment]
-    ): Either[DeskError, Unit] = desk.advertise(place, tools, instructions)
+        instructions: Vector[Fragment],
+        inWorkTree: Boolean
+    ): Either[DeskError, Unit] = desk.advertise(place, tools, instructions, inWorkTree)
   }
 
   private def inline(run: () => Unit): Unit = run()
@@ -121,7 +122,8 @@ object ServerTests extends TestSuite {
         def advertise(
             place: Place,
             tools: ToolSet,
-            instructions: Vector[Fragment]
+            instructions: Vector[Fragment],
+            inWorkTree: Boolean
         ): Either[DeskError, Unit] = Right(())
       }
       val tools = new Counting
@@ -143,7 +145,8 @@ object ServerTests extends TestSuite {
         def advertise(
             place: Place,
             tools: ToolSet,
-            instructions: Vector[Fragment]
+            instructions: Vector[Fragment],
+            inWorkTree: Boolean
         ): Either[DeskError, Unit] = Right(())
       }
       val said = new Said

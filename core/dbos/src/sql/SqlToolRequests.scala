@@ -116,7 +116,7 @@ final class SqlEdgeDirectory extends EdgeDirectory {
     attempt {
       Using.resource(
         conn.prepareStatement(
-          s"""SELECT e.id, ep.tools, ep.fragments::text FROM grit.edge_places ep
+          s"""SELECT e.id, ep.tools, ep.fragments::text, ep.in_work_tree FROM grit.edge_places ep
              |  JOIN grit.edges e ON e.id = ep.edge_id
              |  JOIN grit.places p ON p.id = ep.place_id
              | WHERE p.path = ARRAY(SELECT jsonb_array_elements_text(?::jsonb))
@@ -126,12 +126,14 @@ final class SqlEdgeDirectory extends EdgeDirectory {
       ) { ps =>
         ps.setString(1, SqlToolRequests.pathJson(place))
         Using.resource(ps.executeQuery()) { rs =>
-          Option.when(rs.next())((rs.getString(1), rs.getString(2), rs.getString(3)))
+          Option.when(rs.next())(
+            (rs.getString(1), rs.getString(2), rs.getString(3), rs.getBoolean(4))
+          )
         }
       }
     }.flatMap {
       case None => Right(None)
-      case Some((edge, tools, fragments)) =>
+      case Some((edge, tools, fragments, inWorkTree)) =>
         (for {
           set <- ToolSetId.of(tools)
           ids <- ujson
@@ -147,7 +149,7 @@ final class SqlEdgeDirectory extends EdgeDirectory {
                     .map(done :+ _)
                 )
             })
-        } yield Some(Advert(EdgeId(edge), set, ids))).left
+        } yield Some(Advert(EdgeId(edge), set, ids, inWorkTree))).left
           .map(why => StoreError.DatabaseError(s"an edge's advert is unreadable: $why"))
     }
   }
