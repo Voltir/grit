@@ -1120,7 +1120,8 @@ object AllowlistedCodingTests extends TestSuite {
       )
       val first = noted.log
       val undeclared = commit(runs, Leaving.Nothing, "commit", "-m", "x")
-      (declared, first, noted.log.drop(first.size), jev.states.size) ==> (
+      (declared, undeclared, first, noted.log.drop(first.size), jev.states.size) ==> (
+        Right((false, Outcome.Done("Exit code 0; no output."))),
         Right((false, Outcome.Done("Exit code 0; no output."))),
         Vector((build, 2.minutes), (committing, 2.minutes)),
         Vector((committing, 2.minutes)),
