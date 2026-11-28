@@ -342,6 +342,24 @@ object AllowlistedCodingTests extends TestSuite {
       )
     }
 
+    test("tail's wait past 600 seconds waits 600, and its answer says so") {
+      val runs = Allowlisted.over(new Noting(scripts), allowlist(20.minutes))
+      val host = new CodingTests.Scripted()
+      val hang = ujson.Obj("program" -> "./mill", "args" -> ujson.Arr("hang"), "wait" -> 0)
+      assert(settle(host, runs, "run", hang).isRight)
+      settle(host, runs, "tail", ujson.Obj("id" -> nth(1), "wait" -> 900)) ==> Right(
+        (
+          false,
+          Outcome.Done(
+            s"`./mill hang`\nStill running after 600 seconds, as `${nth(1)}`; it is killed at " +
+              s"1200 seconds. Its output so far:\nstarted\n\nCall `tail` with id `${nth(1)}` to " +
+              "see how it stands, giving `wait` to wait for it to end, or `stop` to end it.\n\n" +
+              "`wait` is at most 600 seconds, so this waited up to 600, not 900."
+          )
+        )
+      )
+    }
+
     test(
       "a program sent with its arguments runs as its first word, and one repeated as its first argument runs once; the answer says how it was read"
     ) {

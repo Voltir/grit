@@ -58,7 +58,7 @@ object Coding {
   type EditArgs = (path: RelPath, edits: List[Replace])
   type RunArgs = (command: String, timeout: FiniteDuration)
   type ArgvArgs = (argv: Argv, timeout: FiniteDuration, wait: FiniteDuration, said: List[String])
-  type TailArgs = (id: RunId, wait: FiniteDuration)
+  type TailArgs = (id: RunId, wait: FiniteDuration, said: List[String])
   type StopArgs = (id: RunId)
 
   /** The seconds a command the gated `run` starts may run when the call gives no `timeout`. */
@@ -669,17 +669,14 @@ object Coding {
           .of(
             (
               id = idField,
-              wait = Field
-                .count(
-                  "The most seconds to wait for it to end; 0 when not given.",
-                  0,
-                  Shell.Longest.toSeconds.toInt
-                )
-                .optional
+              wait = waitField("The most seconds to wait for it to end; 0 when not given.")
             )
           )
           .refine(a =>
-            runId(a.id).map(id => (id = id, wait = a.wait.fold(Duration.Zero)(_.seconds)))
+            runId(a.id).map { id =>
+              val waited = waiting(a.wait, Duration.Zero)
+              (id = id, wait = waited.wait, said = waited.said)
+            }
           )
       ),
       Gate.Free,
@@ -708,9 +705,12 @@ object Coding {
 
   private def tail(runs: Allowlisted^): Tool[TailArgs]^{runs} =
     tailHosted.over(a =>
-      runs
-        .tail(a.id, a.wait)
-        .fold(e => Outcome.Failed(e.message), s => named(a.id, s.argv, s.status))
+      saying(
+        runs
+          .tail(a.id, a.wait)
+          .fold(e => Outcome.Failed(e.message), s => named(a.id, s.argv, s.status)),
+        a.said
+      )
     )
 
   private def stop(runs: Allowlisted^): Tool[StopArgs]^{runs} =
