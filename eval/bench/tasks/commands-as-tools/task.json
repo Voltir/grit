@@ -15,5 +15,30 @@
     {"runner": "check", "args": ["grit.turn"]},
     {"runner": "check", "args": ["grit.projects"]},
     {"runner": "check", "args": ["grit.kit"]}
-  ]
+  ],
+  "held": {
+    "files": [
+      "core/core/test/src/plugin/HeldCommandToolsTests.scala",
+      "core/core/probes/src/tool/HeldKeepingCaptureTests.scala",
+      "extensions/projects/test/src/plugin/HeldProjectCommandToolsTests.scala",
+      "kit/test/src/run/HeldPluginCommandToolsTests.scala"
+    ],
+    "checks": [
+      {"runner": "check", "args": ["grit.core.plugin.HeldCommandToolsTests"]},
+      {"runner": "check", "args": ["grit.core.tool.HeldKeepingCaptureTests"]},
+      {"runner": "check", "args": ["grit.projects.plugin.HeldProjectCommandToolsTests"]},
+      {"runner": "check", "args": ["grit.kit.run.HeldPluginCommandToolsTests"]}
+    ]
+  },
+  "complete": {
+    "commits": 5,
+    "exists": ["docs/decisions/0053-*.md"],
+    "absent": ["docs/decisions/0048-*.md"],
+    "holds": [
+      {"path": "docs/decisions/0027-*.md", "text": "0053"},
+      {"path": "docs/decisions/0049-*.md", "text": "0053"},
+      {"path": "docs/decisions/0051-*.md", "text": "0053"},
+      {"path": "extensions/projects/README.md", "text": "0053"}
+    ]
+  }
 }
