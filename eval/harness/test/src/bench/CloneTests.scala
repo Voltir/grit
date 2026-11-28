@@ -132,6 +132,49 @@ object CloneTests extends TestSuite {
     }
 
     test(
+      "a coder's diff, a new file and a deletion among it, applied to a fresh base gives its tree"
+    ) {
+      withOrigin("base") { (work, o) =>
+        val base = o.commits("base")
+        Clone.fresh(work)(o.path, base, rel("coded")) ==> Right(())
+        val coded = Path.of(o.path).resolveSibling("coded")
+        Files.delete(coded.resolve("a.txt"))
+        Files.writeString(coded.resolve("B.scala"), "object B {\n  val x = 1\n}\n")
+        val diff = Clone
+          .changes(work)(rel("coded"), base)
+          .fold(e => throw new java.lang.AssertionError(e), identity)
+        Clone.fresh(work)(o.path, base, rel("again")) ==> Right(())
+        val again = Path.of(o.path).resolveSibling("again")
+        (
+          Clone.applied(work)(rel("again"), diff),
+          Files.exists(again.resolve("a.txt")),
+          scala.util.Try(Files.readString(again.resolve("B.scala"))).toOption,
+          Clone.changes(work)(rel("again"), base)
+        ) ==> (Right(()), false, Some("object B {\n  val x = 1\n}\n"), Right(diff))
+      }
+    }
+
+    test("a diff holding a binary file's change is not applied, and leaves the tree as it was") {
+      withOrigin("base") { (work, o) =>
+        val base = o.commits("base")
+        Clone.fresh(work)(o.path, base, rel("coded")) ==> Right(())
+        val coded = Path.of(o.path).resolveSibling("coded")
+        Files.writeString(coded.resolve("blob.bin"), "\u0000\u0001\u0002\u0000")
+        Files.writeString(coded.resolve("a.txt"), "changed\n")
+        val diff = Clone
+          .changes(work)(rel("coded"), base)
+          .fold(e => throw new java.lang.AssertionError(e), identity)
+        Clone.fresh(work)(o.path, base, rel("again")) ==> Right(())
+        val again = Path.of(o.path).resolveSibling("again")
+        (
+          Clone.applied(work)(rel("again"), diff).isLeft,
+          Files.readString(again.resolve("a.txt")),
+          Files.exists(again.resolve("blob.bin"))
+        ) ==> (true, "base\n", false)
+      }
+    }
+
+    test(
       "a checkout's changes from its base are its source lines, new files never added among them"
     ) {
       withOrigin("base") { (work, o) =>

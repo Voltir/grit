@@ -1146,6 +1146,60 @@ object Rig {
     } yield Known(known._1, known._2, known._3, atBase)
   }
 
+  /** A kept trial's `diff` graded afresh, with no coder: applied ([[Clone.applied]]) to a new
+    * checkout of `task`'s base at `dir`, tooled, then its checks, its completion's path items
+    * ([[Completion.ofDiff]]: the commit-level ones are not kept) and its held checks read as a
+    * trial's are. `Left` when the checkout or a fetch fails; a diff that does not apply is
+    * [[Regraded.Unappliable]]. The checkout is removed after, as [[trial]]'s is.
+    */
+  def regraded(
+      work: Processes
+  )(repository: String, task: BenchTask, diff: String, dir: RelPath): Either[String, Regraded] =
+    tidied(work, dir, None)(
+      for {
+        _ <- Clone.fresh(work)(repository, task.base, dir)
+        _ <- Checks.tooled(work)(dir)
+        graded <- Clone.applied(work)(dir, diff) match {
+          case Left(why) => Right(Regraded.Unappliable(why))
+          case Right(()) =>
+            for {
+              completed <- task.completion.fold(Right(Completed.Nothing))(
+                Completion.ofDiff(work)(dir, _)
+              )
+              checked <- Checks
+                .run(work)(dir, task.checks, Vector(CappedJvm), () => None)
+                .left
+                .map(_.message)
+              held <- task.held.fold(Right(Checked(Vector.empty, None)))(h =>
+                Held.within(work)(dir, h)(
+                  Checks.held(work)(dir, h, Vector(CappedJvm), () => None).left.map(_.message)
+                )
+              )
+            } yield Regraded.Graded(
+              checked,
+              held,
+              completed,
+              Grade.of(checked, held, completed, DiffLines.of(diff).lines.nonEmpty)
+            )
+        }
+      } yield graded
+    )
+
+  /** What a regrade gave: a grade with what it was read from, or why the diff did not apply. */
+  enum Regraded extends caps.Pure {
+    case Graded(checked: Checked, held: Checked, completed: Completed, grade: Grade)
+    case Unappliable(why: String)
+
+    /** A line each: the checks, then what [[Tried.graded]] prints, then `grade: <grade>`; or
+      * `unappliable: <why>`.
+      */
+    def lines: Vector[String] = this match {
+      case Graded(checked, held, completed, grade) =>
+        checked.lines ++ Tried.graded(held, completed) :+ s"grade: $grade"
+      case Unappliable(why) => Vector(s"unappliable: $why")
+    }
+  }
+
   /** A known run: the task's checks on its known tree, what that tree left of its completion, its
     * held checks there and at its base. It passes when the checks pass, the completion is met, and
     * every held check passes on the known tree and fails at the base, as a held test seen red.

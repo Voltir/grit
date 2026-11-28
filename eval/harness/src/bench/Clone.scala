@@ -1,8 +1,10 @@
 package grit.eval.harness.bench
 
 import java.nio.charset.StandardCharsets
+import java.nio.file.{Files, Path}
 
 import scala.concurrent.duration.*
+import scala.util.Try
 
 import grit.core.host.{Argv, Processes, RelPath}
 
@@ -43,6 +45,19 @@ object Clone {
       _ <- git(work, dir, (Seq("cherry-pick") ++ commits)*)
     } yield ()
   }
+
+  /** `diff`, a diff as [[changes]] prints it, applied to the tree at `dir` (`git apply
+    * --unidiff-zero`), left uncommitted. `Left`, with git's last words, when it does not apply
+    * whole, as a binary file's change never does (it holds no content); nothing is applied then.
+    */
+  def applied(work: Processes)(dir: RelPath, diff: String): Either[String, Unit] =
+    for {
+      root <- ran(work, dir, "git", "rev-parse", "--absolute-git-dir").map(_.trim)
+      patch = Path.of(root, "bench-regrade.diff")
+      _ <- Try(Files.writeString(patch, diff, StandardCharsets.UTF_8)).toEither.left
+        .map(e => s"the diff was not written: ${e.getMessage}")
+      _ <- git(work, dir, "apply", "--unidiff-zero", "--whitespace=nowarn", patch.toString)
+    } yield ()
 
   /** The source lines `dir`'s files change from `base`, read from [[changes]]. */
   def changed(work: Processes)(dir: RelPath, base: Sha): Either[String, DiffLines] =

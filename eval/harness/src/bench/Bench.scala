@@ -90,19 +90,38 @@ object Bench {
   def trajectory(reader: Reader^, blobs: Blobs^)(
       subject: Subject,
       session: SessionId
+  ): Either[String, Option[Transcript]] =
+    part(reader, blobs)(subject, session, TrialRows.Part.Transcript)
+
+  /** As [[trajectory]], `session`'s trial's diff from its task's base. */
+  def diff(reader: Reader^, blobs: Blobs^)(
+      subject: Subject,
+      session: SessionId
+  ): Either[String, Option[Transcript]] =
+    part(reader, blobs)(subject, session, TrialRows.Part.Diff)
+
+  /** As [[trajectory]], `session`'s trial's `part`. */
+  private def part(reader: Reader^, blobs: Blobs^)(
+      subject: Subject,
+      session: SessionId,
+      part: TrialRows.Part
   ): Either[String, Option[Transcript]] = {
     val rows = TrialRows(blobs)
+    val named = part match {
+      case TrialRows.Part.Transcript => "the transcript"
+      case TrialRows.Part.Diff => "the diff"
+    }
     reader.db
-      .read(subject)(rows.kept(session, TrialRows.Part.Transcript))
+      .read(subject)(rows.kept(session, part))
       .left
-      .map(e => s"the transcript: ${e.described}")
+      .map(e => s"$named: ${e.described}")
       .flatMap {
         case None => Right(None)
         case Some(kept) =>
           for {
             path <- blobs
               .at(kept.sha256)
-              .toRight(s"the transcript's blob ${kept.sha256.hex} is not kept")
+              .toRight(s"$named's blob ${kept.sha256.hex} is not kept")
             text <- scala.util
               .Try(
                 StandardCharsets.UTF_8
@@ -114,7 +133,7 @@ object Bench {
               )
               .toEither
               .left
-              .map(e => s"the transcript's blob ${kept.sha256.hex} does not read as UTF-8: $e")
+              .map(e => s"$named's blob ${kept.sha256.hex} does not read as UTF-8: $e")
           } yield Some(Transcript(text, kept.clipped))
       }
   }

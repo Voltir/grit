@@ -66,7 +66,67 @@ private[main] object BenchCommands {
     * [[TrialRows.MostTrials]]). Prints what [[Tried.lines]] gives, or each check; never the key.
     */
   private[main] def bench(f: Map[String, String], clock: Clock^): Either[String, Unit] =
-    if (f.get("summary").contains("true")) summary(f) else run(f, clock)
+    if (f.get("summary").contains("true")) summary(f)
+    else if (f.get("regrade").contains("true")) regrade(f, clock)
+    else run(f, clock)
+
+  /** `bench --regrade true --tasks <dir> --task <name> --repository <path> --work <dir> --url
+    * <jdbc> --blobs <dir> [--sessions <id>,…]`: each trial of the task the database at `<jdbc>`
+    * keeps (those whose session's local id `--sessions` names, when given), oldest first, its
+    * diff from the blobs at `<dir>` graded afresh in a checkout under `<work>` ([[Rig.regraded]]),
+    * with no coder and no model call. Each prints its lines, then `regrade: <session> passed:
+    * <old> → <grade>` (or `→ unappliable`, `→ clipped`, a diff cut when kept, or `→ no diff`).
+    * Read through a read-only [[Reader]], the login from `GRIT_DATABASE_USER` and `_PASSWORD`;
+    * nothing is written but the checkout, removed after.
+    */
+  private def regrade(f: Map[String, String], clock: Clock^): Either[String, Unit] =
+    for {
+      name <- need(f, "task")
+      task <- need(f, "tasks").map(Path.of(_).resolve(name)).flatMap(BenchTask.read)
+      repository <- need(f, "repository")
+      root <- need(f, "work").map(Path.of(_))
+      _ <- mkdirs(root)
+      url <- need(f, "url")
+      config <- DbConfig.fromEnv(sys.env.updated(DbConfig.UrlVar, url)).left.map(_.message)
+      blobsAt <- need(f, "blobs").map(Path.of(_))
+      sessions = f.get("sessions").map(_.split(',').map(_.trim).filter(_.nonEmpty).toSet)
+      work = new LocalProcesses(root, sys.env, Redaction.of(sys.env))
+      _ <- LocalBlobs.open(blobsAt) match {
+        case Left(e) => Left(s"the bench's blobs did not open: $e")
+        case Right(blobs) =>
+          opened(config) { reader =>
+            for {
+              all <- Bench.trials(reader)(Subject.Public)
+              chosen = all.filter(t =>
+                t.task == task.name && sessions.forall(_.contains(t.session.local))
+              )
+              _ <- chosen.foldLeft[Either[String, Unit]](Right(())) { (so, t) =>
+                so.flatMap { _ =>
+                  val head = s"regrade: ${t.session.local} passed: ${t.passed} →"
+                  Bench.diff(reader, blobs)(Subject.Public, t.session).flatMap {
+                    case None => Right(println(s"$head no diff"))
+                    case Some(kept) if kept.clipped => Right(println(s"$head clipped"))
+                    case Some(kept) =>
+                      for {
+                        dir <- RelPath
+                          .of(s"regrade-$name-${clock.now().getEpochSecond}")
+                          .left
+                          .map(_.toString)
+                        graded <- Rig.regraded(work)(repository, task, kept.text, dir)
+                      } yield {
+                        graded.lines.foreach(println)
+                        println(graded match {
+                          case Rig.Regraded.Graded(_, _, _, grade) => s"$head $grade"
+                          case Rig.Regraded.Unappliable(_) => s"$head unappliable"
+                        })
+                      }
+                  }
+                }
+              }
+            } yield ()
+          }
+      }
+    } yield ()
 
   /** `bench --summary true --url <jdbc>`: cents per passing trial over every trial the
     * database at `<jdbc>` keeps ([[PerPass.lines]]), read through a read-only [[Reader]], the

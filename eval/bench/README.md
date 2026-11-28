@@ -40,6 +40,13 @@ completion too. The checkout holds base's history alone, so no held file can be 
 Claude Code's read commands that no rule covers can still read this repository, as they can read
 the known commits.
 
+A kept trial is graded afresh by `scripts/eval bench --regrade --task <name>` (`Rig.regraded`): its
+kept diff applied (`git apply --unidiff-zero`) to a fresh checkout of the base, then its checks,
+held checks and completion's path items, with no coder and no model call. Only the diff is kept,
+so the commit-level items read `not kept`; a diff with a binary file's change does not apply, and a
+diff cut when kept is refused. It prints each trial's old `passed` beside its grade, and writes
+nothing.
+
 `triage-retry`'s held suite is drafted and kept apart, under `held-apart/` (its `held.json` the
 `held` and `complete` it would add), and named in no `task.json`.
 

@@ -66,6 +66,12 @@
 #       passing trials' distance from the task's known diff. Read-only; spends nothing. A kept
 #       run prints the same after its trial.
 #
+#   scripts/eval bench --regrade --task <name> [--sessions <id>,...]
+#       Each trial of <name> grit_bench keeps (those --sessions names, by its session's local id),
+#       its kept diff applied to a fresh checkout of the task's base and graded afresh: its checks,
+#       its held checks and its completion's path items, with no coder and no model call; each
+#       prints `regrade: <id> passed: <old> → <grade>`. Reads grit_bench and its blobs only.
+#
 #   scripts/eval bench --task <name> --known
 #   scripts/eval bench --task <name> --model <id> [--upstream <slug>] --max-budget-usd <usd>
 #                      --max-rounds <n>
@@ -207,10 +213,12 @@ context() {
 }
 
 bench() {
-  local known= dry= summary= keep= arm=claude-code tokens= memory= standing= settings=() rest=()
+  local known= dry= summary= regrade= keep= arm=claude-code tokens= memory= standing= settings=() rest=()
   while [ $# -gt 0 ]; do
     case $1 in
       --summary) summary=1; shift ;;
+      --regrade) regrade=1; shift ;;
+      --sessions) [ $# -ge 2 ] || usage; rest+=("$1" "$2"); shift 2 ;;
       --known) known=1; shift ;;
       --dry) dry=1; shift ;;
       --keep-coder) keep=1; shift ;;
@@ -233,6 +241,12 @@ bench() {
     return
   fi
   local common=(--tasks "$here/eval/bench/tasks" --repository "$main")
+  if [ -n "$regrade" ]; then
+    [ -z "$known$dry$keep$tokens$memory$standing" ] && [ ${#settings[@]} -eq 0 ] || usage
+    harness bench "${common[@]}" --work "$main/.local/bench/work" --regrade true "${rest[@]}" \
+      --url "jdbc:postgresql://localhost:5432/grit_bench" --blobs "$main/.local/bench/blobs/grit_bench"
+    return
+  fi
   if [ -n "$known" ]; then
     harness bench "${common[@]}" --work "$main/.local/bench/work" --known true "${rest[@]}"
     return
