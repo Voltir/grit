@@ -57,12 +57,6 @@ ignore:
   # import (`grit.core.route`) resolves into a module's probes and the law reports false breaches.
   - "**/probes/**"
 
-  # The coder bench's held tests (eval/bench/README.md): test sources of past commits, copied
-  # into a trial's checkout and never compiled here, declaring grit's packages. Indexed, an
-  # import could resolve into them, as into a probe.
-  - "eval/bench/tasks/*/held/**"
-  - "eval/bench/tasks/*/held-apart/**"
-
   # A person's local instructions, which a checkout keeps out of git. They yield no intent (every
   # intent fact comes from enola-intent.yaml), only heading symbols that moved the snapshot on
   # every edit, and a baseline pinned here would differ from one pinned in a clean clone.
