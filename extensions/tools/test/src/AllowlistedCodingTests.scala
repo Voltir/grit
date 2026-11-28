@@ -105,10 +105,11 @@ object AllowlistedCodingTests extends TestSuite {
       guard: MachineGuard^ = GuardFixtures.harmless,
       refusals: Refusals^ = Refusals.kept(),
       sources: Option[SourceTools] = None,
-      tree: Uncommitted^ = Leaving.Nothing
+      tree: Uncommitted^ = Leaving.Nothing,
+      compile: Option[Argv] = None
   ): Toolbox[caps.CapSet^{host, runs, guard, refusals, tree}] =
     Coding
-      .allowlisted(host, host, runs, guard, refusals, sources, tree)
+      .allowlisted(host, host, runs, guard, refusals, sources, tree, compile)
       .fold(d => throw new java.lang.AssertionError(d), identity)
 
   /** A checkout whose every read of what a commit would leave out answers `files`, counted. */
@@ -129,13 +130,27 @@ object AllowlistedCodingTests extends TestSuite {
 
   /** `git args` run against the allowlisted tools with `tree` as the checkout's files. */
   private def commit(runs: Allowlisted^, tree: Uncommitted^, args: String*) =
+    compiling(runs, tree, None, args*)
+
+  /** As [[commit]], with `compile` declared. */
+  private def compiling(
+      runs: Allowlisted^,
+      tree: Uncommitted^,
+      compile: Option[Argv],
+      args: String*
+  ) =
     settle(
       new CodingTests.Scripted(),
       runs,
       "run",
       ujson.Obj("program" -> "git", "args" -> ujson.Arr.from(args)),
-      tree = tree
+      tree = tree,
+      compile = compile
     )
+
+  /** The compile a repository declares in the commit tests: `./mill __.compile`. */
+  private val build = argv("./mill", "__.compile")
+  private val committing = argv("git", "commit", "-m", "x")
 
   private def call(name: String, args: ujson.Value): AssistantBlock.ToolCall =
     AssistantBlock.ToolCall(ToolCallId("c1"), name, args)
@@ -152,9 +167,10 @@ object AllowlistedCodingTests extends TestSuite {
       refusals: Refusals^ = Refusals.kept(),
       at: grit.core.id.CallSlot = TestCallSlots.First,
       sources: Option[SourceTools] = None,
-      tree: Uncommitted^ = Leaving.Nothing
+      tree: Uncommitted^ = Leaving.Nothing,
+      compile: Option[Argv] = None
   ): Either[String, (Boolean, Outcome)] =
-    tools(host, runs, guard, refusals, sources, tree)
+    tools(host, runs, guard, refusals, sources, tree, compile)
       .requested(
         call(name, args),
         Repairs.All,
@@ -1085,6 +1101,105 @@ object AllowlistedCodingTests extends TestSuite {
         all("commit", "--amend"),
         all("status", "-a")
       ) ==> Vector(true, true, true, false, false, false, false, false, false, false)
+    }
+
+    test(
+      "with a compile declared, a commit whose tree leaves nothing out runs it first, the guard " +
+        "not asked, and commits when it exits 0; with none declared, commits at once"
+    ) {
+      val noted = new Noting(Map(build -> instant, committing -> instant))
+      val runs = Allowlisted.over(noted, allowlist(2.minutes))
+      val jev = new GuardFixtures.Judging(Right(Vector(0.0, 0.0, 0.0, 0.0)))
+      val declared = settle(
+        new CodingTests.Scripted(),
+        runs,
+        "run",
+        ujson.Obj("program" -> "git", "args" -> ujson.Arr("commit", "-m", "x")),
+        GuardFixtures.guard(Right(jev)),
+        compile = Some(build)
+      )
+      val first = noted.log
+      val undeclared = commit(runs, Leaving.Nothing, "commit", "-m", "x")
+      (declared, first, noted.log.drop(first.size), jev.states.size) ==> (
+        Right((false, Outcome.Done("Exit code 0; no output."))),
+        Vector((build, 2.minutes), (committing, 2.minutes)),
+        Vector((committing, 2.minutes)),
+        0
+      )
+    }
+
+    test("a commit whose compile fails is refused with its exit and output, committing nothing") {
+      val noted = new Noting(
+        Map(
+          build -> ScriptedRuns
+            .Script("[error] Foo.scala:3: not found: value bar\n", "", Some(1.second), 1),
+          committing -> instant
+        )
+      )
+      val runs = Allowlisted.over(noted, allowlist(2.minutes))
+      (
+        compiling(runs, Leaving.Nothing, Some(build), "commit", "-m", "x"),
+        noted.log.map(_._1)
+      ) ==> (
+        Right(
+          (
+            false,
+            Outcome.Failed(
+              "The commit was refused, and nothing was committed: `./mill __.compile` failed on " +
+                "the working tree (exit 1). Fix what it reports, then commit again. Output:\n" +
+                "[error] Foo.scala:3: not found: value bar\n"
+            )
+          )
+        ),
+        Vector(build)
+      )
+    }
+
+    test("a commit whose compile runs past its timeout is refused, committing nothing") {
+      val noted = new Noting(
+        Map(build -> ScriptedRuns.Script("compiling\n", "", None, 0), committing -> instant)
+      )
+      val runs = Allowlisted.over(noted, allowlist(2.minutes))
+      (compiling(runs, Leaving.Nothing, Some(build), "commit", "-m", "x"), noted.log) ==> (
+        Right(
+          (
+            false,
+            Outcome.Failed(
+              "The commit was refused, and nothing was committed: `./mill __.compile` ran past " +
+                "120 seconds and was killed. Its output until then:\ncompiling\n"
+            )
+          )
+        ),
+        Vector((build, 2.minutes))
+      )
+    }
+
+    test(
+      "a commit that would leave out a file starts no compile; one whose compile cannot start " +
+        "is refused, failing closed, in the error's words"
+    ) {
+      val noted = new Noting(Map(committing -> instant))
+      val runs = Allowlisted.over(noted, allowlist(2.minutes))
+      val untracked = Leaving.of(Vector.empty, Vector("new.txt"))
+      (
+        compiling(runs, untracked, Some(build), "commit", "-m", "x").map(
+          _._2.toString.contains("it would leave out files")
+        ),
+        compiling(runs, Leaving.Nothing, Some(build), "commit", "-m", "x"),
+        noted.log
+      ) ==> (
+        Right(true),
+        Right(
+          (
+            false,
+            Outcome.Failed(
+              "The commit was refused, and nothing was committed: `./mill __.compile` could not " +
+                "be checked. ./mill: not found"
+            )
+          )
+        ),
+        Vector((build, 2.minutes))
+      )
     }
   }
 }

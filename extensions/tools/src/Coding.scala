@@ -128,7 +128,9 @@ object Coding {
     * the line naming what reads them ([[SourceTools.line]]) when the guard's classifier finds it
     * one at [[SourceTools.Points]] ([[SourceTools.question]]), or, when it gives no answer, the
     * rule does ([[SourceTools.ruled]]); a `git commit` refused, starting nothing, while `tree`
-    * reads files it would leave out; and `tail` and `stop` reaching only what `runs` started.
+    * reads files it would leave out, or, with `compile`, while that command, started through
+    * `runs` for at most [[Shell.Longest]], does not exit 0; and `tail` and `stop` reaching only
+    * what `runs` started.
     * `Left` names a tool that cannot be offered with the others.
     */
   def allowlisted(
@@ -138,7 +140,8 @@ object Coding {
       guard: MachineGuard^,
       refusals: Refusals^,
       sources: Option[SourceTools],
-      tree: Uncommitted^
+      tree: Uncommitted^,
+      compile: Option[Argv]
   ): Either[SetRefusal, Toolbox[caps.CapSet^{ws, edits, runs, guard, refusals, tree}]] =
     Toolbox.of(
       read(ws),
@@ -146,7 +149,7 @@ object Coding {
       search(ws),
       writing(freeWrite, edits),
       editing(freeEdit, edits),
-      argvRun(runs, guard, refusals, sources, tree),
+      argvRun(runs, guard, refusals, sources, tree, compile),
       tail(runs),
       stop(runs)
     )
@@ -608,7 +611,8 @@ object Coding {
       guard: MachineGuard^,
       refusals: Refusals^,
       sources: Option[SourceTools],
-      tree: Uncommitted^
+      tree: Uncommitted^,
+      compile: Option[Argv]
   ): Tool[ArgvArgs]^{runs, guard, refusals, tree} =
     argvRunHosted(runs.allowlist).calling { (a, at) =>
       // The line a shell read of `sources`' files answers after: asked of the guard's
@@ -624,12 +628,51 @@ object Coding {
         runs
           .start(a.argv, a.timeout, a.wait)
           .fold(e => Outcome.Failed(e.message), s => standing(s.id, s.status, line))
-      // A commit is started only when it would leave out no file.
+      // The declared compile, the guard not asked: the deployment chose it.
+      def compiled: Outcome = compile.fold(started) { c =>
+        val limit = Shell.Longest.min(runs.allowlist.longest)
+        runs
+          .start(c, limit, limit + CommitCheck.Grace)
+          .fold(
+            e => Outcome.Failed(CommitCheck.unchecked(s"`${c.written}`", e)),
+            s =>
+              s.status match {
+                case RunStatus.Ended(0, _) => started
+                case RunStatus.Ended(exit, output) =>
+                  Outcome.Failed(
+                    s"${CommitCheck.failed(c, exit)} " +
+                      RunAnswer.of("Output", output, failed = true)
+                  )
+                case RunStatus.TimedOut(after, output) =>
+                  Outcome.Failed(
+                    s"${CommitCheck.timedOut(c, after)} " +
+                      RunAnswer.of("Its output until then", output, failed = true)
+                  )
+                // Past its wait, which outlasts its timeout: stopped, as if it timed out.
+                case RunStatus.Going(_, _, output) =>
+                  val _ = runs.stop(s.id)
+                  Outcome.Failed(
+                    s"${CommitCheck.timedOut(c, limit)} " +
+                      RunAnswer.of("Its output until then", output, failed = true)
+                  )
+                case RunStatus.Stopped(after, _) =>
+                  Outcome.Failed(
+                    CommitCheck.unchecked(
+                      s"`${c.written}`",
+                      HostError.Failed(s"It was stopped after ${after.toSeconds} seconds.")
+                    )
+                  )
+              }
+          )
+      }
+      // A commit is started only when it would leave out no file, and its compile passes.
       def committing: Outcome =
         tree.read.fold(
           e => Outcome.Failed(CommitCheck.unchecked(CommitCheck.Tree, e)),
           files =>
-            CommitCheck.refusal(CommitCheck.leftOut(a.argv, files)).fold(started)(Outcome.Failed(_))
+            CommitCheck
+              .refusal(CommitCheck.leftOut(a.argv, files))
+              .fold(compiled)(Outcome.Failed(_))
         )
       // `said`, and when `subject` was refused before this turn, that it was.
       def refused(subject: String, said: String, again: Int => String): Outcome = {

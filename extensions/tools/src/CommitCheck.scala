@@ -1,5 +1,7 @@
 package grit.tools
 
+import scala.concurrent.duration.*
+
 import grit.core.host.{Argv, HostError, RelPath, Uncommitted}
 
 /** What an allowlisted `run` checks before a `git commit`, and the refusals the model reads when
@@ -77,6 +79,18 @@ private[tools] object CommitCheck {
   /** The refusal of a commit whose check of `what` failed with `error`: it fails closed. */
   def unchecked(what: String, error: HostError): String =
     s"$Refused $what could not be checked. ${error.message}"
+
+  /** The refusal of a commit whose `compile` exited `exit`, not 0, before its output. */
+  def failed(compile: Argv, exit: Int): String =
+    s"$Refused `${compile.written}` failed on the working tree (exit $exit). Fix what it " +
+      "reports, then commit again."
+
+  /** The refusal of a commit whose `compile` was killed at `after`, before its output. */
+  def timedOut(compile: Argv, after: FiniteDuration): String =
+    s"$Refused `${compile.written}` ran past ${after.toSeconds} seconds and was killed."
+
+  /** 5 seconds: how much longer than its timeout a commit waits on its compile. */
+  val Grace: FiniteDuration = 5.seconds
 
   /** The working tree, as [[unchecked]] names it. */
   val Tree = "the working tree"

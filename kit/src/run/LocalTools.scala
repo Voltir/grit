@@ -139,7 +139,8 @@ final class LocalTools(
             guardAt(root, allowlist),
             refusals,
             sources,
-            new LocalUncommitted(root, sys.env, redaction)
+            new LocalUncommitted(root, sys.env, redaction),
+            None
           )
           .fold(refused, tools => Run.request(request, tools))
     }

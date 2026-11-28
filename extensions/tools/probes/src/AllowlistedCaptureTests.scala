@@ -34,11 +34,11 @@ object AllowlistedCaptureTests extends TestSuite {
        |  )""".stripMargin
 
   private val itself =
-    "def made(ws: Workspace^, e: Edits^, r: Allowlisted^, g: MachineGuard^, f: Refusals^, t: Uncommitted^): Either[SetRefusal, Toolbox[caps.CapSet^{ws, e, r, g, f, t}]] = Coding.allowlisted(ws, e, r, g, f, None, t)"
+    "def made(ws: Workspace^, e: Edits^, r: Allowlisted^, g: MachineGuard^, f: Refusals^, t: Uncommitted^): Either[SetRefusal, Toolbox[caps.CapSet^{ws, e, r, g, f, t}]] = Coding.allowlisted(ws, e, r, g, f, None, t, None)"
   private val forgettingRefusals =
-    "def forgetting(ws: Workspace^, e: Edits^, r: Allowlisted^, g: MachineGuard^, f: Refusals^, t: Uncommitted^): Either[SetRefusal, Toolbox[caps.CapSet^{ws, e, r, g, t}]] = Coding.allowlisted(ws, e, r, g, f, None, t)"
+    "def forgetting(ws: Workspace^, e: Edits^, r: Allowlisted^, g: MachineGuard^, f: Refusals^, t: Uncommitted^): Either[SetRefusal, Toolbox[caps.CapSet^{ws, e, r, g, t}]] = Coding.allowlisted(ws, e, r, g, f, None, t, None)"
   private val forgettingTree =
-    "def untreed(ws: Workspace^, e: Edits^, r: Allowlisted^, g: MachineGuard^, f: Refusals^, t: Uncommitted^): Either[SetRefusal, Toolbox[caps.CapSet^{ws, e, r, g, f}]] = Coding.allowlisted(ws, e, r, g, f, None, t)"
+    "def untreed(ws: Workspace^, e: Edits^, r: Allowlisted^, g: MachineGuard^, f: Refusals^, t: Uncommitted^): Either[SetRefusal, Toolbox[caps.CapSet^{ws, e, r, g, f}]] = Coding.allowlisted(ws, e, r, g, f, None, t, None)"
   private val throughAllowlisted =
     model(
       "",
