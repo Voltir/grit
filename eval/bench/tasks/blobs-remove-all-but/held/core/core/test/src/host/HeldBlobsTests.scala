@@ -25,7 +25,9 @@ object HeldBlobsTests extends TestSuite {
       }
     }
 
-    test("a removal failing partway answers its failure, the blob removed before it gone and the rest kept") {
+    test(
+      "a removal failing partway answers its failure, the blob removed before it gone and the rest kept"
+    ) {
       TempBlobs.around { blobs =>
         for (s <- Vector("one", "two", "three"))
           blobs.receive(bytes(s), 10)(_.keep()) ==> Right(Right(()))

@@ -113,7 +113,10 @@ object HeldAnthropicWireTests extends TestSuite {
         )
       )
       // Where the stable mark goes otherwise is the design's: only a thinking block is ruled out.
-      blocks(body).filter(_.obj.contains("cache_control")).map(_("type").str).contains("thinking") ==>
+      blocks(body)
+        .filter(_.obj.contains("cache_control"))
+        .map(_("type").str)
+        .contains("thinking") ==>
         false
       blocks(body).filter(_("type").str == "thinking").map(ujson.write(_)) ==> Vector(before)
       ujson.write(recorded) ==> before

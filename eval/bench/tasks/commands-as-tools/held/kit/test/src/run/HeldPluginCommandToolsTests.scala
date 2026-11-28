@@ -67,8 +67,7 @@ object HeldPluginCommandToolsTests extends TestSuite {
           plugin("c", new Saying("c_hush", false), new Noting("c_keep", true)),
           plugin("a", new Noting("a_keep", true), new Saying("a_read", true))
         ),
-        p =>
-          PluginReads(new InMemoryPlugins().docs(p), docs.keeper(p, TestPlugins.Tallies.terms)),
+        p => PluginReads(new InMemoryPlugins().docs(p), docs.keeper(p, TestPlugins.Tallies.terms)),
         docs.keeper,
         p => new InMemoryClaims().of(p, _ => None),
         new Askers {
