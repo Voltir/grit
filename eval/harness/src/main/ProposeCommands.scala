@@ -138,15 +138,13 @@ private[main] object ProposeCommands {
           )
       }
 
-  /** The frozen task `name` under `--tasks`, blind ([[BenchTask.of]], [[BlindTask.of]]). */
+  /** The frozen task `name` under `--tasks`, blind ([[BenchTask.read]], [[BlindTask.of]]). */
   private[main] def blindTask(
       f: Map[String, String],
       name: TrialRows.TaskName
   ): Either[String, BlindTask] =
     for {
       at <- need(f, "tasks").map(Path.of(_).resolve(TrialRows.TaskName.value(name)))
-      json <- read(at.resolve("task.json"))
-      brief <- read(at.resolve("brief.md"))
-      task <- BenchTask.of(name, json, brief)
+      task <- BenchTask.read(at)
     } yield BlindTask.of(task)
 }

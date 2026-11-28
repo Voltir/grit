@@ -1051,7 +1051,11 @@ object Rig {
             .run(work)(dir, task.checks, Vector(CappedJvm), watch)
             .left
             .map(_.message)
-          held = Checked(Vector.empty, None)
+          held <- task.held.fold(Right(Checked(Vector.empty, None)))(h =>
+            Held.within(work)(dir, h)(
+              Checks.held(work)(dir, h, Vector(CappedJvm), watch).left.map(_.message)
+            )
+          )
           grade = Grade.of(checked, held, completed, changed.lines.nonEmpty)
           trial <- TrialRows.Trial
             .of(
@@ -1100,20 +1104,66 @@ object Rig {
   )
 
   /** `task`'s known diff at `dir`, its commits applied to its base, the checks' tools fetched
-    * ([[Checks.tooled]]), and then its checks run; `Left` when a commit does not apply or a
-    * fetch fails. The checkout is removed after, as [[trial]]'s is.
+    * ([[Checks.tooled]]), and then its checks run, its completion read ([[Completion.of]]) and its
+    * held checks run ([[Held.within]]); then, when it has held checks, a checkout of its base at
+    * `<dir>-base`, tooled, and its held checks run there. `Left` when a commit does not apply or
+    * a fetch fails. Each checkout is removed after, as [[trial]]'s is.
     */
   def known(
       work: Processes
-  )(repository: String, task: BenchTask, dir: RelPath): Either[String, Checked] =
-    tidied(work, dir, None)(
-      Clone
-        .picked(work)(repository, task, dir)
-        .flatMap(_ => Checks.tooled(work)(dir))
-        .flatMap(_ =>
-          Checks.run(work)(dir, task.checks, Vector(CappedJvm), () => None).left.map(_.message)
+  )(repository: String, task: BenchTask, dir: RelPath): Either[String, Known] = {
+    def held(at: RelPath): Either[String, Checked] =
+      task.held.fold(Right(Checked(Vector.empty, None)))(h =>
+        Held.within(work)(at, h)(
+          Checks.held(work)(at, h, Vector(CappedJvm), () => None).left.map(_.message)
         )
-    )
+      )
+    for {
+      known <- tidied(work, dir, None)(
+        for {
+          _ <- Clone.picked(work)(repository, task, dir)
+          _ <- Checks.tooled(work)(dir)
+          checked <- Checks
+            .run(work)(dir, task.checks, Vector(CappedJvm), () => None)
+            .left
+            .map(_.message)
+          completed <- task.completion.fold(Right(Completed.Nothing))(
+            Completion.of(work)(dir, task.base, _, () => None)
+          )
+          ran <- held(dir)
+        } yield (checked, completed, ran)
+      )
+      baseDir <- RelPath.of(s"${RelPath.value(dir)}-base").left.map(_.toString)
+      atBase <- task.held.fold(Right(Checked(Vector.empty, None)))(_ =>
+        tidied(work, baseDir, None)(
+          for {
+            _ <- Clone.fresh(work)(repository, task.base, baseDir)
+            _ <- Checks.tooled(work)(baseDir)
+            ran <- held(baseDir)
+          } yield ran
+        )
+      )
+    } yield Known(known._1, known._2, known._3, atBase)
+  }
+
+  /** A known run: the task's checks on its known tree, what that tree left of its completion, its
+    * held checks there and at its base. It passes when the checks pass, the completion is met, and
+    * every held check passes on the known tree and fails at the base, as a held test seen red.
+    */
+  final case class Known(checked: Checked, completed: Completed, held: Checked, atBase: Checked)
+      extends caps.Pure {
+    def passed: Boolean =
+      checked.passed && completed.missed.isEmpty && held.passed &&
+        atBase.stopped.isEmpty && atBase.runs.forall(!_._2)
+
+    /** A line each: the checks, the held checks and the completion as a trial's report gives them
+      * ([[Tried.graded]]), each held check at the base after `at base: `, then `known: passed` or
+      * `known: failed`.
+      */
+    def lines: Vector[String] =
+      checked.lines ++ Tried.graded(held, completed) ++ atBase.lines.map(l => s"at base: $l") :+
+        s"known: ${if (passed) "passed" else "failed"}"
+  }
 
   /** `use` of the variables `claude` runs with, none of them a key:
     * `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, so a run writes no memory under its user's home, and

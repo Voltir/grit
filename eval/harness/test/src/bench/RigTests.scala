@@ -223,7 +223,13 @@ object RigTests extends TestSuite {
         val script = Files.writeString(
           origin.resolve(s"scripts/$s"),
           s"#!/bin/sh\nprintf '%s' \"$${JDK_JAVA_OPTIONS-unset}\" > $root/$s-jvm\n" +
-            s"if [ -e $root/$s-heavy ]; then touch $root/heavy; sleep 10; fi\nexit 0\n"
+            s"if [ -e $root/$s-heavy ]; then touch $root/heavy; sleep 10; fi\n" +
+            // A held check, an argument `Held…`, passes only while that file is there and A has x.
+            (if (s == "check")
+               "for a; do case $a in Held*) [ -e \"$a\" ] && grep -q 'val x' a.scala || exit 1;; " +
+                 "esac; done\n"
+             else "") +
+            "exit 0\n"
         )
         Files.setPosixFilePermissions(script, PosixFilePermissions.fromString("rwxr-xr-x"))
       }
@@ -263,6 +269,7 @@ object RigTests extends TestSuite {
         "Give A an x.",
         Vector(k),
         Vector(Check(Runner.Check, Vector("m"))),
+        None,
         None
       ))
         .fold(e => throw new java.lang.AssertionError(e), identity)
@@ -281,6 +288,16 @@ object RigTests extends TestSuite {
   /** The fake grit launcher's output, a line each, whether it hangs once written, and whether a
     * JVM prints the lines, as `grit work` does, in place of the shell.
     */
+  /** `f`'s task, holding the held file `HeldATests.scala` and its check. */
+  private def heldTask(f: Fixture^): BenchTask = {
+    val file = HeldFile
+      .of(rel("HeldATests.scala"), "held\n")
+      .fold(e => throw new java.lang.AssertionError(e), identity)
+    f.task.copy(held =
+      Some(Held(Vector(file), Vector(Check(Runner.Check, Vector("HeldATests.scala")))))
+    )
+  }
+
   private final case class GritFake(
       lines: Vector[String],
       hangs: Boolean = false,
@@ -1432,6 +1449,65 @@ object RigTests extends TestSuite {
           Vector("a-101.log", "b-102.log", "b-103.log", "notes")
         )
       } finally Files.walk(root).sorted(java.util.Comparator.reverseOrder()).forEach(Files.delete)
+    }
+
+    test(
+      "a known run's held checks fail at its base and pass on its known tree, each tree removed"
+    ) {
+      withTask { f =>
+        val known = Rig.known(f.work)(f.origin, heldTask(f), checkout)
+        (
+          known.map(k => (k.held.runs, k.atBase.runs, k.passed)),
+          f.exists("trial"),
+          f.exists("trial-base")
+        ) ==> (
+          Right(
+            (
+              Vector("scripts/check HeldATests.scala" -> true),
+              Vector("scripts/check HeldATests.scala" -> false),
+              true
+            )
+          ),
+          false,
+          false
+        )
+      }
+    }
+
+    test(
+      "a trial's held checks run once its diff is read, and its grade falls to Partial on one red"
+    ) {
+      withTask { f =>
+        val graded = (edited: String) =>
+          Rig
+            .trial(f.work, f.handing, stepping())(
+              f.origin,
+              heldTask(f),
+              f.arm(Fake(edited)),
+              cap,
+              key,
+              checkout,
+              Rig.Quiet,
+              f.root.resolve("claude.log")
+            )
+            .map(t => (t.held.runs, t.grade, t.diff.contains("HeldATests")))
+        (graded("object A { val x = 1 }"), graded("object A { val y = 2 }")) ==> (
+          Right(
+            (
+              Vector("scripts/check HeldATests.scala" -> true),
+              grit.eval.harness.bench.Grade.Complete,
+              false
+            )
+          ),
+          Right(
+            (
+              Vector("scripts/check HeldATests.scala" -> false),
+              grit.eval.harness.bench.Grade.Partial,
+              false
+            )
+          )
+        )
+      }
     }
 
     test("a known run passes when its commits apply and its checks pass, and leaves nothing") {

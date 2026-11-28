@@ -29,6 +29,17 @@ compile (`Rig.GritCompile`), each in turn in one worktree beside the checkout. T
 the grade, each item missed (`unmet:`) and each not read (`unread:`). The grade is printed, not
 kept: `passed` is the row's, and means Complete in a run that ended in no error.
 
+A task's held tests (`held`: `files`, each a repository path, and the `checks` that run them, the
+law not among them) are kept at `held/<repository path>` under its directory, every file named
+`Held…` so it never overwrites a coder's. They are copied into the checkout once the coder has
+stopped and its diff is read, so its distance is unchanged, run after the task's checks, and removed
+before what the coder left is logged; a red one, its suite not compiling among them, grades the
+trial Partial. A known run (`--known`) runs them on the known tree, where each must pass, and on a
+checkout of the base, where each must fail, as a test seen red; it reads the known tree's
+completion too. The checkout holds base's history alone, so no held file can be reached from it;
+Claude Code's read commands that no rule covers can still read this repository, as they can read
+the known commits.
+
 `triage-retry` is held out: no change to the harness, its standing text or its settings is tuned
 against it, so its trials say how a tuned coder does on a task it was not tuned on.
 

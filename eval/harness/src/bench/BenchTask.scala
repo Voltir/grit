@@ -1,7 +1,12 @@
 package grit.eval.harness.bench
 
+import java.nio.charset.StandardCharsets
+import java.nio.file.{Files, Path}
+
+import scala.jdk.CollectionConverters.*
 import scala.util.Try
 
+import grit.core.host.RelPath
 import grit.core.json.Fields
 import grit.dbos.internal.TrialRows
 
@@ -38,7 +43,8 @@ final case class BenchTask(
     brief: String,
     commits: Vector[Sha],
     checks: Vector[Check],
-    completion: Option[Completion]
+    completion: Option[Completion],
+    held: Option[Held]
 ) extends caps.Pure
 
 object BenchTask {
@@ -55,9 +61,16 @@ object BenchTask {
     * why not: not an object of `base`, `commits` and `checks`; a commit not 40 lower-case hex
     * digits; no commits; no checks; a runner not `check` or `it`; a check with no arguments; an
     * empty brief; a `complete` not an object of `commits` (a count from 0), `exists`, `absent`
-    * (globs) and `holds` (each a `path` glob and its `text`).
+    * (globs) and `holds` (each a `path` glob and its `text`); a `held` not an object of `files`
+    * and `checks`, a held file not in `held` (each repository path's text under the task's
+    * `held/`) or not named `Held…` ([[HeldFile.of]]), or a held check refused as a check is.
     */
-  def of(name: TrialRows.TaskName, json: String, brief: String): Either[String, BenchTask] = {
+  def of(
+      name: TrialRows.TaskName,
+      json: String,
+      brief: String,
+      held: Map[String, String]
+  ): Either[String, BenchTask] = {
     val named = TrialRows.TaskName.value(name)
     val what = s"$named's task.json"
     for {
@@ -73,14 +86,65 @@ object BenchTask {
       _ <- Either.cond(brief.trim.nonEmpty, (), s"$named's brief is empty")
       complete <- fields.added("complete")
       completion <- Fields.opt(complete)(completion(named, _))
+      holding <- fields.added("held")
+      kept <- Fields.opt(holding)(heldOf(named, _, held))
     } yield BenchTask(
       name,
       base,
       s"${brief.stripTrailing}\n\n$closing",
       commits,
       checks,
-      completion
+      completion,
+      kept
     )
+  }
+
+  /** The task at `dir`: its `task.json`, its `brief.md` and every file under its `held/`, read
+    * as [[of]] reads them, named for `dir`; `Left` also when one cannot be read.
+    */
+  def read(dir: Path): Either[String, BenchTask] = {
+    def text(p: Path) =
+      Try(Files.readString(p, StandardCharsets.UTF_8)).toEither.left.map(e =>
+        s"$p: ${e.getMessage}"
+      )
+    val heldDir = dir.resolve("held")
+    for {
+      name <- TrialRows.TaskName.of(Option(dir.getFileName).fold("")(_.toString))
+      json <- text(dir.resolve("task.json"))
+      brief <- text(dir.resolve("brief.md"))
+      paths <-
+        if (!Files.isDirectory(heldDir)) Right(Vector.empty)
+        else
+          Try {
+            val walk = Files.walk(heldDir)
+            try walk.iterator.asScala.filter(Files.isRegularFile(_)).toVector
+            finally walk.close()
+          }.toEither.left.map(e => s"$heldDir: ${e.getMessage}")
+      texts <- each(paths)(p => text(p).map(heldDir.relativize(p).toString -> _))
+      task <- of(name, json, brief, texts.toMap)
+    } yield task
+  }
+
+  /** The held tests `v` of the task `named`, each file's text from `texts`, or why not. */
+  private def heldOf(
+      named: String,
+      v: ujson.Value,
+      texts: Map[String, String]
+  ): Either[String, Held] = {
+    val fields = Fields(s"$named's held", v)
+    for {
+      listed <- fields.arr("files")
+      files <- each(listed) { f =>
+        for {
+          written <- Fields.str(s"$named's held file", f)
+          path <- RelPath.of(written).left.map(_.toString)
+          text <- texts.get(written).toRight(s"$named's held file `$written` is not under held/")
+          file <- HeldFile.of(path, text)
+        } yield file
+      }
+      checking <- fields.arr("checks")
+      checks <- each(checking)(check(named, _))
+    } yield Held(files, checks)
   }
 
   /** The completion `v` of the task `named`, or why not. */
@@ -122,8 +186,8 @@ object BenchTask {
   }
 
   /** `read` of each of `vs`, or the first refusal. */
-  private def each[A](vs: Vector[ujson.Value])(
-      read: ujson.Value => Either[String, A]
+  private def each[V, A](vs: Vector[V])(
+      read: V => Either[String, A]
   ): Either[String, Vector[A]] = {
     val (refused, accepted) = vs.partitionMap(read)
     refused.headOption.toLeft(accepted)

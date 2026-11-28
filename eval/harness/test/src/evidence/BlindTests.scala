@@ -16,7 +16,8 @@ object BlindTests extends TestSuite {
         """{"base":"c905203b2f09fb367b42e0476b609fb458ec2bb4",
           |"commits":["8c5f8a48114526adebfbbbabe7217d2ec5478bc9"],
           |"checks":[{"runner":"check","args":["grit.models"]}]}""".stripMargin,
-        "Serve the commands as tools."
+        "Serve the commands as tools.",
+        Map.empty
       )
     )
   )

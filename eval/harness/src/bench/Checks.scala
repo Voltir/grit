@@ -65,14 +65,41 @@ object Checks {
       checks: Vector[Check],
       variables: Vector[(String, String)],
       watch: () => Option[String]
-  ): Either[HostError, Checked] = {
-    val lines = checks.map { c =>
+  ): Either[HostError, Checked] =
+    ran(work)(
+      dir,
+      lined(checks) ++
+        Vector(Vector("bash", "scripts/fetch-enola.sh"), Vector("bash", "scripts/enola-law.sh")),
+      variables,
+      watch
+    )
+
+  /** As [[run]], `held`'s checks without the law. */
+  def held(work: Processes)(
+      dir: RelPath,
+      held: Held,
+      variables: Vector[(String, String)],
+      watch: () => Option[String]
+  ): Either[HostError, Checked] =
+    ran(work)(dir, lined(held.checks), variables, watch)
+
+  /** Each of `checks` as the command line that runs it. */
+  private def lined(checks: Vector[Check]): Vector[Vector[String]] =
+    checks.map { c =>
       val script = c.runner match {
         case Runner.Check => "scripts/check"
         case Runner.It => "scripts/it"
       }
       script +: c.args
-    } ++ Vector(Vector("bash", "scripts/fetch-enola.sh"), Vector("bash", "scripts/enola-law.sh"))
+    }
+
+  /** `lines` run as [[run]] runs its checks. */
+  private def ran(work: Processes)(
+      dir: RelPath,
+      lines: Vector[Vector[String]],
+      variables: Vector[(String, String)],
+      watch: () => Option[String]
+  ): Either[HostError, Checked] = {
     @tailrec def go(
         left: Vector[Vector[String]],
         runs: Vector[(String, Boolean)]

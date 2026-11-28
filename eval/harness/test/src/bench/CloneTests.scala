@@ -70,6 +70,7 @@ object CloneTests extends TestSuite {
       "Do it.",
       known.map(o.commits).toVector,
       Vector(Check(Runner.Check, Vector("grit.core"))),
+      None,
       None
     )
 

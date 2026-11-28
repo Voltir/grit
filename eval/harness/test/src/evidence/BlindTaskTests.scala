@@ -21,7 +21,8 @@ object BlindTaskTests extends TestSuite {
         task <- BenchTask.of(
           name,
           Files.readString(at.resolve("task.json")),
-          Files.readString(at.resolve("brief.md"))
+          Files.readString(at.resolve("brief.md")),
+          Map.empty
         )
       } yield task
       read.fold(why => throw new java.lang.AssertionError(why), identity)

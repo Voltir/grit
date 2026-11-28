@@ -56,6 +56,7 @@ object EvidenceCheckoutTests extends TestSuite {
         "Do it.",
         commits.drop(1),
         Vector(Check(Runner.Check, Vector("grit.core"))),
+        None,
         None
       )
       body(work, root, root.resolve("origin").toString, BlindTask.of(task))

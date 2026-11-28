@@ -4,6 +4,7 @@ import java.nio.file.{Files, Path}
 
 import scala.jdk.CollectionConverters.*
 
+import grit.core.host.RelPath
 import grit.dbos.internal.TrialRows
 
 import utest.*
@@ -25,11 +26,12 @@ object TaskTests extends TestSuite {
 
   /** The refusal of `text`, or what it read as when it was not refused. */
   private def refusal(text: String, brief: String = "Do it."): String =
-    BenchTask.of(name, text, brief).fold(identity, t => s"read: $t")
+    BenchTask.of(name, text, brief, Map.empty).fold(identity, t => s"read: $t")
 
   val tests = Tests {
     test("a task file names its base, its commits in order, and each check with its runner") {
-      val read = BenchTask.of(name, json(commits = s"[\"$known\", \"${"c" * 40}\"]"), "Do it.")
+      val read =
+        BenchTask.of(name, json(commits = s"[\"$known\", \"${"c" * 40}\"]"), "Do it.", Map.empty)
       read.map(t =>
         (
           Sha.value(t.base),
@@ -54,8 +56,16 @@ object TaskTests extends TestSuite {
       val complete =
         """{"commits": 5, "exists": ["docs/decisions/0053-*.md"], "absent": ["**/*.orig"],
           |"holds": [{"path": "docs/decisions/0048-*.md", "text": "0053"}]}""".stripMargin
-      val read = BenchTask.of(name, json().dropRight(1) + s""", "complete": $complete}""", "Do it.")
-      (read.map(_.completion), BenchTask.of(name, json(), "Do it.").map(_.completion)) ==> (
+      val read = BenchTask.of(
+        name,
+        json().dropRight(1) + s""", "complete": $complete}""",
+        "Do it.",
+        Map.empty
+      )
+      (
+        read.map(_.completion),
+        BenchTask.of(name, json(), "Do it.", Map.empty).map(_.completion)
+      ) ==> (
         Right(
           Some(
             Completion(
@@ -82,6 +92,52 @@ object TaskTests extends TestSuite {
         "a-task's complete's commits is below 0",
         "a-task's complete names no exists",
         "a-task's complete's holds names no text"
+      )
+    }
+
+    test("a task's held files are read from its held directory, each at its repository path") {
+      val dir = Files.createTempDirectory("grit-task").resolve("a-task")
+      try {
+        val at = dir.resolve("held/core/test/src/HeldATests.scala")
+        val _ = Files.createDirectories(at.getParent)
+        val _ = Files.writeString(at, "object HeldATests\n")
+        val _ = Files.writeString(dir.resolve("brief.md"), "Do it.")
+        val held =
+          """{"files": ["core/test/src/HeldATests.scala"],
+            |"checks": [{"runner": "check", "args": ["grit.core.HeldATests"]}]}""".stripMargin
+        val _ =
+          Files.writeString(dir.resolve("task.json"), json().dropRight(1) + s""", "held": $held}""")
+        BenchTask
+          .read(dir)
+          .map(_.held.map(h => (h.files.map(f => (RelPath.value(f.path), f.text)), h.checks))) ==>
+          Right(
+            Some(
+              (
+                Vector("core/test/src/HeldATests.scala" -> "object HeldATests\n"),
+                Vector(Check(Runner.Check, Vector("grit.core.HeldATests")))
+              )
+            )
+          )
+      } finally
+        Files.walk(dir.getParent).sorted(java.util.Comparator.reverseOrder()).forEach(Files.delete)
+    }
+
+    test("a task's held tests are refused for each way they fall short, naming what") {
+      def holding(h: String, files: Map[String, String] = Map("HeldATests.scala" -> "x")) =
+        BenchTask
+          .of(name, json().dropRight(1) + s""", "held": $h}""", "Do it.", files)
+          .fold(identity, t => s"read: $t")
+      val check = """[{"runner": "check", "args": ["grit.core.HeldATests"]}]"""
+      Vector(
+        holding("[]"),
+        holding(s"""{"files": ["HeldBTests.scala"], "checks": $check}"""),
+        holding(s"""{"files": ["ATests.scala"], "checks": $check}""", Map("ATests.scala" -> "x")),
+        holding("""{"files": ["HeldATests.scala"], "checks": [{"runner": "check", "args": []}]}""")
+      ) ==> Vector(
+        "a-task's held names no files",
+        "a-task's held file `HeldBTests.scala` is not under held/",
+        "held file `ATests.scala` is not named `Held…`",
+        "a-task's check of `check` has no arguments"
       )
     }
 
@@ -117,12 +173,7 @@ object TaskTests extends TestSuite {
       val read = names.map { n =>
         val written = Files.readString(dir.resolve(n).resolve("brief.md"))
         for {
-          taskName <- TrialRows.TaskName.of(n)
-          task <- BenchTask.of(
-            taskName,
-            Files.readString(dir.resolve(n).resolve("task.json")),
-            written
-          )
+          task <- BenchTask.read(dir.resolve(n))
         } yield (
           written.contains(rigSentence),
           task.brief.endsWith(rigSentence),

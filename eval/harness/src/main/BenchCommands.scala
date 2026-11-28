@@ -54,7 +54,7 @@ private[main] object BenchCommands {
     * not given; the last four grit's [[Arm.Settings]], the effort a word [[CatalogJson.readEffort]]
     * reads, the replay one [[Arm.Settings.readReplay]] reads; a standing file
     * [[Standing.read]] refuses is refused before anything runs): the task
-    * `<name>` of `<dir>` ([[BenchTask.of]], its `task.json` and `brief.md`), in a checkout under `<work>` named for it and `clock`'s now, of the repository
+    * `<name>` of `<dir>` ([[BenchTask.read]], its `task.json`, `brief.md` and `held/`), in a checkout under `<work>` named for it and `clock`'s now, of the repository
     * at `<path>`. With `--known`, its own commits through its checks ([[Rig.known]]). With `--dry
     * true` and grit, what grit's first call would send ([[Rig.dry]]), printed whole, nothing
     * kept, no key read. Otherwise a coder run under the caps, the key [[Caps.key]] names from
@@ -99,11 +99,8 @@ private[main] object BenchCommands {
   private def run(f: Map[String, String], clock: Clock^): Either[String, Unit] =
     for {
       name <- need(f, "task")
-      taskName <- TrialRows.TaskName.of(name)
       at <- need(f, "tasks").map(Path.of(_).resolve(name))
-      task <- read(at.resolve("task.json")).flatMap(json =>
-        read(at.resolve("brief.md")).flatMap(BenchTask.of(taskName, json, _))
-      )
+      task <- BenchTask.read(at)
       repository <- need(f, "repository")
       root <- need(f, "work").map(Path.of(_))
       _ <- Try(Files.createDirectories(root)).toEither.left.map(e => s"no work directory: $e")
@@ -118,10 +115,7 @@ private[main] object BenchCommands {
       dir <- RelPath.of(s"$name-${clock.now().getEpochSecond}").left.map(_.toString)
       _ <-
         if (f.get("known").contains("true"))
-          Rig.known(work)(repository, task, dir).map { c =>
-            c.lines.foreach(println)
-            println(s"known: ${if (c.passed) "passed" else "failed"}")
-          }
+          Rig.known(work)(repository, task, dir).map(_.lines.foreach(println))
         else
           for {
             cap <- caps(f)

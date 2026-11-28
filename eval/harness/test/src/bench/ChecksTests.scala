@@ -40,6 +40,24 @@ object ChecksTests extends TestSuite {
   )
 
   val tests = Tests {
+    test(
+      "a task's held checks run in order, by their command lines, and the law is not among them"
+    ) {
+      inCheckout { (work, _) =>
+        Checks
+          .held(work)(checkout, Held(Vector.empty, checks), Vector.empty, () => None)
+          .map(c => (c.runs, c.passed)) ==> Right(
+          (
+            Vector(
+              "scripts/check grit.core" -> true,
+              "scripts/it grit.dbos.it.testOnly red" -> false
+            ),
+            false
+          )
+        )
+      }
+    }
+
     test("each check and the law run in order, by their command lines, whatever an earlier gave") {
       inCheckout { (work, _) =>
         Checks
