@@ -120,7 +120,7 @@ object RepositoriesEnv {
       named <- cloneOf(declared, repository)
       at <- existing(named)
       under <- copies(env)
-    } yield RepositoryClone(repository, at, under)
+    } yield RepositoryClone(repository, at, under, None)
 
   /** Where `declared` says `repository`'s clone is; why not, naming what it declares. */
   private def cloneOf(

@@ -6,13 +6,15 @@ import grit.chat.look.Theme
 import grit.chat.settings.{Durations, Prefs}
 import grit.core.allot.EffortRouting
 import grit.core.files.Files
+import grit.core.host.Argv
 import grit.core.id.ConversationId
 import grit.core.message.Tokens
 import grit.kit.deployment.Offered
 import grit.turn.TurnLoop
 
 /** What a run reads from its environment besides the deployment: the window, the stub, the sweep,
-  * files' expiry, the theme, the tools, the assembler and the cache marks.
+  * files' expiry, the theme, the tools, the compile its commits pass, the assembler and the cache
+  * marks.
   */
 private[main] object RunChoices {
 
@@ -165,6 +167,35 @@ private[main] object RunChoices {
         Left(s"$ToolsVar=all needs the chat, which answers what a tool asks first")
       case Some("allowlist") => Right(Offered.Allowlisted(Offered.ReferenceAllowlist))
       case Some(_) => Left(s"$ToolsVar is not read, all or allowlist")
+    }
+
+  private[main] val CompileVar = "GRIT_COMPILE"
+
+  /** The command `GRIT_COMPILE` names, its words split at whitespace, that each commit an
+    * allowlisted `run` makes must pass first ([[grit.tools.Coding.allowlisted]]); unset, `None`.
+    * Refused when it names no command, when `offered` is not allowlisted, so no commit is
+    * checked, or when its allowlist does not permit it.
+    */
+  private[main] def compileChoice(
+      env: Map[String, String],
+      offered: Offered
+  ): Either[String, Option[Argv]] =
+    env.get(CompileVar).map(_.trim.split("\\s+").toList.filter(_.nonEmpty)) match {
+      case None => Right(None)
+      case Some(Nil) => Left(s"$CompileVar names no command")
+      case Some(program :: args) =>
+        for {
+          argv <- Argv.of(program, args*).left.map(why => s"$CompileVar: $why")
+          _ <- offered match {
+            case Offered.Allowlisted(allowlist) =>
+              Either.cond(
+                allowlist.permits(argv),
+                (),
+                s"$CompileVar: ${argv.written} is not on the allowlist"
+              )
+            case _ => Left(s"$CompileVar: $ToolsVar is not allowlist, so no commit is checked")
+          }
+        } yield Some(argv)
     }
 
   private[main] val EffortRoutingVar = "GRIT_EFFORT_ROUTING"

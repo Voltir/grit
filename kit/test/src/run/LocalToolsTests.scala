@@ -40,6 +40,7 @@ object LocalToolsTests extends TestSuite {
         Fresh.random(),
         copies,
         Unguarded,
+        None,
         None
       )
     try body(tools)
@@ -187,6 +188,7 @@ object LocalToolsTests extends TestSuite {
       Fresh.random(),
       Some(copies),
       Unguarded,
+      None,
       None,
       Some(pushing(repo, remoteRepository))
     )
@@ -337,6 +339,7 @@ object LocalToolsTests extends TestSuite {
           Fresh.random(),
           None,
           Unguarded,
+          None,
           None
         )
       tools.close()

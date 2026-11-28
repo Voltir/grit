@@ -107,6 +107,7 @@ object WorkLiveTests extends TestSuite {
         clock,
         Fresh.random(),
         Left("no machine check here"),
+        None,
         None
       ) { here =>
         Kit.console(
@@ -169,6 +170,7 @@ object WorkLiveTests extends TestSuite {
             clock,
             Fresh.random(),
             Left("no machine check here"),
+            None,
             None
           )(here =>
             Work.run(
@@ -456,6 +458,7 @@ object WorkLiveTests extends TestSuite {
               clock,
               Fresh.random(),
               Left("no machine check here"),
+              None,
               Some(copies)
             )(here =>
               Work.run(
@@ -616,6 +619,7 @@ object WorkLiveTests extends TestSuite {
         clock,
         Fresh.random(),
         Left("no machine check here"),
+        None,
         Some(copies),
         Some(pushing)
       )(here =>

@@ -8,7 +8,7 @@ import grit.assembly.estimate.CharEstimate
 import grit.core.classify.Classifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.edge.{Console, Desks, EdgeRefusal, EdgeStores, ServedEdge, Variable}
-import grit.core.host.Instructions
+import grit.core.host.{Argv, Instructions}
 import grit.core.id.{EdgeName, PrincipalId}
 import grit.core.place.{Directory, Place, Repository}
 import grit.core.prompt.Fragment
@@ -76,6 +76,7 @@ object LocalEdge {
     * its working copy, offering its branch as `pushing` does when given, with what they show
     * cleared by `redaction`, each allowlisted `run` judged by a machine guard asking `guarding`
     * and a shell read of `sources`' files answering after the line naming what reads them,
+    * each commit compiled first with `compile` when given ([[LocalTools]]),
     * and the instruction files around the directory as this machine reads them; the tools closed
     * once `use` returns or
     * throws, which ends any command they left running. Why not, before `use` runs: a tool
@@ -91,10 +92,11 @@ object LocalEdge {
       pushing: Option[Pushing^],
       guarding: Either[String, Classifier^],
       sources: Option[SourceTools],
+      compile: Option[Argv],
       log: org.slf4j.Logger
   )(use: Console.Edge^ => A): Either[String, A] = {
     val tools =
-      new LocalTools(offered, redaction, clock, fresh, copies, guarding, sources, pushing)
+      new LocalTools(offered, redaction, clock, fresh, copies, guarding, sources, compile, pushing)
     try
       over(directory, tools, new LocalInstructions(), log) match {
         case Left(refused) => Left(refused.refusing("the coding tools"))
@@ -131,8 +133,8 @@ object LocalEdge {
     * its place: registered for grit, it offers there the coding tools `hosted.allowlist`
     * permits, run in the working copy of the run each request is routed to (a spawned child's,
     * by its name) on `grit/{work}`, each `run` judged by a machine guard asking
-    * [[Launch.guarding]] of `deployment` and `secrets`,
-    * with the repository's instruction file read again every
+    * [[Launch.guarding]] of `deployment` and `secrets`, and each commit compiled first with the
+    * clone's `compile` when it declares one, with the repository's instruction file read again every
     * `every`, as [[over]]'s is; it offers no pull request. What a run leaves uncommitted is
     * committed to its branch once its copy is abandoned ([[WorkingCopies.Leftovers.Committed]]);
     * what its copies' sweeps remove, and any advert that later fails, is logged under
@@ -183,6 +185,7 @@ object LocalEdge {
             ),
             Launch.guarding(deployment, secrets),
             None,
+            cloned.compile,
             None
           )
           val opened = tools.hostedInRepository match {

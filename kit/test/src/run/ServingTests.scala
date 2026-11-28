@@ -225,7 +225,7 @@ object ServingTests extends TestSuite {
           )
         )
         val clone =
-          grit.kit.deployment.RepositoryClone(GitFixture.repository, repo.source, repo.root)
+          grit.kit.deployment.RepositoryClone(GitFixture.repository, repo.source, repo.root, None)
         val deployment = grit.kit.deployment.Deployments
           .of(subagents = subagents, repositories = Vector(clone))
           .fold(r => sys.error(r.message), identity)

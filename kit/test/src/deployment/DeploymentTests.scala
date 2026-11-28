@@ -93,8 +93,17 @@ object DeploymentTests extends TestSuite {
 
   private val other = SubagentFixtures.ok(grit.core.place.Repository.of("other"))
 
-  private def clone(r: grit.core.place.Repository, at: String = "/clones"): RepositoryClone =
-    RepositoryClone(r, java.nio.file.Path.of(at, r.name), java.nio.file.Path.of("/copies"))
+  private def clone(
+      r: grit.core.place.Repository,
+      at: String = "/clones",
+      compile: Option[grit.core.host.Argv] = None
+  ): RepositoryClone =
+    RepositoryClone(
+      r,
+      java.nio.file.Path.of(at, r.name),
+      java.nio.file.Path.of("/copies"),
+      compile
+    )
 
   private def of(edges: Vector[grit.core.edge.ServedEdge], tools: Offered = Offered.Read) =
     Deployments.of(edges = edges, tools = tools).map(_ => ())
@@ -1180,6 +1189,36 @@ object DeploymentTests extends TestSuite {
       Deployments
         .of(subagents = subagents, repositories = Vector(clone(scratch)))
         .map(_ => ()) ==> Left(DeploymentRefusal.AllowlistsDiffer(scratch, Vector(coder, reviewer)))
+    }
+
+    test(
+      "a hosted repository whose compile its allowlist does not permit is refused, naming both; " +
+        "one it permits is hosted with it"
+    ) {
+      import SubagentFixtures.{coder, coding, ok, scratch}
+      val subagents =
+        ok(Subagents.of(Vector(ok(SubagentFixtures.subagent(coder, coding, Integrity.Member)))))
+      val build = ok(grit.core.host.Argv.of("./mill", "__.compile"))
+      val status = ok(grit.core.host.Argv.of("git", "status"))
+      val refused =
+        Deployments.of(
+          subagents = subagents,
+          repositories = Vector(clone(scratch, compile = Some(build)))
+        )
+      (
+        refused.map(_ => ()),
+        refused.left.map(_.message),
+        Deployments
+          .of(subagents = subagents, repositories = Vector(clone(scratch, compile = Some(status))))
+          .map(_.hosted.map(_.cloned.compile))
+      ) ==> (
+        Left(DeploymentRefusal.CompileUnlisted(scratch, build)),
+        Left(
+          "the repository scratch declares the compile `./mill __.compile`, which the allowlist " +
+            "its coding subagents run under does not permit"
+        ),
+        Right(Vector(Some(status)))
+      )
     }
 
     test("an edge named as grit names a repository's edge is refused") {

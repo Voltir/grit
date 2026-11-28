@@ -52,7 +52,8 @@ In dependency order:
     `JEV_API_KEY`, the stub classifier with `GRIT_STUB_TOPICS=1`, none otherwise; the coding
     tools `GRIT_TOOLS` names (`read`, `all`, or `allowlist`: `Offered.ReferenceAllowlist`, asking
     no one, ADR 0055), over the checkout it runs in, the edits and shell built only when
-    offered; sweeping every `GRIT_SWEEP`; posting to the plugins `GRIT_PLUGINS` turns on
+    offered, and each allowlisted commit refused unless it leaves out no file and the command
+    `GRIT_COMPILE` names (on the allowlist; refused at start otherwise) passes on it; sweeping every `GRIT_SWEEP`; posting to the plugins `GRIT_PLUGINS` turns on
     (`digest`; `remind`; `knowledge`, over the repository `GRIT_GITHUB_OWNER`/`GRIT_GITHUB_REPO`
     at `GRIT_GITHUB_REF` when `GITHUB_MCP_TOKEN` is set, synced through the GitHub edge `grit
     serve` serves, and over Drive's shared drives when `GRIT_DRIVE_SA_KEY` is set, carded at

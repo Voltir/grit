@@ -7,7 +7,7 @@ import scala.jdk.CollectionConverters.*
 import grit.core.classify.Classifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.edge.{Route, ToolRequest}
-import grit.core.host.{AbsPath, Allowlisted, HostError, RepositoryInstructions}
+import grit.core.host.{AbsPath, Allowlisted, Argv, HostError, RepositoryInstructions}
 import grit.core.place.{Directory, Repository}
 import grit.core.tool.{Outcome, SetRefusal, ToolSet}
 import grit.edge.desk.{Run, Tools}
@@ -23,7 +23,8 @@ import grit.tools.{Coding, MachineGuard, Refusals, SourceTools, Versioning}
   * ([[Offered.hosted]]), an allowlisted `run` starting only what its allowlist permits and its
   * machine guard clears, the guard asking `guarding` (`Left`: why there is none), and a shell
   * read of `sources`' files answering after the line naming what reads them, as
-  * [[Coding.allowlisted]] says (`None`: no line). A command
+  * [[Coding.allowlisted]] says (`None`: no line), each commit checked, and when `compile` is
+  * given, compiled first, as it says. A command
   * sees the process's own environment, not `.env`'s; what a tool shows is cleared by
   * `redaction`, the deployment's one. A command an allowlisted `run` left going is one of its
   * directory's runs, which every later request routed there reaches, whichever conversation
@@ -38,6 +39,7 @@ final class LocalTools(
     copies: Option[WorkingCopies^],
     guarding: Either[String, Classifier^],
     sources: Option[SourceTools],
+    compile: Option[Argv],
     pushing: Option[Pushing^] = None
 ) extends Tools
     with AutoCloseable
@@ -140,7 +142,7 @@ final class LocalTools(
             refusals,
             sources,
             new LocalUncommitted(root, sys.env, redaction),
-            None
+            compile
           )
           .fold(refused, tools => Run.request(request, tools))
     }

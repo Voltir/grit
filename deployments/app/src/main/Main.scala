@@ -260,6 +260,8 @@ object Main {
         else ToolsFor.Run
       )
     )
+    // What each allowlisted commit must pass first, when GRIT_COMPILE names it.
+    val compile = exitOnLeft(compileChoice(env, offered))
     // The chat and `grit work` also serve scout's tools when GRIT_SCOUT names its binary.
     val scoutServer = if (tui || working.nonEmpty) exitOnLeft(ChatEdges.scout(env)) else None
     // `grit serve` also serves GitHub's tools when GITHUB_MCP_TOKEN is set, Slack's
@@ -436,6 +438,7 @@ object Main {
                     clock,
                     fresh,
                     guarding,
+                    compile,
                     None
                   ) { here =>
                     Work.run(asked, text, cap, under, here, clock, fresh, println)
@@ -480,6 +483,7 @@ object Main {
                     clock,
                     fresh,
                     guarding,
+                    compile,
                     Some(copies),
                     pushing
                   ) { here =>
@@ -521,6 +525,7 @@ object Main {
             clock,
             fresh,
             guarding,
+            compile,
             None
           ) { here =>
             val opener = Kit.console(deployment, secrets, stubDelay.millis, clock, here) match {

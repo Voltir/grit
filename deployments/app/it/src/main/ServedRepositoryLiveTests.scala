@@ -106,7 +106,7 @@ object ServedRepositoryLiveTests extends TestSuite {
         val config = TestPostgres.freshDatabase("served_repository")
         val engine = LiveEngine.open(config, Turn.Epoch)
         try {
-          val d = deployment(RepositoryClone(GitFixture.repository, repo.source, repo.root))
+          val d = deployment(RepositoryClone(GitFixture.repository, repo.source, repo.root, None))
           val env = Map(
             DbConfig.UrlVar -> config.jdbcUrl,
             DbConfig.UserVar -> config.user,

@@ -392,6 +392,11 @@ enum DeploymentRefusal {
     */
   case EdgeReserved(name: EdgeName)
 
+  /** `repository` declares `compile` for its commits, which the allowlist hosting it does not
+    * permit: its coding turns could never commit.
+    */
+  case CompileUnlisted(repository: Repository, compile: Argv)
+
   def message: String = this match {
     case AsksUnanswered(edges) =>
       s"${edges.map(EdgeName.value).mkString(", ")} cannot answer a tool call that asks first, so the tools offered must be read's or an allowlist's"
@@ -464,6 +469,8 @@ enum DeploymentRefusal {
       s"the coding subagents ${agents.map(AgentType.value).mkString(", ")} work in ${repository.name} under different allowlists"
     case EdgeReserved(name) =>
       s"an edge is named ${EdgeName.value(name)}, as grit names the edge serving a repository"
+    case CompileUnlisted(repository, compile) =>
+      s"the repository ${repository.name} declares the compile `${compile.written}`, which the allowlist its coding subagents run under does not permit"
   }
 }
 
@@ -796,7 +803,8 @@ object Deployment {
 
   /** What `repositories` hosts for `subagents`' coding types, by repository name; refused when an
     * edge takes a hosted edge's name, a repository is declared twice, a coding type's has no clone,
-    * or two types at one differ in allowlist.
+    * two types at one differ in allowlist, or a hosted repository's compile is not on its
+    * allowlist.
     */
   private def hosting(
       edges: Vector[ServedEdge],
@@ -834,9 +842,20 @@ object Deployment {
             DeploymentRefusal.AllowlistsDiffer(r, at.map(_._1))
         }
         .toLeft(())
-    } yield repositories
-      .sortBy(_.repository.name)
-      .flatMap(c => byRepository.get(c.repository).flatMap(_.headOption).map(h => Hosted(c, h._3)))
+      hosted = repositories
+        .sortBy(_.repository.name)
+        .flatMap(c =>
+          byRepository.get(c.repository).flatMap(_.headOption).map(h => Hosted(c, h._3))
+        )
+      _ <- hosted
+        .flatMap(h =>
+          h.cloned.compile
+            .filterNot(h.allowlist.permits)
+            .map(DeploymentRefusal.CompileUnlisted(h.cloned.repository, _))
+        )
+        .headOption
+        .toLeft(())
+    } yield hosted
   }
 
   /** Every schedule declared, each with its declarer: each of `plugins`', then `own`. */

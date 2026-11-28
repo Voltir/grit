@@ -70,7 +70,7 @@ object RepositoriesEnvTests extends TestSuite {
         RepositoriesEnv.clone(env, declared, repository("other")),
         RepositoriesEnv.clone(env, Vector.empty, repository("other"))
       ) ==> (
-        Right(RepositoryClone(repository("app"), here, Path.of("/c"))),
+        Right(RepositoryClone(repository("app"), here, Path.of("/c"), None)),
         Left(s"GRIT_REPOSITORIES names $gone as a clone, which is no directory here"),
         Left("GRIT_REPOSITORIES declares no repository other; it declares grit, app"),
         Left("GRIT_REPOSITORIES declares no repository other; it declares none")

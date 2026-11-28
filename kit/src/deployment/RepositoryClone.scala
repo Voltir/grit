@@ -2,6 +2,7 @@ package grit.kit.deployment
 
 import java.nio.file.Path
 
+import grit.core.host.Argv
 import grit.core.place.Repository
 
 /** A repository's clone on this machine, at `at`, and the directory its working copies are made
@@ -11,6 +12,13 @@ import grit.core.place.Repository
   * clone's HEAD, so the clone needs an origin. Declared for a repository a coding subagent works
   * in, it lets any turn believed at that type's `requires`, in a room that is not a direct
   * message's and whose classification the repository's label dominates, start a child that runs
-  * there what the type's allowlist permits, as the user the deployment is served as.
+  * there what the type's allowlist permits, as the user the deployment is served as. `compile`:
+  * the command this repository's coding turns' commits must pass, exiting 0 at the checkout's
+  * root; permitted by the allowlist hosting it. `None`: only the tree is checked.
   */
-final case class RepositoryClone(repository: Repository, at: Path, copies: Path) extends caps.Pure
+final case class RepositoryClone(
+    repository: Repository,
+    at: Path,
+    copies: Path,
+    compile: Option[Argv]
+) extends caps.Pure

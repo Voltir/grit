@@ -21,7 +21,7 @@ private[main] object ChatEdges {
   /** `use` given the edge this process serves for `directory`: the coding tools `offered`
     * names, run in `root` ([[LocalEdge.serving]]) and in each working copy of `copies` for its
     * run, its branch offered as `pushing` does, each allowlisted `run` judged by a machine guard
-    * asking `guarding`, with the instruction files around `root`, and scout's
+    * asking `guarding`, each commit compiled first with `compile` when given, with the instruction files around `root`, and scout's
     * tools when `scout` declares its server, its program started now. Both are closed once `use`
     * returns or throws, which ends any command the tools left running. Why not, before `use`
     * runs: the coding tools' edge cannot be made, or scout's program cannot start or lists no
@@ -36,6 +36,7 @@ private[main] object ChatEdges {
       clock: Clock^,
       fresh: Fresh^,
       guarding: Either[String, Classifier^],
+      compile: Option[Argv],
       copies: Option[WorkingCopies^],
       pushing: Option[Pushing^] = None
   )(use: Console.Edge^ => A): Either[String, A] = {
@@ -52,6 +53,7 @@ private[main] object ChatEdges {
         guarding,
         // A shell read of Scala names scout's tools only where scout serves them.
         scout.map(_ => Offered.ReferenceSources),
+        compile,
         log
       ) { coding =>
         scout match {
