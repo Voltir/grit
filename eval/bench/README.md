@@ -40,6 +40,9 @@ completion too. The checkout holds base's history alone, so no held file can be 
 Claude Code's read commands that no rule covers can still read this repository, as they can read
 the known commits.
 
+`triage-retry`'s held suite is drafted and kept apart, under `held-apart/` (its `held.json` the
+`held` and `complete` it would add), and named in no `task.json`.
+
 `triage-retry` is held out: no change to the harness, its standing text or its settings is tuned
 against it, so its trials say how a tuned coder does on a task it was not tuned on.
 

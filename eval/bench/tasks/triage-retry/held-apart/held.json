@@ -1,0 +1,12 @@
+{
+  "held": {
+    "files": ["core/lifecycle/test/src/triage/HeldRetryTests.scala"],
+    "checks": [{"runner": "check", "args": ["grit.lifecycle.triage.HeldRetryTests"]}]
+  },
+  "complete": {
+    "commits": 2,
+    "exists": [],
+    "absent": [],
+    "holds": []
+  }
+}
