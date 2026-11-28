@@ -118,6 +118,7 @@ object ReachLiveTests extends TestSuite {
       val server = new Server(
         desk,
         Noting,
+        Server.readOnlyIn(Vector(Noting.offered)),
         Server.onVirtualThreads(),
         _ => ()
       )

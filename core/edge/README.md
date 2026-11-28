@@ -19,7 +19,8 @@ belongs here as the instructions an edge serving a place advertises with its too
 
 - **`Server`**: serves a `Desk`'s requests on a thread of its own, each run by the edge's
   `Tools` (what its tools are where a request was routed) on a virtual thread of its own,
-  with orphans settled on every pass. What it tells an operator names a request by its slot,
+  except that a round's calls of tools that are not read-only share one, run in the reply's
+  order, with orphans settled on every pass. What it tells an operator names a request by its slot,
   never by its arguments or its answer.
 - **`Run`**: one request run by a `Toolbox`: its arguments read under their repairs, then run
   free or approved as its permit says.

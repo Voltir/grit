@@ -28,7 +28,7 @@ object ServerSeparationTests extends TestSuite {
       |      Outcome.Failed("try again")
       |    }
       |  }
-      |  new Server(desk, tools, run => run(), log)
+      |  new Server(desk, tools, _ => true, run => run(), log)
       |}
       |""".stripMargin
 
@@ -40,7 +40,7 @@ object ServerSeparationTests extends TestSuite {
       |      Outcome.Failed("try again")
       |    }
       |  }
-      |  new Server(desk, tools, run => run(), log)
+      |  new Server(desk, tools, _ => true, run => run(), log)
       |}
       |""".stripMargin
 

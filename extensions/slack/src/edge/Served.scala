@@ -232,6 +232,8 @@ private[slack] object Served {
         val server = new Server(
           desk,
           tool,
+          // slack_post writes: every post waits for the one before it.
+          _ => false,
           Server.onVirtualThreads(),
           said => log(s"${place.written}: $said")
         )

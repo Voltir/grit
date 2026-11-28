@@ -304,7 +304,13 @@ object LocalEdge {
                   }
                 )
               } else None
-            val server = new Server(desk, tools, Server.onVirtualThreads("grit-tool"), info)
+            val server = new Server(
+              desk,
+              tools,
+              Server.readOnlyIn(place.map(_._2).toVector ++ repository.map(_._2)),
+              Server.onVirtualThreads("grit-tool"),
+              info
+            )
             server.serve()
             Right(new AutoCloseable {
               def close(): Unit = {

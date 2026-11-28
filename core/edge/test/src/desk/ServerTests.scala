@@ -20,7 +20,12 @@ object ServerTests extends TestSuite {
   private val web =
     Place.of(Directory.of("/work/web").getOrElse(throw new java.lang.AssertionError()))
 
-  private def request(index: Int, at: Place, retry: Retry = Retry.Rerun): ToolRequest = {
+  private def request(
+      index: Int,
+      at: Place,
+      retry: Retry = Retry.Rerun,
+      tool: ToolName = ToolName("read")
+  ): ToolRequest = {
     val turn = TurnRef(ConversationId("c"), TurnSeq.First)
     ToolRequest(
       CallSlot.of(turn, 0, index).getOrElse(throw new java.lang.AssertionError()),
@@ -28,7 +33,7 @@ object ServerTests extends TestSuite {
       turn.conversationId,
       at,
       PrincipalId.Local,
-      ToolName("read"),
+      tool,
       Permit.Free,
       retry,
       ujson.Obj(),
@@ -80,6 +85,9 @@ object ServerTests extends TestSuite {
 
   private def inline(run: () => Unit): Unit = run()
 
+  /** Only `read` reads alone. */
+  private def reads(tool: ToolName): Boolean = tool == ToolName("read")
+
   private def quiet(said: String): Unit = ()
 
   /** What a server said, in order. */
@@ -98,10 +106,53 @@ object ServerTests extends TestSuite {
         TestTx.fake
       )
       val tools = new Counting
-      new Server(edges.desk(Set(api)), tools, inline, quiet).pass() ==> 1
+      new Server(edges.desk(Set(api)), tools, reads, inline, quiet).pass() ==> 1
       edges.answers ==> Vector((q.slot, Outcome.Done("ran in /work/api")))
     }
 
+    test("a round's calls that change the checkout run in one job, in the reply's order") {
+      val edges = new InMemoryEdges
+      val run = ToolName("run")
+      val made = Vector(
+        request(3, api, tool = run),
+        request(0, api),
+        request(1, api, tool = run),
+        request(2, api),
+        request(4, api, tool = run)
+      )
+      edges.dispatch(made, grit.core.store.Tx.classification(using TestTx.fake))(using
+        TestTx.fake
+      )
+      val tools = new Counting
+      // What each job the server hands its runner ran, the job run at once on the test's thread.
+      @caps.unsafe.untrackedCaptures
+      var ran = Vector.empty[Vector[String]]
+      def apart(job: () => Unit): Unit = {
+        val before = tools.runs.size
+        job()
+        ran = ran :+ tools.runs.drop(before)
+      }
+      new Server(edges.desk(Set(api)), tools, reads, apart, quiet).pass()
+      def key(index: Int) = made.find(_.slot.index == index).fold("")(_.slot.key)
+      ran.toSet ==> Set(Vector(key(0)), Vector(key(2)), Vector(key(1), key(3), key(4)))
+    }
+    test("a tool reads alone only where every set offering it declares it read-only") {
+      def entry(name: ToolName, changes: Boolean) =
+        ToolSet.Entry(name, "d", ujson.Obj(), false, Retry.Rerun, None, None, changes)
+      def set(entries: ToolSet.Entry*) =
+        ToolSet.of(entries.toVector).getOrElse(throw new java.lang.AssertionError("a duplicate"))
+      val readOnly = Server.readOnlyIn(
+        Vector(
+          set(entry(ToolName("read"), false), entry(ToolName("both"), false)),
+          set(entry(ToolName("both"), true))
+        )
+      )
+      Vector(ToolName("read"), ToolName("both"), ToolName("absent")).map(readOnly) ==> Vector(
+        true,
+        false,
+        false
+      )
+    }
     test("a request outside the registered places is never claimed, whatever the desk lists") {
       // A desk that lists a request in another place, as a desk with a wrong query would.
       val claims = new Counting
@@ -125,7 +176,7 @@ object ServerTests extends TestSuite {
         ): Either[DeskError, Unit] = Right(())
       }
       val tools = new Counting
-      new Server(desk, tools, inline, quiet).pass() ==> 0
+      new Server(desk, tools, reads, inline, quiet).pass() ==> 0
       (claims.runs, tools.runs) ==> (Vector(), Vector())
     }
 
@@ -147,7 +198,7 @@ object ServerTests extends TestSuite {
         ): Either[DeskError, Unit] = Right(())
       }
       val said = new Said
-      new Server(desk, new Counting, inline, said.hear).pass() ==> 0
+      new Server(desk, new Counting, reads, inline, said.hear).pass() ==> 0
       said.lines ==> Vector(s"refused tool:c:0:0:0: NotHosted($web)")
     }
 
@@ -165,7 +216,7 @@ object ServerTests extends TestSuite {
           else throw new IllegalStateException(s"bad arguments: ${q.arguments}")
       }
       val said = new Said
-      new Server(edges.desk(Set(api)), tools, inline, said.hear).pass() ==> 2
+      new Server(edges.desk(Set(api)), tools, reads, inline, said.hear).pass() ==> 2
       edges.answers.map(_._2) ==> Vector(
         Outcome.Failed("bad arguments: {\"text\":\"the secret plan\"}"),
         Outcome.Failed("The edge failed running it: bad arguments: {\"text\":\"the secret plan\"}")
@@ -186,7 +237,7 @@ object ServerTests extends TestSuite {
         }
       }
       val said = new Said
-      new Server(edges.desk(Set(api)), tools, inline, said.hear).pass() ==> 1
+      new Server(edges.desk(Set(api)), tools, reads, inline, said.hear).pass() ==> 1
       said.lines ==> Vector(s"${q.slot.key}: the answer could not be read")
     }
 
@@ -202,7 +253,7 @@ object ServerTests extends TestSuite {
           TestTx.fake
         )
         val tools = new Counting
-        val passed = new Server(edges.desk(Set(at)), tools, inline, quiet).pass()
+        val passed = new Server(edges.desk(Set(at)), tools, reads, inline, quiet).pass()
         (passed, tools.runs, edges.answers.size, edges.desk(Set(at)).claim(q))
       } ==> Vector((0, Vector(), 0, Right(true)), (0, Vector(), 0, Right(true)))
     }
@@ -214,7 +265,7 @@ object ServerTests extends TestSuite {
       )
       edges.desk(Set(api)).claim(q) ==> Right(true)
       val tools = new Counting
-      new Server(edges.desk(Set(api)), tools, inline, quiet).pass() ==> 0
+      new Server(edges.desk(Set(api)), tools, reads, inline, quiet).pass() ==> 0
       tools.runs ==> Vector()
     }
 
@@ -228,7 +279,7 @@ object ServerTests extends TestSuite {
       dead.claim(q) ==> Right(true)
       edges.kill(dead.registration.edge)
       val tools = new Counting
-      val server = new Server(edges.desk(Set(api)), tools, inline, quiet)
+      val server = new Server(edges.desk(Set(api)), tools, reads, inline, quiet)
       (server.pass(), server.pass()) ==> (1, 0)
       (tools.runs, edges.answers) ==> (
         Vector(q.slot.key),
@@ -246,7 +297,7 @@ object ServerTests extends TestSuite {
       dead.claim(q) ==> Right(true)
       edges.kill(dead.registration.edge)
       val tools = new Counting
-      new Server(edges.desk(Set(api)), tools, inline, quiet).pass() ==> 0
+      new Server(edges.desk(Set(api)), tools, reads, inline, quiet).pass() ==> 0
       (tools.runs, edges.answers) ==> (Vector(), Vector((q.slot, Outcome.Interrupted)))
     }
 
@@ -257,7 +308,7 @@ object ServerTests extends TestSuite {
       edges.dispatch(Vector(q), grit.core.store.Tx.classification(using TestTx.fake))(using
         TestTx.fake
       )
-      new Server(edges.desk(Set(repo.place)), new Counting, inline, quiet).pass() ==> 1
+      new Server(edges.desk(Set(repo.place)), new Counting, reads, inline, quiet).pass() ==> 1
       edges.answers ==> Vector((q.slot, Outcome.Done("ran in repository:grit's copy for w1")))
     }
 
@@ -274,7 +325,7 @@ object ServerTests extends TestSuite {
         TestTx.fake
       )
       val tools = new Counting
-      new Server(edges.desk(Set(repo.place)), tools, inline, quiet).pass() ==> 0
+      new Server(edges.desk(Set(repo.place)), tools, reads, inline, quiet).pass() ==> 0
       (tools.runs, edges.answers) ==> (Vector(), Vector((q.slot, Outcome.Failed(noRoute))))
     }
 
@@ -287,7 +338,8 @@ object ServerTests extends TestSuite {
       )
       val tools = new Counting
       val said = new Said
-      new Server(new Unread(edges.desk(Set(repo.place))), tools, inline, said.hear).pass() ==> 0
+      new Server(new Unread(edges.desk(Set(repo.place))), tools, reads, inline, said.hear)
+        .pass() ==> 0
       (tools.runs, edges.answers, said.lines) ==> (
         Vector(),
         Vector((q.slot, Outcome.Failed(noRoute))),

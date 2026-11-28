@@ -25,15 +25,22 @@ trait Tools {
 
 /** Serves `desk`'s requests (ADR 0017): each request [[Edges.authorize]] allows is claimed,
   * run by `tools` over its route through `runner` (a virtual thread each, so a round's reads
-  * run together), and answered; one another edge claimed first is skipped. Orphans in the
+  * run together), and answered; one another edge claimed first is skipped. The calls of one
+  * round whose tool `readOnly` does not hold for are run in one `runner` job, one after
+  * another in the order the reply made them, so that no two of them race on the checkout. Orphans in the
   * registered places are settled on every pass ([[Desk.orphans]]), and those that rerun are
   * run. `said` hears what an operator would want to know: an answer that came too late, a
   * request refused, and what `tools` say of a run, each named by its slot, never by its
   * arguments or its answer. `tools` are lent `said` for each run rather than given it: under
   * separation checking no capability the server's `said` holds may also be hidden in `tools`.
   */
-final class Server(desk: Desk^, tools: Tools^, runner: (() => Unit) => Unit, said: String => Unit)
-    extends AutoCloseable {
+final class Server(
+    desk: Desk^,
+    tools: Tools^,
+    readOnly: ToolName -> Boolean,
+    runner: (() => Unit) => Unit,
+    said: String => Unit
+) extends AutoCloseable {
 
   private val serving = new AtomicBoolean(false)
 
@@ -43,15 +50,14 @@ final class Server(desk: Desk^, tools: Tools^, runner: (() => Unit) => Unit, sai
       desk.orphans().fold(e => { said(s"orphans unread: ${e.why}"); Vector.empty }, identity)
     val opened =
       desk.open().fold(e => { said(s"requests unread: ${e.why}"); Vector.empty }, identity)
-    val rerun = reruns.map(q => start(q)).count(identity)
-    val claimed = opened.map { q =>
+    val claimed = opened.filter { q =>
       Edges.hosts(q, desk.registration) match {
         case Left(refused) =>
           said(s"refused ${q.slot.key}: $refused")
           false
         case Right(()) =>
           desk.claim(q) match {
-            case Right(true) => start(q)
+            case Right(true) => true
             case Right(false) => false
             case Left(e) =>
               said(s"claim of ${q.slot.key} failed: ${e.why}")
@@ -59,26 +65,22 @@ final class Server(desk: Desk^, tools: Tools^, runner: (() => Unit) => Unit, sai
           }
       }
     }
-    rerun + claimed.count(identity)
+    val (reads, changes) = (reruns ++ claimed).partition(q => readOnly(q.tool))
+    // Calls that change the checkout race when run together: `git add` and `git commit` made in
+    // one reply fought over git's index lock (grit/801).
+    val inTurn = changes
+      .groupBy(q => (q.slot.turn, q.slot.round))
+      .values
+      .toVector
+      .map(_.sortBy(_.slot.index))
+    reads.map(q => start(Vector(q))).sum + inTurn.map(start).sum
   }
 
-  /** Runs `q`, claimed by this desk, and answers it; false when it has no route here, and it is
-    * answered failed, since its claim is held and no other edge will answer it.
+  /** Runs `qs`, claimed by this desk, in one job, one after another, and answers each; how many
+    * it runs. One with no route here is answered failed, since its claim is held and no other
+    * edge will answer it.
     */
-  private def start(q: ToolRequest): Boolean = {
-    // Only a repository's place routes by its conversation's origin (Edges.authorize).
-    val origin =
-      if (q.workspace.repository.isEmpty) None
-      else
-        desk
-          .origin(q)
-          .fold(
-            e => {
-              said(s"origin of ${q.slot.key} unread: ${e.why}")
-              None
-            },
-            identity
-          )
+  private def start(qs: Vector[ToolRequest]): Int = {
     // Local, so the run below captures the desk and `said`, not the server and its runner.
     def answered(q: ToolRequest, outcome: Outcome): Unit =
       desk.answer(q.slot, outcome) match {
@@ -87,13 +89,31 @@ final class Server(desk: Desk^, tools: Tools^, runner: (() => Unit) => Unit, sai
           said(s"late answer to ${q.slot.key}, dropped: the turn stopped waiting")
         case Left(e) => said(s"answer to ${q.slot.key} not written: ${e.why}")
       }
-    Edges.authorize(q, desk.registration, origin) match {
-      case Left(refused) =>
-        said(s"refused ${q.slot.key}: $refused")
-        answered(q, Outcome.Failed(Server.unrouted(q)))
-        false
-      case Right(route) =>
-        runner { () =>
+    val routed = qs.flatMap { q =>
+      // Only a repository's place routes by its conversation's origin (Edges.authorize).
+      val origin =
+        if (q.workspace.repository.isEmpty) None
+        else
+          desk
+            .origin(q)
+            .fold(
+              e => {
+                said(s"origin of ${q.slot.key} unread: ${e.why}")
+                None
+              },
+              identity
+            )
+      Edges.authorize(q, desk.registration, origin) match {
+        case Left(refused) =>
+          said(s"refused ${q.slot.key}: $refused")
+          answered(q, Outcome.Failed(Server.unrouted(q)))
+          None
+        case Right(route) => Some((q, route))
+      }
+    }
+    if (routed.nonEmpty)
+      runner { () =>
+        routed.foreach { (q, route) =>
           val outcome =
             try tools.run(route, q, line => said(s"${q.slot.key}: $line"))
             catch {
@@ -101,8 +121,8 @@ final class Server(desk: Desk^, tools: Tools^, runner: (() => Unit) => Unit, sai
             }
           answered(q, outcome)
         }
-        true
-    }
+      }
+    routed.size
   }
 
   /** Serves on a daemon thread of its own until [[close]]: a pass whenever the desk is woken,
@@ -141,6 +161,17 @@ object Server {
   def onVirtualThreads(named: String = ""): (() => Unit) -> Unit =
     run => { val _ = Thread.ofVirtual().name(named).start(() => run()) }
 
+  /** Whether a tool of `sets` named so is [[ToolSet.Entry.readOnly]] in each set that offers
+    * it; false for a name none offers.
+    */
+  def readOnlyIn(sets: Vector[ToolSet]): ToolName -> Boolean = {
+    val named = sets.flatMap(_.tools)
+    tool => {
+      val offered = named.filter(_.name == tool)
+      offered.nonEmpty && offered.forall(_.readOnly)
+    }
+  }
+
   /** The set an edge advertised at its place, and the tools that serve it. */
   final class Advertised(val offered: ToolSet, val tools: Tools^)
 
@@ -167,6 +198,7 @@ object Server {
             val server = new Server(
               desk,
               advertised.tools,
+              readOnlyIn(Vector(advertised.offered)),
               onVirtualThreads(),
               said => log(s"${place.written}: $said")
             )
