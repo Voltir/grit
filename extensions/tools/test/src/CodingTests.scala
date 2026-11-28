@@ -36,7 +36,7 @@ object CodingTests extends TestSuite {
 
     def read(path: RelPath, lines: Lines): Either[HostError, Clipped] = {
       note(s"read ${RelPath.value(path)} ${lines.offset} ${lines.limit}")
-      if (RelPath.value(path) == "gone") Left(HostError.NotFound(path))
+      if (RelPath.value(path) == "gone") Left(HostError.NotFound(path, None))
       else Right(Clipped.head("text", _ => Some("hint")))
     }
 

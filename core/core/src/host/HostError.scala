@@ -5,8 +5,10 @@ import scala.concurrent.duration.FiniteDuration
 /** Why the machine did not do what a tool asked. `message` is what the model reads. */
 enum HostError {
 
-  /** Nothing is at `path`. */
-  case NotFound(path: RelPath)
+  /** Nothing is at `path`; `nearest`, the path that exists most like it, when the host looked
+    * and found one.
+    */
+  case NotFound(path: RelPath, nearest: Option[RelPath])
 
   /** `path` is a directory where a file was wanted. */
   case NotAFile(path: RelPath)
@@ -65,7 +67,9 @@ enum HostError {
 
   /** One or two sentences: what went wrong, and for a timeout the output so far. */
   def message: String = this match {
-    case NotFound(p) => s"There is no file or directory `${RelPath.value(p)}`."
+    case NotFound(p, near) =>
+      s"There is no file or directory `${RelPath.value(p)}`." +
+        near.fold("")(n => s" The nearest that exists is `${RelPath.value(n)}`.")
     case NotAFile(p) => s"`${RelPath.value(p)}` is a directory; use `list` to see inside it."
     case NotADirectory(p) => s"`${RelPath.value(p)}` is a file, not a directory."
     case NotText(p) => s"`${RelPath.value(p)}` is not UTF-8 text."

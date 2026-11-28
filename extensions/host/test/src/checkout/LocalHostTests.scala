@@ -39,6 +39,38 @@ object LocalHostTests extends TestSuite {
   private def shown(r: Either[HostError, Clipped]): Either[HostError, String] = r.map(_.show)
 
   val tests = Tests {
+    test(
+      "a missing path is answered with the nearest that exists: each misspelt part's nearest sibling, else the same name elsewhere, never a secrets file or a skipped directory"
+    ) {
+      inCheckout(
+        "core/lifecycle/src/Close.scala" -> "x",
+        "extensions/tools/src/Coding.scala" -> "x",
+        "extensions/host/README.md" -> "x",
+        "out/lifecycle/a.txt" -> "x",
+        ".env" -> "x",
+        ".envy" -> "x"
+      ) { dir =>
+        val ws = new LocalWorkspace(dir, noSecrets)
+        def nearest(r: Either[HostError, Clipped]) = r match {
+          case Left(HostError.NotFound(_, near)) => Right(near.map(RelPath.value))
+          case other => Left(other)
+        }
+        (
+          nearest(ws.read(path("extensions/lifecycle/src/Close.scala"), Lines.All)),
+          nearest(ws.list(path("extensions/lifecycle"), 1)),
+          nearest(ws.read(path("extensoins/tools/src/Codng.scala"), Lines.All)),
+          nearest(ws.search("x", path("nowhere/at/all"))),
+          nearest(ws.read(path(".en"), Lines.All))
+        ) ==> (
+          Right(Some("core/lifecycle/src/Close.scala")),
+          Right(Some("core/lifecycle")),
+          Right(Some("extensions/tools/src/Coding.scala")),
+          Right(None),
+          Right(Some(".envy"))
+        )
+      }
+    }
+
     test("read") {
       test("a whole file, and a window of it") {
         inCheckout("a.txt" -> "one\ntwo\nthree\n") { dir =>
@@ -73,7 +105,7 @@ object LocalHostTests extends TestSuite {
       test("failures") {
         inCheckout("a.txt" -> "one\n", "d/b.txt" -> "x") { dir =>
           val ws = new LocalWorkspace(dir, noSecrets)
-          ws.read(path("nope"), Lines.All) ==> Left(HostError.NotFound(path("nope")))
+          ws.read(path("nope"), Lines.All) ==> Left(HostError.NotFound(path("nope"), None))
           ws.read(path("d"), Lines.All) ==> Left(HostError.NotAFile(path("d")))
           ws.read(path("a.txt"), Lines.of(5, None)) ==>
             Left(HostError.PastEnd(path("a.txt"), 5, 1))
@@ -121,7 +153,7 @@ object LocalHostTests extends TestSuite {
         )
         shown(ws.list(path("src"), 0)) ==> Right("a.scala\ndeep/")
         ws.list(path("README.md"), 1) ==> Left(HostError.NotADirectory(path("README.md")))
-        ws.list(path("gone"), 1) ==> Left(HostError.NotFound(path("gone")))
+        ws.list(path("gone"), 1) ==> Left(HostError.NotFound(path("gone"), None))
         Files.createDirectory(dir.resolve("empty"))
         shown(ws.list(path("empty"), 1)) ==> Right("(empty)")
       }
@@ -142,7 +174,7 @@ object LocalHostTests extends TestSuite {
           Right("src/a.scala:1: val x = 1\nsrc/a.scala:2: val y = 2")
         shown(ws.search("zzz", RelPath.Root)) ==> Right("No matches.")
         ws.search("(", RelPath.Root).left.map(_.getClass.getSimpleName) ==> Left("BadPattern")
-        ws.search("x", path("gone")) ==> Left(HostError.NotFound(path("gone")))
+        ws.search("x", path("gone")) ==> Left(HostError.NotFound(path("gone"), None))
       }
     }
 
@@ -290,7 +322,7 @@ object LocalHostTests extends TestSuite {
           Left(EditError.NotFound(path("a.txt"), 0, None))
         Files.readString(dir.resolve("a.txt")) ==> "one\r\n2\r\n3\r\n"
         edits.edit(path("gone"), Vector(Replace("a", "b"))) ==>
-          Left(EditError.Host(HostError.NotFound(path("gone"))))
+          Left(EditError.Host(HostError.NotFound(path("gone"), None)))
       }
     }
 

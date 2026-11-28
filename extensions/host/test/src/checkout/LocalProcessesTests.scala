@@ -148,7 +148,7 @@ object LocalProcessesTests extends TestSuite {
       inRoot { dir =>
         val processes = new LocalProcesses(dir, sys.env, noSecrets)
         val gone = RelPath.of("gone").getOrElse(RelPath.Root)
-        processes.run(argv("true"), gone, 10.seconds) ==> Left(HostError.NotFound(gone))
+        processes.run(argv("true"), gone, 10.seconds) ==> Left(HostError.NotFound(gone, None))
       }
     }
 

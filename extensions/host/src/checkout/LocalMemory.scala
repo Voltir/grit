@@ -18,7 +18,7 @@ final class LocalMemory(root: Path) extends Memory {
   def held(dir: RelPath): Either[HostError, Memory.Held] =
     for {
       at <- checkout.find(dir)
-      _ <- Either.cond(Files.isDirectory(at), (), HostError.NotFound(dir))
+      _ <- Either.cond(Files.isDirectory(at), (), HostError.NotFound(dir, None))
       available <- kilobytes(LocalMemory.Proc.resolve("meminfo"), "MemAvailable:")
         .toRight(HostError.Failed("this machine does not say how much memory it has available"))
     } yield Memory.Held(resident(at), available * 1024)

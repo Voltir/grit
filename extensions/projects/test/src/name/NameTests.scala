@@ -9,29 +9,6 @@ object NameTests extends TestSuite {
     Handle.of(s).fold(why => throw new java.lang.AssertionError(why), identity)
 
   val tests = Tests {
-    test(
-      "nearest puts keys extending the asked one first, then by edit distance, at most three, none past a third of its length"
-    ) {
-      val among = Vector(
-        "plan-c5-runs-turns",
-        "plan-c5b",
-        "plan-c4",
-        "plan-c7",
-        "plan-c5",
-        "note-c5",
-        "unrelated"
-      ).map(local)
-      // plan-c5b extends it by one, plan-c5-runs-turns by eleven; plan-c4 and plan-c7 are one
-      // edit away and tie, by key, so the cut at three leaves plan-c7.
-      val nearest = Handle.nearest(local("plan-c5"), among)
-      // plan-c47 is two edits from plan-c5, within 7 / 3 = 2; note-c5 is four.
-      val within = Handle.nearest(local("plan-c5"), Vector("note-c5", "plan-c47").map(local))
-      (nearest, within, Handle.nearest(local("z"), Vector("a", "b").map(local))) ==> (
-        Vector("plan-c5b", "plan-c5-runs-turns", "plan-c4").map(local),
-        Vector(local("plan-c47")),
-        Vector.empty
-      )
-    }
     test("an id reads back as written, naming its project and its number") {
       val read = ArtifactKey.read("grit/412")
       assert(

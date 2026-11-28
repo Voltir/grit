@@ -591,10 +591,12 @@ object TurnFixtures {
   /** A checkout with nothing in it: every read fails as not found. */
   object NoCheckout extends Workspace {
     def read(path: RelPath, lines: Lines): Either[HostError, Clipped] =
-      Left(HostError.NotFound(path))
-    def list(dir: RelPath, depth: Int): Either[HostError, Clipped] = Left(HostError.NotFound(dir))
+      Left(HostError.NotFound(path, None))
+    def list(dir: RelPath, depth: Int): Either[HostError, Clipped] = Left(
+      HostError.NotFound(dir, None)
+    )
     def search(pattern: String, under: RelPath): Either[HostError, Clipped] =
-      Left(HostError.NotFound(under))
+      Left(HostError.NotFound(under, None))
   }
 
   /** A checkout of `files`, by path, counting the reads made of it. It lists and searches
@@ -611,7 +613,7 @@ object TurnFixtures {
       files
         .get(RelPath.value(path))
         .map(Clipped.head(_, _ => None))
-        .toRight(HostError.NotFound(path))
+        .toRight(HostError.NotFound(path, None))
     }
     def list(dir: RelPath, depth: Int): Either[HostError, Clipped] =
       Left(HostError.Failed("no listing"))

@@ -80,7 +80,7 @@ final class LocalProcesses(
   /** Where `dir` is: `NotFound` when nothing is there, `NotADirectory` when a file is. */
   private def place(dir: RelPath): Either[HostError, Path] =
     checkout.find(dir).flatMap { at =>
-      if (!Files.exists(at)) Left(HostError.NotFound(dir))
+      if (!Files.exists(at)) Left(HostError.NotFound(dir, None))
       else if (!Files.isDirectory(at)) Left(HostError.NotADirectory(dir))
       else Right(at)
     }

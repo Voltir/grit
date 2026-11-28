@@ -31,10 +31,10 @@ final class LocalWorkspace(root: Path, redaction: Redaction) extends Workspace {
 
   def list(dir: RelPath, depth: Int): Either[HostError, Clipped] =
     checkout.find(dir).flatMap { at =>
-      if (!Files.exists(at)) Left(HostError.NotFound(dir))
+      if (!Files.exists(at)) Left(HostError.NotFound(dir, checkout.nearest(dir)))
       else if (!Files.isDirectory(at)) Left(HostError.NotADirectory(dir))
       else
-        entries(at, depth.max(1)).map { found =>
+        checkout.entries(at, depth.max(1)).map { found =>
           val shown = found.map { (p, isDir) =>
             checkout.relative(at, p) + (if (isDir) "/" else "")
           }.sorted
@@ -54,11 +54,11 @@ final class LocalWorkspace(root: Path, redaction: Redaction) extends Workspace {
     compiled(pattern).flatMap { regex =>
       checkout.real.flatMap { top =>
         checkout.find(under).flatMap { at =>
-          if (!Files.exists(at)) Left(HostError.NotFound(under))
+          if (!Files.exists(at)) Left(HostError.NotFound(under, checkout.nearest(under)))
           else {
             val files =
               if (Files.isDirectory(at))
-                entries(at, Int.MaxValue).map(_.collect { case (p, false) => p })
+                checkout.entries(at, Int.MaxValue).map(_.collect { case (p, false) => p })
               else Right(Vector(at))
             files.map { fs =>
               Workspace.searched(
@@ -97,31 +97,6 @@ final class LocalWorkspace(root: Path, redaction: Redaction) extends Workspace {
       case None if end < total => Some(showing(end))
       case None => None
     }
-  }
-
-  /** Every entry under `dir`, `depth` levels down, with whether it is a directory; a
-    * directory [[Workspace.skipped]] is listed but not entered. Links are not followed.
-    */
-  private def entries(dir: Path, depth: Int): Either[HostError, Vector[(Path, Boolean)]] =
-    attempt(children(dir)).flatMap { kids =>
-      kids.foldLeft[Either[HostError, Vector[(Path, Boolean)]]](Right(Vector.empty)) { (acc, kid) =>
-        acc.flatMap { so =>
-          val isDir = Files.isDirectory(kid, LinkOption.NOFOLLOW_LINKS)
-          val name = Option(kid.getFileName).fold("")(_.toString)
-          if (isDir && depth > 1 && !Workspace.skipped(name))
-            entries(kid, depth - 1).map(below => (so :+ (kid, isDir)) ++ below)
-          else Right(so :+ (kid, isDir))
-        }
-      }
-    }
-
-  private def children(dir: Path): Vector[Path] = {
-    val stream = Files.newDirectoryStream(dir)
-    try {
-      val out = Vector.newBuilder[Path]
-      stream.forEach(p => out += p)
-      out.result()
-    } finally stream.close()
   }
 
   /** The lines of `file`, `rel` from the root, that `regex` finds something in, as

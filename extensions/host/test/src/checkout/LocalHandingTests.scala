@@ -111,7 +111,7 @@ object LocalHandingTests extends TestSuite {
         new LocalHanding(dir, sys.env, noSecrets).started(missing, key, variables())(sh("true"))(
           lines
         ) ==>
-          Left(HostError.NotFound(missing))
+          Left(HostError.NotFound(missing, None))
       }
     }
   }
