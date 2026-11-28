@@ -98,11 +98,13 @@ counted in the trial's readout.
 most one model call more than it, or more than twice it when routed hard (`Router.HardCalls`),
 over up to `--work-turns` turns (`Work.DefaultTurns` unset); summary, query, heard and dreaming
 calls come on top. The cap bounds a turn, not the trial. `--effort` sets the reasoning effort its
-turn's standard rung and its dreaming ask (`GRIT_EFFORT` and `GRIT_DREAM_EFFORT`, which the turn's summary, query and heard roles follow); unset, the
-catalog's holds, and the seed asks none. The effort a call asks is not always the one set: a turn
-routed to its strong or light rung asks that rung's, and the route's allotment can raise or lower
-it (`Allotment.Reasoning`); a pin asking none at the Anthropic API is sent
-`AnthropicProvider.DefaultEffort`, and elsewhere its provider thinks at its own default.
+turn and its dreaming ask (`GRIT_EFFORT` and `GRIT_DREAM_EFFORT`, which the turn's summary, query and heard roles follow,
+and the light and strong rungs the rig adds copy), and holds it over the turn's route
+(`GRIT_EFFORT_ROUTING=held`, `EffortRouting.Held`): a hard root is still routed strong with its
+doubled calls, but asks the effort set, not `Router.HardEffort`. Unset, the catalog's holds, the
+seed asks none, and the route lays its own (`Allotment.Reasoning`); a pin asking none at the
+Anthropic API is sent `AnthropicProvider.DefaultEffort`, and elsewhere its provider thinks at its
+own default.
 `--replay` sets which of a turn's earlier replies send their reasoning back on its later calls
 (`GRIT_REPLAY`, laid over every rung of the turn's ladder and no other role's): `all`, `none`, or
 `latest`, the last reply the request sends alone; unset, the pair's profile's holds (`details`,

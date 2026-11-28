@@ -180,9 +180,32 @@ object RouterTests extends TestSuite {
       table.map((asked, headroom, _) => (asked, headroom)).sortBy(_.toString) ==>
         inputs.sortBy(_.toString)
       val wrong = table.filter { case (asked, headroom, expected) =>
-        Router.allot(asked.map(features(_, _)), headroom) != expected
+        Router.allot(asked.map(features(_, _)), headroom, EffortRouting.Routed) != expected
       }
       wrong ==> Vector.empty
+    }
+
+    test(
+      "a held effort asks every root its pin's own effort at the grade and calls it is allotted, lowered at low headroom"
+    ) {
+      val inputs = for {
+        asked <- TaskKind.values.toVector.flatMap(k => Vector(Some(k -> 0.59), Some(k -> 0.6))) :+
+          None
+        headroom <- Headroom.values.toVector
+      } yield (asked, headroom)
+      val wrong = inputs.filter { (asked, headroom) =>
+        val routed = Router.allot(asked.map(features(_, _)), headroom, EffortRouting.Routed)
+        val reasoning = headroom match {
+          case Headroom.Ample => Reasoning.Own
+          case Headroom.Low => Reasoning.AtMost(Effort.Medium)
+        }
+        Router.allot(asked.map(features(_, _)), headroom, EffortRouting.Held) !=
+          routed.copy(reasoning = reasoning)
+      }
+      wrong ==> Vector.empty
+      // A hard root keeps its strong grade and its doubled calls, at its pin's own effort.
+      Router.allot(Some(features(Coding, 0.6)), Headroom.Ample, EffortRouting.Held) ==>
+        Allotment(Some(Grade.Strong), Reasoning.Own, Doubled)
     }
 
     test(

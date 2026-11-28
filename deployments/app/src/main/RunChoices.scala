@@ -4,6 +4,7 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import grit.chat.look.Theme
 import grit.chat.settings.{Durations, Prefs}
+import grit.core.allot.EffortRouting
 import grit.core.files.Files
 import grit.core.id.ConversationId
 import grit.core.message.Tokens
@@ -164,6 +165,19 @@ private[main] object RunChoices {
         Left(s"$ToolsVar=all needs the chat, which answers what a tool asks first")
       case Some("allowlist") => Right(Offered.Allowlisted(Offered.ReferenceAllowlist))
       case Some(_) => Left(s"$ToolsVar is not read, all or allowlist")
+    }
+
+  private[main] val EffortRoutingVar = "GRIT_EFFORT_ROUTING"
+
+  /** Whether a turn's route lays an effort over its pin's, as `GRIT_EFFORT_ROUTING` names it:
+    * `routed`, or `held` (`EffortRouting.Held`, what the coder bench runs under); unset is
+    * `routed`.
+    */
+  private[main] def effortRouting(env: Map[String, String]): Either[String, EffortRouting] =
+    env.get(EffortRoutingVar).map(_.trim) match {
+      case None | Some("routed") => Right(EffortRouting.Routed)
+      case Some("held") => Right(EffortRouting.Held)
+      case Some(_) => Left(s"$EffortRoutingVar is neither routed nor held")
     }
 
   /** Whether `GRIT_ASSEMBLER` asks for retrieval; unset is retrieval. */

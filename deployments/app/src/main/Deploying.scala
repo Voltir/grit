@@ -80,6 +80,7 @@ private[main] object Deploying {
       retrieving <- assemblerChoice(env)
       rounds <- toolRounds(env)
       models <- policy(env)
+      effort <- effortRouting(env)
       sweep <- sweepEvery(env)
       expiry <- filesExpiry(env)
       lifecycle <- LifecycleEnv.of(env)
@@ -132,6 +133,7 @@ private[main] object Deploying {
           placer = placer(env),
           lifecycle = lifecycle,
           budget = spend,
+          effort = effort,
           // grit's own deployment never speaks where it was not addressed; a deployment that
           // does declares its limits (ADR 0022).
           speaking = Speaking.Off,

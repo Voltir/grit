@@ -239,7 +239,12 @@ object LiveTurn {
                 )
             ),
             grit.turn.TurnWeighing(engine.triage, mentions),
-            grit.turn.TurnRouting(mentions, engine.budget, engine.spending),
+            grit.turn.TurnRouting(
+              mentions,
+              engine.budget,
+              engine.spending,
+              grit.core.allot.EffortRouting.Routed
+            ),
             engine
           ),
           tooling

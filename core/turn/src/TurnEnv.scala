@@ -7,7 +7,7 @@ import scala.concurrent.duration.FiniteDuration
 import grit.act.moves.{MoveRecords, MovesEnv}
 import grit.act.phase.Placing
 import grit.core.agent.{Subagent, Subagents}
-import grit.core.allot.Tasking
+import grit.core.allot.{EffortRouting, Tasking}
 import grit.core.classify.ClearedClassifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.ContextAssembler
@@ -96,10 +96,15 @@ final case class TurnEnv(
 }
 
 /** What a turn's `route` step reads besides its clearances: the task questions it asks its root
-  * when the pins it may be routed to are of more than one grade (`tasks`), and the daily budget
-  * and the spend its headroom is read from.
+  * when the pins it may be routed to are of more than one grade (`tasks`), the daily budget
+  * and the spend its headroom is read from, and whether its route lays an effort over its pin's.
   */
-final case class TurnRouting(tasks: Tasking^, budget: Budget, spending: Spending)
+final case class TurnRouting(
+    tasks: Tasking^,
+    budget: Budget,
+    spending: Spending,
+    effort: EffortRouting
+)
 
 /** What a turn's root is weighed by before its offer (ADR 0025): the tags live triage kept
   * for a heard message (`triage`), or, for a message said to grit whose answers its recipe

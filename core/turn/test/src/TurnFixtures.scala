@@ -300,7 +300,12 @@ object TurnFixtures {
       cap: Option[grit.core.spend.DailyCap] = None,
       zone: ZoneId = ZoneOffset.UTC
   ): TurnRouting^ =
-    TurnRouting(tasks, grit.core.spend.Budget(zone, cap), spending)
+    TurnRouting(
+      tasks,
+      grit.core.spend.Budget(zone, cap),
+      spending,
+      grit.core.allot.EffortRouting.Routed
+    )
 
   /** A [[grit.core.allot.Tasking]] that answers every root with `outcome`, as lifecycle's
     * `Mentions` answers one it asked or could not, counting each call in `calls`.

@@ -60,17 +60,22 @@ object Router {
     * answered): a hard root that is not chat wants `Strong`, [[HardEffort]] and [[HardCalls]];
     * a chat root `Standard`, [[ChatEffort]] and the fewest calls; any other answered root
     * `Standard` and the pin's own effort and the deployment's calls; an unasked one no grade,
-    * the pin's own and the deployment's. At `Low`, for every root, asked or not, the effort is
-    * at most [[LowEffort]] and the calls at most the deployment's.
+    * the pin's own and the deployment's. With `effort` held, every root asks the pin's own
+    * effort. At `Low`, for every root, asked or not, the effort is at most [[LowEffort]] and the
+    * calls at most the deployment's.
     */
-  def allot(features: Option[Features], headroom: Headroom): Allotment = {
-    val asked = features match {
+  def allot(features: Option[Features], headroom: Headroom, effort: EffortRouting): Allotment = {
+    val routed = features match {
       case None => Allotment.Untouched
       case Some(f) if f.kind == TaskKind.Chat =>
         Allotment(Some(Grade.Standard), Reasoning.At(ChatEffort), Calls.Fewest)
       case Some(f) if f.hard >= HardAt =>
         Allotment(Some(Grade.Strong), Reasoning.At(HardEffort), HardCalls)
       case Some(_) => Allotment(Some(Grade.Standard), Reasoning.Own, Calls.Default)
+    }
+    val asked = effort match {
+      case EffortRouting.Routed => routed
+      case EffortRouting.Held => routed.copy(reasoning = Reasoning.Own)
     }
     headroom match {
       case Headroom.Ample => asked

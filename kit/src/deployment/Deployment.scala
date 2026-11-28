@@ -5,6 +5,7 @@ import java.time.Instant
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import grit.core.agent.{Subagent, Subagents}
+import grit.core.allot.EffortRouting
 import grit.core.document.{DocRef, Document, DocumentSearch, DocumentShelf, DocumentVersion}
 import grit.core.edge.ServedEdge
 import grit.core.files.{FileArea, Formats}
@@ -497,6 +498,7 @@ final case class Deployment private (
     placer: Placer,
     lifecycle: LifecycleSettings,
     budget: Budget,
+    effort: EffortRouting,
     speaking: Speaking,
     sweep: FiniteDuration,
     persona: Persona,
@@ -553,6 +555,7 @@ object Deployment {
       speaking: Speaking,
       sweep: FiniteDuration,
       persona: Persona,
+      effort: EffortRouting = EffortRouting.Routed,
       reaches: Vector[Reaches] = Vector.empty,
       shadows: Vector[ShadowVariant] = Vector.empty,
       knowledge: Corpora = Corpora.Empty,
@@ -759,6 +762,7 @@ object Deployment {
       placer,
       lifecycle,
       budget,
+      effort,
       speaking,
       sweep,
       persona,

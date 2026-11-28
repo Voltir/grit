@@ -41,7 +41,9 @@ import Backfills.*
   * gateway's key is unset refuses the start): each role's model, budget and upstream as
   * the seed catalog's policy ([[Seed]]) says, overridden for the run by the role's variables
   * ([[ModelRole]], [[OpenRouterConfig.policy]]) and the turn's reasoning replay by `GRIT_REPLAY`
-  * ([[OpenRouterConfig.ReplayVar]]), and its tool schemas strict when the turn's
+  * ([[OpenRouterConfig.ReplayVar]]), its route laying an effort over its pin's unless
+  * `GRIT_EFFORT_ROUTING` is `held` (`routed`, the default; [[grit.core.allot.EffortRouting]]),
+  * and its tool schemas strict when the turn's
   * pair is known to enforce them. The stub otherwise, answering turns after `GRIT_STUB_DELAY_MS`
   * (default 0). Each turn's window fits in `GRIT_WINDOW_TOKENS`
   * estimated tokens (default [[LinearAssembler.DefaultBudget]]) and is chosen by

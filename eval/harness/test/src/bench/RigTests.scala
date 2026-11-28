@@ -1127,7 +1127,7 @@ object RigTests extends TestSuite {
     }
 
     test(
-      "a grit trial's effort reaches grit as its turn's and its dreaming's effort, and a trial with none sets no effort"
+      "a grit trial's effort reaches grit as its turn's and its dreaming's effort, held at every grade its turn is routed to, and a trial with none sets no effort"
     ) {
       withTask { f =>
         def efforts(settings: Arm.Settings) =
@@ -1135,7 +1135,9 @@ object RigTests extends TestSuite {
             f.recorded("genv").linesIterator.filter(_.contains("EFFORT")).toVector
           )
         (efforts(Arm.Settings(effort = Some(Effort.Medium))), efforts(Arm.Settings())) ==> (
-          Right(Vector("GRIT_DREAM_EFFORT=medium", "GRIT_EFFORT=medium")),
+          Right(
+            Vector("GRIT_DREAM_EFFORT=medium", "GRIT_EFFORT=medium", "GRIT_EFFORT_ROUTING=held")
+          ),
           Right(Vector.empty)
         )
       }

@@ -181,12 +181,14 @@ object Arm {
 
   /** What a grit trial sets of grit's run besides the rig's own variables: its window's limit
     * (`window`, `GRIT_WINDOW_TOKENS`), the most turns `grit work` goes on for (`workTurns`,
-    * `GRIT_WORK_TURNS`), and the reasoning effort its turn's standard rung and its dreaming ask
-    * (`effort`, `GRIT_EFFORT` and `GRIT_DREAM_EFFORT`; the turn's summary, query and heard roles,
-    * the heard role the task classifier, follow the turn's); each unset leaves grit's own
-    * default. A call routed to another rung, or allotted another effort, asks that one
-    * ([[Tried.under]] reports which). `replay` is how the turn's calls send earlier reasoning
-    * back (`GRIT_REPLAY`, [[grit.models.OpenRouterConfig.ReplayVar]]), unset its pair's profile's.
+    * `GRIT_WORK_TURNS`), and the reasoning effort its turn and its dreaming ask (`effort`,
+    * `GRIT_EFFORT` and `GRIT_DREAM_EFFORT`; the turn's summary, query and heard roles, the heard
+    * role the task classifier, follow the turn's, and the light and strong rungs the rig adds
+    * copy it), held over the turn's route (`GRIT_EFFORT_ROUTING=held`), so a hard root routed
+    * strong asks it too; each unset leaves grit's own default. At low headroom a call asks at
+    * most medium, and at a pin asking none its provider's default ([[Tried.under]] reports
+    * which). `replay` is how the turn's calls send earlier reasoning back (`GRIT_REPLAY`,
+    * [[grit.models.OpenRouterConfig.ReplayVar]]), unset its pair's profile's.
     */
   final case class Settings(
       window: Option[Tokens] = None,
@@ -942,7 +944,8 @@ object Rig {
     s.window.map(w => "GRIT_WINDOW_TOKENS" -> Tokens.value(w).toString).toVector ++
       s.workTurns.map(n => "GRIT_WORK_TURNS" -> n.toString) ++
       s.effort.toVector.flatMap(e =>
-        Vector(ModelRole.Turn, ModelRole.Dream).map(_.effortVar -> CatalogJson.effort(e))
+        Vector(ModelRole.Turn, ModelRole.Dream).map(_.effortVar -> CatalogJson.effort(e)) :+
+          ("GRIT_EFFORT_ROUTING" -> "held")
       ) ++
       s.replay.map(r => OpenRouterConfig.ReplayVar -> CatalogJson.replay(r))
 

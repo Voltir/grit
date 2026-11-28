@@ -819,7 +819,8 @@ private[turn] object TurnSteps {
                 case Route.Task.Read(asked) => Some(asked.features)
                 case Route.Task.Skipped | Route.Task.Unanswered(_) => None
               },
-              headroom
+              headroom,
+              routing.effort
             )
             val picked = allotment.grade.fold(unasked(pins))(Routing.pick(pins, _))
             Route(
