@@ -148,19 +148,22 @@ object McpTools {
             error.logged.foreach(w => said(s"$named $w"))
             Outcome.Failed(s"${client.server.name} ${error.message}")
           case Right(at) =>
-            client.call(tool, ujson.Obj.from(obj), at) match {
+            val sent = tool.plain(ujson.Obj.from(obj))
+            client.call(tool, sent.args, at) match {
               case Left(error) =>
                 error.logged.foreach(why => said(s"$named $why"))
                 Outcome.Failed(s"${client.server.name} ${error.message}")
               case Right(answer) =>
-                if (answer.isError) Outcome.Failed(answer.text)
+                if (answer.isError) Outcome.Failed(answer.text).saying(sent.said)
                 else
-                  Outcome.Done(
-                    answer.text,
-                    items = answer.items,
-                    parts = answer.parts,
-                    facts = answer.facts
-                  )
+                  Outcome
+                    .Done(
+                      answer.text,
+                      items = answer.items,
+                      parts = answer.parts,
+                      facts = answer.facts
+                    )
+                    .saying(sent.said)
             }
         }
     }

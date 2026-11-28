@@ -43,6 +43,22 @@ enum Outcome {
   /** A crash cut a gated call short. It may have partly run, and is not run again. */
   case Interrupted
 
+  /** This outcome with `said` after its text, in a paragraph of its own: how the call's
+    * arguments were read, so the model learns their plain form. As it is when `said` is empty,
+    * and for a case with no text.
+    */
+  def saying(said: List[String]): Outcome = {
+    def after(text: String): String =
+      text + (if (text.endsWith("\n")) "\n" else "\n\n") + said.mkString(" ")
+    if (said.isEmpty) this
+    else
+      this match {
+        case done: Outcome.Done => done.copy(text = after(done.text))
+        case Outcome.Failed(why) => Outcome.Failed(after(why))
+        case other => other
+      }
+  }
+
   /** What its service's extension read of its items: `Done`'s `items`; any other case's,
     * [[Accounted.Unread]].
     */

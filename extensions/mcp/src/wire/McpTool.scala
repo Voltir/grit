@@ -21,6 +21,31 @@ final case class McpTool private (
     params: Vector[McpTool.Param]
 ) {
 
+  /** `args` with each argument whose schema property lists an `enum` that its string is not
+    * in, but that its string read once as a JSON string is (`"\"none\""` for `none`), given as
+    * that value, and a sentence for each saying so; as sent, nothing said, otherwise.
+    */
+  private[mcp] def plain(args: ujson.Obj): (args: ujson.Obj, said: List[String]) = {
+    val props: collection.Map[String, ujson.Value] =
+      inputSchema.value.get("properties").flatMap(_.objOpt).getOrElse(Map.empty)
+    def unquoted(name: String, sent: ujson.Value): Option[String] =
+      for {
+        text <- sent.strOpt
+        allowed <- props.get(name).flatMap(_.objOpt).flatMap(_.get("enum")).flatMap(_.arrOpt)
+        if !allowed.contains(ujson.Str(text))
+        read <- scala.util.Try(ujson.read(text)).toOption.flatMap(_.strOpt)
+        if allowed.contains(ujson.Str(read))
+      } yield read
+    val read = args.value.toList.map((name, sent) => (name, sent, unquoted(name, sent)))
+    (
+      args =
+        ujson.Obj.from(read.map((name, sent, plain) => name -> plain.fold(sent)(ujson.Str(_)))),
+      said = read.collect { case (name, sent, Some(plain)) =>
+        s"`$name` takes its value unquoted, so `${sent.str}` was sent as `$plain`."
+      }
+    )
+  }
+
   /** This tool with `names` gone from its schema's `properties` and `required`, and from the
     * arguments a call mirrors into headers.
     */

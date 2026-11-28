@@ -153,6 +153,49 @@ object McpToolsTests extends TestSuite {
       }
     }
 
+    test(
+      "an enum argument sent as a quoted string is sent as its plain value, and the answer says so; any other is sent as it came"
+    ) {
+      withFake { fake =>
+        val show = ujson.Obj(
+          "name" -> "show",
+          "description" -> "Show a definition.",
+          "inputSchema" -> ujson.Obj(
+            "type" -> "object",
+            "properties" -> ujson.Obj(
+              "symbols" -> ujson.Obj("type" -> "array", "items" -> ujson.Obj("type" -> "string")),
+              "tests" -> ujson
+                .Obj("type" -> "string", "enum" -> ujson.Arr("summary", "list", "none"))
+            )
+          ),
+          "annotations" -> ujson.Obj("readOnlyHint" -> true)
+        )
+        fake.lists(Vector(show))
+        fake.answers("show", text("shown"))
+        val mcp = toolsOver(fake)
+        def ran(args: ujson.Obj) = {
+          val q = request("github_show", args)
+          mcp.run(route(q), q, _ => ())
+        }
+        val symbols = "symbols" -> ujson.Arr("\"Turn\"")
+        (
+          ran(ujson.Obj(symbols, "tests" -> "\"none\"")),
+          ran(ujson.Obj(symbols, "tests" -> "\"every\""))
+        ) ==> (
+          Outcome.Done(
+            "shown\n\n`tests` takes its value unquoted, so `\"none\"` was sent as `none`."
+          ),
+          Outcome.Done("shown")
+        )
+        fake.received
+          .filter(_.method.contains("tools/call"))
+          .map(r => ujson.read(r.body)("params")("arguments")) ==> Vector(
+          ujson.Obj(symbols, "tests" -> "none"),
+          ujson.Obj(symbols, "tests" -> "\"every\"")
+        )
+      }
+    }
+
     test("a server's accounts read each answer, and its items reach the outcome") {
       withFake { fake =>
         fake.lists(Vector(FakeMcpServer.github("get_file_contents")))

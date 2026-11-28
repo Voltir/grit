@@ -376,13 +376,12 @@ object Coding {
         case Left(error) => Outcome.Failed(error.message)
         case Right(done) =>
           val on = done.at.mkString(", ")
-          saying(
-            Outcome.Done(
+          Outcome
+            .Done(
               s"Edited ${RelPath.value(a.path)}: ${Words.counted(done.at.size, "replacement")}, " +
                 s"starting on line${if (done.at.size == 1) "" else "s"} $on."
-            ),
-            a.said
-          )
+            )
+            .saying(a.said)
       }
     )
 
@@ -641,7 +640,7 @@ object Coding {
             .judge(a.argv)
             .why
             .fold(started)(why => refused(s"guard ${a.argv.written}", why, _ => RunRefusals.Again))
-      saying(outcome, a.said)
+      outcome.saying(a.said)
     }
 
   /** `sent` as `allowlist` permits it, with the sentences saying how it was read, when a plain
@@ -802,21 +801,6 @@ object Coding {
     }
   }
 
-  /** `outcome` with `said` after its text, in a paragraph of its own: how the call's
-    * arguments were read, so the model learns their plain form. As it is when nothing is said.
-    */
-  private def saying(outcome: Outcome, said: List[String]): Outcome = {
-    def after(text: String): String =
-      text + (if (text.endsWith("\n")) "\n" else "\n\n") + said.mkString(" ")
-    if (said.isEmpty) outcome
-    else
-      outcome match {
-        case done: Outcome.Done => done.copy(text = after(done.text))
-        case Outcome.Failed(why) => Outcome.Failed(after(why))
-        case other => other
-      }
-  }
-
   /** `tail` as an allowlisted set offers it: asking no one, bound at any integrity, as `read`. */
   private lazy val tailHosted: Hosted[TailArgs] =
     new Hosted(
@@ -868,12 +852,10 @@ object Coding {
 
   private def tail(runs: Allowlisted^): Tool[TailArgs]^{runs} =
     tailHosted.over(a =>
-      saying(
-        runs
-          .tail(a.id, a.wait)
-          .fold(e => Outcome.Failed(e.message), s => named(a.id, s.argv, s.status)),
-        a.said
-      )
+      runs
+        .tail(a.id, a.wait)
+        .fold(e => Outcome.Failed(e.message), s => named(a.id, s.argv, s.status))
+        .saying(a.said)
     )
 
   private def stop(runs: Allowlisted^): Tool[StopArgs]^{runs} =
