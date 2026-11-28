@@ -8,7 +8,7 @@ import grit.core.id.{Harness, SessionId}
 import grit.core.message.{Tokens, Usage}
 import grit.core.model.ModelId
 import grit.dbos.internal.TrialRows
-import grit.eval.harness.bench.{Checked, PerPass, Standing, Tried}
+import grit.eval.harness.bench.{Checked, Completed, Grade, PerPass, Standing, Tried}
 
 import utest.*
 
@@ -57,15 +57,25 @@ object ShownTests extends TestSuite {
   val tests = Tests {
     test("each grade shape the bench writes is refused, naming the file and the shape") {
       val files = Vector(
-        rel("trials/1.md") -> ("ended: done\n" + Tried.verdict(trials(0))),
-        rel("trials/2.md") -> Tried.verdict(trials(1)),
+        rel("trials/1.md") -> ("ended: done\n" + Tried.verdict(trials(0), Grade.Complete)),
+        rel("trials/2.md") -> Tried.verdict(trials(1), Grade.Complete),
         rel("brief.md") -> "Make the change.",
         rel("checks.md") ->
           Checked(Vector("check grit.core" -> true), None).lines.mkString("\n"),
         rel("stopped.md") ->
           Checked(Vector.empty, Some("the cap")).lines.mkString("\n"),
         rel("summary.md") -> PerPass.lines(trials).mkString("\n"),
-        rel("rows.md") -> PerPass.lines(trials).drop(1).mkString("\n")
+        rel("rows.md") -> PerPass.lines(trials).drop(1).mkString("\n"),
+        rel("held.md") -> Tried
+          .graded(Checked(Vector.empty, Some("the cap")), Completed.Nothing)
+          .drop(1)
+          .mkString("\n"),
+        rel("unmet.md") -> Tried
+          .graded(Checked(Vector.empty, None), Completed(Vector("tree: dirty"), Vector.empty))
+          .mkString("\n"),
+        rel("unread.md") -> Tried
+          .graded(Checked(Vector.empty, None), Completed(Vector.empty, Vector("tree: not kept")))
+          .mkString("\n")
       )
       Shown.of(files) ==> Left(
         Vector(
@@ -74,12 +84,15 @@ object ShownTests extends TestSuite {
           GradeFound(rel("checks.md"), Vector(GradeShape.CheckOutcome)),
           GradeFound(rel("stopped.md"), Vector(GradeShape.CheckOutcome)),
           GradeFound(rel("summary.md"), Vector(GradeShape.Summary)),
-          GradeFound(rel("rows.md"), Vector(GradeShape.Summary))
+          GradeFound(rel("rows.md"), Vector(GradeShape.Summary)),
+          GradeFound(rel("held.md"), Vector(GradeShape.Graded)),
+          GradeFound(rel("unmet.md"), Vector(GradeShape.Graded)),
+          GradeFound(rel("unread.md"), Vector(GradeShape.Graded))
         )
       )
     }
     test("a file holding several grade shapes is named once, with each shape in order") {
-      val text = (Tried.verdict(trials(0)) +: PerPass.lines(trials)).mkString("\n")
+      val text = (Tried.verdict(trials(0), Grade.Complete) +: PerPass.lines(trials)).mkString("\n")
       Shown.of(Vector(rel("all.md") -> text)) ==>
         Left(Vector(GradeFound(rel("all.md"), Vector(GradeShape.Verdict, GradeShape.Summary))))
     }
@@ -91,7 +104,8 @@ object ShownTests extends TestSuite {
       "a standing text holding a grade shape is refused under standing.md, and one without is kept"
     ) {
       val clean = got(Standing.of("Run the checks before you stop."))
-      val graded = got(Standing.of(s"A good run looks like:\n${Tried.verdict(trials(0))}"))
+      val graded =
+        got(Standing.of(s"A good run looks like:\n${Tried.verdict(trials(0), Grade.Complete)}"))
       (Shown.scanned(clean), Shown.scanned(graded)) ==> (
         Right(clean),
         Left(GradeFound(rel("standing.md"), Vector(GradeShape.Verdict)))

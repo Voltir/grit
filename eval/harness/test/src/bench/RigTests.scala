@@ -257,7 +257,14 @@ object RigTests extends TestSuite {
         b <- Sha.of(base)
         k <- Sha.of(known)
         n <- TrialRows.TaskName.of("fixture")
-      } yield BenchTask(n, b, "Give A an x.", Vector(k), Vector(Check(Runner.Check, Vector("m")))))
+      } yield BenchTask(
+        n,
+        b,
+        "Give A an x.",
+        Vector(k),
+        Vector(Check(Runner.Check, Vector("m"))),
+        None
+      ))
         .fold(e => throw new java.lang.AssertionError(e), identity)
       body(
         Fixture(

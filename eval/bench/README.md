@@ -19,6 +19,16 @@ Each directory under `tasks/` is one past change, frozen for the coder bench
 
 A task is kept only when its commits apply, in order, to its base and give the known commit's tree.
 
+A trial is graded (`Grade.of`): **Complete**, its pass, when the task's checks are green and it
+meets the task's `complete`; **Partial** when the checks are green but it misses an item; **Broken**
+when a check is red; **None** when it changed no source line. `complete` (optional) names at least
+how many commits it makes since the base, paths that must exist and paths that must be absent
+(globs), and text files must hold (`holds`, each a `path` glob and its `text`); a trial must also
+leave a clean tree (`out/` aside), and every commit before HEAD must compile by the grit arm's
+compile (`Rig.GritCompile`), each in turn in one worktree beside the checkout. The report prints
+the grade, each item missed (`unmet:`) and each not read (`unread:`). The grade is printed, not
+kept: `passed` is the row's, and means Complete in a run that ended in no error.
+
 `triage-retry` is held out: no change to the harness, its standing text or its settings is tuned
 against it, so its trials say how a tuned coder does on a task it was not tuned on.
 

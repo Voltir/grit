@@ -69,7 +69,8 @@ object CloneTests extends TestSuite {
       o.commits(base),
       "Do it.",
       known.map(o.commits).toVector,
-      Vector(Check(Runner.Check, Vector("grit.core")))
+      Vector(Check(Runner.Check, Vector("grit.core"))),
+      None
     )
 
   val tests = Tests {

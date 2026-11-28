@@ -14,7 +14,15 @@ import grit.core.clock.Clock
 import grit.core.host.{Argv, Handing, Memory, Processes, Ran, RelPath, Variables}
 import grit.core.id.{Harness, SessionId}
 import grit.core.message.{Cost, SpendCap, Tokens, Usage}
-import grit.core.model.{CatalogJson, Effort, Grade, ModelId, ModelRef, ReasoningReplay, Upstream}
+import grit.core.model.{
+  CatalogJson,
+  Effort,
+  Grade as ModelGrade,
+  ModelId,
+  ModelRef,
+  ReasoningReplay,
+  Upstream
+}
 import grit.core.secret.{Secret, Variable}
 import grit.dbos.internal.TrialRows
 import grit.dbos.sql.DbConfig
@@ -262,7 +270,8 @@ trait CoderTurns extends caps.SharedCapability {
 /** A trial, the run's output it was read from, a line a message, the coder's diff from the task's
   * base ([[Clone.changes]]), what that output gave, the task's checks as they ran after it, the
   * arm that ran it, the pair it ran on, whose upstream the trial does not record, and what a grit
-  * coder's turn recorded it ran under ([[RanUnder.Unrecorded]] for Claude Code's).
+  * coder's turn recorded it ran under ([[RanUnder.Unrecorded]] for Claude Code's), its task's held
+  * checks as they ran after the task's, what it left of its task's completion, and its grade.
   */
 final case class Tried(
     trial: TrialRows.Trial,
@@ -273,7 +282,10 @@ final case class Tried(
     stopped: Option[String],
     arm: Arm,
     pair: ModelRef,
-    ranUnder: RanUnder
+    ranUnder: RanUnder,
+    held: Checked,
+    completed: Completed,
+    grade: Grade
 ) extends caps.Pure {
 
   /** What a person reads of it, a line each: its measures and its pair, for a grit coder what it
@@ -304,21 +316,38 @@ final case class Tried(
       ) ++ consumed.ended.toVector
         .flatMap(_.denials)
         .map(d => s"denied: ${d.tool} ${d.input.take(200)}") ++
-      checked.lines :+
-      Tried.verdict(t)
+      checked.lines ++ Tried.graded(held, completed) :+
+      Tried.verdict(t, grade)
   }
 }
 
 object Tried {
 
-  /** `trial`'s grade as a person reads it, the last of [[Tried.lines]]: whether it passed, and
-    * its distance from its task's known diff in lines, or `no diff`.
+  /** `trial`'s grade as a person reads it, the last of [[Tried.lines]]: `grade`, whether it
+    * passed, and its distance from its task's known diff in lines, or `no diff`.
     */
-  def verdict(trial: TrialRows.Trial): String =
-    s"passed: ${trial.passed}; distance: ${trial.distance.fold("no diff")(d => s"$d lines")}"
+  def verdict(trial: TrialRows.Trial, grade: Grade): String =
+    s"grade: $grade; passed: ${trial.passed}; " +
+      s"distance: ${trial.distance.fold("no diff")(d => s"$d lines")}"
 
   /** What every [[verdict]] holds, found anywhere in a line holding one. */
   val Verdicts: Regex = "passed: (true|false); distance: ".r
+
+  /** What a person reads beside a grade, a line each: each held check as [[Checked.lines]] gives
+    * it, then `held: <n> of <m> passed` when there were any; then `unmet: <item>` for each item
+    * `completed` missed and `unread: <item>` for each it could not read.
+    */
+  def graded(held: Checked, completed: Completed): Vector[String] =
+    held.lines ++
+      Option
+        .when(held.runs.nonEmpty || held.stopped.nonEmpty)(
+          s"held: ${held.runs.count(_._2)} of ${held.runs.size} passed"
+        )
+        .toVector ++
+      completed.missed.map(m => s"unmet: $m") ++ completed.unread.map(u => s"unread: $u")
+
+  /** A whole line of [[graded]] that is not a check's. */
+  val Graded: Regex = "held: \\d+ of \\d+ passed|unmet: .+|unread: .+".r
 
   /** `work` in `calls` model calls, as a person reads it: its tool calls a model call to one
     * decimal, `-` when it made no model call.
@@ -920,7 +949,7 @@ object Rig {
   private[bench] def gritEnvironment(arm: Arm.Grit, cap: Caps): Vector[String] = {
     val model = ModelId.value(cap.model)
     val upstream = Upstream.value(cap.upstream)
-    val roles = Vector(Grade.Standard, Grade.Light, Grade.Strong).flatMap { g =>
+    val roles = Vector(ModelGrade.Standard, ModelGrade.Light, ModelGrade.Strong).flatMap { g =>
       Vector(ModelRole.Turn.modelVar(g) -> model, ModelRole.Turn.upstreamVar(g) -> upstream)
     } ++ Vector(ModelRole.Dream.modelVar -> model, ModelRole.Dream.upstreamVar -> upstream)
     Vector("env", "-i") ++ (arm.passed.values.toVector.sorted ++ Vector(
@@ -984,9 +1013,9 @@ object Rig {
   /** A coder's run, as `coded` makes it in the checkout whose absolute path it is given, on
     * `task` under `cap` by `arm` in a new checkout at `dir` of `repository`, the checks' tools
     * fetched into it first ([[Checks.tooled]]); then the task's
-    * checks run there, `watch` asked as [[Checks.run]] says, and its diff measured against the
-    * known diff. It passes only when its checks pass, its run ended in no error and it changed
-    * a source line ([[DiffLines]]). Tidied as [[trial]] says.
+    * checks run there, `watch` asked as [[Checks.run]] says, after its task's completion is read
+    * ([[Completion.of]]), and its diff measured against the known diff. It passes only when it is
+    * graded Complete ([[Grade.of]]) and its run ended in no error. Tidied as [[trial]] says.
     */
   private def tried(work: Processes)(
       repository: String,
@@ -1015,10 +1044,15 @@ object Rig {
           c <- coded(checkout)
           diff <- Clone.changes(work)(dir, task.base)
           changed = DiffLines.of(diff)
+          completed <- task.completion.fold(Right(Completed.Nothing))(
+            Completion.of(work)(dir, task.base, _, watch)
+          )
           checked <- Checks
             .run(work)(dir, task.checks, Vector(CappedJvm), watch)
             .left
             .map(_.message)
+          held = Checked(Vector.empty, None)
+          grade = Grade.of(checked, held, completed, changed.lines.nonEmpty)
           trial <- TrialRows.Trial
             .of(
               c.session,
@@ -1029,9 +1063,8 @@ object Rig {
               c.wall,
               c.consumed.readBeforeEdit,
               c.consumed.callsBeforeEdit,
-              // A tree left at its base passes no task, though the task's checks are green there.
-              passed = checked.passed && c.consumed.ended.exists(!_.error) &&
-                changed.lines.nonEmpty,
+              // A run that ended in error passes no task, whatever its tree's grade.
+              passed = grade == Grade.Complete && c.consumed.ended.exists(!_.error),
               distance = Option.when(changed.lines.nonEmpty)(DiffLines.distance(changed, known)),
               standing = Standing.ofArm(arm).map(_.sha256)
             )
@@ -1046,7 +1079,10 @@ object Rig {
           c.stopped,
           arm,
           cap.pair,
-          c.ranUnder
+          c.ranUnder,
+          held,
+          completed,
+          grade
         )
       )
     } yield tried

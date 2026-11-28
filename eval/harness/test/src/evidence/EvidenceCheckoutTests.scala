@@ -55,7 +55,8 @@ object EvidenceCheckoutTests extends TestSuite {
         commits(0),
         "Do it.",
         commits.drop(1),
-        Vector(Check(Runner.Check, Vector("grit.core")))
+        Vector(Check(Runner.Check, Vector("grit.core"))),
+        None
       )
       body(work, root, root.resolve("origin").toString, BlindTask.of(task))
     } finally Files.walk(root).sorted(java.util.Comparator.reverseOrder()).forEach(Files.delete)

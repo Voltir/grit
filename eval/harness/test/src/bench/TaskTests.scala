@@ -50,6 +50,41 @@ object TaskTests extends TestSuite {
       )
     }
 
+    test("a task file's completion names its commits, its globs and the text its files hold") {
+      val complete =
+        """{"commits": 5, "exists": ["docs/decisions/0053-*.md"], "absent": ["**/*.orig"],
+          |"holds": [{"path": "docs/decisions/0048-*.md", "text": "0053"}]}""".stripMargin
+      val read = BenchTask.of(name, json().dropRight(1) + s""", "complete": $complete}""", "Do it.")
+      (read.map(_.completion), BenchTask.of(name, json(), "Do it.").map(_.completion)) ==> (
+        Right(
+          Some(
+            Completion(
+              5,
+              Vector("docs/decisions/0053-*.md"),
+              Vector("**/*.orig"),
+              Vector(Holding("docs/decisions/0048-*.md", "0053"))
+            )
+          )
+        ),
+        Right(None)
+      )
+    }
+
+    test("a task file's completion is refused for each way it falls short, naming what") {
+      def completing(c: String) = refusal(json().dropRight(1) + s""", "complete": $c}""")
+      Vector(
+        completing("[]"),
+        completing("""{"commits": -1, "exists": [], "absent": [], "holds": []}"""),
+        completing("""{"commits": 1, "absent": [], "holds": []}"""),
+        completing("""{"commits": 1, "exists": [], "absent": [], "holds": [{"path": "a"}]}""")
+      ) ==> Vector(
+        "a-task's complete names no commits",
+        "a-task's complete's commits is below 0",
+        "a-task's complete names no exists",
+        "a-task's complete's holds names no text"
+      )
+    }
+
     test("a task file is refused for each way it falls short, naming what") {
       Vector(
         refusal("not json"),

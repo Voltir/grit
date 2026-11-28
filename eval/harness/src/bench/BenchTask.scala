@@ -29,14 +29,16 @@ enum Runner {
 final case class Check(runner: Runner, args: Vector[String]) extends caps.Pure
 
 /** A past change frozen as a task: the commit it started from, the brief its coder was given, the
-  * commits that made it, in order, and its checks (the law is every task's, beside them).
+  * commits that made it, in order, its checks (the law is every task's, beside them), and what a
+  * trial must leave beyond them to be graded Complete, when it names that.
   */
 final case class BenchTask(
     name: TrialRows.TaskName,
     base: Sha,
     brief: String,
     commits: Vector[Sha],
-    checks: Vector[Check]
+    checks: Vector[Check],
+    completion: Option[Completion]
 ) extends caps.Pure
 
 object BenchTask {
@@ -52,7 +54,8 @@ object BenchTask {
   /** The task `name` of a `task.json`'s text and its brief, its [[closing]] sentence after it, or
     * why not: not an object of `base`, `commits` and `checks`; a commit not 40 lower-case hex
     * digits; no commits; no checks; a runner not `check` or `it`; a check with no arguments; an
-    * empty brief.
+    * empty brief; a `complete` not an object of `commits` (a count from 0), `exists`, `absent`
+    * (globs) and `holds` (each a `path` glob and its `text`).
     */
   def of(name: TrialRows.TaskName, json: String, brief: String): Either[String, BenchTask] = {
     val named = TrialRows.TaskName.value(name)
@@ -68,7 +71,38 @@ object BenchTask {
       checks <- each(written)(check(named, _))
       _ <- Either.cond(checks.nonEmpty, (), s"$what names no checks")
       _ <- Either.cond(brief.trim.nonEmpty, (), s"$named's brief is empty")
-    } yield BenchTask(name, base, s"${brief.stripTrailing}\n\n$closing", commits, checks)
+      complete <- fields.added("complete")
+      completion <- Fields.opt(complete)(completion(named, _))
+    } yield BenchTask(
+      name,
+      base,
+      s"${brief.stripTrailing}\n\n$closing",
+      commits,
+      checks,
+      completion
+    )
+  }
+
+  /** The completion `v` of the task `named`, or why not. */
+  private def completion(named: String, v: ujson.Value): Either[String, Completion] = {
+    val what = s"$named's complete"
+    val fields = Fields(what, v)
+    for {
+      commits <- fields.int("commits")
+      _ <- Either.cond(commits >= 0, (), s"$what's commits is below 0")
+      existing <- fields.arr("exists")
+      exists <- each(existing)(Fields.str(s"$what's exists", _))
+      absence <- fields.arr("absent")
+      absent <- each(absence)(Fields.str(s"$what's absent", _))
+      listed <- fields.arr("holds")
+      holds <- each(listed) { h =>
+        val held = Fields(s"$what's holds", h)
+        for {
+          path <- held.str("path")
+          text <- held.str("text")
+        } yield Holding(path, text)
+      }
+    } yield Completion(commits, exists, absent, holds)
   }
 
   /** The check `v` of the task `named`, or why not. */

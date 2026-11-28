@@ -21,6 +21,11 @@ enum GradeShape extends caps.Pure {
   /** The bench summary's header line or one of its rows, as [[PerPass.lines]] writes them. */
   case Summary
 
+  /** What is reported beside a trial's grade, as [[grit.eval.harness.bench.Tried.graded]] writes
+    * it, a line each, its held checks aside (each a [[CheckOutcome]]).
+    */
+  case Graded
+
   /** Whether `line` holds this shape. */
   def in(line: String): Boolean = this match {
     case Verdict => Tried.Verdicts.findFirstIn(line).isDefined
@@ -32,6 +37,7 @@ enum GradeShape extends caps.Pure {
         columns.size == PerPass.Header.size &&
           GradeShape.Counted.forall(i => columns.lift(i).exists(_.forall(_.isDigit)))
       )
+    case Graded => Tried.Graded.matches(line.trim)
   }
 }
 

@@ -8,7 +8,7 @@ import grit.core.id.{Harness, SessionId}
 import grit.core.message.{Tokens, Usage}
 import grit.core.model.ModelId
 import grit.dbos.internal.TrialRows
-import grit.eval.harness.bench.{Bench, BenchTask, Standing, Tried}
+import grit.eval.harness.bench.{Bench, BenchTask, Grade, Standing, Tried}
 import grit.eval.harness.sent.SentMarkdown
 
 import utest.*
@@ -73,7 +73,7 @@ object ProposalTests extends TestSuite {
       )
     )
 
-  private val verdict: String = Tried.verdict(trial("graded"))
+  private val verdict: String = Tried.verdict(trial("graded"), Grade.Complete)
 
   /** Turn `seq`'s request as the renderer writes it: its system prompt, its tools and `messages`. */
   private def turn(seq: Int, system: String, tools: String, messages: Vector[Vector[String]]) =
