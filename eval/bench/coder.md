@@ -52,4 +52,5 @@ text). Scout answers from compiled output: compile before trusting it.
 ## When done
 
 End with a short message: each commit's hash and subject, the tests you added and their reds,
-the judgement calls you made, and anything you left undone.
+the judgement calls you made, each constraint the task states, in its words, with the test
+that pins it or "untested", and anything you left undone.

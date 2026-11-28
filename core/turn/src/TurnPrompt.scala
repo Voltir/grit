@@ -414,7 +414,8 @@ object TurnPrompt {
 
   /** How a turn offered a tool that changes its directory is told to work there ([[reach]]):
     * independent calls in one reply, one suite seen failing before a change, every changed
-    * module's tests before stopping, a commit at each step in a git checkout, and the formatter
+    * module's tests before stopping, the change checked against each constraint the task
+    * states, a commit at each step in a git checkout, and the formatter
     * the repository's instructions name before each commit.
     */
   private val Working: String =
@@ -426,6 +427,10 @@ object TurnPrompt {
       "until it passes.\n" +
       "- Before you stop, run the tests of every module whose files you changed, not only " +
       "the suite you worked against, and fix what fails.\n" +
+      "- Then check the change against the task. Go through the task's text for each thing " +
+      "it says must, must not or may at most happen, the facts it quotes included. Read your " +
+      "whole change (`git diff` from where you started) against each one. Where no test " +
+      "would fail if it were broken, write that test. Fix what fails.\n" +
       "- In a git checkout, commit each step once its test passes, so your branch holds the " +
       "work as you go.\n" +
       "- Before each commit, run the formatter the repository's instructions name, if they " +
