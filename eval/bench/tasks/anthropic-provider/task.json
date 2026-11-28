@@ -6,5 +6,10 @@
   ],
   "checks": [
     {"runner": "check", "args": ["grit.models"]}
-  ]
+  ],
+  "held": {
+    "files": ["extensions/models/test/src/HeldAnthropicWireTests.scala"],
+    "checks": [{"runner": "check", "args": ["grit.models.HeldAnthropicWireTests"]}]
+  },
+  "complete": {"commits": 1, "exists": ["extensions/models/**/ProviderHttp.scala", "extensions/models/**/ToolArguments.scala"], "absent": [], "holds": []}
 }
