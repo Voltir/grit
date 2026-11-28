@@ -36,7 +36,9 @@ Its packages, in order, none importing another but `git` and `blobs`, which remo
   on; at most `Most` of one repository, and those unused for `Kept` swept at start. A copy
   holding changes never committed is removed only once unused for `Unpublished`. Its sweep deletes the branches of runs done
   with, on their remote repository first, by lease. `Branches` — a clone's run branches
-  (`LocalBranch`), pushed and offered from the clone alone.
+  (`LocalBranch`), pushed and offered from the clone alone. `LocalStashes` — a checkout's git
+  stash, read for the machine guard. `LocalUncommitted` — the files a commit in a checkout
+  would leave out, read before a coding turn's `git commit`.
 - **`machine`**: `LocalMachine` — this process's `ProcessIdentity`.
 - **`blobs`**: `LocalBlobs` — bytes kept in a directory of this machine by their digest, and
   the removal of the scratch directories an earlier grit's Drive edge left.
