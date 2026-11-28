@@ -29,11 +29,14 @@ private[tools] object RunRefusals {
         .filter(w => w.contains('/') || w.endsWith(".sh") || w.endsWith(".py"))
     if (Tools(program))
       (program, s"`$program` is a tool of its own, not a program: call `$program` itself.")
+    // A plain program sent with its arguments ran split ([[Coding]]'s run): what reaches
+    // here carries shell text.
     else if (spaced.size > 1 && admits(spaced ++ args))
       (
         program,
-        s"A program is one word: give `${spaced.head}` as `program`, and " +
-          s"${spaced.drop(1).map(w => s"`$w`").mkString(", ")} among `args`."
+        "No shell runs here: `program` is one program's name, and pipes, `&&`, `;`, quotes " +
+          s"and redirects cannot run. Give `${spaced.head}` as `program`, its arguments in " +
+          "`args`, one program per call."
       )
     else if (args.headOption.exists(a => admits(s"$program/$a" +: args.drop(1))))
       (program, s"A program is one word with its path: give `$program/${args.head}` as `program`.")

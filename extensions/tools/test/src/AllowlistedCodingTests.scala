@@ -325,6 +325,86 @@ object AllowlistedCodingTests extends TestSuite {
       )
     }
 
+    test("run's wait past 600 seconds waits 600, and its answer says so") {
+      val runs = Allowlisted.over(new Noting(scripts), allowlist(20.minutes))
+      val host = new CodingTests.Scripted()
+      val hang = ujson.Obj("program" -> "./mill", "args" -> ujson.Arr("hang"), "wait" -> 900)
+      settle(host, runs, "run", hang) ==> Right(
+        (
+          false,
+          Outcome.Done(
+            s"Still running after 600 seconds, as `${nth(1)}`; it is killed at 1200 seconds. " +
+              s"Its output so far:\nstarted\n\nCall `tail` with id `${nth(1)}` to see how it " +
+              "stands, giving `wait` to wait for it to end, or `stop` to end it.\n\n" +
+              "`wait` is at most 600 seconds, so this waited up to 600, not 900."
+          )
+        )
+      )
+    }
+
+    test(
+      "a program sent with its arguments runs as its first word, and one repeated as its first argument runs once; the answer says how it was read"
+    ) {
+      val noting = new Noting(scripts)
+      val runs = Allowlisted.over(noting, allowlist(2.minutes))
+      val host = new CodingTests.Scripted()
+      (
+        settle(host, runs, "run", ujson.Obj("program" -> "git status")),
+        settle(
+          host,
+          runs,
+          "run",
+          ujson.Obj("program" -> "git", "args" -> ujson.Arr("git", "status"))
+        )
+      ) ==> (
+        Right(
+          (
+            false,
+            Outcome.Done(
+              "Exit code 0. Output:\nok\n\n`program` takes the program alone, so `git status` " +
+                "ran as `program` `git` with `status` first among `args`."
+            )
+          )
+        ),
+        Right(
+          (
+            false,
+            Outcome.Done(
+              "Exit code 0. Output:\nok\n\n`args` holds what follows the program, so its first " +
+                "`git`, which repeated `program`, was left out."
+            )
+          )
+        )
+      )
+      noting.log.map(_._1) ==> Vector(argv("git", "status"), argv("git", "status"))
+    }
+
+    test(
+      "a program sent with shell text, or a split or repeat the list does not permit either, is refused as sent"
+    ) {
+      val noting = new Noting(scripts)
+      val runs = Allowlisted.over(noting, allowlist(2.minutes))
+      val host = new CodingTests.Scripted()
+      // What a refusal says the command was: the words before "is not on this checkout's…".
+      def refused(sent: ujson.Obj): Option[String] =
+        settle(host, runs, "run", sent).toOption.collect { case (_, Outcome.Failed(why)) =>
+          why.indexOf(" is not on") match {
+            case -1 => why
+            case at => why.take(at)
+          }
+        }
+      (
+        refused(ujson.Obj("program" -> "./mill compile && rm -rf x")),
+        refused(ujson.Obj("program" -> "git log")),
+        refused(ujson.Obj("program" -> "git", "args" -> ujson.Arr("git", "log")))
+      ) ==> (
+        Some("`'./mill compile && rm -rf x'`"),
+        Some("`'git log'`"),
+        Some("`git git log`")
+      )
+      noting.log ==> Vector.empty
+    }
+
     test(
       "a long output is answered as its size and file, its failing lines and its tail, going and ended"
     ) {
@@ -452,7 +532,7 @@ object AllowlistedCodingTests extends TestSuite {
     }
 
     test(
-      "an unlisted command's refusal names what works: the tool, the one word, the listed form, or the programs that run"
+      "an unlisted command's refusal names what works: the tool, one program with no shell, the listed form, or the programs that run"
     ) {
       val runs = Allowlisted.over(new Noting(scripts), refusing)
       val host = new CodingTests.Scripted()
@@ -470,7 +550,7 @@ object AllowlistedCodingTests extends TestSuite {
         )
       (
         refused("read", "a"),
-        refused("git status"),
+        refused("git status | head"),
         refused("scripts", "check", "grit.x"),
         refused("bash", "scripts/check", "grit.x"),
         refused("python3", "-c", "print(1)"),
@@ -479,8 +559,10 @@ object AllowlistedCodingTests extends TestSuite {
       ) ==> (
         unlisted("read a", "`read` is a tool of its own, not a program: call `read` itself."),
         unlisted(
-          "'git status'",
-          "A program is one word: give `git` as `program`, and `status` among `args`."
+          "'git status | head'",
+          "No shell runs here: `program` is one program's name, and pipes, `&&`, `;`, quotes " +
+            "and redirects cannot run. Give `git` as `program`, its arguments in `args`, one " +
+            "program per call."
         ),
         unlisted(
           "scripts check grit.x",

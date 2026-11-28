@@ -57,7 +57,7 @@ object Coding {
   type WriteArgs = (path: RelPath, content: String)
   type EditArgs = (path: RelPath, edits: List[Replace])
   type RunArgs = (command: String, timeout: FiniteDuration)
-  type ArgvArgs = (argv: Argv, timeout: FiniteDuration, wait: FiniteDuration)
+  type ArgvArgs = (argv: Argv, timeout: FiniteDuration, wait: FiniteDuration, said: List[String])
   type TailArgs = (id: RunId, wait: FiniteDuration)
   type StopArgs = (id: RunId)
 
@@ -478,14 +478,10 @@ object Coding {
                   longest.toSeconds.toInt
                 )
                 .optional,
-              wait = Field
-                .count(
-                  "The most seconds to wait for it to end before answering with its id; " +
-                    s"${Runs.Wait.toSeconds} when not given.",
-                  0,
-                  Shell.Longest.toSeconds.toInt
-                )
-                .optional
+              wait = waitField(
+                "The most seconds to wait for it to end before answering with its id; " +
+                  s"${Runs.Wait.toSeconds} when not given."
+              )
             )
           )
           .refine(a =>
@@ -493,13 +489,16 @@ object Coding {
               .of(a.program, a.args.getOrElse(Nil)*)
               .left
               .map(why => ArgsError.Refused("program", s"The command cannot run: $why."))
-              .map(argv =>
+              .map { sent =>
+                val read = plainly(sent, allowlist)
+                val waited = waiting(a.wait, Runs.Wait)
                 (
-                  argv = argv,
+                  argv = read.argv,
                   timeout = a.timeout.fold(longest)(_.seconds),
-                  wait = a.wait.fold(Runs.Wait)(_.seconds)
+                  wait = waited.wait,
+                  said = read.said.toList ++ waited.said
                 )
-              )
+              }
           )
       ),
       Gate.Free,
@@ -542,25 +541,118 @@ object Coding {
         Outcome.Failed(if (before == 0) said else said + again(before + 1))
       }
       val allowlist = runs.allowlist
-      if (!allowlist.permits(a.argv))
-        allowlist.wanting(a.argv) match {
-          case Some(what) =>
-            val unfinished = HostError.Unfinished(a.argv, what)
-            refused(a.argv.program, unfinished.message, RunRefusals.repeated(a.argv.program, _))
-          case None =>
-            val hint = RunRefusals.unlisted(a.argv, allowlist)
-            refused(
-              hint.subject,
-              s"${HostError.Unlisted(a.argv).message} ${hint.said}",
-              RunRefusals.repeated(hint.subject, _)
-            )
-        }
-      else
-        guard
-          .judge(a.argv)
-          .why
-          .fold(started)(why => refused(s"guard ${a.argv.written}", why, _ => RunRefusals.Again))
+      val outcome =
+        if (!allowlist.permits(a.argv))
+          allowlist.wanting(a.argv) match {
+            case Some(what) =>
+              val unfinished = HostError.Unfinished(a.argv, what)
+              refused(a.argv.program, unfinished.message, RunRefusals.repeated(a.argv.program, _))
+            case None =>
+              val hint = RunRefusals.unlisted(a.argv, allowlist)
+              refused(
+                hint.subject,
+                s"${HostError.Unlisted(a.argv).message} ${hint.said}",
+                RunRefusals.repeated(hint.subject, _)
+              )
+          }
+        else
+          guard
+            .judge(a.argv)
+            .why
+            .fold(started)(why => refused(s"guard ${a.argv.written}", why, _ => RunRefusals.Again))
+      saying(outcome, a.said)
     }
+
+  /** `sent` as `allowlist` permits it when it is not permitted as sent but a plain slip is
+    * plain to undo: a program sent with its arguments, every word of it plain (no shell text),
+    * or the program's name repeated as its first argument; with the sentence saying how it was
+    * read. As sent, nothing said, otherwise.
+    */
+  private def plainly(sent: Argv, allowlist: Allowlist): (argv: Argv, said: Option[String]) = {
+    val words = sent.program.split(' ').toList.filter(_.nonEmpty)
+    val split = words match {
+      case program :: moved if moved.nonEmpty && words.forall(PlainWord.matches) =>
+        Argv
+          .of(program, (moved ++ sent.args)*)
+          .toOption
+          .map(argv =>
+            (
+              argv,
+              s"`program` takes the program alone, so `${sent.program}` ran as `program` " +
+                s"`$program` with `${moved.mkString(" ")}` first among `args`."
+            )
+          )
+      case _ => None
+    }
+    val unrepeated = sent.args match {
+      case first :: rest if first == sent.program =>
+        Argv
+          .of(sent.program, rest*)
+          .toOption
+          .map(argv =>
+            (
+              argv,
+              s"`args` holds what follows the program, so its first `${sent.program}`, which " +
+                "repeated `program`, was left out."
+            )
+          )
+      case _ => None
+    }
+    if (allowlist.permits(sent)) (argv = sent, said = None)
+    else
+      split.orElse(unrepeated).filter((argv, _) => allowlist.permits(argv)) match {
+        case Some((argv, said)) => (argv = argv, said = Some(said))
+        case None => (argv = sent, said = None)
+      }
+  }
+
+  /** A word a shell would read back unchanged, as [[Argv.quote]] leaves one unquoted, or with `=`. */
+  private val PlainWord = "[A-Za-z0-9_@%+:,./=-]+".r
+
+  /** A `wait` field meaning `meaning`, taking any whole number of seconds from 0: one past
+    * [[Shell.Longest]] is read as it, by [[waiting]].
+    */
+  private def waitField(meaning: String): Field[Option[Int]] =
+    Field
+      .count(
+        meaning + s" At most ${Shell.Longest.toSeconds}: a longer wait is cut to it.",
+        0,
+        Int.MaxValue
+      )
+      .optional
+
+  /** The wait `sent` asks, `absent` when it is not given, cut to [[Shell.Longest]]; with the
+    * sentence saying so when it was cut.
+    */
+  private def waiting(
+      sent: Option[Int],
+      absent: FiniteDuration
+  ): (wait: FiniteDuration, said: List[String]) = {
+    val most = Shell.Longest.toSeconds
+    sent match {
+      case Some(s) if s > most =>
+        (
+          wait = Shell.Longest,
+          said = List(s"`wait` is at most $most seconds, so this waited up to $most, not $s.")
+        )
+      case _ => (wait = sent.fold(absent)(_.seconds), said = Nil)
+    }
+  }
+
+  /** `outcome` with `said` after its text, in a paragraph of its own: how the call's
+    * arguments were read, so the model learns their plain form. As it is when nothing is said.
+    */
+  private def saying(outcome: Outcome, said: List[String]): Outcome = {
+    def after(text: String): String =
+      text + (if (text.endsWith("\n")) "\n" else "\n\n") + said.mkString(" ")
+    if (said.isEmpty) outcome
+    else
+      outcome match {
+        case done: Outcome.Done => done.copy(text = after(done.text))
+        case Outcome.Failed(why) => Outcome.Failed(after(why))
+        case other => other
+      }
+  }
 
   /** `tail` as an allowlisted set offers it: asking no one, bound at any integrity, as `read`. */
   private lazy val tailHosted: Hosted[TailArgs] =
