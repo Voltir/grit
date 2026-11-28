@@ -4,7 +4,6 @@ import java.nio.file.{Files, Path}
 
 import scala.jdk.CollectionConverters.*
 
-import grit.dbos.internal.TrialRows
 import grit.eval.harness.bench.{BenchTask, Sha}
 
 import utest.*
@@ -16,16 +15,7 @@ object BlindTaskTests extends TestSuite {
   private def frozen(): Vector[BenchTask] = {
     val dir = Path.of(sys.env.getOrElse("GRIT_BENCH_TASKS", "")).toAbsolutePath
     Files.list(dir).iterator.asScala.toVector.sortBy(_.getFileName.toString).map { at =>
-      val read = for {
-        name <- TrialRows.TaskName.of(at.getFileName.toString)
-        task <- BenchTask.of(
-          name,
-          Files.readString(at.resolve("task.json")),
-          Files.readString(at.resolve("brief.md")),
-          Map.empty
-        )
-      } yield task
-      read.fold(why => throw new java.lang.AssertionError(why), identity)
+      BenchTask.read(at).fold(why => throw new java.lang.AssertionError(why), identity)
     }
   }
 
