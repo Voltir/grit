@@ -12,7 +12,6 @@ import grit.core.secret.Named
   * `redaction` before it is read or searched, so a pattern never matches a secret's value.
   */
 final class LocalWorkspace(root: Path, redaction: Redaction) extends Workspace {
-  import Checkout.attempt
 
   private val checkout = new Checkout(root)
 
