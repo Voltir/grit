@@ -577,7 +577,7 @@ object Coding {
                   argv = read.argv,
                   timeout = a.timeout.fold(longest)(_.seconds),
                   wait = waited.wait,
-                  said = read.said.toList ++ waited.said
+                  said = read.said ++ waited.said
                 )
               }
           )
@@ -644,14 +644,35 @@ object Coding {
       saying(outcome, a.said)
     }
 
-  /** `sent` as `allowlist` permits it when it is not permitted as sent but a plain slip is
-    * plain to undo: a program sent with its arguments, every word of it plain (no shell text),
-    * or the program's name repeated as its first argument; with the sentence saying how it was
-    * read. As sent, nothing said, otherwise.
+  /** `sent` as `allowlist` permits it, with the sentences saying how it was read, when a plain
+    * slip is plain to undo. When `sent` is not permitted: a program sent with its arguments,
+    * every word of it plain (no shell text); the program's name repeated as its first argument;
+    * or a program written without its directory, the last part of one listed program alone.
+    * Then, permitted or not, of a build (a rule [[Allowlist.cleared]] clears): another build
+    * sent as its first argument, run as that build, or its own name repeated there, left out.
+    * As sent, nothing said, otherwise.
     */
-  private def plainly(sent: Argv, allowlist: Allowlist): (argv: Argv, said: Option[String]) = {
+  private def plainly(sent: Argv, allowlist: Allowlist): (argv: Argv, said: List[String]) = {
+    val slipped =
+      if (allowlist.permits(sent)) None
+      else
+        unsplit(sent)
+          .orElse(unrepeated(sent))
+          .orElse(undirected(sent, allowlist))
+          .filter((argv, _) => allowlist.permits(argv))
+    val (read, first) = slipped.fold((sent, List.empty[String]))((a, s) => (a, List(s)))
+    unbuilt(read, allowlist) match {
+      case Some((argv, said)) => (argv = argv, said = first :+ said)
+      case None => (argv = read, said = first)
+    }
+  }
+
+  /** `sent`'s program split at its spaces, every word plain, the rest moved first among its
+    * arguments; `None` when it has no space or a word is not plain.
+    */
+  private def unsplit(sent: Argv): Option[(Argv, String)] = {
     val words = sent.program.split(' ').toList.filter(_.nonEmpty)
-    val split = words match {
+    words match {
       case program :: moved if moved.nonEmpty && words.forall(PlainWord.matches) =>
         Argv
           .of(program, (moved ++ sent.args)*)
@@ -665,7 +686,11 @@ object Coding {
           )
       case _ => None
     }
-    val unrepeated = sent.args match {
+  }
+
+  /** `sent` without its first argument when that repeats its program. */
+  private def unrepeated(sent: Argv): Option[(Argv, String)] =
+    sent.args match {
       case first :: rest if first == sent.program =>
         Argv
           .of(sent.program, rest*)
@@ -679,12 +704,69 @@ object Coding {
           )
       case _ => None
     }
-    if (allowlist.permits(sent)) (argv = sent, said = None)
+
+  /** `sent` run as the one program `allowlist` lists whose last part is `sent`'s program, when
+    * that is written without a directory.
+    */
+  private def undirected(sent: Argv, allowlist: Allowlist): Option[(Argv, String)] =
+    if (sent.program.contains('/')) None
     else
-      split.orElse(unrepeated).filter((argv, _) => allowlist.permits(argv)) match {
-        case Some((argv, said)) => (argv = argv, said = Some(said))
-        case None => (argv = sent, said = None)
+      allowlist.rules.map(programOf).distinct.filter(_.endsWith("/" + sent.program)) match {
+        case Vector(listed) =>
+          Argv
+            .of(listed, sent.args*)
+            .toOption
+            .map(argv =>
+              (
+                argv,
+                s"`${sent.program}` is not on the list, so it ran as `$listed`, the listed " +
+                  "program of that name."
+              )
+            )
+        case _ => None
       }
+
+  /** Of `sent`, a build's command: another build sent as its first argument, run as that build,
+    * or its own program's last part repeated there, left out; each only as a build `allowlist`
+    * clears permits the result.
+    */
+  private def unbuilt(sent: Argv, allowlist: Allowlist): Option[(Argv, String)] = {
+    def builds(argv: Argv) = allowlist.cleared.exists(_.permits(argv))
+    val named = sent.program.split('/').lastOption.getOrElse(sent.program)
+    val found = sent.args match {
+      case first :: rest if sent.program.contains('/') && first == named =>
+        Argv
+          .of(sent.program, rest*)
+          .toOption
+          .map(argv =>
+            (
+              argv,
+              s"`args` holds what follows the program, so its first `$first`, which repeated " +
+                s"`program` `${sent.program}`, was left out."
+            )
+          )
+      case first :: rest
+          if first != sent.program && allowlist.cleared.exists(programOf(_) == first) =>
+        Argv
+          .of(first, rest*)
+          .toOption
+          .map(argv =>
+            (
+              argv,
+              s"`$first` is a program of its own, not an argument of `${sent.program}`, so it " +
+                "ran as `program` with the arguments after it."
+            )
+          )
+      case _ => None
+    }
+    found.filter((argv, _) => builds(sent) && builds(argv))
+  }
+
+  /** The program `rule` runs. */
+  private def programOf(rule: Allowlist.Rule): String = rule match {
+    case Allowlist.Rule.Exactly(argv) => argv.program
+    case Allowlist.Rule.Leading(argv) => argv.program
+    case Allowlist.Rule.Following(argv, _) => argv.program
   }
 
   /** A word a shell would read back unchanged, as [[Argv.quote]] leaves one unquoted, or with `=`. */

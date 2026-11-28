@@ -28,9 +28,9 @@ _At the point of use:_ `tests` of `grit.lifecycle.triage.TriageTests` by the nam
 ## Commits
 
 1. `tests:` the retried `consider`, red for the stated reason (quote the failing comparison in the message), or green with the reason the note is wrong.
-2. If red: the fix, one commit, the test green; `scripts/check` on the lifecycle and core suites touched, then bare once; `LifecycleReplayTests` green.
+2. If red: the fix, one commit, the test green; `scripts/check` on the lifecycle and core suites touched, then on each module whose files changed (`scripts/check grit.lifecycle`, and `scripts/check grit.core` if it changed); `LifecycleReplayTests` green.
 
-Report: red or green and why; the fix's shape and what it shares; gate totals; `scripts/kb-delta`; actual hours.
+Report: red or green and why; the fix's shape and what it shares; each module check's totals; actual hours.
 
 ## Cited: grit/577 (A triage step retried after its consider transaction committed may hold its own turn Unanswered)
 

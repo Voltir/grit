@@ -13,8 +13,9 @@ One package, `grit.tools`:
   edit and run ask a person first; in `Coding.allowlisted`, none asks, and run starts only
   what the deployment's `Allowlist` permits and its `MachineGuard` clears, as a program and its arguments with no shell,
   a refusal naming what runs instead (`RunRefusals`) and saying so when its turn was refused it before (`Refusals`);
-  a program sent with its arguments, or repeated as its first, runs as the list permits it
-  (never when its words carry shell text), and a `wait` past ten minutes is cut to ten, each
+  a program sent with its arguments, or repeated as its first, or written without its
+  directory, runs as the list permits it (never when its words carry shell text), a cleared
+  build sent as a build's first argument runs as itself, and a `wait` past ten minutes is cut to ten, each
   answer saying how the call was read; `edit` takes one passage as `oldText` and `newText`
   beside `path`, and its file from its edits' own `path` when every one names the same file;
   a command still going after its wait answers with an id that `tail` and `stop` take

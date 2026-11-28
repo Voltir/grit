@@ -31,7 +31,7 @@ At the point of use: `CommandFixtures.askThrough` and `CommandFixtures.askBy`. T
 2. The fix in `briefed`. Add a test that a lower caller's keep of an artifact the brief does not show writes no brief version, and pin it with `KeptBriefTests`' existing "writes no version" test.
 3. The declare refusal's next step, with `DeclareTests` and `ProjectsLiveTests` changed to match.
 
-The plan comes first, with Elision, Capture and separation, Sharing and Retires sections, and is reviewed by wisdom before the first edit. Gate: `scripts/check` bare at the end, then `scripts/check grit.app.main.ProjectsLiveTests`.
+The plan comes first, with Elision, Capture and separation, Sharing and Retires sections, and is reviewed by wisdom before the first edit. Gate: `scripts/check <module>` for every module whose files changed, at the end, then `scripts/check grit.app.main.ProjectsLiveTests`.
 
 ## Cited: grit/511 (A brief is not raised when what it shows is raised)
 
@@ -98,7 +98,7 @@ On a new branch `m23-c1-close-fixes` off `main`.
 4. The four other gaps' tests.
 5. `project_keep`'s answer gives its version.
 
-`scripts/check grit.projects` per commit; bare `scripts/check` before handing back. Record actual hours here when done.
+`scripts/check grit.projects` per commit; `scripts/check <module>` for every other module whose files changed before handing back. Record actual hours here when done.
 
 **Actual:** about 0.4 h by the branch's clock (planned 1.5 h): four commits, 2dc6f0ef..d8cab8ff. The brief-raised gap is not built: its premise does not hold on `main` (a brief held lower than what it shows is left as it is, by `briefed`'s design), and it waits for a decision.
 

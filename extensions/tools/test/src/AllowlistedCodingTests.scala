@@ -35,6 +35,19 @@ object AllowlistedCodingTests extends TestSuite {
       )
       .fold(e => throw new java.lang.AssertionError(e), identity)
 
+  /** [[allowlist]]'s rules with its two builds, `./mill` and `scripts/check`, cleared. */
+  private val building: Allowlist = {
+    val mill = Allowlist.Rule.Leading(argv("./mill"))
+    val check = Allowlist.Rule.Following(argv("scripts/check"), "the suites or modules to check")
+    Allowlist
+      .of(
+        Vector(Allowlist.Rule.Exactly(argv("git", "status")), mill, check),
+        2.minutes,
+        Vector(mill, check)
+      )
+      .fold(e => throw new java.lang.AssertionError(e), identity)
+  }
+
   /** git's status, restore, checkout of files and stash, `grep`, and `scripts/check`: forms a
     * refusal may name.
     */
@@ -68,6 +81,8 @@ object AllowlistedCodingTests extends TestSuite {
     argv("./mill", "compile") -> ScriptedRuns.Script("compiling\n", "done\n", Some(2.minutes), 0),
     argv("./mill", "hang") -> ScriptedRuns.Script("started\n", "", None, 0),
     argv("./mill", "quiet") -> ScriptedRuns.Script("", "", None, 0),
+    argv("scripts/check", "grit.tools") -> ScriptedRuns
+      .Script("1 passed\n", "", Some(Duration.Zero), 0),
     argv("./mill", "test") -> ScriptedRuns.Script(long, "1 FAILED\n", Some(2.minutes), 1)
   )
 
@@ -395,6 +410,64 @@ object AllowlistedCodingTests extends TestSuite {
         )
       )
       noting.log.map(_._1) ==> Vector(argv("git", "status"), argv("git", "status"))
+    }
+
+    test(
+      "a program named without its directory runs as the listed one of that name, a build sent as another build's first argument runs as that build, and a build's own name repeated first is left out; the answer says how it was read"
+    ) {
+      val noting = new Noting(scripts)
+      val runs = Allowlisted.over(noting, building)
+      val host = new CodingTests.Scripted()
+      def ran(args: ujson.Obj) = settle(host, runs, "run", args)
+      (
+        ran(ujson.Obj("program" -> "check", "args" -> ujson.Arr("grit.tools"))),
+        ran(ujson.Obj("program" -> "./mill", "args" -> ujson.Arr("scripts/check", "grit.tools"))),
+        ran(ujson.Obj("program" -> "scripts/check", "args" -> ujson.Arr("check", "grit.tools")))
+      ) ==> (
+        Right(
+          (
+            false,
+            Outcome.Done(
+              "Exit code 0. Output:\n1 passed\n\n`check` is not on the list, so it ran as " +
+                "`scripts/check`, the listed program of that name."
+            )
+          )
+        ),
+        Right(
+          (
+            false,
+            Outcome.Done(
+              "Exit code 0. Output:\n1 passed\n\n`scripts/check` is a program of its own, not " +
+                "an argument of `./mill`, so it ran as `program` with the arguments after it."
+            )
+          )
+        ),
+        Right(
+          (
+            false,
+            Outcome.Done(
+              "Exit code 0. Output:\n1 passed\n\n`args` holds what follows the program, so " +
+                "its first `check`, which repeated `program` `scripts/check`, was left out."
+            )
+          )
+        )
+      )
+      noting.log.map(_._1) ==> Vector.fill(3)(argv("scripts/check", "grit.tools"))
+    }
+
+    test(
+      "a build's first argument is read as a build only when the list clears both: otherwise `./mill scripts/check` runs as sent"
+    ) {
+      val noting = new Noting(scripts)
+      val runs = Allowlisted.over(noting, allowlist(2.minutes))
+      val host = new CodingTests.Scripted()
+      val _ = settle(
+        host,
+        runs,
+        "run",
+        ujson.Obj("program" -> "./mill", "args" -> ujson.Arr("scripts/check", "grit.tools"))
+      )
+      noting.log.map(_._1) ==> Vector(argv("./mill", "scripts/check", "grit.tools"))
     }
 
     test(

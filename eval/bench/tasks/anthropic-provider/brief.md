@@ -134,7 +134,7 @@ Coder, 2026-10-29, on main 322bdc56. Every Anthropic fact used here is quoted wi
      - It shows call 2's `cacheRead` > 0, and prints each call's usage and cost in cents.
      - Estimate: under 0.1¢. It is run once in the build round.
      - It saves a streamed and a plain response under `test/resources`, and `AnthropicStreamTests` reads them.
-   - **Runs:** `grit.turn`, `grit.models`, then `scripts/check --no-unused`.
+   - **Runs:** `grit.turn`, `grit.models`, and every other module whose files changed, each as `scripts/check <module>`.
 
 **Questions for wisdom, then Nick**
 
