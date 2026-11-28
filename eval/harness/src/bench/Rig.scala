@@ -329,7 +329,8 @@ object Tried {
       else (BigDecimal(work.tools) / calls).setScale(1, BigDecimal.RoundingMode.HALF_UP).toString
     s"work: ${work.tools} tool calls in $calls model calls ($each a call); edits: " +
       s"${work.edits}, ${work.failedEdits} failed; suite runs: ${work.suiteRuns}; " +
-      s"commits: ${work.commits}; refused by the machine guard: ${work.guarded}; shell reads " +
+      s"commits: ${work.commits}, ${work.refusedCommits} refused; refused by the machine " +
+      s"guard: ${work.guarded}; shell reads " +
       s"scout answers: ${work.sourceReads} (the rule points at ${work.ruled}); pointed to scout: " +
       s"${work.pointed}, ${work.taken} taken"
   }
@@ -534,8 +535,8 @@ object Rig {
   val GritPreamble: String =
     Situation +
       """
-        |Only the modules the task's checks name were compiled here before you started: compile
-        |any other module before you ask scout about it. The run is stopped once the processes
+        |Every module was compiled here before you started, so scout reads all of them. The run is
+        |stopped once the processes
         |working in this directory together hold more than its memory budget.
         |""".stripMargin + Heading
 
@@ -670,7 +671,7 @@ object Rig {
             .map(e =>
               s"the memory grit's processes hold cannot be read, so its budget could not hold: ${e.message}"
             )
-          _ <- warmed(work)(task, arm, cap, dir, output, holding(memory, dir, memoryCap))
+          _ <- warmed(work)(arm, cap, dir, output, holding(memory, dir, memoryCap))
           streamed <- briefed(arm, task) { brief =>
             val keys = Vector(key, jev)
             handing
@@ -775,60 +776,60 @@ object Rig {
     */
   val CappedJvm: (String, String) = "JDK_JAVA_OPTIONS" -> "-XX:MaxRAMPercentage=15"
 
+  /** `./mill --ticker false __.compile`: every module of grit, its tests', probes' and
+    * integration suites' among them, compiled; what a grit coder's commits must pass
+    * (`GRIT_COMPILE`), and what the checkout is warmed with.
+    */
+  val GritCompile: Vector[String] = Vector("./mill", "--ticker", "false", "__.compile")
+
   /** 60 minutes: the longest the checkout's compile before the coder may take. */
   val Warming: FiniteDuration = 60.minutes
 
-  /** The checkout at `dir` compiled, every module `task`'s checks name ([[Check.modules]]) and
-    * those under it (`./mill <module>.__.compile`), in grit's environment under `cap` but with no key, so that
+  /** The checkout at `dir` compiled by [[GritCompile]], the compile each of the coder's commits
+    * must pass, in grit's environment under `cap` but with no key, so that
     * the coder's first build or test is not a cold one and nothing it spends goes on it. Its
     * Mill daemon is left for the coder, and [[tidied]] shuts it down. `output` gets the command,
     * the last 200 lines it printed and the tail of its errors. `watch` is asked while it runs, as
     * [[Watched.ran]] asks it. `Left` in words when it fails, takes longer than [[Warming]], is
-    * stopped by `watch` (naming the compile and the reason), or `output` cannot be written;
-    * nothing when the checks name no module.
+    * stopped by `watch` (naming the compile and the reason), or `output` cannot be written.
     */
   private def warmed(work: Processes)(
-      task: BenchTask,
       arm: Arm.Grit,
       cap: Caps,
       dir: RelPath,
       output: Path,
       watch: () => Option[String]
   ): Either[String, Unit] = {
-    val targets = task.checks.flatMap(_.modules).distinct.map(m => s"$m.__.compile")
-    val mill = Vector("./mill", "--ticker", "false") ++
-      targets.flatMap(t => Vector("+", t)).drop(1)
+    val mill = GritCompile
     val failed = "the checkout did not compile before the coder"
-    if (targets.isEmpty) Right(())
-    else
-      for {
-        argv <- Watched.limited(
-          Warming,
-          (Vector("env") ++ gritEnvironment(arm, cap).drop(1) ++ mill)*
+    for {
+      argv <- Watched.limited(
+        Warming,
+        (Vector("env") ++ gritEnvironment(arm, cap).drop(1) ++ mill)*
+      )
+      read <- work
+        .started(argv, dir)(
+          Watched.ran(_, Warming + 1.minute, Warming + 2.minutes, _ => None, watch)
         )
-        read <- work
-          .started(argv, dir)(
-            Watched.ran(_, Warming + 1.minute, Warming + 2.minutes, _ => None, watch)
-          )
-          .left
-          .map(e => s"$failed: ${e.message}")
-        _ <- written(output, append = true)(
-          s"[rig] compiled before the coder: ${mill.mkString(" ")}" +: (read.lines.takeRight(200) ++
-            read.ended.fold(Vector(_), r => r.output.text.linesIterator.toVector))
-        )
-        _ <- read.stopped
-          .map(why => s"the checkout's compile before the coder was stopped: $why")
-          .toLeft(())
-        ran <- read.ended.left.map(e => s"$failed: $e")
-        _ <- Either.cond(
-          ran.exit == 0,
-          (),
-          (read.lines ++ ran.output.text.linesIterator)
-            .filter(_.trim.nonEmpty)
-            .lastOption
-            .fold(s"$failed (exit ${ran.exit})")(line => s"$failed (exit ${ran.exit}): $line")
-        )
-      } yield ()
+        .left
+        .map(e => s"$failed: ${e.message}")
+      _ <- written(output, append = true)(
+        s"[rig] compiled before the coder: ${mill.mkString(" ")}" +: (read.lines.takeRight(200) ++
+          read.ended.fold(Vector(_), r => r.output.text.linesIterator.toVector))
+      )
+      _ <- read.stopped
+        .map(why => s"the checkout's compile before the coder was stopped: $why")
+        .toLeft(())
+      ran <- read.ended.left.map(e => s"$failed: $e")
+      _ <- Either.cond(
+        ran.exit == 0,
+        (),
+        (read.lines ++ ran.output.text.linesIterator)
+          .filter(_.trim.nonEmpty)
+          .lastOption
+          .fold(s"$failed (exit ${ran.exit})")(line => s"$failed (exit ${ran.exit}): $line")
+      )
+    } yield ()
   }
 
   /** Writes `lines`, what grit wrote to its output, to `output` after what is there, then the
@@ -930,6 +931,7 @@ object Rig {
       DotEnv.FileVar -> "/dev/null",
       DbConfig.UrlVar -> arm.database,
       "GRIT_TOOLS" -> "allowlist",
+      "GRIT_COMPILE" -> GritCompile.mkString(" "),
       "GRIT_SCOUT" -> arm.scout,
       ModelRole.Turn.maxTokensVar -> arm.maxTokens.toString,
       "GRIT_TOOL_ROUNDS" -> cap.maxRounds.toString,

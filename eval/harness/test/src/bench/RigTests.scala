@@ -633,15 +633,15 @@ object RigTests extends TestSuite {
         Right(
           Some(
             "work: 8 tool calls in 3 model calls (2.7 a call); edits: 2, 1 failed; " +
-              "suite runs: 1; commits: 1; refused by the machine guard: 0; shell reads scout " +
+              "suite runs: 1; commits: 1, 0 refused; refused by the machine guard: 0; shell reads scout " +
               "answers: 0 (the rule points at 0); pointed to scout: 0, 0 taken"
           )
         ),
         "work: 8 tool calls in 3 model calls (2.7 a call); edits: 0, 0 failed; suite runs: 0; " +
-          "commits: 0; refused by the machine guard: 0; shell reads scout answers: 0 (the rule " +
+          "commits: 0, 0 refused; refused by the machine guard: 0; shell reads scout answers: 0 (the rule " +
           "points at 0); pointed to scout: 0, 0 taken",
         "work: 0 tool calls in 0 model calls (- a call); edits: 0, 0 failed; suite runs: 0; " +
-          "commits: 0; refused by the machine guard: 0; shell reads scout answers: 0 (the rule " +
+          "commits: 0, 0 refused; refused by the machine guard: 0; shell reads scout answers: 0 (the rule " +
           "points at 0); pointed to scout: 0, 0 taken"
       )
     }
@@ -760,6 +760,7 @@ object RigTests extends TestSuite {
             Vector(
               "ANTHROPIC_API_KEY=sk-ant-test-0123",
               "GRIT_ASSEMBLER=linear",
+              "GRIT_COMPILE=./mill --ticker false __.compile",
               "GRIT_DATABASE_URL=jdbc:postgresql://localhost:5432/grit_bench_coder",
               "GRIT_DREAM_MODEL=anthropic/claude-haiku-5-5",
               "GRIT_DREAM_PROVIDER=api.anthropic.com",
@@ -916,7 +917,7 @@ object RigTests extends TestSuite {
           true,
           Some(
             Vector(
-              "[rig] compiled before the coder: ./mill --ticker false m.__.compile",
+              "[rig] compiled before the coder: ./mill --ticker false __.compile",
               "compiled",
               "[main] said",
               "[rig] the tail of grit's errors:",
@@ -928,7 +929,10 @@ object RigTests extends TestSuite {
       }
     }
 
-    test("the checkout compiles what the task's checks name before grit starts, unbilled") {
+    test(
+      "the checkout compiles every module, with the compile each commit must pass, before grit " +
+        "starts, unbilled, and the coder is told scout reads them all"
+    ) {
       withTask { f =>
         gritTrial(f, GritFake(gritLines)).map(_ =>
           (
@@ -937,27 +941,21 @@ object RigTests extends TestSuite {
           )
         ) ==> Right(
           (
-            Some(Vector("--ticker", "false", "m.__.compile")),
+            Some(Vector("--ticker", "false", "__.compile")),
             Vector(
-              "[rig] compiled before the coder: ./mill --ticker false m.__.compile",
+              "[rig] compiled before the coder: ./mill --ticker false __.compile",
               "compiled",
               gritLines.head
             )
           )
         )
       }
-    }
-
-    test(
-      "an integration check's module is compiled before grit, never its testOnly task or its suite"
-    ) {
-      withTask { f =>
-        val it = Check(Runner.It, Vector("n.it.testOnly", "n.engine.SomeTests"))
-        val g = f.copy(task = f.task.copy(checks = f.task.checks :+ it))
-        gritTrial(g, GritFake(gritLines)).map(_ =>
-          Option.when(f.exists("mill-argv"))(f.recorded("mill-argv").linesIterator.toVector)
-        ) ==> Right(Some(Vector("--ticker", "false", "m.__.compile", "+", "n.it.__.compile")))
-      }
+      assert(
+        Rig.GritPreamble.contains(
+          "\nEvery module was compiled here before you started, so scout reads all of them. The " +
+            "run is\nstopped once"
+        )
+      )
     }
 
     test(

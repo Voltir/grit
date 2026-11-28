@@ -171,7 +171,7 @@ object Consumed {
   /** Counts of a transcript's tool calls, as [[Tried.work]] names them: every call, its edits,
     * those of them whose result was an error, its suite runs, its commits, and its runs the
     * machine guard refused, by its lead ([[Allowlisted.GuardLead]]; none for a harness without
-    * one); its shell reads of Scala sources ([[Sources.Scala]]), those of them the
+    * one), and its commits refused, by theirs ([[Allowlisted.CommitLead]]; likewise); its shell reads of Scala sources ([[Sources.Scala]]), those of them the
     * rule points at (what a run with no classifier gives the line to), those answered after the
     * line ([[Sources.Lead]]), and those whose next call names a tool the line names.
     */
@@ -182,6 +182,7 @@ object Consumed {
       suiteRuns: Int,
       commits: Int,
       guarded: Int,
+      refusedCommits: Int,
       sourceReads: Int,
       ruled: Int,
       pointed: Int,
@@ -191,15 +192,16 @@ object Consumed {
   object Work {
 
     /** One tool call: whether it is an edit, whether its result was an error, the command line
-      * it ran when it is a shell run, whether the machine guard refused it, and how it stands
-      * to the line naming what reads Scala sources.
+      * it ran when it is a shell run, whether the machine guard refused it, whether it was a
+      * commit refused, and how it stands to the line naming what reads Scala sources.
       */
     final case class Used(
         edit: Boolean,
         failed: Boolean,
         command: Option[String],
         guarded: Boolean = false,
-        source: Source = Source.None
+        source: Source = Source.None,
+        refusedCommit: Boolean = false
     ) extends caps.Pure
 
     /** How a tool call stands to the line naming what reads Scala sources. */
@@ -221,7 +223,7 @@ object Consumed {
       */
     def of(used: Vector[Used]): Work = {
       val commands = used.flatMap(_.command)
-      val reads = used.collect { case Used(_, _, _, _, r: Source.Read) => r }
+      val reads = used.collect { case Used(_, _, _, _, r: Source.Read, _) => r }
       Work(
         used.size,
         used.count(_.edit),
@@ -229,6 +231,7 @@ object Consumed {
         commands.count(suiteRun),
         commands.count(_.contains("git commit")),
         used.count(_.guarded),
+        used.count(_.refusedCommit),
         reads.size,
         reads.count(_.ruled),
         reads.count(_.pointed),
@@ -308,6 +311,9 @@ object Consumed {
     val guarded = turn.messages.collect {
       case Message.ToolResult(id, text, true) if text.startsWith(Allowlisted.GuardLead) => id
     }.toSet
+    val refusedCommits = turn.messages.collect {
+      case Message.ToolResult(id, text, true) if text.startsWith(Allowlisted.CommitLead) => id
+    }.toSet
     val denials = turn.messages
       .collect { case Message.ToolResult(id, _, true) =>
         toolCalls.find(_.id == id)
@@ -361,7 +367,8 @@ object Consumed {
           failed(c.id),
           Option.when(c.name == "run")((program ++ args).mkString(" ")),
           guarded(c.id),
-          source
+          source,
+          refusedCommits(c.id)
         )
       })
     )

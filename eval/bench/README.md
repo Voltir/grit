@@ -84,10 +84,11 @@ missing or blank file is refused), the rig's account of where the coder works
 runs, kept in the planning store and exported to a file for the run; it is worded for grit's own
 tools (`run` with its allowlist, `tail`, scout's `scout_*`). Its trial records the standing text by
 its sha256 (`bench_trials.standing`), the text kept as a blob beside the trial's transcript, so
-trials sort by the version of the standing text they ran under. Before grit starts, the rig compiles every module the task's checks name in the checkout
-(`./mill <module>.__.compile`, an `it` check's module and not its suites, at most an hour, unbilled), so the coder's first build is not a cold
+trials sort by the version of the standing text they ran under. Before grit starts, the rig compiles every module in the checkout
+(`Rig.GritCompile`, `./mill --ticker false __.compile`, at most an hour, unbilled), so the coder's first build is not a cold
 one; its Mill daemon stays warm for the coder. grit starts from an empty environment: the rig sets every variable it reads
-(`Rig.gritTrial`), its tools the allowlisted coding set and scout, the run's pair in every role it sets
+(`Rig.gritTrial`), its tools the allowlisted coding set and scout, each commit refused unless it
+leaves out no file and `GRIT_COMPILE`, that same compile, passes (the readout counts the refusals), the run's pair in every role it sets
 (a Claude model at the Anthropic API, or with `--upstream` an OpenRouter model at that upstream
 alone), and its key (`ANTHROPIC_API_KEY` or `OPENROUTER_API_KEY`) and Jev's (`JEV_API_KEY`, the
 classifier its machine guard asks) each handed through a file. A run with no `JEV_API_KEY` is

@@ -2,7 +2,7 @@ package grit.tools
 
 import scala.concurrent.duration.*
 
-import grit.core.host.{Argv, HostError, RelPath, Uncommitted}
+import grit.core.host.{Allowlisted, Argv, HostError, RelPath, Uncommitted}
 
 /** What an allowlisted `run` checks before a `git commit`, and the refusals the model reads when
   * the commit would leave out a file, or the check cannot be made. None counts as a repeat
@@ -95,5 +95,5 @@ private[tools] object CommitCheck {
   /** The working tree, as [[unchecked]] names it. */
   val Tree = "the working tree"
 
-  private val Refused = "The commit was refused, and nothing was committed:"
+  private val Refused = Allowlisted.CommitLead
 }

@@ -167,6 +167,32 @@ object ConsumedTests extends TestSuite {
     }
 
     test(
+      "a grit turn's commits refused are counted by their refusal's lead, and no other failed " +
+        "run; each is a commit still"
+    ) {
+      val t = gritTurn("SUCCESS")
+      val commit = ujson.Obj("program" -> "git", "args" -> ujson.Arr("commit", "-m", "x"))
+      val refused = t.copy(messages =
+        t.messages ++ Vector(
+          calling("t11", "run", commit),
+          Message.ToolResult(
+            ToolCallId("t11"),
+            s"${grit.core.host.Allowlisted.CommitLead} it would leave out files the checkout holds.",
+            isError = true
+          ),
+          calling("t12", "run", commit),
+          Message.ToolResult(ToolCallId("t12"), "Exit code 1.", isError = true)
+        )
+      )
+      (
+        Consumed.ofTurn(gritLines, t, None).work.refusedCommits,
+        Consumed.ofTurn(gritLines, refused, None).work.refusedCommits,
+        Consumed.ofTurn(gritLines, refused, None).work.commits -
+          Consumed.ofTurn(gritLines, t, None).work.commits
+      ) ==> (0, 1, 2)
+    }
+
+    test(
       "a grit turn's shell reads of Scala sources are counted, those the rule points at, those answered after the line, and those whose next call takes it"
     ) {
       val t = gritTurn("SUCCESS")

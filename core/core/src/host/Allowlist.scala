@@ -126,6 +126,11 @@ object Allowlisted {
     */
   val GuardLead: String = "Nothing ran: the check that guards this machine"
 
+  /** How every refusal of a coding tool's `git commit` begins, before what it would leave out
+    * or what failed: what a bench's readout counts it by.
+    */
+  val CommitLead: String = "The commit was refused, and nothing was committed:"
+
   /** `runs` narrowed to what `allowlist` permits. */
   def over(runs: Runs^, allowlist: Allowlist): Allowlisted^ = {
     val permitted = allowlist
