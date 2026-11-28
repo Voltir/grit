@@ -229,7 +229,7 @@ object TurnPromptTests extends TestSuite {
       "reach at a repository says the tools act on this run's working copy of it, never that a person is asked, then how to work there: independent calls together, one suite seen failing first, every changed module's tests before stopping, a commit each step, the named formatter before it; served with none offered, or unserved, says so"
     ) {
       (
-        TurnPrompt.reach(Some(repo.place), TurnPrompt.Serving.Offering(set(false, true))).text,
+        TurnPrompt.reach(Some(repo.place), TurnPrompt.Serving.Offering(changing)).text,
         TurnPrompt.reach(Some(repo.place), TurnPrompt.Serving.Offering(ToolSet.Empty)).text,
         TurnPrompt.reach(Some(repo.place), TurnPrompt.Serving.Unserved).text
       ) ==> (
@@ -242,7 +242,8 @@ object TurnPromptTests extends TestSuite {
           "again until it passes.\n" +
           "- Before you stop, run the tests of every module whose files you changed, not only " +
           "the suite you worked against, and fix what fails.\n" +
-          "- Commit each step once its test passes, so your branch holds the work as you go.\n" +
+          "- In a git checkout, commit each step once its test passes, so your branch holds the " +
+          "work as you go.\n" +
           "- Before each commit, run the formatter the repository's instructions name, if they " +
           "name one.",
         "The tools of the repository grit are not available in this conversation, so you " +
@@ -355,5 +356,44 @@ object TurnPromptTests extends TestSuite {
         .map(f => (f.layer, f.source)) ==>
         Vector((Layer.Base, "grit"), (Layer.Edge, "grit"), (Layer.Reach, "grit"))
     }
+
+    test(
+      "a turn at a served directory offered a tool that changes it is told to work in small steps; offered only read-only tools, it is not, and neither is a repository offered only read-only tools"
+    ) {
+      val workingLine = "Work in small steps:\n"
+      (
+        TurnPrompt
+          .reach(Some(Place.of(dir)), TurnPrompt.Serving.Offering(changing))
+          .text
+          .startsWith(
+            "Your file and command tools act on the directory /work/api.\n\n" + workingLine
+          ),
+        TurnPrompt
+          .reach(Some(Place.of(dir)), TurnPrompt.Serving.Offering(set(false, true)))
+          .text
+          .contains(workingLine),
+        TurnPrompt
+          .reach(Some(repo.place), TurnPrompt.Serving.Offering(set(false, true)))
+          .text
+          .contains(workingLine)
+      ) ==> (true, false, false)
+    }
   }
+
+  // A served tool that changes its workspace, and nothing else.
+  private def changing: ToolSet =
+    ToolSet
+      .of(
+        Vector(
+          ToolSet.Entry(
+            ToolName.of("write_file").getOrElse(throw new java.lang.AssertionError()),
+            "T.",
+            ujson.Obj(),
+            false,
+            Retry.Rerun,
+            changes = true
+          )
+        )
+      )
+      .getOrElse(throw new java.lang.AssertionError())
 }

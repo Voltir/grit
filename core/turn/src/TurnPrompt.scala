@@ -359,9 +359,10 @@ object TurnPrompt {
     * when no edge does; that its tools are not available in this conversation, when one does and
     * none is offered (the conversation's labels allow none), naming only the directory, the
     * service or the repository; that it has no workspace, when the conversation has none (a
-    * place neither a directory, a service nor a repository reads as none). At a repository whose
-    * tools are offered, then how to work there ([[Working]]). Worded by workspace, never by what
-    * serves it, so another edge serving the same one leaves the prompt the same.
+    * place neither a directory, a service nor a repository reads as none). Where the tools served
+    * include one that changes the directory, then how to work there ([[Working]]). Worded by
+    * workspace, never by what serves it, so another edge serving the same one leaves the prompt
+    * the same.
     */
   def reach(workspace: Option[Place], serving: Serving): Fragment = {
     val tools = serving match {
@@ -369,6 +370,7 @@ object TurnPrompt {
       case Serving.Offering(set) => set
     }
     val served = serving != Serving.Unserved
+    val how = if (tools.tools.exists(_.changes)) s"\n\n$Working" else ""
     val text = (
       workspace.flatMap(_.directory),
       workspace.flatMap(_.service),
@@ -387,7 +389,7 @@ object TurnPrompt {
           if (tools.tools.exists(_.asks))
             " Calling one that changes something is how the person is asked to approve it."
           else ""
-        s"Your file and command tools act on the directory ${Directory.value(dir)}.$asks"
+        s"Your file and command tools act on the directory ${Directory.value(dir)}.$asks$how"
       case (None, Some(service), _) if tools.tools.isEmpty =>
         if (served) s"The tools of ${service.name} are not available in this conversation."
         else s"Nothing is serving ${service.name} right now, so its tools are not offered."
@@ -403,16 +405,16 @@ object TurnPrompt {
       // No sentence on asking: nobody answers during a run of work.
       case (None, None, Some(repository)) =>
         s"Your file and command tools act on this run's working copy of the repository " +
-          s"${repository.name}.\n\n$Working"
+          s"${repository.name}.$how"
       case (None, None, None) =>
         "This conversation has no directory, so you cannot read or change files or run commands."
     }
     Fragment(Layer.Reach, Fragment.Grit, text)
   }
 
-  /** How a run of work in a repository is told to work ([[reach]]): independent calls in one
-    * reply, one suite seen failing before a change, every changed module's tests before stopping, a
-    * commit at each step, and the formatter
+  /** How a turn offered a tool that changes its directory is told to work there ([[reach]]):
+    * independent calls in one reply, one suite seen failing before a change, every changed
+    * module's tests before stopping, a commit at each step in a git checkout, and the formatter
     * the repository's instructions name before each commit.
     */
   private val Working: String =
@@ -424,7 +426,8 @@ object TurnPrompt {
       "until it passes.\n" +
       "- Before you stop, run the tests of every module whose files you changed, not only " +
       "the suite you worked against, and fix what fails.\n" +
-      "- Commit each step once its test passes, so your branch holds the work as you go.\n" +
+      "- In a git checkout, commit each step once its test passes, so your branch holds the " +
+      "work as you go.\n" +
       "- Before each commit, run the formatter the repository's instructions name, if they " +
       "name one."
 
