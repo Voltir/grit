@@ -411,7 +411,8 @@ object TurnPrompt {
   }
 
   /** How a run of work in a repository is told to work ([[reach]]): independent calls in one
-    * reply, one suite seen failing before a change, a commit at each step, and the formatter
+    * reply, one suite seen failing before a change, every changed module's tests before stopping, a
+    * commit at each step, and the formatter
     * the repository's instructions name before each commit.
     */
   private val Working: String =
@@ -421,6 +422,8 @@ object TurnPrompt {
       "- Before you change code, run the one test suite that covers the change and see it " +
       "fail for the reason the change is for. Then make the change and run that suite again " +
       "until it passes.\n" +
+      "- Before you stop, run the tests of every module whose files you changed, not only " +
+      "the suite you worked against, and fix what fails.\n" +
       "- Commit each step once its test passes, so your branch holds the work as you go.\n" +
       "- Before each commit, run the formatter the repository's instructions name, if they " +
       "name one."

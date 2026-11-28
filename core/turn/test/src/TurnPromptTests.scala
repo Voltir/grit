@@ -226,7 +226,7 @@ object TurnPromptTests extends TestSuite {
     }
 
     test(
-      "reach at a repository says the tools act on this run's working copy of it, never that a person is asked, then how to work there: independent calls together, one suite seen failing first, a commit each step, the named formatter before it; served with none offered, or unserved, says so"
+      "reach at a repository says the tools act on this run's working copy of it, never that a person is asked, then how to work there: independent calls together, one suite seen failing first, every changed module's tests before stopping, a commit each step, the named formatter before it; served with none offered, or unserved, says so"
     ) {
       (
         TurnPrompt.reach(Some(repo.place), TurnPrompt.Serving.Offering(set(false, true))).text,
@@ -240,6 +240,8 @@ object TurnPromptTests extends TestSuite {
           "- Before you change code, run the one test suite that covers the change and see it " +
           "fail for the reason the change is for. Then make the change and run that suite " +
           "again until it passes.\n" +
+          "- Before you stop, run the tests of every module whose files you changed, not only " +
+          "the suite you worked against, and fix what fails.\n" +
           "- Commit each step once its test passes, so your branch holds the work as you go.\n" +
           "- Before each commit, run the formatter the repository's instructions name, if they " +
           "name one.",

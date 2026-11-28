@@ -51,12 +51,13 @@ final case class BenchTask(
 
 object BenchTask {
 
-  /** The sentence every brief ends with: the rig runs the checks itself, so the coder runs only
-    * the suites it touched.
+  /** The sentences every brief ends with: the rig runs the checks itself, so the coder runs a
+    * suite while it works and every module it changed before it stops, never the whole gate.
     */
   val closing: String =
-    "When you stop, the rig runs this task's checks itself, so run only the suites you touch, " +
-      "never a bare `scripts/check`."
+    "When you stop, the rig runs this task's checks itself. While you work, run the suite you " +
+      "are changing; before you stop, run every module whose files you changed, each as " +
+      "`scripts/check <module>`, and never a bare `scripts/check`."
 
   /** The task `name` of a `task.json`'s text and its brief, its [[closing]] sentence after it, or
     * why not: not an object of `base`, `commits` and `checks`; a commit not 40 lower-case hex

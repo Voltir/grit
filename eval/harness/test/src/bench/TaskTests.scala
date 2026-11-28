@@ -109,6 +109,7 @@ object TaskTests extends TestSuite {
   }
 
   private val rigSentence =
-    "When you stop, the rig runs this task's checks itself, so run only the suites you touch, " +
-      "never a bare `scripts/check`."
+    "When you stop, the rig runs this task's checks itself. While you work, run the suite you " +
+      "are changing; before you stop, run every module whose files you changed, each as " +
+      "`scripts/check <module>`, and never a bare `scripts/check`."
 }

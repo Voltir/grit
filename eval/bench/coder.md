@@ -39,8 +39,9 @@ text). Scout answers from compiled output: compile before trusting it.
   failure and not a compile error, before its code.
 - **Checks cost real time.** Keep one warm Mill. While editing, compile, don't test: after each
   burst of edits, `./mill <module>.compile`. Run a test only to see it red or green
-  (`scripts/check <Suite>`). Run the module's check once per commit, when its edits are done,
-  and a bare `scripts/check` once at the end. Never poll a log in a loop.
+  (`scripts/check <Suite>`). Run the check of every module whose files you changed
+  (`scripts/check <module>`, one module at a time) once per commit, when its edits are done,
+  and again before you stop; never a bare `scripts/check`. Never poll a log in a loop.
 - **One build at a time: memory is capped.** The run is stopped once the processes working in
   this directory together hold more than its memory budget. Never start `./mill` or
   `scripts/check` while another is still going, a background one included. Compile the modules
