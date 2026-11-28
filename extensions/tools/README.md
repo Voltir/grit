@@ -15,7 +15,8 @@ One package, `grit.tools`:
   a refusal naming what runs instead (`RunRefusals`) and saying so when its turn was refused it before (`Refusals`);
   a program sent with its arguments, or repeated as its first, runs as the list permits it
   (never when its words carry shell text), and a `wait` past ten minutes is cut to ten, each
-  answer saying how the call was read;
+  answer saying how the call was read; `edit` takes one passage as `oldText` and `newText`
+  beside `path`, and its file from its edits' own `path` when every one names the same file;
   a command still going after its wait answers with an id that `tail` and `stop` take
   (ADR 0055). Everything it reads from the checkout is believed at Member, so a foreign
   repository cloned into it, its `AGENTS.md` included, is believed at Member too: the gate is

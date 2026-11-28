@@ -55,7 +55,7 @@ object Coding {
   type ListArgs = (path: RelPath, depth: Int)
   type SearchArgs = (pattern: String, path: RelPath)
   type WriteArgs = (path: RelPath, content: String)
-  type EditArgs = (path: RelPath, edits: List[Replace])
+  type EditArgs = (path: RelPath, edits: List[Replace], said: List[String])
   type RunArgs = (command: String, timeout: FiniteDuration)
   type ArgvArgs = (argv: Argv, timeout: FiniteDuration, wait: FiniteDuration, said: List[String])
   type TailArgs = (id: RunId, wait: FiniteDuration, said: List[String])
@@ -326,7 +326,8 @@ object Coding {
     new Hosted(
       ToolSpec(
         ToolName("edit"),
-        "Change a file in the checkout by replacing passages of it. Every `oldText` is " +
+        "Change a file in the checkout by replacing passages of it: give `path` and `edits`, " +
+          "or, for one passage, `path`, `oldText` and `newText`. Every `oldText` is " +
           "matched against the file as it was before this call, exactly, whitespace and " +
           "line breaks included; each must occur exactly once, and no two may overlap. " +
           "`oldText` and `newText` are the file's text only: leave out the line number and " +
@@ -341,17 +342,26 @@ object Coding {
         Args
           .of(
             (
-              path = Field.text("The file, relative to the checkout's root."),
-              edits = Field.each(
-                "The passages to replace, each found exactly once in the file.",
-                replacement
-              )
+              path = Field.text("The file, relative to the checkout's root.").optional,
+              edits = Field
+                .each(
+                  "The passages to replace, each found exactly once in the file. For one " +
+                    "passage, `oldText` and `newText` may stand in its place.",
+                  replacement
+                )
+                .optional,
+              oldText = Field
+                .text(
+                  "With `newText`, in place of `edits`: the one passage to replace, as an " +
+                    "edit's `oldText` is."
+                )
+                .optional,
+              newText = Field
+                .text("With `oldText`, in place of `edits`: what replaces it.")
+                .optional
             )
           )
-          .refine(a =>
-            located(a.path)
-              .map(p => (path = p, edits = a.edits.map(e => Replace(e.oldText, e.newText))))
-          )
+          .refine(a => edited(a.path, a.edits, a.oldText, a.newText))
       ),
       gate,
       a => RelPath.value(a.path),
@@ -366,12 +376,83 @@ object Coding {
         case Left(error) => Outcome.Failed(error.message)
         case Right(done) =>
           val on = done.at.mkString(", ")
-          Outcome.Done(
-            s"Edited ${RelPath.value(a.path)}: ${Words.counted(done.at.size, "replacement")}, " +
-              s"starting on line${if (done.at.size == 1) "" else "s"} $on."
+          saying(
+            Outcome.Done(
+              s"Edited ${RelPath.value(a.path)}: ${Words.counted(done.at.size, "replacement")}, " +
+                s"starting on line${if (done.at.size == 1) "" else "s"} $on."
+            ),
+            a.said
           )
       }
     )
+
+  /** `edit`'s arguments as sent: its file, as `path` or as every edit's own `path` naming the
+    * same file, and its passages, as `edits` or as one `oldText` with its `newText`; with the
+    * sentence saying how the file was read when an edit named it.
+    */
+  private def edited(
+      path: Option[String],
+      edits: Option[List[EditItem]],
+      oldText: Option[String],
+      newText: Option[String]
+  ): Either[ArgsError, EditArgs] = {
+    val items: Either[ArgsError, List[EditItem]] = (edits, oldText, newText) match {
+      case (Some(listed), None, None) => Right(listed)
+      case (Some(_), o, _) =>
+        Left(
+          ArgsError.Refused(
+            if (o.isDefined) "oldText" else "newText",
+            "Give `edits`, or one `oldText` with its `newText` in its place, not both."
+          )
+        )
+      case (None, Some(o), Some(n)) => Right(List((oldText = o, newText = n, path = None)))
+      case (None, Some(_), None) => Left(ArgsError.Missing("newText", "text"))
+      case (None, None, Some(_)) => Left(ArgsError.Missing("oldText", "text"))
+      case (None, None, None) =>
+        Left(
+          ArgsError.Missing(
+            "edits",
+            "a list of at least 1 objects, or `oldText` and `newText` in its place"
+          )
+        )
+    }
+    items.flatMap { listed =>
+      val named = listed.zipWithIndex.flatMap((e, i) => e.path.map(p => (p, i)))
+      for {
+        sent <- path.orElse(named.headOption.map(_._1)).toRight(ArgsError.Missing("path", "text"))
+        file <- located(sent)
+        _ <- named.foldLeft[Either[ArgsError, Unit]](Right(())) { case (acc, (p, i)) =>
+          acc.flatMap(_ =>
+            located(p).toOption.filter(_ == file).map(_ => ()).toRight {
+              val field = s"edits[$i].path"
+              ArgsError.Refused(
+                field,
+                s"`$field` names `$p`, not the call's file `${RelPath.value(file)}`: one call " +
+                  s"edits one file, so edit `$p` in a call of its own."
+              )
+            }
+          )
+        }
+      } yield (
+        path = file,
+        edits = listed.map(e => Replace(e.oldText, e.newText)),
+        said =
+          if (named.isEmpty) Nil
+          else if (path.isEmpty)
+            List(
+              "The file was read from the edits' `path`: give it once, as `path` beside `edits`."
+            )
+          else
+            List(
+              "The edits' `path` named the call's file again: give it once, as `path` beside " +
+                "`edits`."
+            )
+      )
+    }
+  }
+
+  /** One of `edit`'s `edits` as sent ([[replacement]]). */
+  private type EditItem = (oldText: String, newText: String, path: Option[String])
 
   /** `run` as the engine offers it: an edge runs it ([[run]]). */
   lazy val runHosted: Hosted[RunArgs] =
@@ -820,7 +901,10 @@ object Coding {
       oldText = Field.text(
         "The exact text to replace, as it is in the file, without `read`'s line numbers."
       ),
-      newText = Field.text("What replaces it.")
+      newText = Field.text("What replaces it."),
+      path = Field
+        .text("Not needed: `path` names the file. Taken when it names the call's file.")
+        .optional
     )
   )
 

@@ -384,6 +384,89 @@ object CodingTests extends TestSuite {
       )
     }
 
+    test("edit takes one passage as oldText and newText beside path") {
+      val host = new Scripted()
+      val args = ujson.Obj("path" -> "a.txt", "oldText" -> "x", "newText" -> "y")
+      settle(host, "edit", args) ==> Right(
+        (
+          Some("Edit a.txt (1 replacement):\n@@ edits[0]\n- x\n+ y"),
+          Outcome.Done("Edited a.txt: 1 replacement, starting on line 3.")
+        )
+      )
+      host.log ==> Vector("edit a.txt Replace(x,y)")
+    }
+
+    test(
+      "edit takes its file from its edits' path when that is the call's or the call gives none, and says so"
+    ) {
+      val host = new Scripted()
+      def edited(path: Option[String]): Either[String, Outcome] = {
+        val edit = ujson.Obj("oldText" -> "x", "newText" -> "y", "path" -> "a.txt")
+        val args = ujson.Obj("edits" -> ujson.Arr(edit, edit.copy()))
+        path.foreach(p => args("path") = p)
+        settle(host, "edit", args).map(_._2)
+      }
+      (edited(None), edited(Some("./a.txt"))) ==> (
+        Right(
+          Outcome.Done(
+            "Edited a.txt: 1 replacement, starting on line 3.\n\nThe file was read from the " +
+              "edits' `path`: give it once, as `path` beside `edits`."
+          )
+        ),
+        Right(
+          Outcome.Done(
+            "Edited a.txt: 1 replacement, starting on line 3.\n\nThe edits' `path` named the " +
+              "call's file again: give it once, as `path` beside `edits`."
+          )
+        )
+      )
+      host.log ==> Vector.fill(2)("edit a.txt Replace(x,y);Replace(x,y)")
+    }
+
+    test(
+      "edit refuses an edit's path naming another file, edits beside oldText, and a call with neither"
+    ) {
+      val host = new Scripted()
+      // The refusal, without the arguments it echoes after " You sent:".
+      def refused(args: ujson.Obj): Either[String, Outcome] =
+        settle(host, "edit", args).left
+          .map(m =>
+            m.indexOf(" You sent:") match {
+              case -1 => m
+              case at => m.take(at)
+            }
+          )
+          .map(_._2)
+      val one = ujson.Obj("oldText" -> "x", "newText" -> "y")
+      (
+        refused(
+          ujson.Obj(
+            "path" -> "a.txt",
+            "edits" -> ujson
+              .Arr(one, ujson.Obj("oldText" -> "x", "newText" -> "y", "path" -> "b.txt"))
+          )
+        ),
+        refused(ujson.Obj("path" -> "a.txt", "edits" -> ujson.Arr(one), "oldText" -> "x")),
+        refused(ujson.Obj("path" -> "a.txt")),
+        refused(ujson.Obj("path" -> "a.txt", "oldText" -> "x"))
+      ) ==> (
+        Left(
+          "The call to `edit` was not run: `edits[1].path` names `b.txt`, not the call's file " +
+            "`a.txt`: one call edits one file, so edit `b.txt` in a call of its own."
+        ),
+        Left(
+          "The call to `edit` was not run: Give `edits`, or one `oldText` with its `newText` " +
+            "in its place, not both."
+        ),
+        Left(
+          "The call to `edit` was not run: `edits` is missing: it takes a list of at least 1 " +
+            "objects, or `oldText` and `newText` in its place."
+        ),
+        Left("The call to `edit` was not run: `newText` is missing: it takes text.")
+      )
+      host.log ==> Vector.empty
+    }
+
     test("run asks with the command, then reports the exit code") {
       val host = new Scripted(ran = Right(Ran(3, Clipped.tail("boom\n", _ => None))))
       settle(host, "run", ujson.Obj("command" -> "make", "timeout" -> 5)) ==> Right(
