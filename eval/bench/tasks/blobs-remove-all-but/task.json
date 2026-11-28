@@ -5,5 +5,15 @@
   ],
   "checks": [
     {"runner": "check", "args": ["grit.core"]}
-  ]
+  ],
+  "held": {
+    "files": ["core/core/test/src/host/HeldBlobsTests.scala"],
+    "checks": [{"runner": "check", "args": ["grit.core.host.HeldBlobsTests"]}]
+  },
+  "complete": {
+    "commits": 1,
+    "exists": [],
+    "absent": [],
+    "holds": [{"path": "**/FileArea.scala", "text": "removeAllBut"}]
+  }
 }
