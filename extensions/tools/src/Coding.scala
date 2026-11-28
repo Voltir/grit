@@ -18,6 +18,7 @@ import grit.core.host.{
   Runs,
   Shell,
   ShellReads,
+  Uncommitted,
   Workspace
 }
 import grit.core.place.Place
@@ -126,7 +127,8 @@ object Coding {
     * was given before saying so ([[Refusals]]); a shell read of `sources`' files answering after
     * the line naming what reads them ([[SourceTools.line]]) when the guard's classifier finds it
     * one at [[SourceTools.Points]] ([[SourceTools.question]]), or, when it gives no answer, the
-    * rule does ([[SourceTools.ruled]]); and `tail` and `stop` reaching only what `runs` started.
+    * rule does ([[SourceTools.ruled]]); a `git commit` refused, starting nothing, while `tree`
+    * reads files it would leave out; and `tail` and `stop` reaching only what `runs` started.
     * `Left` names a tool that cannot be offered with the others.
     */
   def allowlisted(
@@ -135,15 +137,16 @@ object Coding {
       runs: Allowlisted^,
       guard: MachineGuard^,
       refusals: Refusals^,
-      sources: Option[SourceTools]
-  ): Either[SetRefusal, Toolbox[caps.CapSet^{ws, edits, runs, guard, refusals}]] =
+      sources: Option[SourceTools],
+      tree: Uncommitted^
+  ): Either[SetRefusal, Toolbox[caps.CapSet^{ws, edits, runs, guard, refusals, tree}]] =
     Toolbox.of(
       read(ws),
       list(ws),
       search(ws),
       writing(freeWrite, edits),
       editing(freeEdit, edits),
-      argvRun(runs, guard, refusals, sources),
+      argvRun(runs, guard, refusals, sources, tree),
       tail(runs),
       stop(runs)
     )
@@ -526,7 +529,12 @@ object Coding {
           "like errors, warnings or failing tests, each after its line number, and up to its " +
           s"last ${Clipped.TailLines} lines. All of it is in a file in the checkout the answer " +
           s"names, for `read` and `search`, kept until ${Runs.MostEnded} newer commands have " +
-          "ended. Give `git commit` its message with `-m`: no editor can open. Waits up " +
+          "ended. Give `git commit` its message with `-m`: no editor can open. A " +
+          "`git commit`, `--amend` included, is refused, committing nothing, while a file git " +
+          "neither tracks nor ignores is in the checkout, or a tracked file has changes not " +
+          "staged (with `-a`, only the first); then, where the repository declares a compile, " +
+          "it runs that first and is refused when it fails. Either refusal lists what to fix. " +
+          "Waits up " +
           s"to `wait` seconds (${Runs.Wait.toSeconds} when not given): a command still running " +
           "then keeps running, and the answer gives its id and its output so far; follow it " +
           s"with `tail`, or end it with `stop`. At most ${Runs.Most} commands run at once in a " +
@@ -599,8 +607,9 @@ object Coding {
       runs: Allowlisted^,
       guard: MachineGuard^,
       refusals: Refusals^,
-      sources: Option[SourceTools]
-  ): Tool[ArgvArgs]^{runs, guard, refusals} =
+      sources: Option[SourceTools],
+      tree: Uncommitted^
+  ): Tool[ArgvArgs]^{runs, guard, refusals, tree} =
     argvRunHosted(runs.allowlist).calling { (a, at) =>
       // The line a shell read of `sources`' files answers after: asked of the guard's
       // classifier, by rule when it gives no answer.
@@ -615,6 +624,13 @@ object Coding {
         runs
           .start(a.argv, a.timeout, a.wait)
           .fold(e => Outcome.Failed(e.message), s => standing(s.id, s.status, line))
+      // A commit is started only when it would leave out no file.
+      def committing: Outcome =
+        tree.read.fold(
+          e => Outcome.Failed(CommitCheck.unchecked(CommitCheck.Tree, e)),
+          files =>
+            CommitCheck.refusal(CommitCheck.leftOut(a.argv, files)).fold(started)(Outcome.Failed(_))
+        )
       // `said`, and when `subject` was refused before this turn, that it was.
       def refused(subject: String, said: String, again: Int => String): Outcome = {
         val before = refusals.again(at.turn, subject)
@@ -639,7 +655,9 @@ object Coding {
           guard
             .judge(a.argv)
             .why
-            .fold(started)(why => refused(s"guard ${a.argv.written}", why, _ => RunRefusals.Again))
+            .fold(if (commits(a.argv)) committing else started)(why =>
+              refused(s"guard ${a.argv.written}", why, _ => RunRefusals.Again)
+            )
       outcome.saying(a.said)
     }
 

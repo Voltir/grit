@@ -104,11 +104,38 @@ object AllowlistedCodingTests extends TestSuite {
       runs: Allowlisted^,
       guard: MachineGuard^ = GuardFixtures.harmless,
       refusals: Refusals^ = Refusals.kept(),
-      sources: Option[SourceTools] = None
-  ): Toolbox[caps.CapSet^{host, runs, guard, refusals}] =
+      sources: Option[SourceTools] = None,
+      tree: Uncommitted^ = Leaving.Nothing
+  ): Toolbox[caps.CapSet^{host, runs, guard, refusals, tree}] =
     Coding
-      .allowlisted(host, host, runs, guard, refusals, sources)
+      .allowlisted(host, host, runs, guard, refusals, sources, tree)
       .fold(d => throw new java.lang.AssertionError(d), identity)
+
+  /** A checkout whose every read of what a commit would leave out answers `files`, counted. */
+  private final class Leaving(files: Either[HostError, Uncommitted.Files]) extends Uncommitted {
+    val reads = new java.util.concurrent.atomic.AtomicInteger
+    def read: Either[HostError, Uncommitted.Files] = { val _ = reads.incrementAndGet(); files }
+  }
+
+  private object Leaving {
+    def Nothing: Leaving^ = new Leaving(Right(Uncommitted.Files(Vector.empty, Vector.empty)))
+    def of(unstaged: Vector[String], untracked: Vector[String]): Leaving^ = {
+      def paths(ps: Vector[String]) = ps.flatMap(RelPath.of(_).toOption)
+      new Leaving(Right(Uncommitted.Files(paths(unstaged), paths(untracked))))
+    }
+  }
+
+  private val instant = ScriptedRuns.Script("", "", Some(Duration.Zero), 0)
+
+  /** `git args` run against the allowlisted tools with `tree` as the checkout's files. */
+  private def commit(runs: Allowlisted^, tree: Uncommitted^, args: String*) =
+    settle(
+      new CodingTests.Scripted(),
+      runs,
+      "run",
+      ujson.Obj("program" -> "git", "args" -> ujson.Arr.from(args)),
+      tree = tree
+    )
 
   private def call(name: String, args: ujson.Value): AssistantBlock.ToolCall =
     AssistantBlock.ToolCall(ToolCallId("c1"), name, args)
@@ -124,9 +151,10 @@ object AllowlistedCodingTests extends TestSuite {
       guard: MachineGuard^ = GuardFixtures.harmless,
       refusals: Refusals^ = Refusals.kept(),
       at: grit.core.id.CallSlot = TestCallSlots.First,
-      sources: Option[SourceTools] = None
+      sources: Option[SourceTools] = None,
+      tree: Uncommitted^ = Leaving.Nothing
   ): Either[String, (Boolean, Outcome)] =
-    tools(host, runs, guard, refusals, sources)
+    tools(host, runs, guard, refusals, sources, tree)
       .requested(
         call(name, args),
         Repairs.All,
@@ -852,6 +880,16 @@ object AllowlistedCodingTests extends TestSuite {
               "checkout the answer names, for `read` and `search`, kept until 8 newer commands " +
               "have ended. Give `git commit` its message"
           )
+        ),
+        run.exists(
+          _.contains(
+            "Give `git commit` its message with `-m`: no editor can open. A `git commit`, " +
+              "`--amend` included, is refused, committing nothing, while a file git neither " +
+              "tracks nor ignores is in the checkout, or a tracked file has changes not staged " +
+              "(with `-a`, only the first); then, where the repository declares a compile, it " +
+              "runs that first and is refused when it fails. Either refusal lists what to fix. " +
+              "Waits up to"
+          )
         )
       )
     }
@@ -944,6 +982,109 @@ object AllowlistedCodingTests extends TestSuite {
         logs("stop", id, s"`git commit -m 'turn: a thing'`\n$made"),
         logs("tail", id, s"`./mill compile`\n$made")
       ) ==> (commit, commit, Right(None))
+    }
+
+    test(
+      "a commit that would leave out files is refused, starting nothing, naming the untracked " +
+        "then the unstaged, at most 20 of each and how many more"
+    ) {
+      val noted = new Noting(Map(argv("git", "commit", "-m", "x") -> instant))
+      val runs = Allowlisted.over(noted, allowlist(2.minutes))
+      val unstaged = (1 to 22).map(n => f"src/f$n%02d.scala").toVector
+      val tree = Leaving.of(unstaged, Vector("new/Test.scala", "notes.md"))
+      val refused =
+        "The commit was refused, and nothing was committed: it would leave out files the " +
+          "checkout holds. Untracked, neither committed nor ignored:\n" +
+          "- new/Test.scala\n- notes.md\n" +
+          "Changed, not staged:\n" +
+          unstaged.take(20).map(p => s"- $p\n").mkString +
+          "- … and 2 more\n\n" +
+          "Add each with `git add`, or remove it, or ignore it in `.gitignore`; then commit again."
+      (commit(runs, tree, "commit", "-m", "x"), noted.log, tree.reads.get) ==> (
+        Right((false, Outcome.Failed(refused))),
+        Vector.empty,
+        1
+      )
+    }
+
+    test(
+      "a commit with -a or --all, or -a in a cluster before a valued flag, is refused only for " +
+        "untracked files; any other commit, --amend included, for unstaged ones too"
+    ) {
+      val forms = Vector(
+        Vector("commit", "-am", "x"),
+        Vector("commit", "--all", "-m", "x"),
+        Vector("commit", "-m", "x"),
+        Vector("commit", "--amend", "--no-edit"),
+        Vector("commit", "-ma", "x")
+      )
+      val noted = new Noting(forms.map(f => argv(("git" +: f)*) -> instant).toMap)
+      val runs = Allowlisted.over(noted, allowlist(2.minutes))
+      val unstagedOnly = Leaving.of(Vector("a.txt"), Vector.empty)
+      val refused =
+        "The commit was refused, and nothing was committed: it would leave out files the " +
+          "checkout holds. Changed, not staged:\n- a.txt\n\n" +
+          "Add each with `git add`, or remove it, or ignore it in `.gitignore`; then commit again."
+      (
+        forms.map(f => commit(runs, unstagedOnly, f*).map(_._2.isInstanceOf[Outcome.Done])),
+        commit(runs, unstagedOnly, "commit", "--amend", "--no-edit"),
+        noted.log.map(_._1)
+      ) ==> (
+        Vector(Right(true), Right(true), Right(false), Right(false), Right(false)),
+        Right((false, Outcome.Failed(refused))),
+        Vector(argv("git", "commit", "-am", "x"), argv("git", "commit", "--all", "-m", "x"))
+      )
+    }
+
+    test("a commit the machine guard refuses fails in its words, the tree never read") {
+      val noted = new Noting(Map(argv("git", "commit", "-m", "x", "../elsewhere") -> instant))
+      val runs = Allowlisted.over(noted, allowlist(2.minutes))
+      val jev = new GuardFixtures.Judging(Right(Vector(0.0, 0.0, 0.0, 0.9)))
+      val tree = Leaving.of(Vector("a.txt"), Vector.empty)
+      val ran = settle(
+        new CodingTests.Scripted(),
+        runs,
+        "run",
+        ujson.Obj("program" -> "git", "args" -> ujson.Arr("commit", "-m", "x", "../elsewhere")),
+        GuardFixtures.guard(Right(jev)),
+        tree = tree
+      )
+      (ran.map(_._2.toString.contains("the check that guards this machine")), tree.reads.get) ==>
+        (Right(true), 0)
+    }
+
+    test("a commit whose tree git cannot read is refused, failing closed, in the error's words") {
+      val noted = new Noting(Map(argv("git", "commit", "-m", "x") -> instant))
+      val runs = Allowlisted.over(noted, allowlist(2.minutes))
+      val unread = new Leaving(Left(HostError.Failed("git status exited 128: not a repository")))
+      (commit(runs, unread, "commit", "-m", "x"), noted.log) ==> (
+        Right(
+          (
+            false,
+            Outcome.Failed(
+              "The commit was refused, and nothing was committed: the working tree could not " +
+                "be checked. git status exited 128: not a repository"
+            )
+          )
+        ),
+        Vector.empty
+      )
+    }
+
+    test("a commit's flags are read for -a as git reads them, a valued flag's value never one") {
+      def all(args: String*) = CommitCheck.all(argv(("git" +: args)*))
+      Vector(
+        all("commit", "-a"),
+        all("commit", "-qa", "-m", "x"),
+        all("-C", "sub", "commit", "--all"),
+        all("commit", "-m", "-a"),
+        all("commit", "--message", "-a"),
+        all("commit", "-ma"),
+        all("commit", "-Ca"),
+        all("commit", "--", "-a"),
+        all("commit", "--amend"),
+        all("status", "-a")
+      ) ==> Vector(true, true, true, false, false, false, false, false, false, false)
     }
   }
 }

@@ -12,7 +12,7 @@ import grit.core.place.{Directory, Repository}
 import grit.core.tool.{Outcome, SetRefusal, ToolSet}
 import grit.edge.desk.{Run, Tools}
 import grit.host.checkout.{LocalEdits, LocalReach, LocalRuns, LocalShell, LocalWorkspace, Redaction}
-import grit.host.git.{LocalStashes, WorkingCopies}
+import grit.host.git.{LocalStashes, LocalUncommitted, WorkingCopies}
 import grit.kit.deployment.Offered
 import grit.tools.{Coding, MachineGuard, Refusals, SourceTools, Versioning}
 
@@ -138,7 +138,8 @@ final class LocalTools(
             Allowlisted.over(runsAt(root), allowlist),
             guardAt(root, allowlist),
             refusals,
-            sources
+            sources,
+            new LocalUncommitted(root, sys.env, redaction)
           )
           .fold(refused, tools => Run.request(request, tools))
     }
